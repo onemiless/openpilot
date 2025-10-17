@@ -104,7 +104,7 @@ class Controls:
     # carrot
     gear = car.CarState.GearShifter
     driving_gear = CS.gearShifter not in (gear.neutral, gear.park, gear.reverse, gear.unknown)
-    lateral_enabled = driving_gear
+    lateral_enabled = False
     #self.soft_hold_active = CS.softHoldActive #car.OnroadEvent.EventName.softHold in [e.name for e in self.sm['onroadEvents']]
 
     # Check which actuators can be enabled
@@ -141,14 +141,14 @@ class Controls:
     lat_smooth_seconds = LAT_SMOOTH_SECONDS #self.params.get_float("SteerSmoothSec") * 0.01
     steer_actuator_delay = self.params.get_float("SteerActuatorDelay") * 0.01
     if steer_actuator_delay == 0.0:
-      steer_actuator_delay = self.sm['liveDelay'].lateralDelay 
+      steer_actuator_delay = self.sm['liveDelay'].lateralDelay
 
     if len(model_v2.position.yStd) > 0:
       yStd = np.interp(steer_actuator_delay + lat_smooth_seconds, ModelConstants.T_IDXS, model_v2.position.yStd)
       self.yStd = yStd * 0.02 + self.yStd * 0.98
     else:
       self.yStd = 0.0
-    
+
     if not CC.latActive:
       new_desired_curvature = self.curvature
     elif self.lanefull_mode_enabled:
@@ -194,7 +194,7 @@ class Controls:
 
       def set_hud(side_cap, name, val):
         setattr(hudControl, f"lead{side_cap}{name}", float(val if val is not None else 0.0))
-        
+
       st = self.side_state[side]
       if road_edge <= 2.0 or not leads2:
         st["main"] = {"dRel": None, "lat": None}
