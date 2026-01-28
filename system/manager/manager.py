@@ -178,6 +178,8 @@ def get_default_params():
     ("CruiseOnDist", "400"),
     ("HotspotOnBoot", "0"),
     ("SoftwareMenu", "1"),
+    ("CustomSteerOffset", "0"),
+    ("SteerAngleOffset", "0"),
     ("CustomSR", "140"),
     ("SteerRatioRate", "100"),
     ("NNFF", "1"),
