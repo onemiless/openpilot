@@ -88,7 +88,7 @@ class ParamsLearner:
       self.steering_angle = msg.steeringAngleDeg
       self.speed = msg.vEgo
 
-      in_linear_region = abs(self.steering_angle) < 45
+      in_linear_region = abs(self.steering_angle) < 15
       self.active = self.speed > MIN_ACTIVE_SPEED and in_linear_region
 
       if self.active:
@@ -190,7 +190,7 @@ def main():
         lat = location.positionGeodetic.value[0]
         lon = location.positionGeodetic.value[1]
         params_memory.put("LastGPSPosition", json.dumps({"latitude": lat, "longitude": lon, "bearing": bearing}))
-        
+
       x = learner.kf.x
       P = np.sqrt(learner.kf.P.diagonal())
       if not all(map(math.isfinite, x)):
