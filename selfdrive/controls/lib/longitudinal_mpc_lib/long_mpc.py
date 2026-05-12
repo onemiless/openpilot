@@ -38,16 +38,16 @@ V_EGO_COST = 0.
 A_EGO_COST = 0.
 J_EGO_COST = 5.
 A_CHANGE_COST = 200.
-DANGER_ZONE_COST = 100.
+DANGER_ZONE_COST = 150.
 CRASH_DISTANCE = .25
-LEAD_DANGER_FACTOR = 0.75
+LEAD_DANGER_FACTOR = 0.55
 LIMIT_COST = 1e6
 ACADOS_SOLVER_TYPE = 'SQP_RTI'
 
 # Fewer timestamps don't hurt performance and lead to
 # much better convergence of the MPC with low iterations
 N = 12
-MAX_T = 10.0
+MAX_T = 12.0
 T_IDXS_LST = [index_function(idx, max_val=MAX_T, max_idx=N) for idx in range(N+1)]
 
 T_IDXS = np.array(T_IDXS_LST)
@@ -76,7 +76,7 @@ def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard):
   elif personality==log.LongitudinalPersonality.standard:
     return 1.35
   elif personality==log.LongitudinalPersonality.aggressive:
-    return 1.05
+    return 1.00
   else:
     raise NotImplementedError("Longitudinal personality not supported")
 
