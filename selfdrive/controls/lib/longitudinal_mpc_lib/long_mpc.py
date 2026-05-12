@@ -32,22 +32,22 @@ COST_E_DIM = 5
 COST_DIM = COST_E_DIM + 1
 CONSTR_DIM = 4
 
-X_EGO_OBSTACLE_COST = 3.
+X_EGO_OBSTACLE_COST = 2.
 X_EGO_COST = 0.
 V_EGO_COST = 0.
 A_EGO_COST = 0.
-J_EGO_COST = 5.
-A_CHANGE_COST = 200.
-DANGER_ZONE_COST = 150.
+J_EGO_COST = 3.
+A_CHANGE_COST = 150.
+DANGER_ZONE_COST = 100.
 CRASH_DISTANCE = .25
-LEAD_DANGER_FACTOR = 0.55
+LEAD_DANGER_FACTOR = 0.45
 LIMIT_COST = 1e6
 ACADOS_SOLVER_TYPE = 'SQP_RTI'
 
 # Fewer timestamps don't hurt performance and lead to
 # much better convergence of the MPC with low iterations
 N = 12
-MAX_T = 12.0
+MAX_T = 10.0
 T_IDXS_LST = [index_function(idx, max_val=MAX_T, max_idx=N) for idx in range(N+1)]
 
 T_IDXS = np.array(T_IDXS_LST)
