@@ -9,6 +9,7 @@ Tesla FSD Mod — CAN frame manipulation module.
 Port of flipper-tesla-fsd logic to sunnypilot/openpilot.
 """
 
+import json
 import time
 from openpilot.common.params import Params
 from openpilot.common.realtime import Ratekeeper, config_realtime_process
@@ -47,8 +48,31 @@ class TeslaFSDMod:
     self.fsd_frames_modified = 0
     self.nag_echo_count = 0
     self.chime_suppressed = 0
+    self.precondition_sent = 0
+
+    # status publishing
+    self._last_status_update = 0.0
+    self._status_interval = 2.0  # publish status every 2s
 
     cloudlog.info("TeslaFSDMod: initialized")
+
+  def _publish_status(self):
+    """Write status to params for Dev UI display."""
+    now = time.monotonic()
+    if now - self._last_status_update < self._status_interval:
+      return
+    self._last_status_update = now
+
+    status = {
+      "fsd_active": self.fsd_frames_modified > 0,
+      "fsd_frames": self.fsd_frames_modified,
+      "nag_active": self.nag_echo_count > 0,
+      "nag_echoes": self.nag_echo_count,
+      "chime_suppress": self.chime_suppressed > 0,
+      "precondition_sent": self.precondition_sent,
+      "ota_paused": self.ota_in_progress,
+    }
+    self.params.put_nonblocking("TeslaFSDModStatus", json.dumps(status))
 
   @property
   def fsd_enabled(self) -> bool:
@@ -196,9 +220,9 @@ class TeslaFSDMod:
       return None
 
     self.last_precondition_ts = now
+    self.precondition_sent += 1
     # byte0 = 0x05: tripPlanningActive + requestActiveBatteryHeating
     data = bytes([0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
-    cloudlog.info("TeslaFSDMod: sending precondition trigger")
     return data
 
   # ---- Main processing ----
@@ -269,6 +293,7 @@ def main():
   while True:
     send_msgs = mod.process()
     mod.send(send_msgs)
+    mod._publish_status()
     rk.keep_time()
 
 

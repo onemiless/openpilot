@@ -397,6 +397,37 @@ class BearingDegElement(GpsInfoElement):
     return UiElement(f"{dir_value} | {value}", "B.D.", self.unit, rl.WHITE)
 
 
+class TeslaFSDModElement:
+  def __init__(self):
+    self.unit = ""
+
+  def update(self, sm, is_metric: bool) -> UiElement:
+    from openpilot.common.params import Params
+    try:
+      import json
+      raw = Params().get("TeslaFSDModStatus")
+      if raw:
+        status = json.loads(raw)
+        fsd_frames = status.get("fsd_frames", 0)
+        nag_count = status.get("nag_echoes", 0)
+        ota = status.get("ota_paused", False)
+
+        parts = []
+        if fsd_frames > 0:
+          parts.append(f"FSD:{fsd_frames}")
+        if nag_count > 0:
+          parts.append(f"N:{nag_count}")
+        if ota:
+          parts.append("OTA")
+
+        if parts:
+          return UiElement(" | ".join(parts), "FSDmod", self.unit, rl.Color(0, 255, 0, 200))
+        return UiElement("OFF", "FSDmod", self.unit, rl.Color(145, 155, 149, 200))
+    except Exception:
+      pass
+    return UiElement("-", "FSDmod", self.unit, rl.WHITE)
+
+
 class AltitudeElement(GpsInfoElement):
   def __init__(self):
     self.unit = "m"
