@@ -6,6 +6,7 @@ See the LICENSE.md file in the root directory for more details.
 """
 from enum import IntEnum
 
+from openpilot.selfdrive.ui.ui_state import device
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.widgets.scroller_tici import Scroller
@@ -35,6 +36,7 @@ class DisplayLayout(Widget):
       max_value=100,
       value_change_step=5,
       label_callback=lambda value: f"{value} %",
+      on_value_changed=lambda value: device.set_offroad_brightness(value),
       inline=True
     )
     self._onroad_brightness = option_item_sp(
