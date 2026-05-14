@@ -21,7 +21,38 @@ class TeslaSettings(BrandSettings):
       param="TeslaMadsScreenButton",
       inline=False,
     )
-    self.items = [self.coop_steering_toggle, self.mads_screen_button]
+
+    # FSD Mod toggles
+    self.fsd_unlock_toggle = toggle_item_sp(
+      tr("FSD Region Unlock"),
+      param="TeslaFSDUnlock",
+      description=lambda: tr("Enable FSD functionality via CAN-level modification.<br>" +
+                             "Requires an active FSD subscription or purchase."),
+    )
+    self.nag_killer_toggle = toggle_item_sp(
+      tr("Nag Killer"),
+      param="TeslaNagKiller",
+      description=lambda: tr("Suppress the hands-on-wheel reminder (nag) while Autopilot is active."),
+    )
+    self.isa_chime_toggle = toggle_item_sp(
+      tr("ISA Speed Chime Suppression"),
+      param="TeslaISAChimeSuppress",
+      description=lambda: tr("Suppress the ISA speed warning chime (HW4 only)."),
+    )
+    self.precondition_toggle = toggle_item_sp(
+      tr("Battery Preconditioning"),
+      param="TeslaPrecondition",
+      description=lambda: tr("Periodically trigger battery preconditioning for optimal performance."),
+    )
+
+    self.items = [
+      self.coop_steering_toggle,
+      self.mads_screen_button,
+      self.fsd_unlock_toggle,
+      self.nag_killer_toggle,
+      self.isa_chime_toggle,
+      self.precondition_toggle,
+    ]
 
   def update_settings(self):
     coop_steering_desc = (

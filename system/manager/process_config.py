@@ -64,6 +64,11 @@ def only_onroad(started: bool, params: Params, CP: car.CarParams) -> bool:
 def only_offroad(started: bool, params: Params, CP: car.CarParams) -> bool:
   return not started
 
+def tesla_fsd_mod_ready(started: bool, params: Params, CP: car.CarParams) -> bool:
+  return started and CP.brand == "tesla" and (
+    params.get_bool("TeslaFSDUnlock") or params.get_bool("TeslaNagKiller") or
+    params.get_bool("TeslaISAChimeSuppress") or params.get_bool("TeslaPrecondition"))
+
 def use_github_runner(started, params, CP: car.CarParams) -> bool:
   return not PC and params.get_bool("EnableGithubRunner") and (
     not params.get_bool("NetworkMetered") and not params.get_bool("GithubRunnerSufficientVoltage"))
@@ -182,6 +187,9 @@ procs += [
 
   # locationd
   NativeProcess("locationd_llk", "sunnypilot/selfdrive/locationd", ["./locationd"], only_onroad),
+
+  # Tesla FSD Mod
+  PythonProcess("tesla_fsd_mod", "sunnypilot.tesla_fsd_mod.fsd_mod", tesla_fsd_mod_ready),
 ]
 
 if os.path.exists("./github_runner.sh"):
