@@ -11,6 +11,8 @@ from openpilot.common.params import Params
 AudibleAlert = car.CarControl.HUDControl.AudibleAlert
 
 ALERTS_ALWAYS_PLAY = {
+  AudibleAlert.engage,
+  AudibleAlert.disengage,
   AudibleAlert.warningSoft,
   AudibleAlert.warningImmediate,
   AudibleAlert.promptDistracted,
