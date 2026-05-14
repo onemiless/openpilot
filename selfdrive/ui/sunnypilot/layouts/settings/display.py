@@ -6,7 +6,6 @@ See the LICENSE.md file in the root directory for more details.
 """
 from enum import IntEnum
 
-from openpilot.selfdrive.ui.ui_state import device
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.widgets.scroller_tici import Scroller
@@ -28,6 +27,8 @@ class DisplayLayout(Widget):
     self._scroller = Scroller(items, line_separator=True, spacing=0)
 
   def _initialize_items(self):
+    from openpilot.selfdrive.ui.ui_state import device  # local to break circular import
+
     self._offroad_brightness = option_item_sp(
       param="Brightness",
       title=lambda: tr("Offroad Brightness"),
