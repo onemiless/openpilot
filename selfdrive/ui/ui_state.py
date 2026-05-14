@@ -195,6 +195,7 @@ class UIState(UIStateSP):
 class Device(DeviceSP):
   def __init__(self):
     DeviceSP.__init__(self)
+    self._params = Params()
     self._ignition = False
     self._interaction_time: float = -1
     self._override_interactive_timeout: int | None = None
@@ -202,9 +203,13 @@ class Device(DeviceSP):
     self._prev_timed_out = False
     self._awake: bool = True
 
-    self._offroad_brightness: int = BACKLIGHT_OFFROAD
+    offroad_brightness = self._params.get("Brightness", return_default=True)
+    if offroad_brightness and offroad_brightness > 0:
+      self._offroad_brightness: int = offroad_brightness
+    else:
+      self._offroad_brightness: int = BACKLIGHT_OFFROAD
     self._last_brightness: int = 0
-    self._brightness_filter = FirstOrderFilter(BACKLIGHT_OFFROAD, 10.00, 1 / gui_app.target_fps)
+    self._brightness_filter = FirstOrderFilter(self._offroad_brightness, 10.00, 1 / gui_app.target_fps)
     self._brightness_thread: threading.Thread | None = None
 
   @property
@@ -250,8 +255,14 @@ class Device(DeviceSP):
     if brightness is None:
       brightness = BACKLIGHT_OFFROAD
     self._offroad_brightness = min(max(brightness, 0), 100)
+    self._params.put_int("Brightness", self._offroad_brightness)
 
   def _update_brightness(self):
+    if not ui_state.started:
+      b = self._params.get("Brightness", return_default=True)
+      if b and b > 0:
+        self._offroad_brightness = b
+
     clipped_brightness = self._offroad_brightness
 
     if ui_state.started and ui_state.light_sensor >= 0:
