@@ -33,9 +33,9 @@ class DisplayLayout(Widget):
       param="Brightness",
       title=lambda: tr("Offroad Brightness"),
       description="",
-      min_value=5,
-      max_value=100,
-      value_change_step=5,
+      min_value=0,
+      max_value=22,
+      value_change_step=1,
       label_callback=lambda value: f"{value} %",
       on_value_changed=lambda value: device.set_offroad_brightness(value),
       inline=True
