@@ -1,6 +1,7 @@
 import os
 import operator
 import platform
+import time
 
 from cereal import car, custom
 from openpilot.common.params import Params
@@ -190,6 +191,10 @@ procs += [
 
   # Tesla FSD Mod
   PythonProcess("tesla_fsd_mod", "sunnypilot.tesla_fsd_mod.fsd_mod", tesla_fsd_mod_ready),
+
+  # GPS time sync (runs once at boot, sets system clock from GPS)
+  PythonProcess("gps_time_sync", "sunnypilot.gps_time_sync",
+                lambda started, params, CP: time.time() < 1740000000 and not params.get_bool("GpsTimeSyncDone")),
 ]
 
 if os.path.exists("./github_runner.sh"):
