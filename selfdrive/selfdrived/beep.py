@@ -8,6 +8,8 @@ import threading
 AudibleAlert = car.CarControl.HUDControl.AudibleAlert
 
 ALERTS_ALWAYS_PLAY = {
+  AudibleAlert.engage,
+  AudibleAlert.disengage,
   AudibleAlert.warningSoft,
   AudibleAlert.warningImmediate,
   AudibleAlert.promptDistracted,
@@ -82,7 +84,11 @@ class Beepd:
       self.current_alert = new_alert
       print(f"[BEEP] New alert: {new_alert}")
       if new_alert in ALERTS_ALWAYS_PLAY:
-        if new_alert == AudibleAlert.promptRepeat:
+        if new_alert == AudibleAlert.engage:
+          self.dispatch_beep(self.engage)
+        elif new_alert == AudibleAlert.disengage:
+          self.dispatch_beep(self.disengage)
+        elif new_alert == AudibleAlert.promptRepeat:
           current_time = time.time()
           if current_time - self.last_prompt_repeat_time >= 10:
             self.dispatch_beep(self.engage)
