@@ -13,7 +13,7 @@ from openpilot.selfdrive.ui.sunnypilot.onroad.developer_ui.elements import (
   DesiredLateralAccelElement, ActualLateralAccelElement, DesiredSteeringAngleElement,
   AEgoElement, LeadSpeedElement, FrictionCoefficientElement, LatAccelFactorElement,
   SteeringTorqueEpsElement, BearingDegElement, AltitudeElement, DesiredSteeringPIDElement,
-  StorageElement, MemoryUsageElement, CpuTempMaxElement, TeslaFSDModElement
+  StorageElement, MemoryUsageElement, CpuTempMaxElement, TeslaFSDModElement, TeslaBMSElement
 )
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.text_measure import measure_text_cached
@@ -58,6 +58,7 @@ class DeveloperUiRenderer(Widget):
     self.bearing_elem = BearingDegElement()
     self.altitude_elem = AltitudeElement()
     self.tesla_fsd_mod_elem = TeslaFSDModElement()
+    self.tesla_bms_elem = TeslaBMSElement()
 
   def _update_state(self) -> None:
     self.dev_ui_mode = ui_state.developer_ui
@@ -103,6 +104,7 @@ class DeveloperUiRenderer(Widget):
 
     if ui_state.CP is not None and ui_state.CP.brand == "tesla":
       elements.append(self.tesla_fsd_mod_elem.update(sm, ui_state.is_metric))
+      elements.append(self.tesla_bms_elem.update(sm, ui_state.is_metric))
 
     current_y = y
     for element in elements:
@@ -153,6 +155,7 @@ class DeveloperUiRenderer(Widget):
 
     if ui_state.CP is not None and ui_state.CP.brand == "tesla":
       elements.append(self.tesla_fsd_mod_elem.update(sm, ui_state.is_metric))
+      elements.append(self.tesla_bms_elem.update(sm, ui_state.is_metric))
 
     # Add torque-specific elements if using torque control
     # if sm['controlsState'].lateralControlState.which() == 'torqueState':

@@ -44,6 +44,16 @@ class TeslaSettings(BrandSettings):
       param="TeslaPrecondition",
       description=lambda: tr("Periodically trigger battery preconditioning for optimal performance."),
     )
+    self.bms_dashboard_toggle = toggle_item_sp(
+      tr("BMS Dashboard"),
+      param="TeslaBMSDashboard",
+      description=lambda: tr("Display battery voltage, SOC, and temperature in Dev UI."),
+    )
+    self.turn_signal_toggle = toggle_item_sp(
+      tr("Auto Turn Signal"),
+      param="TeslaTurnSignal",
+      description=lambda: tr("Toggle left/right turn signal every 60 seconds (for testing)."),
+    )
 
     self.items = [
       self.coop_steering_toggle,
@@ -52,6 +62,8 @@ class TeslaSettings(BrandSettings):
       self.nag_killer_toggle,
       self.isa_chime_toggle,
       self.precondition_toggle,
+      self.bms_dashboard_toggle,
+      self.turn_signal_toggle,
     ]
 
   def update_settings(self):

@@ -196,6 +196,11 @@ procs += [
   PythonProcess("tesla_precondition", "sunnypilot.tesla_precondition",
                 lambda started, params, CP: started and CP.brand == "tesla" and params.get_bool("TeslaPrecondition")),
 
+  # Tesla extras: BMS dashboard + turn signal
+  PythonProcess("tesla_extras", "sunnypilot.tesla_extras",
+                lambda started, params, CP: started and CP.brand == "tesla" and (
+                  params.get_bool("TeslaBMSDashboard") or params.get_bool("TeslaTurnSignal"))),
+
   # GPS time sync (runs once at boot, sets system clock from GPS)
   PythonProcess("gps_time_sync", "sunnypilot.gps_time_sync",
                 lambda started, params, CP: time.time() < 1740000000 and not params.get_bool("GpsTimeSyncDone")),
