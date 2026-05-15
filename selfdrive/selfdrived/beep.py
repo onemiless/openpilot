@@ -50,15 +50,13 @@ class Beepd:
 
   def engage(self):
     self._beep(True)
-    time.sleep(0.05)
+    time.sleep(0.005)
     self._beep(False)
 
   def disengage(self):
-    for _ in range(2):
-      self._beep(True)
-      time.sleep(0.01)
-      self._beep(False)
-      time.sleep(0.01)
+    self._beep(True)
+    time.sleep(0.005)
+    self._beep(False)
 
   def warning(self):
     for _ in range(3):

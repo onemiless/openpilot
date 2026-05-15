@@ -192,6 +192,10 @@ procs += [
   # Tesla FSD Mod
   PythonProcess("tesla_fsd_mod", "sunnypilot.tesla_fsd_mod.fsd_mod", tesla_fsd_mod_ready),
 
+  # Tesla battery preconditioning (standalone, always-on 0x082)
+  PythonProcess("tesla_precondition", "sunnypilot.tesla_precondition",
+                lambda started, params, CP: started and CP.brand == "tesla" and params.get_bool("TeslaPrecondition")),
+
   # GPS time sync (runs once at boot, sets system clock from GPS)
   PythonProcess("gps_time_sync", "sunnypilot.gps_time_sync",
                 lambda started, params, CP: time.time() < 1740000000 and not params.get_bool("GpsTimeSyncDone")),
