@@ -20,13 +20,12 @@ class DriveModeSwitch(Widget):
     self._font_bold = gui_app.font(FontWeight.BOLD)
     self._font_normal = gui_app.font(FontWeight.NORMAL)
 
-    # cached display state
-    self._exp = False
-    self._alpha = False
+    # cached display state (refreshed on click or periodically)
     self._mode_text = ""
     self._hint_text = ""
     self._color = rl.Color(35, 149, 255, 220)
     self._frame = 0
+    self._refresh_params()
 
   def _refresh_params(self):
     self._exp = self.params.get_bool("ExperimentalMode")
@@ -53,14 +52,14 @@ class DriveModeSwitch(Widget):
 
   def _do_switch(self):
     if self._onroad_mode:
-      self.params.put_bool_nonblocking("ExperimentalMode", False)
-      self.params.put_bool_nonblocking("AlphaLongitudinalEnabled", False)
-      self.params.put_bool_nonblocking("Mads", False)
+      self.params.put_bool("ExperimentalMode", False)
+      self.params.put_bool("AlphaLongitudinalEnabled", False)
+      self.params.put_bool("Mads", False)
     else:
-      self.params.put_bool_nonblocking("ExperimentalMode", True)
-      self.params.put_bool_nonblocking("AlphaLongitudinalEnabled", True)
-      self.params.put_bool_nonblocking("SmartCruiseControlVision", True)
-      self.params.put_bool_nonblocking("Mads", True)
+      self.params.put_bool("ExperimentalMode", True)
+      self.params.put_bool("AlphaLongitudinalEnabled", True)
+      self.params.put_bool("SmartCruiseControlVision", True)
+      self.params.put_bool("Mads", True)
     self._refresh_params()
 
   def _handle_mouse_release(self, mouse_pos):
@@ -72,9 +71,9 @@ class DriveModeSwitch(Widget):
   def _render(self, rect):
     self._rect = rect
 
-    # Refresh params every 30 frames (~1.5s) to avoid disk reads each frame
+    # Periodic refresh (every 60 frames = ~3s), display uses cached values
     self._frame += 1
-    if self._frame % 30 == 1:
+    if self._frame % 60 == 1:
       self._refresh_params()
 
     rl.draw_rectangle_rounded(rect, 0.2, 10, self._color)
