@@ -61,6 +61,7 @@ class TeslaExtras:
   # ---- BMS Parsers ----
 
   def _parse_bms_hv(self, dat):
+    """Matches flipper-tesla-fsd fsd_handle_bms_hv()"""
     if len(dat) < 4:
       return
     raw_v = (dat[1] << 8) | dat[0]
@@ -70,6 +71,7 @@ class TeslaExtras:
     self.bms_seen = True
 
   def _parse_bms_soc(self, dat):
+    """Matches flipper-tesla-fsd fsd_handle_bms_soc()"""
     if len(dat) < 2:
       return
     raw = ((dat[1] & 0x03) << 8) | dat[0]
@@ -77,11 +79,11 @@ class TeslaExtras:
     self.bms_seen = True
 
   def _parse_bms_thermal(self, dat):
+    """Matches flipper-tesla-fsd fsd_handle_bms_thermal()"""
     if len(dat) < 6:
       return
     self.batt_temp_min_c = dat[4] - 40
     self.batt_temp_max_c = dat[5] - 40
-    self.cell_volt_min = ((dat[0] << 8) | dat[1]) * 0.01  # approximate
     self.bms_seen = True
 
   def _publish_bms_status(self):
