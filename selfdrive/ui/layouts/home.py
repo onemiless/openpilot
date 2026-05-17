@@ -66,7 +66,6 @@ class HomeLayout(Widget):
   def show_event(self):
     super().show_event()
     self._exp_mode_button.show_event()
-    self._drive_mode_switch._do_switch = self._drive_mode_switch._do_switch  # no-op refresh
     self.last_refresh = time.monotonic()
     self._refresh()
 
