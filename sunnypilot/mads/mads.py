@@ -42,6 +42,7 @@ class ModularAssistiveDrivingSystem:
     self.events = self.selfdrive.events
     self.events_sp = self.selfdrive.events_sp
     self.disengage_on_accelerator = Params().get_bool("DisengageOnAccelerator")
+    self._pending_disengage = False
     self.gas_tap_pending = False
     self.brake_tap_pending = False
     if self.CP.brand == "hyundai":
@@ -64,9 +65,9 @@ class ModularAssistiveDrivingSystem:
     self.enabled_toggle = self.params.get_bool("Mads")
     self.main_enabled_toggle = self.params.get_bool("MadsMainCruiseAllowed")
     self.unified_engagement_mode = self.params.get_bool("MadsUnifiedEngagementMode")
-    # Disengage MADS if toggle was turned off while MADS is active
+    # Set flag to disengage on next main-thread update (avoids race with params_thread)
     if prev_enabled and not self.enabled_toggle and self.active:
-      self.events_sp.add(EventNameSP.lkasDisable)
+      self._pending_disengage = True
 
   def pedal_pressed_non_gas_pressed(self, CS: structs.CarState) -> bool:
     # ignore `pedalPressed` events caused by gas presses
@@ -233,6 +234,11 @@ class ModularAssistiveDrivingSystem:
     self.events.remove(EventName.wrongCruiseMode)
 
   def update(self, CS: structs.CarState):
+    # Handle pending disengage from params_thread (drive mode switch)
+    if self._pending_disengage:
+      self._pending_disengage = False
+      self.events_sp.add(EventNameSP.lkasDisable)
+
     if not self.enabled_toggle:
       return
 
