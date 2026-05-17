@@ -15,7 +15,7 @@ if __name__ == '__main__':  # generating code
 else:
   from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.c_generated_code.acados_ocp_solver_pyx import AcadosOcpSolverCython
 
-from casadi import SX, vertcat, fmax
+from casadi import SX, vertcat
 
 MODEL_NAME = 'long'
 LONG_MPC_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -40,7 +40,7 @@ J_EGO_COST = 3.
 A_CHANGE_COST = 10.
 DANGER_ZONE_COST = 100.
 CRASH_DISTANCE = .25
-LEAD_DANGER_FACTOR = 0.65
+LEAD_DANGER_FACTOR = 0.55
 LIMIT_COST = 1e6
 ACADOS_SOLVER_TYPE = 'SQP_RTI'
 
@@ -54,7 +54,7 @@ T_IDXS = np.array(T_IDXS_LST)
 FCW_IDXS = T_IDXS < 5.0
 T_DIFFS = np.diff(T_IDXS, prepend=[0.])
 COMFORT_BRAKE = 3.0
-STOP_DISTANCE = 5.0
+STOP_DISTANCE = 4.5
 CRUISE_MIN_ACCEL = -1.2
 CRUISE_MAX_ACCEL = 1.6
 MIN_X_LEAD_FACTOR = 0.5
@@ -156,10 +156,7 @@ def gen_long_ocp():
   # from an obstacle at every timestep. This obstacle can be a lead car
   # or other object. In e2e mode we can use x_position targets as a cost
   # instead.
-  # Normalize distance error by speed: denominator floors at 15 (v <= 5 m/s)
-  # to prevent cost from blowing up at very low speeds while keeping
-  # higher precision for stopping vs highway following (~2.7x ratio).
-  speed_norm = fmax(v_ego, 5.0) + 10.0
+  speed_norm = v_ego + 10.0
   costs = [((x_obstacle - x_ego) - (desired_dist_comfort)) / speed_norm,
            x_ego,
            v_ego,
