@@ -5,6 +5,7 @@ from enum import IntEnum
 from openpilot.common.params import Params
 from openpilot.selfdrive.ui.widgets.offroad_alerts import UpdateAlert, OffroadAlert
 from openpilot.selfdrive.ui.widgets.exp_mode_button import ExperimentalModeButton
+from openpilot.sunnypilot.selfdrive.ui.widgets.drive_mode_switch import DriveModeSwitch
 from openpilot.selfdrive.ui.widgets.prime import PrimeWidget
 from openpilot.selfdrive.ui.widgets.setup import SetupWidget
 from openpilot.system.ui.lib.text_measure import measure_text_cached
@@ -59,11 +60,13 @@ class HomeLayout(Widget):
     self._setup_widget = SetupWidget()
 
     self._exp_mode_button = ExperimentalModeButton()
+    self._drive_mode_switch = DriveModeSwitch(onroad=False)
     self._setup_callbacks()
 
   def show_event(self):
     super().show_event()
     self._exp_mode_button.show_event()
+    self._drive_mode_switch._do_switch = self._drive_mode_switch._do_switch  # no-op refresh
     self.last_refresh = time.monotonic()
     self._refresh()
 
@@ -195,16 +198,24 @@ class HomeLayout(Widget):
 
   def _render_right_column(self):
     exp_height = 125
+    mode_switch_height = 110
     exp_rect = rl.Rectangle(
       self.right_column_rect.x, self.right_column_rect.y, self.right_column_rect.width, exp_height
     )
     self._exp_mode_button.render(exp_rect)
 
+    mode_rect = rl.Rectangle(
+      self.right_column_rect.x, self.right_column_rect.y + exp_height + 10,
+      self.right_column_rect.width, mode_switch_height
+    )
+    self._drive_mode_switch.render(mode_rect)
+
+    top_offset = exp_height + mode_switch_height + 20
     setup_rect = rl.Rectangle(
       self.right_column_rect.x,
-      self.right_column_rect.y + exp_height + SPACING,
+      self.right_column_rect.y + top_offset,
       self.right_column_rect.width,
-      self.right_column_rect.height - exp_height - SPACING,
+      self.right_column_rect.height - top_offset,
     )
     self._setup_widget.render(setup_rect)
 
