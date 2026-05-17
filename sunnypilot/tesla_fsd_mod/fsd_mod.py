@@ -102,7 +102,7 @@ class TeslaFSDMod:
       data[7] |= (1 << 4)   # bit60
       modified = True
 
-    if mux == 1:
+    if mux == 1 and fsd_ui:
       data[2] &= ~(1 << 3)  # clear bit19 (nag suppression)
       data[5] |= (1 << 7)   # set bit47 (HW4)
       modified = True
@@ -184,17 +184,17 @@ class TeslaFSDMod:
         if self._fsd_enabled and addr == CAN_ID_AP_CONTROL:
           modified = self._process_fsd_unlock(dat)
           if modified is not None:
-            send_msgs.append(CanData(CAN_ID_AP_CONTROL, modified, bus))
+            send_msgs.append(CanData(CAN_ID_AP_CONTROL, modified, 0))
 
         elif self._nag_killer_enabled and addr == CAN_ID_EPAS_STATUS:
           modified = self._process_nag_killer(dat)
           if modified is not None:
-            send_msgs.append(CanData(CAN_ID_EPAS_STATUS, modified, bus))
+            send_msgs.append(CanData(CAN_ID_EPAS_STATUS, modified, 0))
 
         elif self._chime_suppress_enabled and addr == CAN_ID_ISA_SPEED:
           modified = self._process_isa_chime(dat)
           if modified is not None:
-            send_msgs.append(CanData(CAN_ID_ISA_SPEED, modified, bus))
+            send_msgs.append(CanData(CAN_ID_ISA_SPEED, modified, 0))
 
     return send_msgs
 

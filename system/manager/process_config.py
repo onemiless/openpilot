@@ -68,7 +68,7 @@ def only_offroad(started: bool, params: Params, CP: car.CarParams) -> bool:
 def tesla_fsd_mod_ready(started: bool, params: Params, CP: car.CarParams) -> bool:
   return started and CP.brand == "tesla" and (
     params.get_bool("TeslaFSDUnlock") or params.get_bool("TeslaNagKiller") or
-    params.get_bool("TeslaISAChimeSuppress") or params.get_bool("TeslaPrecondition"))
+    params.get_bool("TeslaISAChimeSuppress"))
 
 def use_github_runner(started, params, CP: car.CarParams) -> bool:
   return not PC and params.get_bool("EnableGithubRunner") and (
