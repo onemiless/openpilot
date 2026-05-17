@@ -19,7 +19,7 @@ CAN_ID_BMS_SOC = 0x292      # BMS_socStatus (state of charge)
 CAN_ID_BMS_THERMAL = 0x312  # BMS_thermalStatus (battery temps)
 CAN_ID_LEFT_STALK = 0x249   # SCCM_leftStalk (turn signal)
 
-PARTY_CAN_BUS = 0
+PARTY_BUSES = {0, 2}  # listen on both party and autopilot_party
 TURN_INTERVAL = 60.0
 BMS_PUBLISH_INTERVAL = 1.0
 
@@ -114,7 +114,7 @@ class TeslaExtras:
     # CRC = (0x49 + 0x02 + data[1] + data[2]) & 0xFF
     data[0] = ((CAN_ID_LEFT_STALK & 0xFF) + ((CAN_ID_LEFT_STALK >> 8) & 0xFF)
                + data[1] + data[2]) & 0xFF
-    return CanData(CAN_ID_LEFT_STALK, bytes(data), PARTY_CAN_BUS)
+    return CanData(CAN_ID_LEFT_STALK, bytes(data), 2)  # bus 2 = autopilot_party
 
   def _check_turn_signal(self) -> CanData | None:
     if not self._turn_enabled:
@@ -146,7 +146,7 @@ class TeslaExtras:
 
     for event in messaging.drain_sock(self.sub_sock):
       for msg in event.can:
-        if msg.src != PARTY_CAN_BUS:
+        if msg.src not in PARTY_BUSES:
           continue
 
         addr, dat = msg.address, msg.dat

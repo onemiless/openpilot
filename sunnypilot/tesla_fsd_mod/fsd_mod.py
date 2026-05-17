@@ -25,7 +25,8 @@ CAN_ID_EPAS_STATUS = 0x370     # EPAS3S_sysStatus (nag killer target)
 CAN_ID_ISA_SPEED = 0x399       # ISA speed chime suppression
 CAN_ID_GTW_CAR_STATE = 0x318   # GTW_carState (OTA guard)
 
-PARTY_CAN_BUS = 0
+# Tesla Party CAN buses: bus 0 = OBD-II, bus 2 = autopilot_party (harness)
+PARTY_BUSES = {0, 2}
 
 
 class TeslaFSDMod:
@@ -172,7 +173,7 @@ class TeslaFSDMod:
         dat = msg.dat
         bus = msg.src
 
-        if bus != PARTY_CAN_BUS:
+        if bus not in PARTY_BUSES:
           continue
 
         self._check_ota_guard(addr, dat)
@@ -183,17 +184,17 @@ class TeslaFSDMod:
         if self._fsd_enabled and addr == CAN_ID_AP_CONTROL:
           modified = self._process_fsd_unlock(dat)
           if modified is not None:
-            send_msgs.append(CanData(CAN_ID_AP_CONTROL, modified, PARTY_CAN_BUS))
+            send_msgs.append(CanData(CAN_ID_AP_CONTROL, modified, bus))
 
         elif self._nag_killer_enabled and addr == CAN_ID_EPAS_STATUS:
           modified = self._process_nag_killer(dat)
           if modified is not None:
-            send_msgs.append(CanData(CAN_ID_EPAS_STATUS, modified, PARTY_CAN_BUS))
+            send_msgs.append(CanData(CAN_ID_EPAS_STATUS, modified, bus))
 
         elif self._chime_suppress_enabled and addr == CAN_ID_ISA_SPEED:
           modified = self._process_isa_chime(dat)
           if modified is not None:
-            send_msgs.append(CanData(CAN_ID_ISA_SPEED, modified, PARTY_CAN_BUS))
+            send_msgs.append(CanData(CAN_ID_ISA_SPEED, modified, bus))
 
     return send_msgs
 

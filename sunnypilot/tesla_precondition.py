@@ -14,7 +14,8 @@ from opendbc.car.can_definitions import CanData
 import cereal.messaging as messaging
 
 CAN_ID_TRIP_PLANNING = 0x082
-PARTY_CAN_BUS = 0
+# Bus 2 = autopilot_party where precondition frame should be sent
+PARTY_CAN_BUS = 2
 INTERVAL = 60.0  # send every 60 seconds
 
 
