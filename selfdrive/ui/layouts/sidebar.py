@@ -159,6 +159,8 @@ class Sidebar(Widget, SidebarSP):
     elif self._recording_audio and rl.check_collision_point_rec(mouse_pos, self._mic_indicator_rect):
       if self._open_settings_callback:
         self._open_settings_callback()
+    elif hasattr(self, '_drive_mode_switch'):
+      self._drive_mode_switch._handle_mouse_release(mouse_pos)
 
   def _draw_buttons(self, rect: rl.Rectangle):
     mouse_pos = rl.get_mouse_position()
