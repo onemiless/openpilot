@@ -51,10 +51,13 @@ class DriveModeSwitch(Widget):
       self._hint_text = tr("Tap: switch to E2E")
 
   def _do_switch(self):
-    if self._onroad_mode:
+    # Toggle: if currently in E2E mode → switch to ACC, else → switch to E2E
+    is_e2e = self._exp and self._alpha
+    if is_e2e:
       self.params.put_bool("ExperimentalMode", False)
       self.params.put_bool("AlphaLongitudinalEnabled", False)
-      self.params.put_bool("Mads", False)
+      if self._onroad_mode:
+        self.params.put_bool("Mads", False)
     else:
       self.params.put_bool("ExperimentalMode", True)
       self.params.put_bool("AlphaLongitudinalEnabled", True)
