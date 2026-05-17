@@ -4,7 +4,6 @@ Drive mode quick switch — toggles between E2E (experimental+alpha) and stock A
 
 import pyray as rl
 from openpilot.common.params import Params
-from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.widgets import Widget
@@ -30,6 +29,9 @@ class DriveModeSwitch(Widget):
   def _refresh_params(self):
     self._exp = self.params.get_bool("ExperimentalMode")
     self._alpha = self.params.get_bool("AlphaLongitudinalEnabled")
+    self._update_display()
+
+  def _update_display(self):
     if self._exp and self._alpha:
       self._mode_text = tr("E2E MODE")
       self._color = rl.Color(219, 56, 34, 220)
@@ -51,19 +53,22 @@ class DriveModeSwitch(Widget):
       self._hint_text = tr("Tap: switch to E2E")
 
   def _do_switch(self):
-    # Toggle: if currently in E2E mode → switch to ACC, else → switch to E2E
-    is_e2e = self._exp and self._alpha
+    # Read fresh params to decide toggle direction (avoids stale cache)
+    is_e2e = self.params.get_bool("ExperimentalMode") and self.params.get_bool("AlphaLongitudinalEnabled")
     if is_e2e:
-      self.params.put_bool("ExperimentalMode", False)
-      self.params.put_bool("AlphaLongitudinalEnabled", False)
-      if self._onroad_mode:
-        self.params.put_bool("Mads", False)
+      self.params.put_bool_nonblocking("ExperimentalMode", False)
+      self.params.put_bool_nonblocking("AlphaLongitudinalEnabled", False)
+      self._exp = False
+      self._alpha = False
     else:
-      self.params.put_bool("ExperimentalMode", True)
-      self.params.put_bool("AlphaLongitudinalEnabled", True)
-      self.params.put_bool("SmartCruiseControlVision", True)
-      self.params.put_bool("Mads", True)
-    self._refresh_params()
+      self.params.put_bool_nonblocking("ExperimentalMode", True)
+      self.params.put_bool_nonblocking("AlphaLongitudinalEnabled", True)
+      self.params.put_bool_nonblocking("SmartCruiseControlVision", True)
+      self.params.put_bool_nonblocking("Mads", True)
+      self._exp = True
+      self._alpha = True
+    # Update display immediately from local state (nonblocking writes may not be committed yet)
+    self._update_display()
 
   def _handle_mouse_release(self, mouse_pos):
     if rl.check_collision_point_rec(mouse_pos, self._rect):
