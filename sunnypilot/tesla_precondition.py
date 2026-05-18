@@ -14,9 +14,10 @@ from opendbc.car.can_definitions import CanData
 import cereal.messaging as messaging
 
 CAN_ID_TRIP_PLANNING = 0x082
-# Bus 2 = autopilot_party where precondition frame should be sent
-PARTY_CAN_BUS = 2
-INTERVAL = 60.0  # send every 60 seconds
+# Bus 0 = OBD-II (matches TX array in safety model)
+PARTY_CAN_BUS = 0
+# flipper-tesla-fsd sends every 500ms to keep BMS heater continuously active
+INTERVAL = 0.5
 
 
 def main():
@@ -24,7 +25,7 @@ def main():
 
   params = Params()
   pm = messaging.PubMaster(["sendcan"])
-  rk = Ratekeeper(1, print_delay_threshold=None)  # 1Hz is enough
+  rk = Ratekeeper(10, print_delay_threshold=None)  # 10Hz to support 500ms precondition interval
 
   last_send = 0.0
 
@@ -44,7 +45,6 @@ def main():
       )
       pm.send('sendcan', msg_bytes)
       last_send = now
-      cloudlog.info("TeslaPrecondition: sent precondition trigger")
 
     rk.keep_time()
 

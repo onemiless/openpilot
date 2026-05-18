@@ -19,11 +19,17 @@ from opendbc.car.can_definitions import CanData
 
 import cereal.messaging as messaging
 
-# CAN IDs (from flipper-tesla-fsd)
+# CAN IDs (from flipper-tesla-fsd / tesla-fsd-comma4)
 CAN_ID_AP_CONTROL = 0x3FD      # UI_autopilotControl (FSD unlock target)
+CAN_ID_FOLLOW_DIST = 0x3F8     # follow distance / speed profile source
 CAN_ID_EPAS_STATUS = 0x370     # EPAS3S_sysStatus (nag killer target)
 CAN_ID_ISA_SPEED = 0x399       # ISA speed chime suppression
 CAN_ID_GTW_CAR_STATE = 0x318   # GTW_carState (OTA guard)
+
+# Speed profile mapping from follow-distance (0x3F8 byte5 bits[7:5]) → profile index
+# Tesla fd values: 1=closest, 2=closer, 3=medium, 4=further, 5=furthest
+# Profile indices: 0=Chill, 1=Normal, 2=Sport, 3/4=Reserved
+FOLLOW_DIST_TO_PROFILE = {1: 3, 2: 2, 3: 1, 4: 0, 5: 4}
 
 # Tesla Party CAN buses: bus 0 = OBD-II, bus 2 = autopilot_party (harness)
 PARTY_BUSES = {0, 2}
@@ -36,6 +42,9 @@ class TeslaFSDMod:
     self.pm = messaging.PubMaster(["sendcan"])
 
     self.ota_in_progress = False
+
+    # speed profile from follow distance (0x3F8)
+    self._speed_profile = 0  # 0=Chill, 1=Normal, 2=Sport, 3/4=Reserved
 
     # stats
     self.fsd_frames_modified = 0
@@ -72,12 +81,21 @@ class TeslaFSDMod:
       return
     self._last_status_update = now
 
+    profile_names = {0: "Chill", 1: "Normal", 2: "Sport", 3: "Reserved", 4: "Reserved"}
     status = {
       "fsd_frames": self.fsd_frames_modified,
       "nag_echoes": self.nag_echo_count,
       "chime_suppress": self.chime_suppressed > 0,
+      "speed_profile": profile_names.get(self._speed_profile, "Unknown"),
     }
     self.params.put_nonblocking("TeslaFSDModStatus", json.dumps(status))
+
+  def _process_follow_distance(self, dat):
+    """Read follow distance from 0x3F8 byte5 bits[7:5] → map to speed profile."""
+    if len(dat) < 6:
+      return
+    fd = (dat[5] & 0xE0) >> 5  # bits [7:5]
+    self._speed_profile = FOLLOW_DIST_TO_PROFILE.get(fd, 1)  # default Normal
 
   def _check_ota_guard(self, addr, dat):
     if addr == CAN_ID_GTW_CAR_STATE and len(dat) >= 7:
@@ -108,8 +126,9 @@ class TeslaFSDMod:
       modified = True
 
     if mux == 2 and fsd_ui:
+      profile = self._speed_profile & 0x07
       data[7] &= ~(0x07 << 4)
-      data[7] |= (4 << 4)  # profile 4/4
+      data[7] |= (profile << 4)
       modified = True
 
     if modified:
@@ -177,6 +196,11 @@ class TeslaFSDMod:
           continue
 
         self._check_ota_guard(addr, dat)
+
+        # Always track follow distance — needed for FSD speed profile mapping
+        if addr == CAN_ID_FOLLOW_DIST:
+          self._process_follow_distance(dat)
+          continue
 
         if self.ota_in_progress:
           continue
