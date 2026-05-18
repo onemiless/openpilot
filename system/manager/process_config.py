@@ -1,7 +1,6 @@
 import os
 import operator
 import platform
-import time
 
 from cereal import car, custom
 from openpilot.common.params import Params
@@ -201,9 +200,8 @@ procs += [
                 lambda started, params, CP: started and CP.brand == "tesla" and (
                   params.get_bool("TeslaBMSDashboard") or params.get_bool("TeslaTurnSignal"))),
 
-  # GPS time sync (runs once at boot, sets system clock from GPS)
-  PythonProcess("gps_time_sync", "sunnypilot.gps_time_sync",
-                lambda started, params, CP: time.time() < 1740000000 and not params.get_bool("GpsTimeSyncDone")),
+  # GPS time sync (initial sync at boot, then periodic sync every 2 minutes to correct clock drift)
+  PythonProcess("gps_time_sync", "sunnypilot.gps_time_sync", always_run),
 ]
 
 if os.path.exists("./github_runner.sh"):
