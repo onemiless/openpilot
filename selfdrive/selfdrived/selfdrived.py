@@ -225,7 +225,7 @@ class SelfdriveD(CruiseHelper):
       car_events = self.car_events.update(CS, self.CS_prev, self.sm['carControl']).to_msg()
       self.events.add_from_msg(car_events)
 
-      car_events_sp = self.car_events_sp.update(CS, self.events).to_msg()
+      car_events_sp = self.car_events_sp.update(CS, self.events, self.car_state_sp_flags).to_msg()
       self.events_sp.add_from_msg(car_events_sp)
 
       if self.CP.notCar:
@@ -463,6 +463,7 @@ class SelfdriveD(CruiseHelper):
   def data_sample(self):
     _car_state = messaging.recv_one(self.car_state_sock)
     CS = _car_state.carState if _car_state else self.CS_prev
+    self.car_state_sp_flags = _car_state.carStateSP.flags if _car_state else 0
 
     self.sm.update(0)
 

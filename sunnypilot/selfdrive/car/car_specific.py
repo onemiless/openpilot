@@ -11,6 +11,7 @@ from opendbc.car import structs
 from opendbc.car.chrysler.values import RAM_DT
 from openpilot.selfdrive.selfdrived.events import Events
 from openpilot.sunnypilot.selfdrive.selfdrived.events import EventsSP
+from opendbc.sunnypilot.car.tesla.values import TeslaFlagsSP
 
 EventName = log.OnroadEvent.EventName
 EventNameSP = custom.OnroadEventSP.EventName
@@ -23,8 +24,9 @@ class CarSpecificEventsSP:
     self.CP_SP = CP_SP
 
     self.low_speed_alert = False
+    self._prev_stock_longitudinal = False
 
-  def update(self, CS: structs.CarState, events: Events):
+  def update(self, CS: structs.CarState, events: Events, car_state_sp_flags: int = 0):
     events_sp = EventsSP()
 
     if self.CP.brand == 'chrysler':
@@ -47,5 +49,14 @@ class CarSpecificEventsSP:
         if CS.cruiseState.standstill and not CS.brakePressed and self.CP_SP.enableGasInterceptor:
           if events.has(EventName.resumeRequired):
             events.remove(EventName.resumeRequired)
+
+    # Detect 4-finger longitudinal toggle edges (Tesla)
+    if self.CP.brand == 'tesla':
+      stock_long_active = bool(car_state_sp_flags & TeslaFlagsSP.STOCK_LONGITUDINAL_ACTIVE.value)
+      if stock_long_active and not self._prev_stock_longitudinal:
+        events_sp.add(EventNameSP.stockLongitudinalActive)
+      elif not stock_long_active and self._prev_stock_longitudinal:
+        events_sp.add(EventNameSP.stockLongitudinalInactive)
+      self._prev_stock_longitudinal = stock_long_active
 
     return events_sp

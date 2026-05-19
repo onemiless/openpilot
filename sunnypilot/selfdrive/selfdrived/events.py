@@ -246,4 +246,12 @@ EVENTS_SP: dict[int, dict[str, Alert | AlertCallbackType]] = {
       AlertStatus.normal, AlertSize.none,
       Priority.MID, VisualAlert.none, AudibleAlert.promptRepeat, 1.),
   },
+
+  EventNameSP.stockLongitudinalActive: {
+    ET.WARNING: NormalPermanentAlert("原车ACC：激活", duration=2.),
+  },
+
+  EventNameSP.stockLongitudinalInactive: {
+    ET.WARNING: NormalPermanentAlert("OP 纵向：激活", duration=2.),
+  },
 }
