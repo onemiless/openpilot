@@ -11,11 +11,13 @@ from opendbc.car import structs
 from opendbc.car.chrysler.values import RAM_DT
 from openpilot.selfdrive.selfdrived.events import Events
 from openpilot.sunnypilot.selfdrive.selfdrived.events import EventsSP
-from opendbc.sunnypilot.car.tesla.values import TeslaFlagsSP
 
 EventName = log.OnroadEvent.EventName
 EventNameSP = custom.OnroadEventSP.EventName
 GearShifter = structs.CarState.GearShifter
+
+# TeslaFlagsSP.STOCK_LONGITUDINAL_ACTIVE = 32, hardcoded to avoid submodule version dependency
+_STOCK_LONGITUDINAL_ACTIVE = 32
 
 
 class CarSpecificEventsSP:
@@ -52,7 +54,7 @@ class CarSpecificEventsSP:
 
     # Detect 4-finger longitudinal toggle edges (Tesla)
     if self.CP.brand == 'tesla':
-      stock_long_active = bool(car_state_sp_flags & TeslaFlagsSP.STOCK_LONGITUDINAL_ACTIVE.value)
+      stock_long_active = bool(car_state_sp_flags & _STOCK_LONGITUDINAL_ACTIVE)
       if stock_long_active and not self._prev_stock_longitudinal:
         events_sp.add(24)  # stockLongitudinalActive
       elif not stock_long_active and self._prev_stock_longitudinal:
