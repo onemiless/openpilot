@@ -24,6 +24,9 @@ EventNameSP = custom.OnroadEventSP.EventName
 
 # get event name from enum
 EVENT_NAME_SP = {v: k for k, v in EventNameSP.schema.enumerants.items()}
+# Ensure longitudinal toggle event names are available even without updated capnp
+EVENT_NAME_SP.setdefault(24, 'stockLongitudinalActive')
+EVENT_NAME_SP.setdefault(25, 'stockLongitudinalInactive')
 
 IS_MICI = HARDWARE.get_device_type() == 'mici'
 
@@ -247,11 +250,11 @@ EVENTS_SP: dict[int, dict[str, Alert | AlertCallbackType]] = {
       Priority.MID, VisualAlert.none, AudibleAlert.promptRepeat, 1.),
   },
 
-  EventNameSP.stockLongitudinalActive: {
+  24: {  # stockLongitudinalActive
     ET.WARNING: NormalPermanentAlert("原车ACC：激活", duration=2.),
   },
 
-  EventNameSP.stockLongitudinalInactive: {
+  25: {  # stockLongitudinalInactive
     ET.WARNING: NormalPermanentAlert("OP 纵向：激活", duration=2.),
   },
 }

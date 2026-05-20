@@ -73,6 +73,8 @@ class SelfdriveD(CruiseHelper):
 
     self.car_events = CarSpecificEvents(self.CP)
 
+    self.car_state_sp_flags = 0  # updated in data_sample(), used by car_events_sp
+
     self.pose_calibrator = PoseCalibrator()
     self.calibrated_pose: Pose | None = None
     self.excessive_actuation_check = ExcessiveActuationCheck()

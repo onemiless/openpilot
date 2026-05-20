@@ -54,9 +54,9 @@ class CarSpecificEventsSP:
     if self.CP.brand == 'tesla':
       stock_long_active = bool(car_state_sp_flags & TeslaFlagsSP.STOCK_LONGITUDINAL_ACTIVE.value)
       if stock_long_active and not self._prev_stock_longitudinal:
-        events_sp.add(EventNameSP.stockLongitudinalActive)
+        events_sp.add(24)  # stockLongitudinalActive
       elif not stock_long_active and self._prev_stock_longitudinal:
-        events_sp.add(EventNameSP.stockLongitudinalInactive)
+        events_sp.add(25)  # stockLongitudinalInactive
       self._prev_stock_longitudinal = stock_long_active
 
     return events_sp
