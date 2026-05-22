@@ -64,11 +64,6 @@ def only_onroad(started: bool, params: Params, CP: car.CarParams) -> bool:
 def only_offroad(started: bool, params: Params, CP: car.CarParams) -> bool:
   return not started
 
-def tesla_fsd_mod_ready(started: bool, params: Params, CP: car.CarParams) -> bool:
-  return started and CP.brand == "tesla" and (
-    params.get_bool("TeslaFSDUnlock") or params.get_bool("TeslaNagKiller") or
-    params.get_bool("TeslaISAChimeSuppress"))
-
 def use_github_runner(started, params, CP: car.CarParams) -> bool:
   return not PC and params.get_bool("EnableGithubRunner") and (
     not params.get_bool("NetworkMetered") and not params.get_bool("GithubRunnerSufficientVoltage"))
@@ -187,21 +182,6 @@ procs += [
 
   # locationd
   NativeProcess("locationd_llk", "sunnypilot/selfdrive/locationd", ["./locationd"], only_onroad),
-
-  # Tesla FSD Mod
-  PythonProcess("tesla_fsd_mod", "sunnypilot.tesla_fsd_mod.fsd_mod", tesla_fsd_mod_ready),
-
-  # Tesla battery preconditioning (standalone, always-on 0x082)
-  PythonProcess("tesla_precondition", "sunnypilot.tesla_precondition",
-                lambda started, params, CP: started and CP.brand == "tesla" and params.get_bool("TeslaPrecondition")),
-
-  # Tesla extras: BMS dashboard + turn signal
-  PythonProcess("tesla_extras", "sunnypilot.tesla_extras",
-                lambda started, params, CP: started and CP.brand == "tesla" and (
-                  params.get_bool("TeslaBMSDashboard") or params.get_bool("TeslaTurnSignal"))),
-
-  # GPS time sync (initial sync at boot, then periodic sync every 2 minutes to correct clock drift)
-  PythonProcess("gps_time_sync", "sunnypilot.gps_time_sync", always_run),
 ]
 
 if os.path.exists("./github_runner.sh"):
