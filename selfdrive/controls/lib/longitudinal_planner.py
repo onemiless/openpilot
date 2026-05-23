@@ -23,6 +23,13 @@ CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
 ALLOW_THROTTLE_THRESHOLD = 0.4
 MIN_ALLOW_THROTTLE_SPEED = 2.5
 
+# Extra deceleration applied when the model predicts a stop without a lead vehicle
+# (traffic light / stop sign) to prevent overshooting the stop line.
+# 0.35 m/s^2 extra at reference speed reduces stopping distance by ~2m.
+STOP_LINE_EXTRA_DECEL = 0.35  # m/s^2
+STOP_LINE_V_REF = 10.0        # m/s reference speed for scaling
+STOP_LINE_V_END_THRESHOLD = 1.0  # m/s, trajectory end velocity below this indicates a predicted stop
+
 # Lookup table for turns
 _A_TOTAL_MAX_V = [1.7, 3.2]
 _A_TOTAL_MAX_BP = [20., 40.]
@@ -120,7 +127,7 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
 
     # Prevent divergence, smooth in current v_ego
     self.v_desired_filter.x = max(0.0, self.v_desired_filter.update(v_ego))
-    _, _, _, _, throttle_prob = self.parse_model(sm['modelV2'])
+    model_x, model_v, model_a, model_j, throttle_prob = self.parse_model(sm['modelV2'])
     # Don't clip at low speeds since throttle_prob doesn't account for creep
     self.allow_throttle = throttle_prob > ALLOW_THROTTLE_THRESHOLD or v_ego <= MIN_ALLOW_THROTTLE_SPEED
 
@@ -158,6 +165,14 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
                                                                         action_t=action_t, vEgoStopping=self.CP.vEgoStopping)
     output_a_target_e2e = sm['modelV2'].action.desiredAcceleration
     output_should_stop_e2e = sm['modelV2'].action.shouldStop
+
+    # When the model predicts a stop (trajectory endpoint near zero) without a
+    # lead vehicle, apply extra deceleration to prevent overshooting the stop line.
+    # Typical overshoot is ~2m; an extra 0.35 m/s^2 at 10 m/s corrects this.
+    no_lead = not (sm['radarState'].leadOne.status or sm['radarState'].leadTwo.status)
+    if no_lead and model_v[-1] < STOP_LINE_V_END_THRESHOLD:
+      extra_decel = STOP_LINE_EXTRA_DECEL * min(v_ego / STOP_LINE_V_REF, 1.0)
+      output_a_target_e2e -= extra_decel
 
     if self.is_e2e(sm):
       output_a_target = min(output_a_target_e2e, output_a_target_mpc)
