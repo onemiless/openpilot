@@ -90,6 +90,7 @@ class SelfdriveD(CruiseHelper):
 
     # TODO: de-couple selfdrived with card/conflate on carState without introducing controls mismatches
     self.car_state_sock = messaging.sub_sock('carState', timeout=20)
+    self.car_state_sp_sock = messaging.sub_sock('carStateSP', timeout=20, conflate=True)
 
     ignore = self.sensor_packets + self.gps_packets + ['alertDebug', 'lateralManeuverPlan'] + ['modelDataV2SP']
     if True:
@@ -465,7 +466,8 @@ class SelfdriveD(CruiseHelper):
   def data_sample(self):
     _car_state = messaging.recv_one(self.car_state_sock)
     CS = _car_state.carState if _car_state else self.CS_prev
-    self.car_state_sp_flags = _car_state.carStateSP.flags if _car_state else 0
+    _car_state_sp = messaging.recv_one_or_none(self.car_state_sp_sock)
+    self.car_state_sp_flags = _car_state_sp.carStateSP.flags if _car_state_sp else 0
 
     self.sm.update(0)
 
