@@ -228,6 +228,17 @@ class SelfdriveD(CruiseHelper):
       car_events = self.car_events.update(CS, self.CS_prev, self.sm['carControl']).to_msg()
       self.events.add_from_msg(car_events)
 
+      # In Tesla stock-longitudinal mode, DAS_accState=13 is the OEM ACC cancel
+      # state. Treating it as an OP cancel disables SP lateral too, which breaks
+      # the intended split: stock ACC longitudinal with SP lateral.
+      if self.CP.brand == 'tesla' and bool(self.car_state_sp_flags & 32):
+        if self.events.has(EventName.buttonCancel):
+          self.events.remove(EventName.buttonCancel)
+        if self.events.has(EventName.invalidLkasSetting):
+          self.events.remove(EventName.invalidLkasSetting)
+        if self.events.has(EventName.accFaulted):
+          self.events.remove(EventName.accFaulted)
+
       car_events_sp = self.car_events_sp.update(CS, self.events, self.car_state_sp_flags).to_msg()
       self.events_sp.add_from_msg(car_events_sp)
 
