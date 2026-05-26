@@ -238,6 +238,12 @@ class SelfdriveD(CruiseHelper):
           self.events.remove(EventName.invalidLkasSetting)
         if self.events.has(EventName.accFaulted):
           self.events.remove(EventName.accFaulted)
+        if self.events.has(EventName.wrongCarMode):
+          self.events.remove(EventName.wrongCarMode)
+        if self.events.has(EventName.wrongCruiseMode):
+          self.events.remove(EventName.wrongCruiseMode)
+        if self.events.has(EventName.pcmDisable):
+          self.events.remove(EventName.pcmDisable)
 
       car_events_sp = self.car_events_sp.update(CS, self.events, self.car_state_sp_flags).to_msg()
       self.events_sp.add_from_msg(car_events_sp)
