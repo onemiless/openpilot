@@ -75,6 +75,7 @@ class SelfdriveD(CruiseHelper):
 
     self.car_state_sp_flags = 0  # updated in data_sample(), used by car_events_sp
 
+    self.tesla_stock_longitudinal_active = False  # cached from carStateSP flags bit 32, avoids race on missed frames
     self.pose_calibrator = PoseCalibrator()
     self.calibrated_pose: Pose | None = None
     self.excessive_actuation_check = ExcessiveActuationCheck()
@@ -231,7 +232,7 @@ class SelfdriveD(CruiseHelper):
       # In Tesla stock-longitudinal mode, DAS_accState=13 is the OEM ACC cancel
       # state. Treating it as an OP cancel disables SP lateral too, which breaks
       # the intended split: stock ACC longitudinal with SP lateral.
-      if self.CP.brand == 'tesla' and bool(self.car_state_sp_flags & 32):
+      if self.CP.brand == 'tesla' and self.tesla_stock_longitudinal_active:
         if self.events.has(EventName.buttonCancel):
           self.events.remove(EventName.buttonCancel)
         if self.events.has(EventName.invalidLkasSetting):
@@ -244,6 +245,8 @@ class SelfdriveD(CruiseHelper):
           self.events.remove(EventName.wrongCruiseMode)
         if self.events.has(EventName.pcmDisable):
           self.events.remove(EventName.pcmDisable)
+        if self.events.has(EventName.gasPressedOverride):
+          self.events.remove(EventName.gasPressedOverride)
 
       car_events_sp = self.car_events_sp.update(CS, self.events, self.car_state_sp_flags).to_msg()
       self.events_sp.add_from_msg(car_events_sp)
@@ -484,7 +487,9 @@ class SelfdriveD(CruiseHelper):
     _car_state = messaging.recv_one(self.car_state_sock)
     CS = _car_state.carState if _car_state else self.CS_prev
     _car_state_sp = messaging.recv_one_or_none(self.car_state_sp_sock)
-    self.car_state_sp_flags = _car_state_sp.carStateSP.flags if _car_state_sp else 0
+    if _car_state_sp:
+      self.car_state_sp_flags = _car_state_sp.carStateSP.flags
+      self.tesla_stock_longitudinal_active = bool(self.car_state_sp_flags & 32)
 
     self.sm.update(0)
 
