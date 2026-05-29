@@ -14,6 +14,9 @@ from openpilot.system.ui.sunnypilot.lib.utils import AlertFadeAnimator
 from openpilot.system.ui.widgets import Widget
 
 
+STOCK_LONGITUDINAL_ACTIVE = 32  # TeslaFlagsSP.STOCK_LONGITUDINAL_ACTIVE
+
+
 class SmartCruiseControlRenderer(Widget):
   def __init__(self):
     super().__init__()
@@ -22,6 +25,7 @@ class SmartCruiseControlRenderer(Widget):
     self.map_enabled = False
     self.map_active = False
     self.long_override = False
+    self.stock_longitudinal = False
 
     self._vision_fade = AlertFadeAnimator(gui_app.target_fps)
     self._map_fade = AlertFadeAnimator(gui_app.target_fps)
@@ -42,6 +46,9 @@ class SmartCruiseControlRenderer(Widget):
 
     if sm.updated["carControl"]:
       self.long_override = sm["carControl"].cruiseControl.override
+
+    if sm.updated["carStateSP"]:
+      self.stock_longitudinal = bool(sm["carStateSP"].flags & STOCK_LONGITUDINAL_ACTIVE)
 
     self._vision_fade.update(self.vision_active)
     self._map_fade.update(self.map_active)
@@ -98,7 +105,8 @@ class SmartCruiseControlRenderer(Widget):
 
     if self.vision_enabled:
       alpha = self._vision_fade.alpha if self.vision_active else 1.0
-      self._draw_icon(rect.x + rect.width / 2, rect.height, x_offset, y_scc_v, "SCC-V", alpha)
+      label = "ACC" if self.stock_longitudinal else "SCC-V"
+      self._draw_icon(rect.x + rect.width / 2, rect.height, x_offset, y_scc_v, label, alpha)
 
     if self.map_enabled:
       alpha = self._map_fade.alpha if self.map_active else 1.0
