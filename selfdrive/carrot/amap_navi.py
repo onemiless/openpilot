@@ -319,10 +319,10 @@ class AmapNaviServ:
     if self.left_solid_detected:
       if self.left_solid_detected_count <= self.min_object_detected_count_thr:
         self.left_solid_detected = False
-        print("left_solid_detected False")
+        #print("left_solid_detected False")
     elif self.left_solid_detected_count > 0:
-      if not self.left_solid_detected:
-        print("left_solid_detected True")
+      #if not self.left_solid_detected:
+        #print("left_solid_detected True")
       self.left_solid_detected = True
 
     self.shared_data.left_lane_blind = self.left_solid_detected
@@ -338,10 +338,10 @@ class AmapNaviServ:
     if self.right_solid_detected:
       if self.right_solid_detected_count <= self.min_object_detected_count_thr:
         self.right_solid_detected = False
-        print("right_solid_detected False")
+        #print("right_solid_detected False")
     elif self.right_solid_detected_count > 0:
-      if not self.right_solid_detected:
-        print("right_solid_detected True")
+      #if not self.right_solid_detected:
+        #print("right_solid_detected True")
       self.right_solid_detected = True
 
     self.shared_data.right_lane_blind = self.right_solid_detected
@@ -439,10 +439,10 @@ class AmapNaviServ:
     if self.lf_side_object_detected:
       if self.lf_object_detected_count <= self.min_object_detected_count_thr:
         self.lf_side_object_detected = False
-        print("lf_side_object_detected False")
+        #print("lf_side_object_detected False")
     elif self.lf_object_detected_count > 0:
-      if not self.lf_side_object_detected:
-        print("lf_side_object_detected True")
+      #if not self.lf_side_object_detected:
+        #print("lf_side_object_detected True")
       self.lf_side_object_detected = True
 
     #左后方
@@ -456,10 +456,10 @@ class AmapNaviServ:
     if self.lb_side_object_detected:
       if self.lb_object_detected_count <= self.min_object_detected_count_thr:
         self.lb_side_object_detected = False
-        print("lb_side_object_detected False")
+        #print("lb_side_object_detected False")
     elif self.lb_object_detected_count > 0:
-      if not self.lb_side_object_detected:
-        print("lb_side_object_detected True")
+      #if not self.lb_side_object_detected:
+        #print("lb_side_object_detected True")
       self.lb_side_object_detected = True
 
     #右前方
@@ -473,10 +473,10 @@ class AmapNaviServ:
     if self.rf_side_object_detected:
       if self.rf_object_detected_count <= self.min_object_detected_count_thr:
         self.rf_side_object_detected = False
-        print("rf_side_object_detected False")
+        #print("rf_side_object_detected False")
     elif self.rf_object_detected_count > 0:
-      if not self.rf_side_object_detected:
-        print("rf_side_object_detected True")
+      #if not self.rf_side_object_detected:
+        #print("rf_side_object_detected True")
       self.rf_side_object_detected = True
 
     #右后方
@@ -490,10 +490,10 @@ class AmapNaviServ:
     if self.rb_side_object_detected:
       if self.rb_object_detected_count <= self.min_object_detected_count_thr:
         self.rb_side_object_detected = False
-        print("rb_side_object_detected False")
+        #print("rb_side_object_detected False")
     elif self.rb_object_detected_count > 0:
-      if not self.rb_side_object_detected:
-        print("rb_side_object_detected True")
+      #if not self.rb_side_object_detected:
+        #print("rb_side_object_detected True")
       self.rb_side_object_detected = True
 
   def update_navi_carstate(self, sm):
@@ -894,8 +894,8 @@ class AmapNaviServ:
         if resp == "overtake":
           # 通讯时间检查
           last_seen = old_info.get("last_seen", None)
-          if last_seen is not None and (now - last_seen) > 0.5:
-            print(f"********overtake interval > {now - last_seen}")
+          #if last_seen is not None and (now - last_seen) > 0.5:
+          #  print(f"********overtake interval > {now - last_seen}")
 
         # 摄像头盲区信号
         if resp == "cam_blind":
@@ -1003,11 +1003,11 @@ class AmapNaviServ:
           # 通讯时间检查
           now = time.time()
           last_dis_timems = old_info.get("dis_timems", None)
-          if last_dis_timems is not None and dist_timems is not None and (dist_timems - last_dis_timems) > 80:
-            print(f"$$$$$$$${'left' if detect_side == 1 else 'right'} lidar{lidar_id} interval > {dist_timems - last_dis_timems}ms")
+          #if last_dis_timems is not None and dist_timems is not None and (dist_timems - last_dis_timems) > 80:
+          #  print(f"$$$$$$$${'left' if detect_side == 1 else 'right'} lidar{lidar_id} interval > {dist_timems - last_dis_timems}ms")
           last_seen = old_info.get("last_seen", None)
-          if last_seen is not None and (now - last_seen) > 0.3:
-            print(f"========={'left' if detect_side == 1 else 'right'} lidar{lidar_id} interval > {now - last_seen}")
+          #if last_seen is not None and (now - last_seen) > 0.3:
+          #  print(f"========={'left' if detect_side == 1 else 'right'} lidar{lidar_id} interval > {now - last_seen}")
     except Exception as e:
       print(f"Process json 'resp' error: {e}")
       print(json_obj)
@@ -1624,6 +1624,16 @@ class AmapNaviServ:
       if hasattr(meta, 'blinker'):
         msg['blinker'] = meta.blinker
       if isOnroad:
+        left_edge_prob = max(1 - modelV2.roadEdgeStds[0], 0)
+        right_edge_prob = max(1 - modelV2.roadEdgeStds[1], 0)
+        msg['prob'] = True
+        msg['l_lane_prob'] = round(modelV2.laneLineProbs[0], 1)
+        msg['l_line_prob'] = round(modelV2.laneLineProbs[1], 1)
+        msg['r_line_prob'] = round(modelV2.laneLineProbs[2], 1)
+        msg['r_lane_prob'] = round(modelV2.laneLineProbs[3], 1)
+        msg['l_edge_prob'] = round(left_edge_prob, 1)
+        msg['r_edge_prob'] = round(right_edge_prob, 1)
+
         msg['l_lane_width'] = round(meta.laneWidthLeft, 1)
         msg['r_lane_width'] = round(meta.laneWidthRight, 1)
         msg['l_edge_dist'] = round(meta.distanceToRoadEdgeLeft, 1)
