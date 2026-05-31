@@ -5,13 +5,14 @@ import cereal.messaging as messaging
 from openpilot.common.params import Params
 from openpilot.system.ui.widgets import Widget
 
-MAX_LINES = 30
+MAX_LINES = 15
 LOG_DIR = "/data/media/0/realdata"
-TITLE_FONT = 34
-ITEM_FONT = 20
-VALUE_FONT = 26
-LINE_H = 32
-COL_W = 320
+TITLE_FONT = 68
+ITEM_FONT = 38
+VALUE_FONT = 50
+LINE_H = 38
+COL_W = 520
+ROW_H = 100
 
 
 def _decode_signal(data: bytes, sig) -> float:
@@ -139,7 +140,7 @@ class CanMonitorWidget(Widget):
   def _render_dash_item(self, x, y, w, label, value, unit="", color=None):
     rl.draw_text(label, x + 8, y, ITEM_FONT, rl.Color(140, 140, 160, 230))
     c = color or rl.Color(0, 255, 0, 240)
-    rl.draw_text(f"{value}{unit}", x + 8, y + 24, VALUE_FONT, c)
+    rl.draw_text(f"{value}{unit}", x + 8, y + 44, VALUE_FONT, c)
 
   def _render(self, rect: rl.Rectangle):
     self._rect = rect
@@ -172,60 +173,67 @@ class CanMonitorWidget(Widget):
         else:
           self._start_logging()
 
-    dash_y = int(rect.y + 44)
+    dash_y = int(rect.y + 80)
     col1_x = int(rect.x + 10)
     col2_x = col1_x + COL_W
-    col3_x = col2_x + COL_W
 
     v = self._vals
+    r0 = dash_y + 48
+    r1 = r0 + ROW_H
+    r2 = r1 + ROW_H
+    r3 = r2 + ROW_H
 
-    # Column 1: Steering Wheel Controls
-    rl.draw_text("Controls", col1_x, dash_y, ITEM_FONT + 2, rl.Color(255, 200, 100, 240))
-    self._render_dash_item(col1_x, dash_y + 28, COL_W - 10, "Left Wheel",
+    # Column 1: Steering Wheel + Battery
+    rl.draw_text("Controls", col1_x, dash_y, ITEM_FONT + 4, rl.Color(255, 200, 100, 240))
+    self._render_dash_item(col1_x, r0, COL_W - 10, "Left Wheel",
                            v.get("LeftWheelRoll", "-"), "", rl.Color(100, 200, 255, 240))
-    self._render_dash_item(col1_x, dash_y + 84, COL_W - 10, "Right Wheel",
+    self._render_dash_item(col1_x, r1, COL_W - 10, "Right Wheel",
                            v.get("RightWheelRoll", "-"), "", rl.Color(100, 200, 255, 240))
-    self._render_dash_item(col1_x, dash_y + 140, COL_W - 10, "L.Click",
+    self._render_dash_item(col1_x, r2, COL_W - 10, "L.Click",
                            v.get("LeftWheelClick", "-"))
-    self._render_dash_item(col1_x, dash_y + 196, COL_W - 10, "R.Click",
+    self._render_dash_item(col1_x, r3, COL_W - 10, "R.Click",
                            v.get("RightWheelClick", "-"))
 
-    # Column 2: Climate & Battery
-    rl.draw_text("Climate/Battery", col2_x, dash_y, ITEM_FONT + 2, rl.Color(255, 200, 100, 240))
-    if "InteriorTemp" in v:
-      self._render_dash_item(col2_x, dash_y + 28, COL_W - 10, "Interior Temp",
-                             v["InteriorTemp"], "°C", rl.Color(255, 150, 100, 240))
-    else:
-      self._render_dash_item(col2_x, dash_y + 28, COL_W - 10, "Interior Temp", "-", "°C")
+    rl.draw_text("Battery", col1_x, r3 + ROW_H + 20, ITEM_FONT + 4, rl.Color(255, 200, 100, 240))
+    b0 = r3 + ROW_H + 68
     if "BatteryStateOfCharge" in v:
       soc = v["BatteryStateOfCharge"]
       soc_f = float(soc)
       c = rl.Color(0, 255, 0, 240) if soc_f > 20 else rl.Color(255, 100, 0, 240)
-      self._render_dash_item(col2_x, dash_y + 84, COL_W - 10, "Battery SOC", soc, "%", c)
+      self._render_dash_item(col1_x, b0, COL_W - 10, "SOC", soc, "%", c)
     else:
-      self._render_dash_item(col2_x, dash_y + 84, COL_W - 10, "Battery SOC", "-", "%")
-    self._render_dash_item(col2_x, dash_y + 140, COL_W - 10, "Battery Power",
+      self._render_dash_item(col1_x, b0, COL_W - 10, "SOC", "-", "%")
+    self._render_dash_item(col1_x, b0 + ROW_H, COL_W - 10, "Power",
                            v.get("BatteryPower", "-"), "kW")
-    self._render_dash_item(col2_x, dash_y + 196, COL_W - 10, "Battery Current",
+    self._render_dash_item(col1_x, b0 + ROW_H * 2, COL_W - 10, "Current",
                            v.get("BatteryCurrent", "-"), "A")
 
-    # Column 3: AP Status
-    rl.draw_text("Autopilot", col3_x, dash_y, ITEM_FONT + 2, rl.Color(255, 200, 100, 240))
+    # Column 2: Climate + AP Status
+    rl.draw_text("Climate", col2_x, dash_y, ITEM_FONT + 4, rl.Color(255, 200, 100, 240))
+    if "InteriorTemp" in v:
+      self._render_dash_item(col2_x, r0, COL_W - 10, "Interior Temp",
+                             v["InteriorTemp"], "°C", rl.Color(255, 150, 100, 240))
+    else:
+      self._render_dash_item(col2_x, r0, COL_W - 10, "Interior Temp", "-", "°C")
+
+    rl.draw_text("Autopilot", col2_x, r1 + 20, ITEM_FONT + 4, rl.Color(255, 200, 100, 240))
+    ap0 = r1 + 68
     ap = v.get("AP_Active", "0")
     ap_color = rl.Color(0, 255, 0, 240) if ap != "0" else rl.Color(140, 140, 160, 230)
-    self._render_dash_item(col3_x, dash_y + 28, COL_W - 10, "AP Active", ap, "", ap_color)
-    self._render_dash_item(col3_x, dash_y + 84, COL_W - 10, "AP Steering",
+    self._render_dash_item(col2_x, ap0, COL_W - 10, "Active", ap, "", ap_color)
+    self._render_dash_item(col2_x, ap0 + ROW_H, COL_W - 10, "Steering",
                            v.get("AP_Steering", "-"))
-    self._render_dash_item(col3_x, dash_y + 140, COL_W - 10, "AP Speed Ctrl",
+    self._render_dash_item(col2_x, ap0 + ROW_H * 2, COL_W - 10, "Speed Ctrl",
                            v.get("AP_Speed", "-"))
-    self._render_dash_item(col3_x, dash_y + 196, COL_W - 10, "Hands On Wheel",
+    self._render_dash_item(col2_x, ap0 + ROW_H * 3, COL_W - 10, "Hands On",
                            v.get("AP_HandsOn", "-"))
 
     # Bottom: scrolling unknown CAN messages
-    log_y = dash_y + 260
-    visible = max(1, int((rect.height - log_y + rect.y) / 20))
+    log_y = max(ap0 + ROW_H * 4 + 20, b0 + ROW_H * 3 + 20)
+    visible = max(1, int((rect.height - log_y + rect.y) / 22))
     show = self._log_lines[-visible:] if self._log_lines else []
+    log_font = 18
     for i, line in enumerate(show):
-      y_pos = log_y + i * 20
+      y_pos = log_y + i * 22
       if y_pos < rect.y + rect.height - 10:
-        rl.draw_text(line, int(rect.x + 10), y_pos, 15, rl.Color(160, 160, 160, 200))
+        rl.draw_text(line, int(rect.x + 10), y_pos, log_font, rl.Color(160, 160, 160, 200))
