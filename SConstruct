@@ -258,9 +258,11 @@ SConscript([
 SConscript(['sunnypilot/SConscript'])
 
 # Build tools
+SConscript([
+  'tools/replay/SConscript',
+])
 if arch != "larch64":
   SConscript([
-    'tools/replay/SConscript',
     'tools/cabana/SConscript',
     'tools/jotpluggler/SConscript',
   ])
