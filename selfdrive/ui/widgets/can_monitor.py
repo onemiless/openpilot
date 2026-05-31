@@ -5,16 +5,16 @@ import cereal.messaging as messaging
 from openpilot.common.params import Params
 from openpilot.system.ui.widgets import Widget
 
-MAX_LINES = 50
+MAX_LINES = 30
 LOG_DIR = "/data/media/0/realdata"
-TITLE_FONT = 38
-MSG_FONT = 22
-LINE_H = 30
+TITLE_FONT = 34
+ITEM_FONT = 20
+VALUE_FONT = 26
+LINE_H = 32
+COL_W = 320
 
 
 def _decode_signal(data: bytes, sig) -> float:
-  """Decode a single signal value from CAN data bytes."""
-  # Extract bits [lsb:msb+1] — simplified big-endian extraction
   bit_offset = sig.start_bit
   bit_size = sig.size
   val = 0
@@ -32,43 +32,36 @@ class CanMonitorWidget(Widget):
   def __init__(self):
     super().__init__()
     self.can_sock = messaging.sub_sock('can', conflate=True, timeout=100)
-    self.messages: list[str] = []
     self._dbc = None
+    self._dbc2 = None
     self._frame = 0
     self._recording = False
     self._log_file = None
     self._logged_addrs: set[int] = set()
 
+    # Dashboard values
+    self._vals: dict[str, str] = {}
+    self._log_lines: list[str] = []
+
   def _load_dbc(self):
     if self._dbc is not None:
       return
     try:
-      # Auto-detect car brand from params, fallback to Tesla
       from opendbc.can.dbc import DBC
       from opendbc import DBC_PATH
-      cp_bytes = Params().get("CarParamsCache")
-      dbc_name = "tesla_model3_party"
-      if cp_bytes:
-        from cereal import car
-        cp = car.CarParams.from_bytes(cp_bytes)
-        brand = str(cp.brand)
-        brand_dbc_map = {
-          "toyota": "toyota_nodsu_pt_generated",
-          "honda": "honda_civic_touring_2016_can_generated",
-          "hyundai": "hyundai_canfd_generated",
-          "volkswagen": "volkswagen_mqb_2010",
-          "ford": "ford_lincoln_base_pt",
-          "gm": "gm_global_a_powertrain_generated",
-          "chrysler": "chrysler_pacifica_2017_hybrid_generated",
-          "rivian": "rivian_r1t_gen1",
-          "subaru": "subaru_global_2017_generated",
-          "mazda": "mazda_cx5_2022",
-          "nissan": "nissan_x_trail_2017_generated",
-        }
-        dbc_name = brand_dbc_map.get(brand, dbc_name)
-      self._dbc = DBC(f"{DBC_PATH}/{dbc_name}.dbc")
+      self._dbc = DBC(f"{DBC_PATH}/tesla_model3_party.dbc")
+      suppl = f"{DBC_PATH}/tesla_model3_party_supplement.dbc"
+      if os.path.exists(suppl):
+        self._dbc2 = DBC(suppl)
     except Exception:
-      self._dbc = False  # mark as failed
+      self._dbc = False
+
+  def _dbc_for(self, addr):
+    if isinstance(self._dbc2, object) and hasattr(self._dbc2, 'addr_to_msg') and addr in self._dbc2.addr_to_msg:
+      return self._dbc2
+    if isinstance(self._dbc, object) and hasattr(self._dbc, 'addr_to_msg') and addr in self._dbc.addr_to_msg:
+      return self._dbc
+    return None
 
   def _start_logging(self):
     if self._log_file is not None:
@@ -92,7 +85,7 @@ class CanMonitorWidget(Widget):
       self._log_file = None
     self._recording = False
 
-  def _update_messages(self):
+  def _update(self):
     self._load_dbc()
     msgs = messaging.drain_sock(self.can_sock)
     if not msgs:
@@ -105,7 +98,6 @@ class CanMonitorWidget(Widget):
         dat = bytes(can_msg.dat)
         src = can_msg.src
 
-        # Log raw data
         if self._recording and self._log_file:
           hex_str = dat.hex()
           self._log_file.write(f"{now:.6f} {addr:03X}#{hex_str} src={src}\n")
@@ -114,19 +106,14 @@ class CanMonitorWidget(Widget):
             self._log_file.write(f"# NEW ADDR: {addr:03X} ({addr})\n")
             self._log_file.flush()
 
-        # Build label: try DBC first, fall back to raw hex
-        if isinstance(self._dbc, object) and hasattr(self._dbc, 'addr_to_msg') and addr in self._dbc.addr_to_msg:
-          dbc_msg = self._dbc.addr_to_msg[addr]
-          parts = [f"{addr:03X} {dbc_msg.name}"]
-          # Show first 2 signals with values
-          for i, (sig_name, sig) in enumerate(dbc_msg.sigs.items()):
-            if i >= 3:  # max 3 signals per message
-              break
+        dbc = self._dbc_for(addr)
+        if dbc:
+          dbc_msg = dbc.addr_to_msg[addr]
+          for sig_name, sig in dbc_msg.sigs.items():
             try:
               raw_val = _decode_signal(dat, sig)
-              # Try discrete value mapping if available
-              matched = False
-              for v in self._dbc.vals:
+              # Try discrete value mapping
+              for v in dbc.vals:
                 if v.address == addr and v.name == sig_name:
                   parts_def = v.def_val.split()
                   vals = [int(x) for x in parts_def[::2]]
@@ -134,64 +121,111 @@ class CanMonitorWidget(Widget):
                   mapping = dict(zip(vals, defs))
                   int_val = int(raw_val)
                   if int_val in mapping:
-                    parts.append(f"{sig_name}={mapping[int_val]}")
+                    self._vals[sig_name] = mapping[int_val]
                   else:
-                    parts.append(f"{sig_name}={raw_val:.1f}")
-                  matched = True
+                    self._vals[sig_name] = f"{raw_val:.1f}"
                   break
-              if not matched:
-                parts.append(f"{sig_name}={raw_val:.1f}")
+              else:
+                self._vals[sig_name] = f"{raw_val:.1f}"
             except Exception:
               pass
-          label = " | ".join(parts)
         else:
-          label = f"{addr:03X}#{dat[:4].hex()} src={src}"
-        self.messages.append(label)
+          label = f"{addr:03X}#{dat[:4].hex()}"
+          self._log_lines.append(label)
 
-    if len(self.messages) > MAX_LINES:
-      self.messages = self.messages[-MAX_LINES:]
+    if len(self._log_lines) > MAX_LINES:
+      self._log_lines = self._log_lines[-MAX_LINES:]
 
-  def _handle_click(self, mouse_x: float, mouse_y: float):
-    """Toggle recording on title bar click"""
-    title_y = self._rect.y + 6
-    title_h = 42
-    if title_y <= mouse_y <= title_y + title_h:
-      if self._recording:
-        self._stop_logging()
-      else:
-        self._start_logging()
+  def _render_dash_item(self, x, y, w, label, value, unit="", color=None):
+    rl.draw_text(label, x + 8, y, ITEM_FONT, rl.Color(140, 140, 160, 230))
+    c = color or rl.Color(0, 255, 0, 240)
+    rl.draw_text(f"{value}{unit}", x + 8, y + 24, VALUE_FONT, c)
 
   def _render(self, rect: rl.Rectangle):
     self._rect = rect
     self._frame += 1
     if self._frame % 5 == 0:
-      self._update_messages()
+      self._update()
 
     rl.draw_rectangle(int(rect.x), int(rect.y), int(rect.width), int(rect.height),
                       rl.Color(20, 20, 40, 230))
 
-    # Title bar with recording status
+    # Title
     if self._recording:
-      title = f"CAN Monitor [REC ● {len(self._logged_addrs)} addrs]  :8082"
+      title = f"CAN Dashboard [REC ●]"
       title_color = rl.Color(255, 50, 50, 255)
-    elif self.messages:
-      title = "CAN Monitor (tap to record)  :8082"
+    elif self._vals:
+      title = "CAN Dashboard (tap to record)"
       title_color = rl.Color(100, 255, 100, 220)
     else:
-      title = "CAN Monitor (no data)  :8082"
+      title = "CAN Dashboard (no data)"
       title_color = rl.Color(100, 255, 100, 200)
     rl.draw_text(title, int(rect.x + 10), int(rect.y + 6), TITLE_FONT, title_color)
 
     # Click detection
     mouse_pos = rl.get_mouse_position()
     if rl.is_mouse_button_pressed(rl.MouseButton.MOUSE_BUTTON_LEFT):
-      self._handle_click(mouse_pos.x, mouse_pos.y)
+      title_y = self._rect.y + 6
+      if title_y <= mouse_pos.y <= title_y + 42:
+        if self._recording:
+          self._stop_logging()
+        else:
+          self._start_logging()
 
-    start_y = int(rect.y + 48)
-    visible = max(1, int((rect.height - 48) / LINE_H))
-    show = self.messages[-visible:] if self.messages else [""]
-    for i, msg in enumerate(show):
-      y = start_y + i * LINE_H
-      if y + LINE_H < rect.y + rect.height:
-        color = rl.Color(200, 200, 200, 230) if i < len(show) - 1 else rl.Color(0, 255, 0, 240)
-        rl.draw_text(msg, int(rect.x + 10), y, MSG_FONT, color)
+    dash_y = int(rect.y + 44)
+    col1_x = int(rect.x + 10)
+    col2_x = col1_x + COL_W
+    col3_x = col2_x + COL_W
+
+    v = self._vals
+
+    # Column 1: Steering Wheel Controls
+    rl.draw_text("Controls", col1_x, dash_y, ITEM_FONT + 2, rl.Color(255, 200, 100, 240))
+    self._render_dash_item(col1_x, dash_y + 28, COL_W - 10, "Left Wheel",
+                           v.get("LeftWheelRoll", "-"), "", rl.Color(100, 200, 255, 240))
+    self._render_dash_item(col1_x, dash_y + 84, COL_W - 10, "Right Wheel",
+                           v.get("RightWheelRoll", "-"), "", rl.Color(100, 200, 255, 240))
+    self._render_dash_item(col1_x, dash_y + 140, COL_W - 10, "L.Click",
+                           v.get("LeftWheelClick", "-"))
+    self._render_dash_item(col1_x, dash_y + 196, COL_W - 10, "R.Click",
+                           v.get("RightWheelClick", "-"))
+
+    # Column 2: Climate & Battery
+    rl.draw_text("Climate/Battery", col2_x, dash_y, ITEM_FONT + 2, rl.Color(255, 200, 100, 240))
+    if "InteriorTemp" in v:
+      self._render_dash_item(col2_x, dash_y + 28, COL_W - 10, "Interior Temp",
+                             v["InteriorTemp"], "°C", rl.Color(255, 150, 100, 240))
+    else:
+      self._render_dash_item(col2_x, dash_y + 28, COL_W - 10, "Interior Temp", "-", "°C")
+    if "BatteryStateOfCharge" in v:
+      soc = v["BatteryStateOfCharge"]
+      soc_f = float(soc)
+      c = rl.Color(0, 255, 0, 240) if soc_f > 20 else rl.Color(255, 100, 0, 240)
+      self._render_dash_item(col2_x, dash_y + 84, COL_W - 10, "Battery SOC", soc, "%", c)
+    else:
+      self._render_dash_item(col2_x, dash_y + 84, COL_W - 10, "Battery SOC", "-", "%")
+    self._render_dash_item(col2_x, dash_y + 140, COL_W - 10, "Battery Power",
+                           v.get("BatteryPower", "-"), "kW")
+    self._render_dash_item(col2_x, dash_y + 196, COL_W - 10, "Battery Current",
+                           v.get("BatteryCurrent", "-"), "A")
+
+    # Column 3: AP Status
+    rl.draw_text("Autopilot", col3_x, dash_y, ITEM_FONT + 2, rl.Color(255, 200, 100, 240))
+    ap = v.get("AP_Active", "0")
+    ap_color = rl.Color(0, 255, 0, 240) if ap != "0" else rl.Color(140, 140, 160, 230)
+    self._render_dash_item(col3_x, dash_y + 28, COL_W - 10, "AP Active", ap, "", ap_color)
+    self._render_dash_item(col3_x, dash_y + 84, COL_W - 10, "AP Steering",
+                           v.get("AP_Steering", "-"))
+    self._render_dash_item(col3_x, dash_y + 140, COL_W - 10, "AP Speed Ctrl",
+                           v.get("AP_Speed", "-"))
+    self._render_dash_item(col3_x, dash_y + 196, COL_W - 10, "Hands On Wheel",
+                           v.get("AP_HandsOn", "-"))
+
+    # Bottom: scrolling unknown CAN messages
+    log_y = dash_y + 260
+    visible = max(1, int((rect.height - log_y + rect.y) / 20))
+    show = self._log_lines[-visible:] if self._log_lines else []
+    for i, line in enumerate(show):
+      y_pos = log_y + i * 20
+      if y_pos < rect.y + rect.height - 10:
+        rl.draw_text(line, int(rect.x + 10), y_pos, 15, rl.Color(160, 160, 160, 200))
