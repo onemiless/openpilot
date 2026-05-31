@@ -1,9 +1,12 @@
+import os
+import time
 import pyray as rl
 import cereal.messaging as messaging
 from openpilot.common.params import Params
 from openpilot.system.ui.widgets import Widget
 
 MAX_LINES = 30
+LOG_DIR = "/data/media/0/realdata"
 
 
 def _decode_signal(data: bytes, sig) -> float:
@@ -29,6 +32,9 @@ class CanMonitorWidget(Widget):
     self.messages: list[str] = []
     self._dbc = None
     self._frame = 0
+    self._recording = False
+    self._log_file = None
+    self._logged_addrs: set[int] = set()  # unique addresses seen
 
   def _load_dbc(self):
     if self._dbc is not None:
@@ -61,14 +67,49 @@ class CanMonitorWidget(Widget):
     except Exception:
       self._dbc = False  # mark as failed
 
+  def _start_logging(self):
+    if self._log_file is not None:
+      return
+    try:
+      os.makedirs(LOG_DIR, exist_ok=True)
+      ts = time.strftime("%Y%m%d_%H%M%S")
+      fname = f"{LOG_DIR}/can_dump_{ts}.log"
+      self._log_file = open(fname, "w")
+      self._log_file.write(f"# CAN Dump started {ts}\n")
+      self._log_file.write(f"# format: timestamp addr#data src\n")
+      self._logged_addrs = set()
+      self._recording = True
+    except Exception:
+      self._log_file = None
+      self._recording = False
+
+  def _stop_logging(self):
+    if self._log_file:
+      self._log_file.close()
+      self._log_file = None
+    self._recording = False
+
   def _update_messages(self):
     self._load_dbc()
     msgs = messaging.drain_sock(self.can_sock)
+    if not msgs:
+      return
+
+    now = time.monotonic()
     for msg in msgs:
       for can_msg in msg.can:
         addr = can_msg.address
         dat = bytes(can_msg.dat)
         src = can_msg.src
+
+        # Log raw data
+        if self._recording and self._log_file:
+          hex_str = dat.hex()
+          self._log_file.write(f"{now:.6f} {addr:03X}#{hex_str} src={src}\n")
+          if addr not in self._logged_addrs:
+            self._logged_addrs.add(addr)
+            self._log_file.write(f"# NEW ADDR: {addr:03X} ({addr})\n")
+            self._log_file.flush()
 
         # Build label: try DBC first, fall back to raw hex
         if isinstance(self._dbc, object) and hasattr(self._dbc, 'addr_to_msg') and addr in self._dbc.addr_to_msg:
@@ -107,7 +148,18 @@ class CanMonitorWidget(Widget):
     if len(self.messages) > MAX_LINES:
       self.messages = self.messages[-MAX_LINES:]
 
+  def _handle_click(self, mouse_x: float, mouse_y: float):
+    """Toggle recording on title bar click"""
+    title_y = self._rect.y + 4
+    title_h = 30
+    if title_y <= mouse_y <= title_y + title_h + 10:
+      if self._recording:
+        self._stop_logging()
+      else:
+        self._start_logging()
+
   def _render(self, rect: rl.Rectangle):
+    self._rect = rect
     self._frame += 1
     if self._frame % 5 == 0:
       self._update_messages()
@@ -115,11 +167,23 @@ class CanMonitorWidget(Widget):
     rl.draw_rectangle(int(rect.x), int(rect.y), int(rect.width), int(rect.height),
                       rl.Color(20, 20, 40, 230))
 
+    # Title bar with recording status
     font_size = 26
-    title = "CAN Monitor"
-    if not self.messages:
+    if self._recording:
+      title = f"CAN Monitor [REC ● {len(self._logged_addrs)} addrs]"
+      title_color = rl.Color(255, 50, 50, 255)
+    elif self.messages:
+      title = "CAN Monitor (click title to record)"
+      title_color = rl.Color(100, 255, 100, 200)
+    else:
       title = "CAN Monitor (no data)"
-    rl.draw_text(title, int(rect.x + 8), int(rect.y + 4), font_size, rl.Color(100, 255, 100, 200))
+      title_color = rl.Color(100, 255, 100, 200)
+    rl.draw_text(title, int(rect.x + 8), int(rect.y + 4), font_size, title_color)
+
+    # Click detection
+    mouse_pos = rl.get_mouse_position()
+    if rl.is_mouse_button_pressed(rl.MouseButton.MOUSE_BUTTON_LEFT):
+      self._handle_click(mouse_pos.x, mouse_pos.y)
 
     line_h = 22
     start_y = int(rect.y + 36)
