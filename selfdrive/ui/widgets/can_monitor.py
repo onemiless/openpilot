@@ -5,8 +5,11 @@ import cereal.messaging as messaging
 from openpilot.common.params import Params
 from openpilot.system.ui.widgets import Widget
 
-MAX_LINES = 30
+MAX_LINES = 50
 LOG_DIR = "/data/media/0/realdata"
+TITLE_FONT = 38
+MSG_FONT = 22
+LINE_H = 30
 
 
 def _decode_signal(data: bytes, sig) -> float:
@@ -150,9 +153,9 @@ class CanMonitorWidget(Widget):
 
   def _handle_click(self, mouse_x: float, mouse_y: float):
     """Toggle recording on title bar click"""
-    title_y = self._rect.y + 4
-    title_h = 30
-    if title_y <= mouse_y <= title_y + title_h + 10:
+    title_y = self._rect.y + 6
+    title_h = 42
+    if title_y <= mouse_y <= title_y + title_h:
       if self._recording:
         self._stop_logging()
       else:
@@ -168,30 +171,27 @@ class CanMonitorWidget(Widget):
                       rl.Color(20, 20, 40, 230))
 
     # Title bar with recording status
-    font_size = 26
     if self._recording:
       title = f"CAN Monitor [REC ● {len(self._logged_addrs)} addrs]"
       title_color = rl.Color(255, 50, 50, 255)
     elif self.messages:
-      title = "CAN Monitor (click title to record)"
-      title_color = rl.Color(100, 255, 100, 200)
+      title = "CAN Monitor (tap to record)"
+      title_color = rl.Color(100, 255, 100, 220)
     else:
       title = "CAN Monitor (no data)"
       title_color = rl.Color(100, 255, 100, 200)
-    rl.draw_text(title, int(rect.x + 8), int(rect.y + 4), font_size, title_color)
+    rl.draw_text(title, int(rect.x + 10), int(rect.y + 6), TITLE_FONT, title_color)
 
     # Click detection
     mouse_pos = rl.get_mouse_position()
     if rl.is_mouse_button_pressed(rl.MouseButton.MOUSE_BUTTON_LEFT):
       self._handle_click(mouse_pos.x, mouse_pos.y)
 
-    line_h = 22
-    start_y = int(rect.y + 36)
-    visible = max(1, int((rect.height - 36) / line_h))
+    start_y = int(rect.y + 48)
+    visible = max(1, int((rect.height - 48) / LINE_H))
     show = self.messages[-visible:] if self.messages else [""]
-    msg_font = 16
     for i, msg in enumerate(show):
-      y = start_y + i * line_h
-      if y + line_h < rect.y + rect.height:
-        color = rl.Color(200, 200, 200, 220) if i < len(show) - 1 else rl.Color(0, 255, 0, 240)
-        rl.draw_text(msg[:90], int(rect.x + 8), y, msg_font, color)
+      y = start_y + i * LINE_H
+      if y + LINE_H < rect.y + rect.height:
+        color = rl.Color(200, 200, 200, 230) if i < len(show) - 1 else rl.Color(0, 255, 0, 240)
+        rl.draw_text(msg, int(rect.x + 10), y, MSG_FONT, color)
