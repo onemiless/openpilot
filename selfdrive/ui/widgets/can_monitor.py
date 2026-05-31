@@ -28,6 +28,8 @@ def _decode_signal(data: bytes, sig) -> float:
   return val * sig.factor + sig.offset
 
 
+_http_server = None
+
 class CanMonitorWidget(Widget):
   def __init__(self):
     super().__init__()
@@ -37,7 +39,16 @@ class CanMonitorWidget(Widget):
     self._frame = 0
     self._recording = False
     self._log_file = None
-    self._logged_addrs: set[int] = set()  # unique addresses seen
+    self._logged_addrs: set[int] = set()
+
+    # Start HTTP file server once
+    global _http_server
+    if _http_server is None:
+      try:
+        from openpilot.selfdrive.ui.widgets.can_server import start
+        _http_server = start()
+      except Exception:
+        pass
 
   def _load_dbc(self):
     if self._dbc is not None:
@@ -172,13 +183,13 @@ class CanMonitorWidget(Widget):
 
     # Title bar with recording status
     if self._recording:
-      title = f"CAN Monitor [REC ● {len(self._logged_addrs)} addrs]"
+      title = f"CAN Monitor [REC ● {len(self._logged_addrs)} addrs]  :8082"
       title_color = rl.Color(255, 50, 50, 255)
     elif self.messages:
-      title = "CAN Monitor (tap to record)"
+      title = "CAN Monitor (tap to record)  :8082"
       title_color = rl.Color(100, 255, 100, 220)
     else:
-      title = "CAN Monitor (no data)"
+      title = "CAN Monitor (no data)  :8082"
       title_color = rl.Color(100, 255, 100, 200)
     rl.draw_text(title, int(rect.x + 10), int(rect.y + 6), TITLE_FONT, title_color)
 
