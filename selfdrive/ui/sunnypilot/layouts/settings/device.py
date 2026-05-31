@@ -78,6 +78,15 @@ class DeviceLayoutSP(DeviceLayout):
       inline=True,
     )
 
+    self._route_recording_toggle = dual_button_item_sp(
+      left_text=lambda: tr("Route Recording"),
+      left_callback=lambda: ui_state.params.put_bool("DisableRouteRecording",
+                                                      not ui_state.params.get_bool("DisableRouteRecording")),
+      right_text="",
+      right_callback=None,
+    )
+    self._route_recording_toggle.action_item.right_button.set_visible(False)
+
     self._quiet_mode_and_dcam = dual_button_item_sp(
       left_text=lambda: tr("Quiet Mode"),
       right_text=lambda: tr("Driver Camera Preview"),
@@ -123,6 +132,7 @@ class DeviceLayoutSP(DeviceLayout):
       LineSeparator(),
       self._max_time_offroad,
       LineSeparator(height=10),
+      self._route_recording_toggle,
       self._quiet_mode_and_dcam,
       self._reg_and_training,
       self._onroad_uploads_and_reset_settings,
@@ -205,6 +215,11 @@ class DeviceLayoutSP(DeviceLayout):
       self._scroller._items.insert(len(self._scroller._items) - 1, self._always_offroad_btn)
     else:
       self._scroller._items.insert(0, self._always_offroad_btn)
+
+    # Route Recording button
+    self._route_recording_toggle.action_item.left_button.set_button_style(
+      ButtonStyle.PRIMARY if not ui_state.params.get_bool("DisableRouteRecording") else ButtonStyle.NORMAL
+    )
 
     # Quiet Mode button
     self._quiet_mode_and_dcam.action_item.left_button.set_button_style(ButtonStyle.PRIMARY if ui_state.params.get_bool("QuietMode") else ButtonStyle.NORMAL)

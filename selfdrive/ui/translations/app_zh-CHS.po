@@ -2766,3 +2766,6 @@ msgid ""
 msgstr ""
 "sunnypilot不会接管油门和刹车的控制权。 "
 "系统将使用丰田原厂的纵向控制功能。"
+
+msgid "Route Recording"
+msgstr "路由录制"
