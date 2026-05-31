@@ -10,7 +10,6 @@ from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.system.ui.widgets import Widget
 
 from openpilot.selfdrive.ui.sunnypilot.layouts.sidebar import SidebarSP
-from openpilot.sunnypilot.selfdrive.ui.widgets.drive_mode_switch import DriveModeSwitch
 
 SIDEBAR_WIDTH = 300
 METRIC_HEIGHT = 126
@@ -79,7 +78,6 @@ class Sidebar(Widget, SidebarSP):
 
     self._home_img = gui_app.texture("images/button_home.png", HOME_BTN.width, HOME_BTN.height)
     self._flag_img = gui_app.texture("images/button_flag.png", HOME_BTN.width, HOME_BTN.height)
-    self._drive_mode_switch = DriveModeSwitch(onroad=True)
     self._settings_img = gui_app.texture("images/button_settings.png", SETTINGS_BTN.width, SETTINGS_BTN.height)
     self._mic_img = gui_app.texture("icons/microphone.png", 30, 30)
     self._mic_indicator_rect = rl.Rectangle(0, 0, 0, 0)
@@ -168,11 +166,6 @@ class Sidebar(Widget, SidebarSP):
     settings_down = mouse_down and rl.check_collision_point_rec(mouse_pos, SETTINGS_BTN)
     tint = Colors.BUTTON_PRESSED if settings_down else Colors.BUTTON_NORMAL
     rl.draw_texture_ex(self._settings_img, rl.Vector2(SETTINGS_BTN.x, SETTINGS_BTN.y), 0.0, 1.0, tint)
-
-    # Drive mode switch (E2E / ACC) — onroad only
-    if ui_state.started and ui_state.CP is not None and ui_state.CP.brand == "tesla":
-      sw_rect = rl.Rectangle(40, 165, 220, 65)
-      self._drive_mode_switch.render(sw_rect)
 
     # Home/Flag button
     flag_pressed = mouse_down and rl.check_collision_point_rec(mouse_pos, HOME_BTN)

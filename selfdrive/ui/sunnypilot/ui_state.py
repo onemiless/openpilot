@@ -158,7 +158,6 @@ class UIStateSP:
 
   def _enforce_constraints(self) -> None:
     has_long = self.has_longitudinal_control
-    has_icbm = self.has_icbm
     CP = self.CP
 
     if CP is not None:

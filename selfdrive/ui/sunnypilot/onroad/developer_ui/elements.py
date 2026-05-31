@@ -397,64 +397,6 @@ class BearingDegElement(GpsInfoElement):
     return UiElement(f"{dir_value} | {value}", "B.D.", self.unit, rl.WHITE)
 
 
-class TeslaFSDModElement:
-  def __init__(self):
-    self.unit = ""
-
-  def update(self, sm, is_metric: bool) -> UiElement:
-    from openpilot.common.params import Params
-    try:
-      import json
-      raw = Params().get("TeslaFSDModStatus")
-      if raw:
-        status = json.loads(raw)
-        fsd_frames = status.get("fsd_frames", 0)
-        nag_count = status.get("nag_echoes", 0)
-        ota = status.get("ota_paused", False)
-
-        parts = []
-        if fsd_frames > 0:
-          parts.append(f"FSD:{fsd_frames}")
-        if nag_count > 0:
-          parts.append(f"N:{nag_count}")
-        if ota:
-          parts.append("OTA")
-
-        if parts:
-          return UiElement(" | ".join(parts), "FSDmod", self.unit, rl.Color(0, 255, 0, 200))
-        return UiElement("OFF", "FSDmod", self.unit, rl.Color(145, 155, 149, 200))
-    except Exception:
-      pass
-    return UiElement("-", "FSDmod", self.unit, rl.WHITE)
-
-
-class TeslaBMSElement:
-  def __init__(self):
-    self.unit = ""
-
-  def update(self, sm, is_metric: bool) -> UiElement:
-    from openpilot.common.params import Params
-    try:
-      import json
-      raw = Params().get("TeslaBMSStatus")
-      if raw:
-        s = json.loads(raw)
-        if not s.get("seen"):
-          return UiElement("wait", "BMS", self.unit, rl.Color(145, 155, 149, 200))
-
-        soc = s.get("soc", 0)
-        v = s.get("voltage", 0)
-        tmin = s.get("temp_min", 0)
-        tmax = s.get("temp_max", 0)
-        tdelta = s.get("temp_delta", 0)
-
-        text = f"{soc:.0f}% {v:.0f}V T:{tmin}/{tmax}C d{tdelta}C"
-        return UiElement(text, "BMS", self.unit, rl.Color(0, 200, 255, 200))
-    except Exception:
-      pass
-    return UiElement("-", "BMS", self.unit, rl.WHITE)
-
-
 class AltitudeElement(GpsInfoElement):
   def __init__(self):
     self.unit = "m"
