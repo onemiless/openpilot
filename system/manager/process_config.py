@@ -26,7 +26,7 @@ def iscar(started: bool, params: Params, CP: car.CarParams) -> bool:
 
 def logging(started: bool, params: Params, CP: car.CarParams) -> bool:
   run = (not CP.notCar) or not params.get_bool("DisableLogging")
-  return started and run and not params.get_bool("DisableRouteRecording")
+  return started and run
 
 def ublox_available() -> bool:
   return os.path.exists('/dev/ttyHS0') and not os.path.exists('/persist/comma/use-quectel-gps')

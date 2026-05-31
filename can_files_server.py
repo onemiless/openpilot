@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Simple HTTP server to download CAN log files via browser."""
+"""Standalone HTTP server to download CAN log files and routes via browser."""
 import os
 import http.server
-import threading
 
 LOG_DIR = "/data/media/0/realdata"
 PORT = 8082
@@ -50,11 +49,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
       self.send_error(500)
 
   def log_message(self, format, *args):
-    pass  # suppress logs
+    pass
 
 
-def start():
-  server = http.server.HTTPServer(("0.0.0.0", PORT), Handler)
-  t = threading.Thread(target=server.serve_forever, daemon=True)
-  t.start()
-  return server
+if __name__ == "__main__":
+  print(f"Serving {LOG_DIR} on http://0.0.0.0:{PORT}")
+  http.server.HTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
