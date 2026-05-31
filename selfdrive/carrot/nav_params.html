@@ -839,6 +839,24 @@
                 ],
                 category: "ATC参数"
             },
+            "AtcResumeDelay": {
+                chineseName: "自动变道用户干预冷却时间(3秒)",
+                defaultValue: 3,
+                description: "自动变道被用户干预后的冷却时间，冷却时间后可继续自动变道(秒)",
+                inputRange: [0, 120],
+                step: 1,
+                uiType: "number",
+                category: "ATC参数"
+            },
+            "AtcResumeCnt": {
+                chineseName: "自动变道用户干预恢复次数(5次)",
+                defaultValue: 5,
+                description: "自动变道被用户干预后，冷却时间过后允许恢复自动变道的次数(次)",
+                inputRange: [0, 100],
+                step: 1,
+                uiType: "number",
+                category: "ATC参数"
+            },
             "AutoUpHighwayRoadLimit": {
                 chineseName: "提高60以下的高速限速(0)",
                 defaultValue: 0,

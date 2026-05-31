@@ -174,6 +174,8 @@ class UnifiedParams:
             "NewLaneWidthDiff": 8,
             "DynamicExperimentalSpeed": -5,
             "DynamicExperimentalLatA": 0,
+            "AtcResumeDelay": 3,
+            "AtcResumeCnt": 5,
         }
 
     def get_bool(self, key, default=False):
