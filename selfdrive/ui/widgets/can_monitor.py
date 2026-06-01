@@ -32,7 +32,7 @@ def _decode_signal(data: bytes, sig) -> float:
 class CanMonitorWidget(Widget):
   def __init__(self):
     super().__init__()
-    self.can_sock = messaging.sub_sock('can', conflate=True, timeout=100)
+    self.can_sock = messaging.sub_sock('can', timeout=100)
     self._dbc = None
     self._dbc2 = None
     self._frame = 0
@@ -145,7 +145,7 @@ class CanMonitorWidget(Widget):
   def _render(self, rect: rl.Rectangle):
     self._rect = rect
     self._frame += 1
-    if self._frame % 5 == 0:
+    if self._frame % 2 == 0:
       self._update()
 
     rl.draw_rectangle(int(rect.x), int(rect.y), int(rect.width), int(rect.height),
