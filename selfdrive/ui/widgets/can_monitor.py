@@ -32,7 +32,7 @@ def _decode_signal(data: bytes, sig) -> float:
 class CanMonitorWidget(Widget):
   def __init__(self):
     super().__init__()
-    self.can_sock = messaging.sub_sock('can', timeout=100)
+    self._sm = messaging.SubMaster(['can'])
     self._dbc = None
     self._dbc2 = None
     self._frame = 0
@@ -88,15 +88,14 @@ class CanMonitorWidget(Widget):
 
   def _update(self):
     self._load_dbc()
-    msgs = messaging.drain_sock(self.can_sock)
-    if not msgs:
+    self._sm.update(0)
+    if not self._sm.updated['can']:
       return
 
     now = time.monotonic()
-    for msg in msgs:
-      for can_msg in msg.can:
+    for can_msg in self._sm['can']:
         addr = can_msg.address
-        dat = bytes(can_msg.dat)
+        dat = can_msg.dat
         src = can_msg.src
 
         if self._recording and self._log_file:
