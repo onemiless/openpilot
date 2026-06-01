@@ -2776,8 +2776,14 @@ msgstr "动态切换原车ACC"
 msgid "Auto switch to stock ACC when above speed, close to lead, and ego not decelerating."
 msgstr "车速高、前车近、本车未减速时，自动切换到原车ACC。"
 
-msgid "Speed Threshold"
-msgstr "速度阈值"
+msgid "Speed Threshold High"
+msgstr "高速阈值"
+
+msgid "Speed Threshold Low"
+msgstr "低速阈值"
+
+msgid "Switch back to SP longitudinal below this speed."
+msgstr "低于此速度时，自动切换回SP纵向控制。"
 
 msgid "Switch to stock ACC above this speed."
 msgstr "高于此速度时，自动切换到原车ACC。"

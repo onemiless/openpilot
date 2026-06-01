@@ -29,10 +29,16 @@ class TeslaSettings(BrandSettings):
       callback=self._on_dyn_auto_stock_toggle,
     )
     self.dyn_auto_speed = option_item_sp(
-      title=tr("Speed Threshold"), param="DynamicAutoStockSpeedKph",
+      title=tr("Speed Threshold High"), param="DynamicAutoStockSpeedKph",
       min_value=40, max_value=120, value_change_step=5,
       label_callback=lambda v: f"{v} km/h",
       description=tr("Switch to stock ACC above this speed."),
+    )
+    self.dyn_auto_speed_low = option_item_sp(
+      title=tr("Speed Threshold Low"), param="DynamicAutoStockSpeedLowKph",
+      min_value=20, max_value=100, value_change_step=5,
+      label_callback=lambda v: f"{v} km/h",
+      description=tr("Switch back to SP longitudinal below this speed."),
     )
     self.dyn_auto_lead = option_item_sp(
       title=tr("Lead Distance"), param="DynamicAutoStockLeadDist",
@@ -47,10 +53,12 @@ class TeslaSettings(BrandSettings):
     )
     self.items = [self.coop_steering_toggle, self.mads_screen_button,
                   self.dynamic_auto_stock_toggle, self.dyn_auto_speed,
-                  self.dyn_auto_lead, self.dyn_auto_no_decel]
+                  self.dyn_auto_speed_low, self.dyn_auto_lead,
+                  self.dyn_auto_no_decel]
 
   def _on_dyn_auto_stock_toggle(self, state):
     self.dyn_auto_speed.set_visible(state)
+    self.dyn_auto_speed_low.set_visible(state)
     self.dyn_auto_lead.set_visible(state)
     self.dyn_auto_no_decel.set_visible(state)
 
@@ -81,8 +89,3 @@ class TeslaSettings(BrandSettings):
     self.mads_screen_button.action_item.set_enabled(ui_state.is_offroad())
 
     self._on_dyn_auto_stock_toggle(self.dynamic_auto_stock_toggle.action_item.get_state())
-
-  def _on_dyn_auto_stock_toggle(self, state):
-    self.dyn_auto_speed.set_visible(state)
-    self.dyn_auto_lead.set_visible(state)
-    self.dyn_auto_no_decel.set_visible(state)

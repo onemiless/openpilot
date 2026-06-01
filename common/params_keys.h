@@ -286,5 +286,6 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"DynamicAutoStockSpeedKph", {PERSISTENT | BACKUP, INT, "80"}},
     {"DynamicAutoStockLeadDist", {PERSISTENT | BACKUP, INT, "55"}},
     {"DynamicAutoStockNoDecel", {PERSISTENT | BACKUP, BOOL, "1"}},
+    {"DynamicAutoStockSpeedLowKph", {PERSISTENT | BACKUP, INT, "70"}},
     {"StopLineExtraDecel", {PERSISTENT | BACKUP, FLOAT, "0.35"}},
 };
