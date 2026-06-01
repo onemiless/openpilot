@@ -5,6 +5,7 @@ import numpy as np
 import cereal.messaging as messaging
 from opendbc.car.interfaces import ACCEL_MIN, ACCEL_MAX
 from openpilot.common.constants import CV
+from openpilot.common.params import Params
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.realtime import DT_MDL
 from openpilot.selfdrive.modeld.constants import ModelConstants
@@ -171,7 +172,8 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
     # Typical overshoot is ~2m; an extra 0.35 m/s^2 at 10 m/s corrects this.
     no_lead = not (sm['radarState'].leadOne.status or sm['radarState'].leadTwo.status)
     if no_lead and model_v[-1] < STOP_LINE_V_END_THRESHOLD:
-      extra_decel = STOP_LINE_EXTRA_DECEL * min(v_ego / STOP_LINE_V_REF, 1.0)
+      stop_line_decel = Params().get_float("StopLineExtraDecel", default=STOP_LINE_EXTRA_DECEL)
+      extra_decel = stop_line_decel * min(v_ego / STOP_LINE_V_REF, 1.0)
       output_a_target_e2e -= extra_decel
 
     if self.is_e2e(sm):

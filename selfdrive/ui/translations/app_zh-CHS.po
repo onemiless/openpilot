@@ -2791,5 +2791,11 @@ msgstr "前车距离小于此值时，自动切换到原车ACC。"
 msgid "Require No Deceleration"
 msgstr "需本车未减速"
 
+msgid "Stop Line Deceleration"
+msgstr "红绿灯停止线减速度"
+
+msgid "Extra deceleration at traffic light stops. Higher = stop earlier."
+msgstr "红绿灯停车时额外施加的减速度。数值越大停车越早。"
+
 msgid "Only switch when ego is not decelerating (maintaining or accelerating)."
 msgstr "仅在本车保持匀速或加速时才切换（本车减速不切换）。"

@@ -87,9 +87,20 @@ class CruiseLayout(Widget):
       description=tr("Enable toggle to allow the model to determine when to use sunnypilot ACC or sunnypilot End to End Longitudinal."),
       param="DynamicExperimentalControl")
 
+    self.stop_line_decel = option_item_sp(
+      title=tr("Stop Line Deceleration"),
+      param="StopLineExtraDecel",
+      min_value=10, max_value=80, value_change_step=5,
+      use_float_scaling=True,
+      label_callback=lambda v: f"{v / 100:.2f} m/s²",
+      description=tr("Extra deceleration at traffic light stops. Higher = stop earlier."),
+      inline=True,
+    )
+
     items = [
       self.icbm_toggle,
       self.dec_toggle,
+      self.stop_line_decel,
       self.scc_v_toggle,
       self.scc_m_toggle,
       self.custom_acc_toggle,
