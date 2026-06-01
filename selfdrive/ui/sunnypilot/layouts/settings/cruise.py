@@ -6,6 +6,7 @@ See the LICENSE.md file in the root directory for more details.
 """
 from enum import IntEnum
 
+from openpilot.selfdrive.ui.sunnypilot.layouts.settings.cruise_sub_layouts.mpc_tuning import MpcTuningLayout
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.cruise_sub_layouts.speed_limit_settings import SpeedLimitSettingsLayout
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.multilang import tr, tr_noop
@@ -17,6 +18,7 @@ from openpilot.system.ui.widgets.scroller_tici import Scroller
 class PanelType(IntEnum):
   CRUISE = 0
   SLA = 1
+  MPC = 2
 
 
 ICBM_DESC = tr_noop("When enabled, sunnypilot will attempt to manage the built-in cruise control buttons " +
@@ -36,6 +38,7 @@ class CruiseLayout(Widget):
     super().__init__()
     self._current_panel = PanelType.CRUISE
     self._speed_limit_layout = SpeedLimitSettingsLayout(lambda: self._set_current_panel(PanelType.CRUISE))
+    self._mpc_tuning_layout = MpcTuningLayout(lambda: self._set_current_panel(PanelType.CRUISE))
 
     items = self._initialize_items()
     self._scroller = Scroller(items, line_separator=True, spacing=0)
@@ -82,6 +85,12 @@ class CruiseLayout(Widget):
       callback=lambda: self._set_current_panel(PanelType.SLA)
     )
 
+    self.mpc_tuning_button = simple_button_item_sp(
+      button_text=lambda: tr("MPC Tuning"),
+      button_width=800,
+      callback=lambda: self._set_current_panel(PanelType.MPC)
+    )
+
     self.dec_toggle = toggle_item_sp(
       title=tr("Enable Dynamic Experimental Control"),
       description=tr("Enable toggle to allow the model to determine when to use sunnypilot ACC or sunnypilot End to End Longitudinal."),
@@ -107,12 +116,15 @@ class CruiseLayout(Widget):
       self.custom_acc_short_increment,
       self.custom_acc_long_increment,
       self.sla_settings_button,
+      self.mpc_tuning_button,
     ]
     return items
 
   def _render(self, rect):
     if self._current_panel == PanelType.SLA:
       self._speed_limit_layout.render(rect)
+    elif self._current_panel == PanelType.MPC:
+      self._mpc_tuning_layout.render(rect)
     else:
       self._scroller.render(rect)
 
@@ -126,6 +138,8 @@ class CruiseLayout(Widget):
     self._current_panel = panel
     if panel == PanelType.SLA:
       self._speed_limit_layout.show_event()
+    elif panel == PanelType.MPC:
+      self._mpc_tuning_layout.show_event()
 
   def _update_state(self):
     super()._update_state()

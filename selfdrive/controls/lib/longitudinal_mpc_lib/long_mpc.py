@@ -4,6 +4,7 @@ import time
 import numpy as np
 from cereal import log
 from opendbc.car.interfaces import ACCEL_MIN, ACCEL_MAX
+from openpilot.common.params import Params
 from openpilot.common.realtime import DT_MDL
 from openpilot.common.swaglog import cloudlog
 # WARNING: imports outside of constants will not trigger a rebuild
@@ -58,6 +59,20 @@ STOP_DISTANCE = 4.5
 CRUISE_MIN_ACCEL = -1.2
 CRUISE_MAX_ACCEL = 1.6
 MIN_X_LEAD_FACTOR = 0.5
+
+# Runtime-tunable MPC parameters — reads from Params, falls back to defaults above
+def _mpc_cruise_min_accel(): return Params().get_float("MpcCruiseMinAccel", default=CRUISE_MIN_ACCEL)
+def _mpc_cruise_max_accel(): return Params().get_float("MpcCruiseMaxAccel", default=CRUISE_MAX_ACCEL)
+def _mpc_lead_danger_factor(): return Params().get_float("MpcLeadDangerFactor", default=LEAD_DANGER_FACTOR)
+def _mpc_min_x_lead_factor(): return Params().get_float("MpcMinXLeadFactor", default=MIN_X_LEAD_FACTOR)
+def _mpc_crash_distance(): return Params().get_float("MpcCrashDistance", default=CRASH_DISTANCE)
+def _mpc_comfort_brake(): return Params().get_float("MpcComfortBrake", default=COMFORT_BRAKE)
+def _mpc_stop_distance(): return Params().get_float("MpcStopDistance", default=STOP_DISTANCE)
+def _mpc_x_obstacle_cost(): return Params().get_float("MpcXObstacleCost", default=X_EGO_OBSTACLE_COST)
+def _mpc_jerk_cost(): return Params().get_float("MpcJerkCost", default=J_EGO_COST)
+def _mpc_a_change_cost(): return Params().get_float("MpcAChangeCost", default=A_CHANGE_COST)
+def _mpc_danger_zone_cost(): return Params().get_float("MpcDangerZoneCost", default=DANGER_ZONE_COST)
+def _mpc_limit_cost(): return float(Params().get_int("MpcLimitCost", default=int(LIMIT_COST)))
 
 def get_jerk_factor(personality=log.LongitudinalPersonality.standard):
   if personality==log.LongitudinalPersonality.relaxed:
@@ -269,9 +284,9 @@ class LongitudinalMpc:
 
   def set_weights(self, prev_accel_constraint=True, personality=log.LongitudinalPersonality.standard):
     jerk_factor = get_jerk_factor(personality)
-    a_change_cost = A_CHANGE_COST if prev_accel_constraint else 0
-    cost_weights = [X_EGO_OBSTACLE_COST, X_EGO_COST, V_EGO_COST, A_EGO_COST, jerk_factor * a_change_cost, jerk_factor * J_EGO_COST]
-    constraint_cost_weights = [LIMIT_COST, LIMIT_COST, LIMIT_COST, DANGER_ZONE_COST]
+    a_change_cost = _mpc_a_change_cost() if prev_accel_constraint else 0
+    cost_weights = [_mpc_x_obstacle_cost(), X_EGO_COST, V_EGO_COST, A_EGO_COST, jerk_factor * a_change_cost, jerk_factor * _mpc_jerk_cost()]
+    constraint_cost_weights = [_mpc_limit_cost(), _mpc_limit_cost(), _mpc_limit_cost(), _mpc_danger_zone_cost()]
     self.set_cost_weights(cost_weights, constraint_cost_weights)
 
   def set_cur_state(self, v, a):
@@ -306,7 +321,7 @@ class LongitudinalMpc:
 
     # MPC will not converge if immediate crash is expected
     # Clip lead distance to what is still possible to brake for
-    min_x_lead = MIN_X_LEAD_FACTOR * (v_ego + v_lead) * (v_ego - v_lead) / (-ACCEL_MIN * 2)
+    min_x_lead = _mpc_min_x_lead_factor() * (v_ego + v_lead) * (v_ego - v_lead) / (-ACCEL_MIN * 2)
     x_lead = np.clip(x_lead, min_x_lead, 1e8)
     v_lead = np.clip(v_lead, 0.0, 1e8)
     a_lead = np.clip(a_lead, -10., 5.)
@@ -321,19 +336,19 @@ class LongitudinalMpc:
     lead_xv_0 = self.process_lead(radarstate.leadOne)
     lead_xv_1 = self.process_lead(radarstate.leadTwo)
 
-    # To estimate a safe distance from a moving lead, we calculate how much stopping
-    # distance that lead needs as a minimum. We can add that to the current distance
-    # and then treat that as a stopped car/obstacle at this new distance.
-    lead_0_obstacle = lead_xv_0[:,0] + get_stopped_equivalence_factor(lead_xv_0[:,1])
-    lead_1_obstacle = lead_xv_1[:,0] + get_stopped_equivalence_factor(lead_xv_1[:,1])
+    comfort_brake = _mpc_comfort_brake()
+    stop_distance = _mpc_stop_distance()
+    cruise_min_a = _mpc_cruise_min_accel()
+    cruise_max_a = _mpc_cruise_max_accel()
+    crash_dist = _mpc_crash_distance()
 
-    # Fake an obstacle for cruise, this ensures smooth acceleration to set speed
-    # when the leads are no factor.
-    v_lower = v_ego + (T_IDXS * CRUISE_MIN_ACCEL * 1.05)
-    # TODO does this make sense when max_a is negative?
-    v_upper = v_ego + (T_IDXS * CRUISE_MAX_ACCEL * 1.05)
+    lead_0_obstacle = lead_xv_0[:,0] + (lead_xv_0[:,1]**2) / (2 * comfort_brake)
+    lead_1_obstacle = lead_xv_1[:,0] + (lead_xv_1[:,1]**2) / (2 * comfort_brake)
+
+    v_lower = v_ego + (T_IDXS * cruise_min_a * 1.05)
+    v_upper = v_ego + (T_IDXS * cruise_max_a * 1.05)
     v_cruise_clipped = np.clip(v_cruise * np.ones(N+1), v_lower, v_upper)
-    cruise_obstacle = np.cumsum(T_DIFFS * v_cruise_clipped) + get_safe_obstacle_distance(v_cruise_clipped, t_follow)
+    cruise_obstacle = np.cumsum(T_DIFFS * v_cruise_clipped) + (v_cruise_clipped**2) / (2 * comfort_brake) + t_follow * v_cruise_clipped + stop_distance
 
     x_obstacles = np.column_stack([lead_0_obstacle, lead_1_obstacle, cruise_obstacle])
     self.source = MPC_SOURCES[np.argmin(x_obstacles[0])]
@@ -348,10 +363,10 @@ class LongitudinalMpc:
     self.params[:,2] = np.min(x_obstacles, axis=1)
     self.params[:,3] = np.copy(self.a_prev)
     self.params[:,4] = t_follow
-    self.params[:,5] = LEAD_DANGER_FACTOR
+    self.params[:,5] = _mpc_lead_danger_factor()
 
     self.run()
-    if (np.any(lead_xv_0[FCW_IDXS,0] - self.x_sol[FCW_IDXS,0] < CRASH_DISTANCE) and
+    if (np.any(lead_xv_0[FCW_IDXS,0] - self.x_sol[FCW_IDXS,0] < crash_dist) and
             radarstate.leadOne.modelProb > 0.9):
       self.crash_cnt += 1
     else:

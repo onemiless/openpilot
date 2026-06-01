@@ -2805,3 +2805,48 @@ msgstr "红绿灯停车时额外施加的减速度。数值越大停车越早。
 
 msgid "Only switch when ego is not decelerating (maintaining or accelerating)."
 msgstr "仅在本车保持匀速或加速时才切换（本车减速不切换）。"
+
+msgid "MPC Tuning"
+msgstr "MPC 调校"
+
+msgid "Cruise Max Deceleration"
+msgstr "巡航最大减速度"
+
+msgid "Cruise Max Acceleration"
+msgstr "巡航最大加速度"
+
+msgid "Lead Danger Factor"
+msgstr "危险跟车因子"
+
+msgid "Min Lead Distance Factor"
+msgstr "最小跟车距离因子"
+
+msgid "Crash Distance Threshold"
+msgstr "碰撞距离阈值"
+
+msgid "Comfort Brake"
+msgstr "舒适制动强度"
+
+msgid "Stop Distance"
+msgstr "停止距离"
+
+msgid "Obstacle Distance Cost Weight"
+msgstr "障碍物距离成本权重"
+
+msgid "Jerk Smoothness Weight"
+msgstr "加加速度平顺性权重"
+
+msgid "Acceleration Change Penalty"
+msgstr "加速度变化惩罚"
+
+msgid "Danger Zone Penalty"
+msgstr "危险区域惩罚"
+
+msgid "Constraint Violation Penalty"
+msgstr "约束违反惩罚"
+
+msgid "修改后下一控制周期立即生效"
+msgstr "修改后下一控制周期立即生效"
+
+msgid "退出纵向控制再开启后生效"
+msgstr "退出纵向控制再开启后生效"
