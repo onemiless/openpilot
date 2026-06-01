@@ -182,6 +182,23 @@ class Car:
     self.is_metric = self.params.get_bool("IsMetric")
     self.experimental_mode = self.params.get_bool("ExperimentalMode")
 
+    # Dynamic auto-stock longitudinal
+    self.dynamic_auto_stock = False
+    self.dynamic_auto_stock_speed = 80
+    self.dynamic_auto_stock_lead_dist = 55
+    self.dynamic_auto_stock_no_decel = True
+    self._read_dynamic_auto_stock_params()
+
+    self._dyn_auto_frame = 0
+
+  def _read_dynamic_auto_stock_params(self):
+    self._dyn_auto_frame += 1
+    if self._dyn_auto_frame % 100 == 0:
+      self.dynamic_auto_stock = self.params.get_bool("DynamicAutoStock")
+      self.dynamic_auto_stock_speed = self.params.get_int("DynamicAutoStockSpeedKph", default=80)
+      self.dynamic_auto_stock_lead_dist = self.params.get_int("DynamicAutoStockLeadDist", default=55)
+      self.dynamic_auto_stock_no_decel = self.params.get_bool("DynamicAutoStockNoDecel", default=True)
+
     # card is driven by can recv, expected at 100Hz
     self.rk = Ratekeeper(100, print_delay_threshold=None)
 
@@ -196,12 +213,24 @@ class Car:
 
     # Update carState from CAN
     CS, CS_SP = self.CI.update(can_list)
-    CS_SP = convert_to_capnp(CS_SP)
 
     # Update radar tracks from CAN
     RD: structs.RadarDataT | None = self.RI.update(can_list)
 
     self.sm.update(0)
+
+    # Dynamic auto-stock: switch to stock ACC based on speed, lead distance, and deceleration
+    self._read_dynamic_auto_stock_params()
+    if self.dynamic_auto_stock and not CS.tesla_stock_longitudinal_active:
+      speed_kph = CS.vEgo * 3.6
+      lead = self.sm['radarState'].leadOne
+      if speed_kph > self.dynamic_auto_stock_speed:
+        if lead.status and lead.dRel < self.dynamic_auto_stock_lead_dist:
+          if not self.dynamic_auto_stock_no_decel or lead.vRel >= -0.5:
+            CS.tesla_stock_longitudinal_active = True
+            CS_SP.flags |= 32  # STOCK_LONGITUDINAL_ACTIVE
+
+    CS_SP = convert_to_capnp(CS_SP)
 
     can_rcv_valid = len(can_strs) > 0
 

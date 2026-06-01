@@ -8,7 +8,7 @@ from opendbc.sunnypilot.car.tesla.values import TeslaFlagsSP
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.vehicle.brands.base import BrandSettings
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.multilang import tr
-from openpilot.system.ui.sunnypilot.widgets.list_view import multiple_button_item_sp, toggle_item_sp
+from openpilot.system.ui.sunnypilot.widgets.list_view import multiple_button_item_sp, toggle_item_sp, option_item_sp
 
 class TeslaSettings(BrandSettings):
   def __init__(self):
@@ -21,7 +21,38 @@ class TeslaSettings(BrandSettings):
       param="TeslaMadsScreenButton",
       inline=False,
     )
-    self.items = [self.coop_steering_toggle, self.mads_screen_button]
+
+    self.dynamic_auto_stock_toggle = toggle_item_sp(
+      title=tr("Dynamic Auto Stock ACC"),
+      param="DynamicAutoStock",
+      description=lambda: tr("Auto switch to stock ACC when above speed, behind a lead, and not decelerating."),
+      callback=self._on_dyn_auto_stock_toggle,
+    )
+    self.dyn_auto_speed = option_item_sp(
+      title=tr("Speed Threshold"), param="DynamicAutoStockSpeedKph",
+      min_value=40, max_value=120, value_change_step=5,
+      label_callback=lambda v: f"{v} km/h",
+      description=tr("Switch to stock ACC above this speed."),
+    )
+    self.dyn_auto_lead = option_item_sp(
+      title=tr("Lead Distance"), param="DynamicAutoStockLeadDist",
+      min_value=15, max_value=100, value_change_step=5,
+      label_callback=lambda v: f"{v} m",
+      description=tr("Switch to stock ACC when lead is closer than this distance."),
+    )
+    self.dyn_auto_no_decel = toggle_item_sp(
+      title=tr("Require No Deceleration"),
+      param="DynamicAutoStockNoDecel",
+      description=lambda: tr("Only switch when lead is not decelerating (maintaining or increasing speed)."),
+    )
+    self.items = [self.coop_steering_toggle, self.mads_screen_button,
+                  self.dynamic_auto_stock_toggle, self.dyn_auto_speed,
+                  self.dyn_auto_lead, self.dyn_auto_no_decel]
+
+  def _on_dyn_auto_stock_toggle(self, state):
+    self.dyn_auto_speed.set_visible(state)
+    self.dyn_auto_lead.set_visible(state)
+    self.dyn_auto_no_decel.set_visible(state)
 
   def update_settings(self):
     coop_steering_desc = (
@@ -48,3 +79,10 @@ class TeslaSettings(BrandSettings):
       mads_screen_button_desc = f"<b>{mads_screen_button_disabled_msg}</b><br><br>{mads_screen_button_desc}"
     self.mads_screen_button.set_description(mads_screen_button_desc)
     self.mads_screen_button.action_item.set_enabled(ui_state.is_offroad())
+
+    self._on_dyn_auto_stock_toggle(self.dynamic_auto_stock_toggle.action_item.get_state())
+
+  def _on_dyn_auto_stock_toggle(self, state):
+    self.dyn_auto_speed.set_visible(state)
+    self.dyn_auto_lead.set_visible(state)
+    self.dyn_auto_no_decel.set_visible(state)

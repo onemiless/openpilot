@@ -282,4 +282,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"TorqueParamsOverrideFriction", {PERSISTENT | BACKUP, FLOAT, "0.1"}},
     {"TorqueParamsOverrideLatAccelFactor", {PERSISTENT | BACKUP, FLOAT, "2.5"}},
     {"DisableRouteRecording", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"DynamicAutoStock", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"DynamicAutoStockSpeedKph", {PERSISTENT | BACKUP, INT, "80"}},
+    {"DynamicAutoStockLeadDist", {PERSISTENT | BACKUP, INT, "55"}},
+    {"DynamicAutoStockNoDecel", {PERSISTENT | BACKUP, BOOL, "1"}},
 };
