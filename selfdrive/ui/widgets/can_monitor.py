@@ -8,10 +8,10 @@ MAX_LINES = 8
 LOG_DIR = "/data/media/0/realdata"
 TITLE_FONT = 44
 SEC_FONT = 30
-ITEM_FONT = 22
-VAL_FONT = 28
-COL_W = 360
-ROW_H = 60
+ITEM_FONT = 24
+VAL_FONT = 30
+COL_W = 480
+ROW_H = 64
 PAD = 6
 GAP = 4
 
@@ -204,19 +204,19 @@ class CanMonitorWidget(Widget):
         if self._recording: self._stop_logging()
         else: self._start_logging()
 
-    # Layout: 2 columns
     y = int(rect.y + 58)
     x1 = int(rect.x + 8)
-    x2 = x1 + COL_W + 20
+    x2 = x1 + COL_W + 16
+    x3 = x2 + COL_W + 16
 
     order = ["Drivetrain", "Battery", "Chassis", "Autopilot", "Controls", "Climate", "Body", "Other"]
-    cols = [(x1, y), (x2, y)]
+    cols = [(x1, y), (x2, y), (x3, y)]
     ci = 0
 
     for cat in order:
       if cat not in self._by_cat or not self._by_cat[cat]:
         continue
-      cx, cy = cols[ci % 2]
+      cx, cy = cols[ci % 3]
       fc = FRAME_COLORS.get(cat, FRAME_COLORS["Other"])
       rl.draw_text(cat, cx, cy, SEC_FONT, fc)
       cy += 34
@@ -238,11 +238,11 @@ class CanMonitorWidget(Widget):
           self._render_item(cx, cy, COL_W - 10, name, "active", fc)
           cy += ROW_H
 
-      cols[ci % 2] = (cx, cy + GAP)
+      cols[ci % 3] = (cx, cy + GAP)
       ci += 1
 
     # Bottom unknown log
-    log_y = max(cols[0][1], cols[1][1]) + 10
+    log_y = max(cols[0][1], cols[1][1], cols[2][1]) + 10
     visible = max(0, int((rect.height - log_y + rect.y) / 18))
     show = self._log_lines[-visible:] if self._log_lines and visible > 0 else []
     for i, line in enumerate(show[:8]):

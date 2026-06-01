@@ -181,8 +181,7 @@ class HomeLayout(Widget):
     gui_label(version_rect, self._version_text, 48, rl.WHITE, alignment=rl.GuiTextAlignment.TEXT_ALIGN_RIGHT)
 
   def _render_home_content(self):
-    self._render_left_column()
-    self._render_right_column()
+    self._can_monitor.render(self.content_rect)
 
   def _render_update_view(self):
     self.update_alert.render(self.content_rect)
