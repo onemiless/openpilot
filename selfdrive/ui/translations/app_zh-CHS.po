@@ -2773,8 +2773,8 @@ msgstr "路由录制"
 msgid "Dynamic Auto Stock ACC"
 msgstr "动态切换原车ACC"
 
-msgid "Auto switch to stock ACC when above speed, behind a lead, and not decelerating."
-msgstr "当前方有车、车速高于阈值且前车未减速时，自动切换到原车ACC。"
+msgid "Auto switch to stock ACC when above speed, close to lead, and ego not decelerating."
+msgstr "车速高、前车近、本车未减速时，自动切换到原车ACC。"
 
 msgid "Speed Threshold"
 msgstr "速度阈值"
@@ -2789,7 +2789,7 @@ msgid "Switch to stock ACC when lead is closer than this distance."
 msgstr "前车距离小于此值时，自动切换到原车ACC。"
 
 msgid "Require No Deceleration"
-msgstr "需前车未减速"
+msgstr "需本车未减速"
 
-msgid "Only switch when lead is not decelerating (maintaining or increasing speed)."
-msgstr "仅在前车保持匀速或加速时才切换（前车减速不切换）。"
+msgid "Only switch when ego is not decelerating (maintaining or accelerating)."
+msgstr "仅在本车保持匀速或加速时才切换（本车减速不切换）。"

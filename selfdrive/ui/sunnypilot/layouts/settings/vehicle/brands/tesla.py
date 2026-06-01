@@ -25,7 +25,7 @@ class TeslaSettings(BrandSettings):
     self.dynamic_auto_stock_toggle = toggle_item_sp(
       title=tr("Dynamic Auto Stock ACC"),
       param="DynamicAutoStock",
-      description=lambda: tr("Auto switch to stock ACC when above speed, behind a lead, and not decelerating."),
+      description=lambda: tr("Auto switch to stock ACC when above speed, close to lead, and ego not decelerating."),
       callback=self._on_dyn_auto_stock_toggle,
     )
     self.dyn_auto_speed = option_item_sp(
@@ -43,7 +43,7 @@ class TeslaSettings(BrandSettings):
     self.dyn_auto_no_decel = toggle_item_sp(
       title=tr("Require No Deceleration"),
       param="DynamicAutoStockNoDecel",
-      description=lambda: tr("Only switch when lead is not decelerating (maintaining or increasing speed)."),
+      description=lambda: tr("Only switch when ego is not decelerating (maintaining or accelerating)."),
     )
     self.items = [self.coop_steering_toggle, self.mads_screen_button,
                   self.dynamic_auto_stock_toggle, self.dyn_auto_speed,

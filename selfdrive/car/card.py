@@ -219,14 +219,14 @@ class Car:
 
     self.sm.update(0)
 
-    # Dynamic auto-stock: switch to stock ACC based on speed, lead distance, and deceleration
+    # Dynamic auto-stock: switch to stock ACC based on speed, lead distance, and ego deceleration
     self._read_dynamic_auto_stock_params()
     if self.dynamic_auto_stock and not CS.tesla_stock_longitudinal_active:
       speed_kph = CS.vEgo * 3.6
       lead = self.sm['radarState'].leadOne
       if speed_kph > self.dynamic_auto_stock_speed:
         if lead.status and lead.dRel < self.dynamic_auto_stock_lead_dist:
-          if not self.dynamic_auto_stock_no_decel or lead.vRel >= -0.5:
+          if not self.dynamic_auto_stock_no_decel or CS.aEgo >= -0.3:
             CS.tesla_stock_longitudinal_active = True
             CS_SP.flags |= 32  # STOCK_LONGITUDINAL_ACTIVE
 
