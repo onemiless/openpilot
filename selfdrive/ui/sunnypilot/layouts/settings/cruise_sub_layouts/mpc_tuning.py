@@ -42,6 +42,12 @@ class MpcTuningLayout(Widget):
       label_callback=lambda v: f"{v / 100:.2f} m",
       description=tr("修改后下一控制周期立即生效"))
 
+    self.stop_line_decel = option_item_sp(
+      title=tr("Stop Line Deceleration"), param="StopLineExtraDecel",
+      min_value=10, max_value=80, value_change_step=5, use_float_scaling=True,
+      label_callback=lambda v: f"{v / 100:.2f} m/s²",
+      description=tr("修改后下一控制周期立即生效"))
+
     # Group 2: re-engage to apply
     self.comfort_brake = option_item_sp(
       title=tr("Comfort Brake"), param="MpcComfortBrake",
@@ -82,6 +88,7 @@ class MpcTuningLayout(Widget):
     all_items = [self.back_button,
       self.cruise_min_accel, self.cruise_max_accel,
       self.lead_danger_factor, self.min_x_lead_factor, self.crash_distance,
+      self.stop_line_decel,
       self.comfort_brake, self.stop_distance,
       self.x_obstacle_cost, self.jerk_cost, self.a_change_cost,
       self.danger_zone_cost, self.limit_cost]
