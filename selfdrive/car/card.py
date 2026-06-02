@@ -224,39 +224,32 @@ class Car:
     # Dynamic auto-stock: auto-switch between stock ACC and SP based on speed, lead, deceleration
     self._read_dynamic_auto_stock_params()
     if self.dynamic_auto_stock:
-      speed_kph = CS.vEgo * 3.6
-      lead = self.sm['radarState'].leadOne
-      high_spd = self.dynamic_auto_stock_speed
-      low_spd = self.dynamic_auto_stock_speed_low
-      lead_dist = self.dynamic_auto_stock_lead_dist
-      no_decel = self.dynamic_auto_stock_no_decel
+      try:
+        speed_kph = CS.vEgo * 3.6
+        lead = self.sm['radarState'].leadOne
+        high_spd = self.dynamic_auto_stock_speed
+        low_spd = self.dynamic_auto_stock_speed_low
+        lead_dist = self.dynamic_auto_stock_lead_dist
+        no_decel = self.dynamic_auto_stock_no_decel
 
-      # Conditions to switch TO stock ACC
-      stock_ok = (speed_kph > high_spd and
-                  lead.status and lead.dRel < lead_dist and
-                  (not no_decel or CS.aEgo >= -0.3))
+        stock_ok = (speed_kph > high_spd and
+                    lead.status and lead.dRel < lead_dist and
+                    (not no_decel or CS.aEgo >= -0.3))
+        if stock_ok and not CS.tesla_stock_longitudinal_active:
+          CS.tesla_stock_longitudinal_active = True
+          CS_SP.flags |= 32
+          self._dyn_auto_triggered = True
 
-      if stock_ok and not CS.tesla_stock_longitudinal_active:
-        CS.tesla_stock_longitudinal_active = True
-        CS_SP.flags |= 32
-        self._dyn_auto_triggered = True
-
-      # Conditions to switch BACK to SP: speed < low, lead gone/far, or hard braking
-      sp_ok = (speed_kph < low_spd or
-               not lead.status or
-               lead.dRel > lead_dist * 1.5 or
-               CS.aEgo < -1.5)
-
-      if sp_ok and CS.tesla_stock_longitudinal_active and self._dyn_auto_triggered:
-        CS.tesla_stock_longitudinal_active = False
-        CS_SP.flags &= ~32
-        self._dyn_auto_triggered = False
-
-      # 4-finger manual toggle overrides auto
-      if self._dyn_auto_triggered and CS.tesla_stock_longitudinal_active:
-        pass  # auto-managed
-      elif not self._dyn_auto_triggered:
-        pass  # manual override active
+        sp_ok = (speed_kph < low_spd or
+                 not lead.status or
+                 lead.dRel > lead_dist * 1.5 or
+                 CS.aEgo < -1.5)
+        if sp_ok and CS.tesla_stock_longitudinal_active and self._dyn_auto_triggered:
+          CS.tesla_stock_longitudinal_active = False
+          CS_SP.flags &= ~32
+          self._dyn_auto_triggered = False
+      except Exception:
+        pass
 
     CS_SP = convert_to_capnp(CS_SP)
 
