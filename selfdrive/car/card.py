@@ -188,10 +188,9 @@ class Car:
     self.dynamic_auto_stock_speed_low = 70
     self.dynamic_auto_stock_lead_dist = 55
     self.dynamic_auto_stock_no_decel = True
+    self._dyn_auto_frame = 0
     self._dyn_auto_triggered = False
     self._read_dynamic_auto_stock_params()
-
-    self._dyn_auto_frame = 0
 
   def _read_dynamic_auto_stock_params(self):
     self._dyn_auto_frame += 1
