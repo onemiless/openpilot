@@ -146,17 +146,26 @@ class CanMonitorWidget(Widget):
     if ap:
       self._card(cx, cy, cw, "Autopilot", ap, rl.Color(0, 180, 255, 240))
 
-    # Card 2: Stalk Status
+    # Card 2: Traffic Light
+    tl = []
+    if "TL_lightState" in v:
+      state = v["TL_lightState"]
+      if state == "Red":
+        tl.append(("LIGHT", "RED", "", rl.Color(255, 40, 40, 255)))
+      elif state == "Green":
+        tl.append(("LIGHT", "GREEN", "", rl.Color(40, 255, 40, 255)))
+      elif state == "Yellow":
+        tl.append(("LIGHT", "YELLOW", "", rl.Color(255, 255, 40, 255)))
+      else:
+        tl.append(("LIGHT", state, "", white))
+    if "TL_countdown" in v: tl.append(("Countdown", v["TL_countdown"], "s", blue))
+    if "SL_distance" in v: tl.append(("Stop Line", v["SL_distance"], "m", blue))
+    if tl:
+      self._card(cx + cw + gap, cy, cw, "Traffic Light", tl, rl.Color(255, 200, 50, 240))
+
+    # Card 3: Controls
     st = []
     if "LeftWheelRoll" in v: st.append(("Left Wheel", v["LeftWheelRoll"], "steps", white))
     if "RightWheelRoll" in v: st.append(("Right Wheel", v["RightWheelRoll"], "steps", white))
-    if "LeftWheelClick" in v: st.append(("L.Click", v["LeftWheelClick"], "", white))
-    if "RightWheelClick" in v: st.append(("R.Click", v["RightWheelClick"], "", white))
     if st:
-      self._card(cx + cw + gap, cy, cw, "Controls", st, rl.Color(200, 150, 255, 240))
-
-    # Card 3: Scroll Counts
-    sc = []
-    sc.append(("L Scrolls", str(self._left_wheel), "", blue))
-    sc.append(("R Scrolls", str(self._right_wheel), "", blue))
-    self._card(cx + cw + gap, cy + len(st) * LINE_H + 88, cw, "Scroll Counts", sc, rl.Color(255, 200, 100, 240))
+      self._card(cx + cw + gap, cy + len(tl) * LINE_H + 88, cw, "Controls", st, rl.Color(200, 150, 255, 240))
