@@ -25,10 +25,9 @@ MIN_ALLOW_THROTTLE_SPEED = 2.5
 
 # Extra deceleration applied when the model predicts a stop without a lead vehicle
 # (traffic light / stop sign) to prevent overshooting the stop line.
-# 0.35 m/s^2 extra at reference speed reduces stopping distance by ~2m.
-STOP_LINE_EXTRA_DECEL = 0.35  # m/s^2
+STOP_LINE_EXTRA_DECEL = 0.5   # m/s^2 extra decel at reference speed
 STOP_LINE_V_REF = 10.0        # m/s reference speed for scaling
-STOP_LINE_V_END_THRESHOLD = 1.0  # m/s, trajectory end velocity below this indicates a predicted stop
+STOP_LINE_V_END_THRESHOLD = 2.0  # m/s, trigger extra decel earlier in the approach
 
 # Lookup table for turns
 _A_TOTAL_MAX_V = [1.7, 3.2]
