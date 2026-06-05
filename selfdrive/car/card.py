@@ -209,10 +209,12 @@ class Car:
         low = self.params.get_int("DynamicAutoStockSpeedLowKph", default=75)
         speed_kph = CS.vEgo * 3.6
         set_speed_kph = CS.vCruise * 3.6
-        if speed_kph > high and CS.aEgo >= -0.3 and set_speed_kph <= high:
+        # TO stock ACC: speed >= high, set_speed >= high, not decelerating
+        if speed_kph >= high and CS.aEgo >= -0.3 and set_speed_kph >= high:
           CS.tesla_stock_longitudinal_active = True
           CS_SP.flags |= 32  # STOCK_LONGITUDINAL_ACTIVE
-        elif speed_kph < low:
+        # BACK to SP: speed < low or set_speed lowered below high
+        elif speed_kph < low or set_speed_kph < high:
           CS.tesla_stock_longitudinal_active = False
           CS_SP.flags &= ~32
     except Exception:
