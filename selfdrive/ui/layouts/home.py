@@ -5,7 +5,7 @@ from enum import IntEnum
 from openpilot.common.params import Params
 from openpilot.selfdrive.ui.widgets.offroad_alerts import UpdateAlert, OffroadAlert
 from openpilot.selfdrive.ui.widgets.exp_mode_button import ExperimentalModeButton
-from openpilot.selfdrive.ui.widgets.can_monitor import CanMonitorWidget
+from openpilot.selfdrive.ui.widgets.prime import PrimeWidget
 from openpilot.selfdrive.ui.widgets.setup import SetupWidget
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos
@@ -55,7 +55,7 @@ class HomeLayout(Widget):
     self.update_notif_rect = rl.Rectangle(0, 0, 200, HEADER_HEIGHT - 10)
     self.alert_notif_rect = rl.Rectangle(0, 0, 220, HEADER_HEIGHT - 10)
 
-    self._can_monitor = CanMonitorWidget()
+    self._prime_widget = PrimeWidget()
     self._setup_widget = SetupWidget()
 
     self._exp_mode_button = ExperimentalModeButton()
@@ -181,7 +181,8 @@ class HomeLayout(Widget):
     gui_label(version_rect, self._version_text, 48, rl.WHITE, alignment=rl.GuiTextAlignment.TEXT_ALIGN_RIGHT)
 
   def _render_home_content(self):
-    self._can_monitor.render(self.content_rect)
+    self._render_left_column()
+    self._render_right_column()
 
   def _render_update_view(self):
     self.update_alert.render(self.content_rect)
@@ -190,7 +191,7 @@ class HomeLayout(Widget):
     self.offroad_alert.render(self.content_rect)
 
   def _render_left_column(self):
-    self._can_monitor.render(self.left_column_rect)
+    self._prime_widget.render(self.left_column_rect)
 
   def _render_right_column(self):
     exp_height = 125
