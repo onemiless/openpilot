@@ -14,7 +14,7 @@ COL_W = 520
 class CanMonitorWidget(Widget):
   def __init__(self):
     super().__init__()
-    self._sm = messaging.SubMaster(['can'])
+    self.can_sock = messaging.sub_sock('can', timeout=100)
     self._dbc = None
     self._dbc2 = None
     self._frame = 0
@@ -49,27 +49,28 @@ class CanMonitorWidget(Widget):
 
   def _update(self):
     self._load_dbc()
-    self._sm.update(0)
-    if not self._sm.updated['can']: return
+    msgs = messaging.drain_sock(self.can_sock)
+    if not msgs: return
 
-    for can_msg in self._sm['can']:
-      addr = can_msg.address; dat = can_msg.dat
-      dbc = self._dbc_for(addr)
-      if not dbc: continue
-      for sn, sig in dbc.addr_to_msg[addr].sigs.items():
-        try:
-          rv = self._decode(dat, sig)
-          for v in dbc.vals:
-            if v.address == addr and v.name == sn:
-              pd = v.def_val.split()
-              vs = [int(x) for x in pd[::2]]; ds = pd[1::2]
-              mp = dict(zip(vs, ds)); iv = int(rv)
-              self._vals[sn] = mp.get(iv, f"{rv:.1f}")
-              break
-          else:
-            self._vals[sn] = f"{rv:.1f}"
-        except Exception:
-          pass
+    for msg in msgs:
+      for can_msg in msg.can:
+        addr = can_msg.address; dat = can_msg.dat
+        dbc = self._dbc_for(addr)
+        if not dbc: continue
+        for sn, sig in dbc.addr_to_msg[addr].sigs.items():
+          try:
+            rv = self._decode(dat, sig)
+            for v in dbc.vals:
+              if v.address == addr and v.name == sn:
+                pd = v.def_val.split()
+                vs = [int(x) for x in pd[::2]]; ds = pd[1::2]
+                mp = dict(zip(vs, ds)); iv = int(rv)
+                self._vals[sn] = mp.get(iv, f"{rv:.1f}")
+                break
+            else:
+              self._vals[sn] = f"{rv:.1f}"
+          except Exception:
+            pass
 
   def _card(self, x, y, w, title, items, color):
     n = len(items); bh = n * LINE_H + 64
