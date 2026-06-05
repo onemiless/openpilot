@@ -202,13 +202,14 @@ class Car:
 
     self.sm.update(0)
 
-    # Dynamic auto-stock: like 4-finger toggle but based on speed + decel
+    # Dynamic auto-stock: like 4-finger toggle but based on speed + decel + set speed
     try:
       if self.params.get_bool("DynamicAutoStock"):
         high = self.params.get_int("DynamicAutoStockSpeedKph", default=80)
         low = self.params.get_int("DynamicAutoStockSpeedLowKph", default=75)
         speed_kph = CS.vEgo * 3.6
-        if speed_kph > high and CS.aEgo >= -0.3:
+        set_speed_kph = CS.vCruise * 3.6
+        if speed_kph > high and CS.aEgo >= -0.3 and set_speed_kph <= high:
           CS.tesla_stock_longitudinal_active = True
           CS_SP.flags |= 32  # STOCK_LONGITUDINAL_ACTIVE
         elif speed_kph < low:
