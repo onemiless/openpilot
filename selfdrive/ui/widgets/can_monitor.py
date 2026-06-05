@@ -14,7 +14,7 @@ COL_W = 520
 class CanMonitorWidget(Widget):
   def __init__(self):
     super().__init__()
-    self.can_sock = messaging.sub_sock('can', conflate=True, timeout=100)
+    self.can_sock = messaging.sub_sock('can', timeout=100)
     self._dbc = None
     self._dbc2 = None
     self._frame = 0
