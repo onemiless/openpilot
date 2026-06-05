@@ -14,7 +14,7 @@ COL_W = 520
 class CanMonitorWidget(Widget):
   def __init__(self):
     super().__init__()
-    self.can_sock = messaging.sub_sock('can', timeout=100)
+    self.can_sock = messaging.sub_sock('can', conflate=True, timeout=100)
     self._dbc = None
     self._dbc2 = None
     self._frame = 0
@@ -95,7 +95,10 @@ class CanMonitorWidget(Widget):
     v = self._vals
     rl.draw_text("Vehicle Data", int(rect.x + 16), int(rect.y + 8), TITLE_FONT,
                  rl.Color(100, 255, 100, 220))
-    if not v: return
+    if not v:
+      rl.draw_text("(no CAN data — connect car or check DBC)", int(rect.x + 16), int(rect.y + 80),
+                   LABEL_FONT, rl.Color(180, 180, 180, 200))
+      return
 
     cw = COL_W; gap = 24
     cx = int(rect.x + 20); cy = int(rect.y + 70)
