@@ -194,11 +194,6 @@ class Car:
     can_strs = messaging.drain_sock_raw(self.can_sock, wait_for_one=True)
     can_list = can_capnp_to_list(can_strs)
 
-    # Pass dynamic auto-stock params to carstate_ext (set before CI.update)
-    self.CI.CS._dyn_enabled = self.params.get_bool("DynamicAutoStock")
-    self.CI.CS._dyn_high = self.params.get_int("DynamicAutoStockSpeedKph", default=80)
-    self.CI.CS._dyn_low = self.params.get_int("DynamicAutoStockSpeedLowKph", default=75)
-
     # Update carState from CAN
     CS, CS_SP = self.CI.update(can_list)
     CS_SP = convert_to_capnp(CS_SP)
