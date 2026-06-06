@@ -194,31 +194,19 @@ class Car:
     can_strs = messaging.drain_sock_raw(self.can_sock, wait_for_one=True)
     can_list = can_capnp_to_list(can_strs)
 
+    # Pass dynamic auto-stock params to carstate_ext (set before CI.update)
+    self.CI.CS._dyn_enabled = self.params.get_bool("DynamicAutoStock")
+    self.CI.CS._dyn_high = self.params.get_int("DynamicAutoStockSpeedKph", default=80)
+    self.CI.CS._dyn_low = self.params.get_int("DynamicAutoStockSpeedLowKph", default=75)
+
     # Update carState from CAN
     CS, CS_SP = self.CI.update(can_list)
+    CS_SP = convert_to_capnp(CS_SP)
 
     # Update radar tracks from CAN
     RD: structs.RadarDataT | None = self.RI.update(can_list)
 
     self.sm.update(0)
-
-    # Dynamic auto-stock: auto-switch based on speed + set speed + decel
-    try:
-      if self.params.get_bool("DynamicAutoStock"):
-        high = self.params.get_int("DynamicAutoStockSpeedKph", default=80)
-        low = self.params.get_int("DynamicAutoStockSpeedLowKph", default=75)
-        speed_kph = CS.vEgo * 3.6
-        set_kph = CS.vCruise * 3.6
-        if speed_kph >= high and set_kph >= high and CS.aEgo >= -0.3:
-          CS.tesla_stock_longitudinal_active = True
-          CS_SP.flags |= 32  # STOCK_LONGITUDINAL_ACTIVE
-        elif speed_kph < low or set_kph < high:
-          CS.tesla_stock_longitudinal_active = False
-          CS_SP.flags &= ~32
-    except Exception:
-      pass
-
-    CS_SP = convert_to_capnp(CS_SP)
 
     can_rcv_valid = len(can_strs) > 0
 
