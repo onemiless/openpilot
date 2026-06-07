@@ -2850,3 +2850,9 @@ msgstr "修改后下一控制周期立即生效"
 
 msgid "退出纵向控制再开启后生效"
 msgstr "退出纵向控制再开启后生效"
+
+msgid "Dynamic Auto Stock ACC (Backup)"
+msgstr "动态切换原车ACC（备用）"
+
+msgid "Backup: pure speed-based auto switch. Use this if the main one causes issues."
+msgstr "备用方案：纯速度触发。主方案出问题时使用此方案。"

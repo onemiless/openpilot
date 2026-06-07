@@ -28,6 +28,12 @@ class TeslaSettings(BrandSettings):
       description=lambda: tr("Auto switch to stock ACC when above speed, close to lead, and ego not decelerating."),
       callback=self._on_dyn_auto_stock_toggle,
     )
+    self.dyn_backup_toggle = toggle_item_sp(
+      title=tr("Dynamic Auto Stock ACC (Backup)"),
+      param="DynamicAutoStockBackup",
+      description=lambda: tr("Backup: pure speed-based auto switch. Use this if the main one causes issues."),
+      callback=self._on_dyn_backup_toggle,
+    )
     self.dyn_auto_speed = option_item_sp(
       title=tr("Speed Threshold High"), param="DynamicAutoStockSpeedKph",
       min_value=40, max_value=120, value_change_step=5,
@@ -52,15 +58,23 @@ class TeslaSettings(BrandSettings):
       description=lambda: tr("Only switch when ego is not decelerating (maintaining or accelerating)."),
     )
     self.items = [self.coop_steering_toggle, self.mads_screen_button,
-                  self.dynamic_auto_stock_toggle, self.dyn_auto_speed,
-                  self.dyn_auto_speed_low, self.dyn_auto_lead,
+                  self.dynamic_auto_stock_toggle, self.dyn_backup_toggle,
+                  self.dyn_auto_speed, self.dyn_auto_speed_low, self.dyn_auto_lead,
                   self.dyn_auto_no_decel]
 
   def _on_dyn_auto_stock_toggle(self, state):
-    self.dyn_auto_speed.set_visible(state)
-    self.dyn_auto_speed_low.set_visible(state)
-    self.dyn_auto_lead.set_visible(state)
-    self.dyn_auto_no_decel.set_visible(state)
+    self._update_dyn_visibility()
+
+  def _on_dyn_backup_toggle(self, state):
+    self._update_dyn_visibility()
+
+  def _update_dyn_visibility(self):
+    show = (self.dynamic_auto_stock_toggle.action_item.get_state() or
+            self.dyn_backup_toggle.action_item.get_state())
+    self.dyn_auto_speed.set_visible(show)
+    self.dyn_auto_speed_low.set_visible(show)
+    self.dyn_auto_lead.set_visible(show)
+    self.dyn_auto_no_decel.set_visible(show)
 
   def update_settings(self):
     coop_steering_desc = (
@@ -88,4 +102,4 @@ class TeslaSettings(BrandSettings):
     self.mads_screen_button.set_description(mads_screen_button_desc)
     self.mads_screen_button.action_item.set_enabled(ui_state.is_offroad())
 
-    self._on_dyn_auto_stock_toggle(self.dynamic_auto_stock_toggle.action_item.get_state())
+    self._update_dyn_visibility()
