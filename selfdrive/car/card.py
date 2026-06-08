@@ -182,6 +182,7 @@ class Car:
     self.is_metric = self.params.get_bool("IsMetric")
     self.experimental_mode = self.params.get_bool("ExperimentalMode")
 
+    self._dyn_frame = 0
     # card is driven by can recv, expected at 100Hz
     self.rk = Ratekeeper(100, print_delay_threshold=None)
 
@@ -193,6 +194,13 @@ class Car:
 
     can_strs = messaging.drain_sock_raw(self.can_sock, wait_for_one=True)
     can_list = can_capnp_to_list(can_strs)
+
+    # Pass auto-stock params to CarState (read every ~1 sec to avoid disk I/O)
+    self._dyn_frame += 1
+    if self._dyn_frame % 100 == 0:
+      self.CI.CS._dyn_enabled = self.params.get_bool("DynamicAutoStock")
+      self.CI.CS._dyn_high = self.params.get_int("DynamicAutoStockSpeedKph", default=80)
+      self.CI.CS._dyn_low = self.params.get_int("DynamicAutoStockSpeedLowKph", default=70)
 
     # Update carState from CAN
     CS, CS_SP = self.CI.update(can_list)
