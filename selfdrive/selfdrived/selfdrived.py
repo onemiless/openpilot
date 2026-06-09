@@ -76,6 +76,7 @@ class SelfdriveD(CruiseHelper):
     self.car_state_sp_flags = 0  # updated in data_sample(), used by car_events_sp
 
     self.tesla_stock_longitudinal_active = False  # cached from carStateSP flags bit 32, avoids race on missed frames
+    self.prev_tesla_stock_longitudinal_active = False
     self.pose_calibrator = PoseCalibrator()
     self.calibrated_pose: Pose | None = None
     self.excessive_actuation_check = ExcessiveActuationCheck()
@@ -232,7 +233,10 @@ class SelfdriveD(CruiseHelper):
       # In Tesla stock-longitudinal mode, DAS_accState=13 is the OEM ACC cancel
       # state. Treating it as an OP cancel disables SP lateral too, which breaks
       # the intended split: stock ACC longitudinal with SP lateral.
-      if self.CP.brand == 'tesla' and self.tesla_stock_longitudinal_active:
+      # Also filter on the first frame after leaving stock to prevent stale
+      # disable events from hitting the state machine before MADS can clean up.
+      leaving_stock = self.prev_tesla_stock_longitudinal_active and not self.tesla_stock_longitudinal_active
+      if self.CP.brand == 'tesla' and (self.tesla_stock_longitudinal_active or leaving_stock):
         if self.events.has(EventName.buttonCancel):
           self.events.remove(EventName.buttonCancel)
         if self.events.has(EventName.invalidLkasSetting):
@@ -617,6 +621,7 @@ class SelfdriveD(CruiseHelper):
 
     self.publish_selfdriveState(CS)
 
+    self.prev_tesla_stock_longitudinal_active = self.tesla_stock_longitudinal_active
     self.CS_prev = CS
 
   def params_thread(self, evt):
