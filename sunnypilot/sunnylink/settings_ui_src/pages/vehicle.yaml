@@ -56,6 +56,42 @@ sections:
     title: Cooperative Steering (Beta)
     enablement:
     - $ref: '#/macros/offroad'
+  - key: DynamicAutoStock
+    widget: toggle
+    title: Dynamic Auto Stock
+    description: Automatically switch between openpilot and stock ACC based on speed thresholds.
+    enablement:
+    - $ref: '#/macros/offroad'
+    - type: capability
+      field: brand
+      equals: tesla
+  sub_panels:
+  - id: dynamic_auto_stock_settings
+    label: Dynamic Auto Stock Settings
+    trigger_key: DynamicAutoStock
+    trigger_condition:
+      type: param
+      key: DynamicAutoStock
+      equals: true
+    items:
+    - key: DynamicAutoStockSpeedKph
+      widget: option
+      title: High Speed Threshold (→ Stock ACC)
+      description: Above this speed, auto-switch to stock ACC.
+      min: 60
+      max: 120
+      step: 5
+      unit:
+        metric: km/h
+    - key: DynamicAutoStockSpeedLowKph
+      widget: option
+      title: Low Speed Threshold (→ openpilot)
+      description: Below this speed, auto-switch back to openpilot longitudinal control.
+      min: 40
+      max: 100
+      step: 5
+      unit:
+        metric: km/h
 - id: toyota
   title: Toyota / Lexus Settings
   description: ''
