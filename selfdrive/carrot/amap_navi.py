@@ -142,6 +142,7 @@ class SharedData:
 
     self.ext_blinker = BLINKER_NONE # 外挂控制器转向灯状态
     self.ext_state = 0  # 外挂控制器的数量
+    self.blinker_ctrl = BLINKER_NONE
 
     #=============共享数据（desire_helper）=============
     self.leftFrontBlind = None
@@ -202,6 +203,8 @@ class AmapNaviServ:
     now = time.time()
     self.blinker_alive = False
     self.blinker_time = now
+    self.blinker_ctrl_alive = False
+    self.blinker_ctrl_time = now
     self.lead_left_right = False
 
     self.leftFrontTarget = RadarSpeedEstimator()
@@ -221,6 +224,7 @@ class AmapNaviServ:
     self.disableBlindSpot = False
     self.dynamicBlindRange = 0
     self.dynamicBlindDistance = 0
+    self.stockBlinkerCtrl = 0
     self.atc_flag = False
     self.lf_object_detected_count = 0
     self.lb_object_detected_count = 0
@@ -303,6 +307,7 @@ class AmapNaviServ:
       self.disableBlindSpot = self.params.get_bool("DisableBlindSpot")
       self.dynamicBlindRange = self.params.get_int("DynamicBlindRange")
       self.dynamicBlindDistance = self.params.get_int("DynamicBlindDistance")
+      self.stockBlinkerCtrl = self.params.get_int("StockBlinkerCtrl")
       #new
     self.frame += 1
 
@@ -810,11 +815,45 @@ class AmapNaviServ:
       json_obj = json.loads(data.decode())
       self._update_blinker(json_obj, ip, old_info, now)
       self._update_command(json_obj, ip)
+      self._update_control(json_obj, ip, old_info, now)
       self._update_sensors(json_obj, ip, old_info, now)
       if (self.shared_data.showDebugLog & 32) > 0: print(f"receive: {json_obj}")
     except Exception as e:
       print(f"Process packet {ip} error: {e}")
       print(data)
+
+  # ----------------------
+  # 控制命令
+  # ----------------------
+  def _update_control(self, json_obj, ip, old_info, now):
+    if "ctrl" in json_obj:
+      try:
+        ctrl = json_obj.get("ctrl")
+        if ctrl == "blinker":
+          if "state" in json_obj:
+            state = json_obj.get("state")  # 响应类型
+            if state == "left":
+              self.shared_data.blinker_ctrl = BLINKER_LEFT
+              self.blinker_ctrl_alive = True
+              self.blinker_ctrl_time = now
+            elif state == "right":
+              self.shared_data.blinker_ctrl = BLINKER_RIGHT
+              self.blinker_ctrl_alive = True
+              self.blinker_ctrl_time = now
+            else:
+              self.shared_data.blinker_ctrl = BLINKER_NONE
+              self.blinker_ctrl_alive = False
+              self.blinker_ctrl_time = now
+      except Exception as e:
+        print(f"Process json 'ctrl' error: {e}")
+        print(json_obj)
+
+    #转向灯控制超时检测
+    if self.blinker_ctrl_alive:
+      if (now - self.blinker_ctrl_time) > 2.:
+        self.shared_data.blinker_ctrl = BLINKER_NONE
+        self.blinker_ctrl_alive = False
+        self.blinker_ctrl_time = now
 
   # ----------------------
   # 更新转向灯状态
@@ -1764,7 +1803,19 @@ class AmapNaviServ:
     if self.sm.alive['modelV2']:
       meta = self.sm['modelV2'].meta
       if hasattr(meta, 'blinker'):
-        msg['blinker'] = meta.blinker
+        if self.shared_data.blinker_ctrl == BLINKER_NONE or meta.blinker != "none":
+          msg['blinker'] = meta.blinker
+        elif self.shared_data.blinker_ctrl == BLINKER_LEFT:
+          if self.stockBlinkerCtrl == 0:
+            msg['blinker'] = "left"
+          else:
+            msg['blinker'] = "stockleft"
+        elif self.shared_data.blinker_ctrl == BLINKER_RIGHT:
+          if self.stockBlinkerCtrl == 0:
+            msg['blinker'] = "right"
+          else:
+            msg['blinker'] = "stockright"
+
 
     #===============巡航状态处理==============
     if self.sm.alive['selfdriveState']:
