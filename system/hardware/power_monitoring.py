@@ -121,4 +121,18 @@ class PowerMonitoring:
 
   # See if we need to shutdown
   def should_shutdown(self, ignition: bool, in_car: bool, offroad_timestamp: float | None, started_seen: bool):
-    return False
+    if ignition or not in_car or offroad_timestamp is None:
+      return False
+
+    offroad_time = time.monotonic() - offroad_timestamp
+    if offroad_time <= DELAY_SHUTDOWN_TIME_S:
+      return False
+    if self.params.get_bool("DisablePowerDown"):
+      return False
+
+    low_voltage_shutdown = started_seen and self.car_voltage_mV < (VBATT_PAUSE_CHARGING * 1e3) and \
+                           offroad_time > VOLTAGE_SHUTDOWN_MIN_OFFROAD_TIME_S
+    depleted_capacity_shutdown = started_seen and self.car_battery_capacity_uWh <= 0
+    max_time_shutdown = self.max_time_offroad_exceeded(offroad_time)
+
+    return low_voltage_shutdown or depleted_capacity_shutdown or max_time_shutdown
