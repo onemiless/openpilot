@@ -588,6 +588,43 @@
               ]
             },
             {
+              "key": "StopLineDeceleration",
+              "widget": "option",
+              "title": "Stop Line Deceleration",
+              "description": "Extra deceleration at traffic light and stop sign stops. Higher values stop earlier; 0 disables the extra deceleration.",
+              "min": 0,
+              "max": 10,
+              "step": 1,
+              "unit": "m/s\u00b2",
+              "visibility": [
+                {
+                  "type": "capability",
+                  "field": "has_longitudinal_control",
+                  "equals": true
+                }
+              ],
+              "enablement": [
+                {
+                  "type": "capability",
+                  "field": "has_longitudinal_control",
+                  "equals": true
+                }
+              ],
+              "value_map": {
+                "0": "0.0",
+                "1": "0.1",
+                "2": "0.2",
+                "3": "0.3",
+                "4": "0.4",
+                "5": "0.5",
+                "6": "0.6",
+                "7": "0.7",
+                "8": "0.8",
+                "9": "0.9",
+                "10": "1.0"
+              }
+            },
+            {
               "key": "DisengageOnAccelerator",
               "widget": "toggle",
               "title": "Disengage Cruise on Accelerator Pedal",

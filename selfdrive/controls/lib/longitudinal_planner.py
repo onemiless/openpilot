@@ -6,6 +6,7 @@ import cereal.messaging as messaging
 from opendbc.car.interfaces import ACCEL_MIN, ACCEL_MAX
 from openpilot.common.constants import CV
 from openpilot.common.filter_simple import FirstOrderFilter
+from openpilot.common.params import Params
 from openpilot.common.realtime import DT_MDL
 from openpilot.selfdrive.modeld.constants import ModelConstants
 from openpilot.selfdrive.controls.lib.longcontrol import LongCtrlState
@@ -14,6 +15,7 @@ from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import T_IDX
 from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N, get_accel_from_plan
 from openpilot.selfdrive.car.cruise import V_CRUISE_MAX, V_CRUISE_UNSET
 from openpilot.common.swaglog import cloudlog
+from openpilot.sunnypilot import PARAMS_UPDATE_PERIOD, get_sanitize_int_param
 
 from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_planner import LongitudinalPlannerSP
 
@@ -25,7 +27,10 @@ MIN_ALLOW_THROTTLE_SPEED = 2.5
 
 # Extra deceleration applied when the model predicts a stop without a lead vehicle
 # (traffic light / stop sign) to prevent overshooting the stop line.
-STOP_LINE_EXTRA_DECEL = 0.5   # m/s^2 extra decel at reference speed
+STOP_LINE_EXTRA_DECEL_DEFAULT = 0.5   # m/s^2 extra decel at reference speed
+STOP_LINE_EXTRA_DECEL_MIN = 0
+STOP_LINE_EXTRA_DECEL_MAX = 10
+STOP_LINE_EXTRA_DECEL_SCALE = 0.1
 STOP_LINE_V_REF = 10.0        # m/s reference speed for scaling
 STOP_LINE_V_END_THRESHOLD = 2.0  # m/s, trigger extra decel earlier in the approach
 
@@ -55,11 +60,14 @@ def limit_accel_in_turns(v_ego, lateral_curvature, a_target):
 class LongitudinalPlanner(LongitudinalPlannerSP):
   def __init__(self, CP, CP_SP, init_v=0.0, init_a=0.0, dt=DT_MDL):
     self.CP = CP
+    self.params = Params()
     self.mpc = LongitudinalMpc(dt=dt)
     LongitudinalPlannerSP.__init__(self, self.CP, CP_SP, self.mpc)
     self.fcw = False
+    self.frame = -1
     self.dt = dt
     self.allow_throttle = True
+    self.stop_line_extra_decel = STOP_LINE_EXTRA_DECEL_DEFAULT
 
     self.a_desired = init_a
     self.v_desired_filter = FirstOrderFilter(init_v, 2.0, self.dt)
@@ -70,6 +78,11 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
     self.v_desired_trajectory = np.zeros(CONTROL_N)
     self.a_desired_trajectory = np.zeros(CONTROL_N)
     self.j_desired_trajectory = np.zeros(CONTROL_N)
+
+  def _update_params(self):
+    if self.frame % int(PARAMS_UPDATE_PERIOD / DT_MDL) == 0:
+      decel_tenths = get_sanitize_int_param("StopLineDeceleration", STOP_LINE_EXTRA_DECEL_MIN, STOP_LINE_EXTRA_DECEL_MAX, self.params)
+      self.stop_line_extra_decel = decel_tenths * STOP_LINE_EXTRA_DECEL_SCALE
 
   @staticmethod
   def parse_model(model_msg):
@@ -92,6 +105,8 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
     return x, v, a, j, throttle_prob
 
   def update(self, sm):
+    self.frame += 1
+    self._update_params()
     LongitudinalPlannerSP.update(self, sm)
 
     if len(sm['carControl'].orientationNED) == 3:
@@ -170,7 +185,7 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
     # Typical overshoot is ~2m; an extra 0.35 m/s^2 at 10 m/s corrects this.
     no_lead = not (sm['radarState'].leadOne.status or sm['radarState'].leadTwo.status)
     if no_lead and model_v[-1] < STOP_LINE_V_END_THRESHOLD:
-      extra_decel = STOP_LINE_EXTRA_DECEL * min(v_ego / STOP_LINE_V_REF, 1.0)
+      extra_decel = self.stop_line_extra_decel * min(v_ego / STOP_LINE_V_REF, 1.0)
       output_a_target_e2e -= extra_decel
 
     if self.is_e2e(sm):
