@@ -72,12 +72,18 @@ class SoftwareLayout(Widget):
     self._branch_btn.action_item.set_value(ui_state.params.get("UpdaterTargetBranch") or "")
     self._branch_dialog: MultiOptionDialog | None = None
 
+    self._startup_sp_btn = button_item(lambda: tr("Startup SP Directory"), lambda: tr("SELECT"),
+                                       callback=self._on_select_startup_sp, enabled=ui_state.is_offroad)
+    self._startup_sp_btn.action_item.set_value(self._startup_sp_display())
+    self._startup_sp_dialog: MultiOptionDialog | None = None
+
     self._scroller = Scroller([
       self._onroad_label,
       self._version_item,
       self._download_btn,
       self._install_btn,
       self._branch_btn,
+      self._startup_sp_btn,
       button_item(lambda: tr("Uninstall"), lambda: tr("UNINSTALL"), callback=self._on_uninstall),
     ], line_separator=True, spacing=0)
 
@@ -139,6 +145,7 @@ class SoftwareLayout(Widget):
     # Update target branch button value
     current_branch = ui_state.params.get("UpdaterTargetBranch") or ""
     self._branch_btn.action_item.set_value(current_branch)
+    self._startup_sp_btn.action_item.set_value(self._startup_sp_display())
 
     # Update install button
     self._install_btn.set_visible(ui_state.is_offroad() and update_available)
@@ -204,3 +211,52 @@ class SoftwareLayout(Widget):
 
     self._branch_dialog = MultiOptionDialog(tr("Select a branch"), branches, current_target, callback=handle_selection)
     gui_app.push_widget(self._branch_dialog)
+
+  @staticmethod
+  def _valid_startup_sp_dirs() -> list[str]:
+    dirs = []
+    try:
+      entries = sorted(os.scandir("/data"), key=lambda e: e.name.lower())
+    except OSError:
+      return ["/data/openpilot"]
+
+    for entry in entries:
+      if not entry.is_dir(follow_symlinks=True):
+        continue
+      path = entry.path
+      launch_path = os.path.join(path, "launch_openpilot.sh")
+      if os.path.isfile(launch_path):
+        dirs.append(path)
+
+    if "/data/openpilot" not in dirs:
+      dirs.insert(0, "/data/openpilot")
+    return dirs
+
+  @staticmethod
+  def _startup_sp_display_for(path: str) -> str:
+    return os.path.basename(path.rstrip("/")) or path
+
+  def _startup_sp_display(self) -> str:
+    current = ui_state.params.get("StartupSPDir") or "/data/openpilot"
+    return self._startup_sp_display_for(current)
+
+  def _on_select_startup_sp(self):
+    dirs = self._valid_startup_sp_dirs()
+    current = ui_state.params.get("StartupSPDir") or "/data/openpilot"
+    display_to_path = {self._startup_sp_display_for(path): path for path in dirs}
+    options = list(display_to_path.keys())
+    current_display = self._startup_sp_display_for(current)
+    if current_display not in options:
+      options.insert(0, current_display)
+      display_to_path[current_display] = current
+
+    def handle_selection(result: DialogResult):
+      if result == DialogResult.CONFIRM and self._startup_sp_dialog is not None and self._startup_sp_dialog.selection:
+        selection = self._startup_sp_dialog.selection
+        selected_path = display_to_path[selection]
+        ui_state.params.put("StartupSPDir", selected_path)
+        self._startup_sp_btn.action_item.set_value(selection)
+      self._startup_sp_dialog = None
+
+    self._startup_sp_dialog = MultiOptionDialog(tr("Select startup SP directory"), options, current_display, callback=handle_selection)
+    gui_app.push_widget(self._startup_sp_dialog)
