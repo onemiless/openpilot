@@ -130,6 +130,10 @@ void Panda::set_power_saving(bool power_saving) {
   handle->control_write(0xe7, power_saving, 0);
 }
 
+void Panda::set_can_wake_test(uint16_t delay_seconds) {
+  handle->control_write(0xc7, delay_seconds, 0);
+}
+
 void Panda::enable_deepsleep() {
   handle->control_write(0xfb, 0, 0);
 }

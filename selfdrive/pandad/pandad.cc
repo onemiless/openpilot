@@ -397,6 +397,7 @@ void pandad_run(Panda *panda) {
   bool engaged_mads = false;
   bool is_onroad = false;
   bool always_offroad = false;
+  std::optional<bool> can_wake_test_enabled;
 
   // Main loop: receive CAN data and process states
   while (!do_exit && check_connected(panda)) {
@@ -414,6 +415,11 @@ void pandad_run(Panda *panda) {
       engaged_mads = process_mads_heartbeat(&sm);
       is_onroad = params.getBool("IsOnroad");
       always_offroad = panda_safety.getOffroadMode();
+      bool wake_test_requested = params.getBool("CanWakeTestMode");
+      if (!can_wake_test_enabled.has_value() || can_wake_test_enabled.value() != wake_test_requested) {
+        panda->set_can_wake_test(wake_test_requested ? 60U : 0U);
+        can_wake_test_enabled = wake_test_requested;
+      }
       process_panda_state(panda, &pm, engaged, engaged_mads, is_onroad, spoofing_started, always_offroad);
       panda_safety.configureSafetyMode(is_onroad);
     }

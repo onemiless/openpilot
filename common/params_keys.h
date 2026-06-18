@@ -19,6 +19,9 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"CalibrationParams", {PERSISTENT, BYTES}},
     {"CameraDebugExpGain", {CLEAR_ON_MANAGER_START, STRING}},
     {"CameraDebugExpTime", {CLEAR_ON_MANAGER_START, STRING}},
+    // One-shot bench test. Clear after the simulated CAN wake reboots the SoM,
+    // otherwise the device would repeatedly shut itself down on every boot.
+    {"CanWakeTestMode", {CLEAR_ON_MANAGER_START, BOOL, "0"}},
     {"CarBatteryCapacity", {PERSISTENT, INT}},
     {"CarParams", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, BYTES}},
     {"CarParamsCache", {CLEAR_ON_MANAGER_START, BYTES}},

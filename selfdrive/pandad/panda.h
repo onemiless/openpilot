@@ -75,6 +75,7 @@ public:
   bool up_to_date();
   std::optional<std::string> get_serial();
   void set_power_saving(bool power_saving);
+  void set_can_wake_test(uint16_t delay_seconds);
   void enable_deepsleep();
   void send_heartbeat(bool engaged, bool engaged_mads);
   void set_can_speed_kbps(uint16_t bus, uint16_t speed);
