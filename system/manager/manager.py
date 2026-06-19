@@ -144,8 +144,6 @@ def manager_thread() -> None:
 
   started_prev = False
   ignition_prev = False
-  can_wake_test_started_at = time.monotonic() if params.get_bool("CanWakeTestMode") else None
-  can_wake_test_shutdown_requested = False
 
   while True:
     sm.update(1000)
@@ -174,20 +172,6 @@ def manager_thread() -> None:
                        for p in managed_processes.values() if p.proc)
     print(running)
     cloudlog.debug(running)
-
-    can_wake_test_enabled = params.get_bool("CanWakeTestMode")
-    if can_wake_test_enabled and can_wake_test_started_at is None:
-      can_wake_test_started_at = time.monotonic()
-      can_wake_test_shutdown_requested = False
-    elif not can_wake_test_enabled:
-      can_wake_test_started_at = None
-      can_wake_test_shutdown_requested = False
-
-    if (can_wake_test_started_at is not None and not can_wake_test_shutdown_requested
-        and time.monotonic() - can_wake_test_started_at >= 180.0):
-      cloudlog.warning("CAN wake bench test: shutting down after 180 seconds")
-      params.put_bool("DoShutdown", True)
-      can_wake_test_shutdown_requested = True
 
     # send managerState
     msg = messaging.new_message('managerState', valid=True)
