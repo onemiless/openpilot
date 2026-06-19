@@ -40,9 +40,17 @@ class TeslaSettings(BrandSettings):
       label_callback=lambda v: f"{v} km/h",
       description=tr("Switch back to SP longitudinal below this speed."),
     )
+    self.stop_line_deceleration = option_item_sp(
+      title=tr("Stop Line Deceleration"),
+      description=tr("Extra deceleration at traffic light and stop sign stops. Higher values stop earlier; 0 disables the extra deceleration."),
+      param="StopLineDeceleration",
+      min_value=0, max_value=10, value_change_step=1,
+      label_callback=lambda value: f"{value / 10.0:.1f} m/s^2",
+      inline=True,
+    )
     self.items = [self.coop_steering_toggle, self.mads_screen_button,
                   self.dynamic_auto_stock_toggle, self.dyn_auto_speed,
-                  self.dyn_auto_speed_low]
+                  self.dyn_auto_speed_low, self.stop_line_deceleration]
 
   def _on_dyn_auto_stock_toggle(self, state):
     show = state
@@ -74,5 +82,6 @@ class TeslaSettings(BrandSettings):
       mads_screen_button_desc = f"<b>{mads_screen_button_disabled_msg}</b><br><br>{mads_screen_button_desc}"
     self.mads_screen_button.set_description(mads_screen_button_desc)
     self.mads_screen_button.action_item.set_enabled(ui_state.is_offroad())
+    self.stop_line_deceleration.action_item.set_enabled(ui_state.has_longitudinal_control)
 
     self._on_dyn_auto_stock_toggle(self.dynamic_auto_stock_toggle.action_item.get_state())

@@ -87,18 +87,9 @@ class CruiseLayout(Widget):
       description=tr("Enable toggle to allow the model to determine when to use sunnypilot ACC or sunnypilot End to End Longitudinal."),
       param="DynamicExperimentalControl")
 
-    self.stop_line_deceleration = option_item_sp(
-      title=tr("Stop Line Deceleration"),
-      description=tr("Extra deceleration at traffic light and stop sign stops. Higher values stop earlier; 0 disables the extra deceleration."),
-      param="StopLineDeceleration",
-      min_value=0, max_value=10, value_change_step=1,
-      label_callback=lambda value: f"{value / 10.0:.1f} m/s^2",
-      inline=True)
-
     items = [
       self.icbm_toggle,
       self.dec_toggle,
-      self.stop_line_deceleration,
       self.scc_v_toggle,
       self.scc_m_toggle,
       self.custom_acc_toggle,
@@ -154,7 +145,6 @@ class CruiseLayout(Widget):
       if has_long or has_icbm:
         self.custom_acc_toggle.action_item.set_enabled(((has_long and not ui_state.CP.pcmCruise) or has_icbm) and ui_state.is_offroad())
         self.dec_toggle.action_item.set_enabled(has_long)
-        self.stop_line_deceleration.action_item.set_enabled(has_long)
         self.scc_v_toggle.action_item.set_enabled(True)
         self.scc_m_toggle.action_item.set_enabled(True)
       else:
@@ -164,7 +154,6 @@ class CruiseLayout(Widget):
         ui_state.params.remove("SmartCruiseControlMap")
         self.custom_acc_toggle.action_item.set_enabled(False)
         self.dec_toggle.action_item.set_enabled(False)
-        self.stop_line_deceleration.action_item.set_enabled(False)
         self.scc_v_toggle.action_item.set_enabled(False)
         self.scc_m_toggle.action_item.set_enabled(False)
 
