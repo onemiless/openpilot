@@ -20,6 +20,7 @@ from openpilot.selfdrive.selfdrived.events import Events, ET
 from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
 from openpilot.selfdrive.selfdrived.state import StateMachine
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
+from opendbc.sunnypilot.car.tesla.dynamic_acc_debug import log_dynamic_acc
 
 from openpilot.system.version import get_build_metadata
 from openpilot.system.hardware import HARDWARE
@@ -77,6 +78,7 @@ class SelfdriveD(CruiseHelper):
 
     self.tesla_stock_longitudinal_active = False  # cached from carStateSP flags bit 32, avoids race on missed frames
     self.prev_tesla_stock_longitudinal_active = False
+    self.dynamic_acc_debug_lagging = False
     self.pose_calibrator = PoseCalibrator()
     self.calibrated_pose: Pose | None = None
     self.excessive_actuation_check = ExcessiveActuationCheck()
@@ -613,6 +615,39 @@ class SelfdriveD(CruiseHelper):
   def step(self):
     CS = self.data_sample()
     self.update_events(CS)
+    if self.CP.brand == 'tesla':
+      if self.tesla_stock_longitudinal_active != self.prev_tesla_stock_longitudinal_active:
+        log_dynamic_acc(
+          "selfdrived", "stock_state_changed",
+          stock_active=self.tesla_stock_longitudinal_active,
+          previous_stock_active=self.prev_tesla_stock_longitudinal_active,
+          enabled=self.enabled,
+          active=self.active,
+          cruise_enabled=CS.cruiseState.enabled,
+          can_valid=CS.canValid,
+          car_state_sp_flags=int(self.car_state_sp_flags),
+          events=[str(event) for event in self.events.names],
+        )
+
+      lagging = bool(self.rk.lagging)
+      if lagging and not self.dynamic_acc_debug_lagging:
+        not_running = [p.name for p in self.sm['managerState'].processes if not p.running and p.shouldBeRunning]
+        log_dynamic_acc(
+          "selfdrived", "system_lagging",
+          stock_active=self.tesla_stock_longitudinal_active,
+          previous_stock_active=self.prev_tesla_stock_longitudinal_active,
+          enabled=self.enabled,
+          active=self.active,
+          cruise_enabled=CS.cruiseState.enabled,
+          can_valid=CS.canValid,
+          can_timeout=CS.canTimeout,
+          car_state_sp_flags=int(self.car_state_sp_flags),
+          events=[str(event) for event in self.events.names],
+          not_running=not_running,
+          panda_states=[p.to_dict() for p in self.sm['pandaStates']],
+        )
+      self.dynamic_acc_debug_lagging = lagging
+
     if not self.CP.passive and self.initialized:
       self.enabled, self.active = self.state_machine.update(self.events)
     if not self.CP.notCar:

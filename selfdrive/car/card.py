@@ -2,6 +2,7 @@
 import os
 import time
 import threading
+import traceback
 
 import cereal.messaging as messaging
 
@@ -23,6 +24,7 @@ from openpilot.selfdrive.car.helpers import convert_carControlSP, convert_to_cap
 
 from openpilot.sunnypilot.mads.helpers import set_alternative_experience, set_car_specific_params
 from openpilot.sunnypilot.selfdrive.car import interfaces as sunnypilot_interfaces
+from opendbc.sunnypilot.car.tesla.dynamic_acc_debug import log_dynamic_acc
 
 REPLAY = "REPLAY" in os.environ
 
@@ -74,6 +76,7 @@ class Car:
     self.pm = messaging.PubMaster(['sendcan', 'carState', 'carParams', 'carOutput', 'liveTracks'] + ['carParamsSP', 'carStateSP'])
 
     self.can_rcv_cum_timeout_counter = 0
+    self.dynamic_acc_last_blocked_log_nanos = 0
 
     self.CC_prev = car.CarControl.new_message()
     self.CS_prev = car.CarState.new_message()
@@ -193,6 +196,12 @@ class Car:
 
     can_strs = messaging.drain_sock_raw(self.can_sock, wait_for_one=True)
     can_list = can_capnp_to_list(can_strs)
+    if self.CP.brand == 'tesla':
+      for mono_time, frames in can_list:
+        for address, data, source in frames:
+          if source == 192 and address == 0x2B9 and mono_time - self.dynamic_acc_last_blocked_log_nanos >= 100_000_000:
+            self.dynamic_acc_last_blocked_log_nanos = mono_time
+            log_dynamic_acc("card", "safety_blocked_das_control", mono_time=mono_time, data=data.hex())
 
     # Update carState from CAN
     CS, CS_SP = self.CI.update(can_list)
@@ -279,7 +288,21 @@ class Car:
     if self.sm.all_alive(['carControl']):
       # send car controls over can
       now_nanos = self.can_log_mono_time if REPLAY else int(time.monotonic() * 1e9)
-      self.last_actuators_output, can_sends = self.CI.apply(CC, convert_carControlSP(CC_SP), now_nanos)
+      try:
+        self.last_actuators_output, can_sends = self.CI.apply(CC, convert_carControlSP(CC_SP), now_nanos)
+      except Exception as error:
+        if self.CP.brand == 'tesla':
+          log_dynamic_acc(
+            "card", "apply_exception",
+            sync=True,
+            error=repr(error),
+            traceback=traceback.format_exc(),
+            cc_enabled=CC.enabled,
+            cc_long_active=CC.longActive,
+            cruise_enabled=CS.cruiseState.enabled,
+            car_state_sp_flags=int(self.CS_SP_prev.flags),
+          )
+        raise
       self.pm.send('sendcan', can_list_to_can_capnp(can_sends, msgtype='sendcan', valid=CS.canValid))
 
       self.CC_prev = CC
