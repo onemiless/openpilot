@@ -24,29 +24,39 @@ class Beepd:
     self.enable_gpio()
     #self.startup_beep()
 
+  def _write_gpio(self, path, value, timeout=0.5):
+    try:
+      with open(path, "w") as f:
+        f.write(value)
+      return
+    except Exception:
+      pass
+
+    subprocess.run(
+      ["sudo", "sh", "-c", f"printf '%s' '{value}' > {path}"],
+      stderr=subprocess.DEVNULL,
+      stdout=subprocess.DEVNULL,
+      timeout=timeout,
+      check=False,
+    )
+
   def enable_gpio(self):
     # 尝试 export，忽略已 export 的错误
     try:
-      subprocess.run("echo 42 | sudo tee /sys/class/gpio/export",
-                     shell=True,
-                     stderr=subprocess.DEVNULL,
-                     stdout=subprocess.DEVNULL,
-                     encoding='utf8')
+      self._write_gpio("/sys/class/gpio/export", "42", timeout=1.0)
     except Exception:
       pass
-    subprocess.run("echo \"out\" | sudo tee /sys/class/gpio/gpio42/direction",
-                   shell=True,
-                   stderr=subprocess.DEVNULL,
-                   stdout=subprocess.DEVNULL,
-                   encoding='utf8')
+    try:
+      self._write_gpio("/sys/class/gpio/gpio42/direction", "out", timeout=1.0)
+    except Exception:
+      pass
 
   def _beep(self, on):
     val = "1" if on else "0"
-    subprocess.run(f"echo \"{val}\" | sudo tee /sys/class/gpio/gpio42/value",
-                   shell=True,
-                   stderr=subprocess.DEVNULL,
-                   stdout=subprocess.DEVNULL,
-                   encoding='utf8')
+    try:
+      self._write_gpio("/sys/class/gpio/gpio42/value", val)
+    except Exception:
+      pass
 
   def engage(self):
     self._beep(True)
