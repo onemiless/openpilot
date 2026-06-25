@@ -296,7 +296,7 @@ class Device(DeviceSP):
     if brightness is None:
       brightness = BACKLIGHT_OFFROAD
     self._offroad_brightness = min(max(brightness, 0), 100)
-    self._params.put_nonblocking("Brightness", self._offroad_brightness)
+    self._params.put("Brightness", self._offroad_brightness)
 
   def _update_brightness(self):
     clipped_brightness = self._offroad_brightness
