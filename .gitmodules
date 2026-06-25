@@ -1,11 +1,11 @@
 [submodule "panda"]
   path = panda
   url = https://github.com/onemiless/panda.git
-  branch = sp
+  branch = dev0625
 [submodule "opendbc"]
   path = opendbc_repo
   url = https://github.com/onemiless/opendbc.git
-  branch = sp
+  branch = dev0625
 [submodule "msgq"]
   path = msgq_repo
   url = https://github.com/commaai/msgq.git

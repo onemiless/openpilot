@@ -12,7 +12,6 @@ from openpilot.selfdrive.ui.layouts.settings import settings as OP
 from openpilot.selfdrive.ui.layouts.settings.firehose import FirehoseLayout
 from openpilot.selfdrive.ui.layouts.settings.toggles import TogglesLayout
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.cruise import CruiseLayout
-from openpilot.selfdrive.ui.sunnypilot.layouts.settings.can_dashboard import CanDashboardLayout
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.developer import DeveloperLayoutSP
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.device import DeviceLayoutSP
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.display import DisplayLayout
@@ -126,7 +125,6 @@ class SettingsLayoutSP(OP.SettingsLayout):
       OP.PanelType.VEHICLE: PanelInfo(tr("Vehicle"), VehicleLayout(), icon="../../sunnypilot/selfdrive/assets/offroad/icon_vehicle.png"),
       OP.PanelType.FIREHOSE: PanelInfo(tr("Firehose"), FirehoseLayout(), icon="../../sunnypilot/selfdrive/assets/offroad/icon_firehose.png"),
       OP.PanelType.DEVELOPER: PanelInfo(tr("Developer"), DeveloperLayoutSP(), icon="icons/shell.png"),
-      "CAN_DASHBOARD": PanelInfo(tr("CAN Dashboard"), CanDashboardLayout(), icon="icons/speed_limit.png"),
     }
 
   def _draw_sidebar(self, rect: rl.Rectangle):

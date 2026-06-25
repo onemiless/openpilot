@@ -56,7 +56,7 @@ class PowerMonitoring:
       self.car_battery_capacity_uWh = max(self.car_battery_capacity_uWh, 0)
       self.car_battery_capacity_uWh = min(self.car_battery_capacity_uWh, CAR_BATTERY_CAPACITY_uWh)
       if now - self.last_save_time >= 10:
-        self.params.put_nonblocking("CarBatteryCapacity", int(self.car_battery_capacity_uWh))
+        self.params.put("CarBatteryCapacity", int(self.car_battery_capacity_uWh))
         self.last_save_time = now
 
       # First measurement, set integration time
@@ -121,7 +121,4 @@ class PowerMonitoring:
 
   # See if we need to shutdown
   def should_shutdown(self, ignition: bool, in_car: bool, offroad_timestamp: float | None, started_seen: bool):
-    # Keep the device powered while external power is present. Shutdown remains
-    # available through explicit DoShutdown requests, but is never requested by
-    # the offroad time, voltage, or estimated-capacity policy.
     return False

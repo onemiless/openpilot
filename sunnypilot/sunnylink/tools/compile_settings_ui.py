@@ -211,8 +211,6 @@ def _canon_vehicle(page: dict, macros: dict) -> dict:
     if "description" in sec:
       brand_out["description"] = sec["description"]
     brand_out["items"] = [_canon_item(i, macros) for i in sec.get("items", [])]
-    if "sub_panels" in sec and sec["sub_panels"]:
-      brand_out["sub_panels"] = [_canon_sub_panel(sp, macros) for sp in sec["sub_panels"]]
     out[brand] = brand_out
   return out
 

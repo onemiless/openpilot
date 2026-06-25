@@ -24,9 +24,6 @@ EventNameSP = custom.OnroadEventSP.EventName
 
 # get event name from enum
 EVENT_NAME_SP = {v: k for k, v in EventNameSP.schema.enumerants.items()}
-# Ensure longitudinal toggle event names are available even without updated capnp
-EVENT_NAME_SP.setdefault(24, 'stockLongitudinalActive')
-EVENT_NAME_SP.setdefault(25, 'stockLongitudinalInactive')
 
 IS_MICI = HARDWARE.get_device_type() == 'mici'
 
@@ -45,7 +42,7 @@ def speed_limit_adjust_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.
 def speed_limit_pre_active_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
   speed_conv = CV.MS_TO_KPH if metric else CV.MS_TO_MPH
   v_cruise_cluster = CS.vCruiseCluster
-  set_speed = sm['controlsState'].vCruiseDEPRECATED if v_cruise_cluster == 0.0 else v_cruise_cluster
+  set_speed = sm['controlsState'].deprecated.vCruise if v_cruise_cluster == 0.0 else v_cruise_cluster
   set_speed_conv = round(set_speed * speed_conv)
 
   speed_limit_final_last = sm['longitudinalPlanSP'].speedLimit.resolver.speedLimitFinalLast
@@ -248,13 +245,5 @@ EVENTS_SP: dict[int, dict[str, Alert | AlertCallbackType]] = {
       "",
       AlertStatus.normal, AlertSize.none,
       Priority.MID, VisualAlert.none, AudibleAlert.promptRepeat, 1.),
-  },
-
-  24: {  # stockLongitudinalActive
-    ET.WARNING: NormalPermanentAlert("原车ACC：激活", duration=2.),
-  },
-
-  25: {  # stockLongitudinalInactive
-    ET.WARNING: NormalPermanentAlert("OP 纵向：激活", duration=2.),
   },
 }

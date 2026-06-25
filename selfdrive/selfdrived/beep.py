@@ -20,7 +20,7 @@ class Beepd:
   def __init__(self):
     self.current_alert = AudibleAlert.none
     self.beep_thread = None
-    self.last_prompt_repeat_time = 0
+    self.prompt_suppress_until = 0
     self.enable_gpio()
     #self.startup_beep()
 
@@ -50,13 +50,15 @@ class Beepd:
 
   def engage(self):
     self._beep(True)
-    time.sleep(0.005)
+    time.sleep(0.05)
     self._beep(False)
 
   def disengage(self):
-    self._beep(True)
-    time.sleep(0.005)
-    self._beep(False)
+    for _ in range(2):
+      self._beep(True)
+      time.sleep(0.01)
+      self._beep(False)
+      time.sleep(0.01)
 
   def warning(self):
     for _ in range(3):
@@ -71,13 +73,13 @@ class Beepd:
     #self._beep(False)
 
   def dispatch_beep(self, func):
-    # 如果前一个蜂鸣线程还在运行，跳过新的蜂鸣
     if self.beep_thread is not None and self.beep_thread.is_alive():
       return
     self.beep_thread = threading.Thread(target=func, daemon=True)
     self.beep_thread.start()
 
   def update_alert(self, new_alert):
+    now = time.time()
     if new_alert != self.current_alert:
       self.current_alert = new_alert
       print(f"[BEEP] New alert: {new_alert}")
@@ -87,12 +89,13 @@ class Beepd:
         elif new_alert == AudibleAlert.disengage:
           self.dispatch_beep(self.disengage)
         elif new_alert == AudibleAlert.promptRepeat:
-          current_time = time.time()
-          if current_time - self.last_prompt_repeat_time >= 10:
+          if now >= self.prompt_suppress_until:
+            self.prompt_suppress_until = now + 10
             self.dispatch_beep(self.engage)
-            self.last_prompt_repeat_time = current_time
+          else:
+            print(f"[BEEP] promptRepeat suppressed until {self.prompt_suppress_until}")
         elif new_alert in [AudibleAlert.warningSoft, AudibleAlert.warningImmediate, AudibleAlert.promptDistracted]:
-          self.dispatch_beep(self.disengage)
+          self.dispatch_beep(self.warning)
 
   def get_audible_alert(self, sm):
     if sm.updated['selfdriveState']:

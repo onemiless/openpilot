@@ -1664,13 +1664,13 @@
         {
           "id": "updates",
           "title": "Updates",
-          "description": "Control automatic software updates",
+          "description": "Control software updates",
           "items": [
             {
               "key": "DisableUpdates",
               "widget": "toggle",
               "title": "Disable Updates",
-              "description": "When enabled, automatic software updates will be off. This requires a reboot to take effect.",
+              "description": "When enabled, software updates will be off. This requires a reboot to take effect.",
               "enablement": [
                 {
                   "type": "offroad_only"
@@ -2212,44 +2212,6 @@
             "9": "0.9",
             "10": "1.0"
           }
-        }
-      ],
-      "sub_panels": [
-        {
-          "id": "dynamic_auto_stock_settings",
-          "label": "Dynamic Auto Stock Settings",
-          "trigger_key": "DynamicAutoStock",
-          "trigger_condition": {
-            "type": "param",
-            "key": "DynamicAutoStock",
-            "equals": true
-          },
-          "items": [
-            {
-              "key": "DynamicAutoStockSpeedKph",
-              "widget": "option",
-              "title": "High Speed Threshold (\u2192 Stock ACC)",
-              "description": "Above this speed, auto-switch to stock ACC.",
-              "min": 60,
-              "max": 120,
-              "step": 5,
-              "unit": {
-                "metric": "km/h"
-              }
-            },
-            {
-              "key": "DynamicAutoStockSpeedLowKph",
-              "widget": "option",
-              "title": "Low Speed Threshold (\u2192 openpilot)",
-              "description": "Below this speed, auto-switch back to openpilot longitudinal control.",
-              "min": 40,
-              "max": 100,
-              "step": 5,
-              "unit": {
-                "metric": "km/h"
-              }
-            }
-          ]
         }
       ]
     },
