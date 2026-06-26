@@ -134,6 +134,7 @@ class SelfdriveD(CruiseHelper):
     self.enabled = False
     self.active = False
     self.mismatch_counter = 0
+    self._last_controls_mismatch_log_frame = -1000
     self.cruise_mismatch_counter = 0
     self.last_steering_pressed_frame = 0
     self.distance_traveled = 0
@@ -378,8 +379,38 @@ class SelfdriveD(CruiseHelper):
       else:
         safety_mismatch = pandaState.safetyModel not in IGNORED_SAFETY_MODES
 
+      controls_mismatch = (safety_mismatch and self.sm.frame*DT_CTRL > 10.) or pandaState.safetyRxChecksInvalid or self.mismatch_counter >= 200
+      if controls_mismatch and self.sm.frame - self._last_controls_mismatch_log_frame > int(1. / DT_CTRL):
+        self._last_controls_mismatch_log_frame = self.sm.frame
+        cloudlog.event(
+          "controlsMismatch.detail",
+          frame=self.sm.frame,
+          panda_index=i,
+          safety_mismatch=safety_mismatch,
+          safety_rx_checks_invalid=pandaState.safetyRxChecksInvalid,
+          mismatch_counter=self.mismatch_counter,
+          enabled=self.enabled,
+          active=self.active,
+          tesla_stock_longitudinal_active=self.tesla_stock_longitudinal_active,
+          car_state_sp_flags=int(self.car_state_sp_flags),
+          panda_safety_model=str(pandaState.safetyModel),
+          expected_safety_model=str(self.CP.safetyConfigs[i].safetyModel) if i < len(self.CP.safetyConfigs) else "ignored",
+          panda_safety_param=pandaState.safetyParam,
+          expected_safety_param=self.CP.safetyConfigs[i].safetyParam if i < len(self.CP.safetyConfigs) else 0,
+          panda_alternative_experience=pandaState.alternativeExperience,
+          expected_alternative_experience=self.CP.alternativeExperience,
+          panda_controls_allowed=pandaState.controlsAllowed,
+          panda_controls_allowed_lateral=pandaState.controlsAllowedLateral,
+          panda_controls_allowed_longitudinal=pandaState.controlsAllowedLongitudinal,
+          panda_safety_tx_blocked=pandaState.safetyTxBlocked,
+          panda_safety_rx_invalid=pandaState.safetyRxInvalid,
+          cruise_enabled=CS.cruiseState.enabled,
+          cruise_available=CS.cruiseState.available,
+          error=True,
+        )
+
       # safety mismatch allows some time for pandad to set the safety mode and publish it back from panda
-      if (safety_mismatch and self.sm.frame*DT_CTRL > 10.) or pandaState.safetyRxChecksInvalid or self.mismatch_counter >= 200:
+      if controls_mismatch:
         self.events.add(EventName.controlsMismatch)
 
       if log.PandaState.FaultType.relayMalfunction in pandaState.faults:
