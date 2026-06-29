@@ -125,14 +125,18 @@ class EventsBase:
 
     ret = []
     for e in self.events:
-      types = self.get_events_mapping()[e].keys()
+      event_mapping = self.get_events_mapping().get(e)
+      if event_mapping is None:
+        continue
+
+      types = event_mapping.keys()
       for et in event_types:
         if et in types:
-          alert = self.get_events_mapping()[e][et]
+          alert = event_mapping[et]
           if not isinstance(alert, Alert):
             alert = alert(*callback_args)
 
-          if DT_CTRL * (self.event_counters[e] + 1) >= alert.creation_delay:
+          if DT_CTRL * (self.event_counters.get(e, 0) + 1) >= alert.creation_delay:
             alert.alert_type = f"{self.get_event_name(e)}/{et}"
             alert.event_type = et
             ret.append(alert)

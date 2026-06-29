@@ -142,3 +142,8 @@ class TestMADSStateMachine:
         self.state_machine.update()
         assert self.state_machine.state == state
         self.clear_events()
+
+  def test_unknown_sp_event_does_not_crash_alert_creation(self):
+    self.events_sp.add(max(EVENTS_SP) + 1)
+
+    assert self.events_sp.create_alerts([ET.WARNING]) == []
