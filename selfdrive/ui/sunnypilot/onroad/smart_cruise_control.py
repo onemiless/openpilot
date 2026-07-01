@@ -15,6 +15,7 @@ from openpilot.system.ui.widgets import Widget
 
 
 STOCK_LONGITUDINAL_ACTIVE = 32  # TeslaFlagsSP.STOCK_LONGITUDINAL_ACTIVE
+STOCK_ACC_BG_COLOR = rl.Color(255, 215, 0, 200)
 
 
 class SmartCruiseControlRenderer(Widget):
@@ -55,14 +56,17 @@ class SmartCruiseControlRenderer(Widget):
 
   def _draw_icon(self, rect_center_x, rect_height, x_offset, y_offset, name, alpha=1.0):
     text = name
-    font_size = 36
-    padding_v = 5
-    box_width = 160
+    is_dynamic_acc_label = text in ("ACC", "SCC-V")
+    font_size = 72 if is_dynamic_acc_label else 36
+    padding_v = 10 if is_dynamic_acc_label else 5
+    box_width = 320 if is_dynamic_acc_label else 160
 
     sz = measure_text_cached(self.font, text, font_size)
     box_height = int(sz.y + padding_v * 2)
 
-    if self.long_override:
+    if text == "ACC":
+      box_color = rl.Color(STOCK_ACC_BG_COLOR.r, STOCK_ACC_BG_COLOR.g, STOCK_ACC_BG_COLOR.b, int(alpha * STOCK_ACC_BG_COLOR.a))
+    elif self.long_override:
       color = COLORS.OVERRIDE
       box_color = rl.Color(color.r, color.g, color.b, int(alpha * 200))
     else:
