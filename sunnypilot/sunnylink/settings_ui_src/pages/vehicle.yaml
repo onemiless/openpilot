@@ -90,6 +90,15 @@ sections:
     - type: capability
       field: brand
       equals: tesla
+  - key: TeslaSpeedLimitCruiseButtons
+    widget: toggle
+    title: Speed Limit Cruise Buttons
+    description: Use Tesla steering-wheel speed buttons to adjust the stock ACC set speed to the active speed limit target.
+    enablement:
+    - $ref: '#/macros/offroad'
+    - type: capability
+      field: brand
+      equals: tesla
   sub_panels:
   - id: dynamic_auto_stock_settings
     label: Dynamic Auto Stock Settings

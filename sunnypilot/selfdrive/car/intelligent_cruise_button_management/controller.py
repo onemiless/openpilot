@@ -10,6 +10,7 @@ from openpilot.common.constants import CV
 from openpilot.common.realtime import DT_CTRL
 from openpilot.sunnypilot.selfdrive.car.intelligent_cruise_button_management.helpers import get_minimum_set_speed
 from openpilot.sunnypilot.selfdrive.car.cruise_ext import CRUISE_BUTTON_TIMER, update_manual_button_timers
+from opendbc.sunnypilot.car.tesla.values import TeslaFlagsSP
 
 LongitudinalPlanSource = custom.LongitudinalPlanSP.LongitudinalPlanSource
 State = custom.IntelligentCruiseButtonManagement.IntelligentCruiseButtonManagementState
@@ -114,7 +115,8 @@ class IntelligentCruiseButtonManagement:
     self.is_ready = ready and not button_pressed
 
   def run(self, CS: car.CarState, CC: car.CarControl, LP_SP: custom.LongitudinalPlanSP, is_metric: bool) -> None:
-    if self.CP_SP.pcmCruiseSpeed:
+    tesla_speed_limit_buttons = self.CP.brand == "tesla" and bool(self.CP_SP.flags & TeslaFlagsSP.SPEED_LIMIT_CRUISE_BUTTONS)
+    if self.CP_SP.pcmCruiseSpeed and not tesla_speed_limit_buttons:
       return
 
     self.is_metric = is_metric

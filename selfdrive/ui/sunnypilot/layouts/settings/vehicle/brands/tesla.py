@@ -39,8 +39,14 @@ class TeslaSettings(BrandSettings):
       label_callback=lambda value: f"{value / 10.0:.1f} m/s^2",
       inline=True,
     )
+    self.speed_limit_cruise_buttons = toggle_item_sp(
+      title=tr("Speed Limit Cruise Buttons"),
+      param="TeslaSpeedLimitCruiseButtons",
+      description=tr("Use Tesla steering-wheel speed buttons to adjust the stock ACC set speed to the active speed limit target."),
+    )
     self.items = [self.coop_steering_toggle, self.dynamic_auto_stock_toggle, self.dyn_auto_speed,
-                  self.dyn_auto_speed_low, self.stop_line_deceleration]
+                  self.dyn_auto_speed_low, self.stop_line_deceleration,
+                  self.speed_limit_cruise_buttons]
 
   def _on_dyn_auto_stock_toggle(self, state):
     show = state
@@ -61,5 +67,6 @@ class TeslaSettings(BrandSettings):
 
     self.coop_steering_toggle.action_item.set_enabled(ui_state.is_offroad())
     self.stop_line_deceleration.action_item.set_enabled(ui_state.has_longitudinal_control)
+    self.speed_limit_cruise_buttons.action_item.set_enabled(ui_state.is_offroad())
 
     self._on_dyn_auto_stock_toggle(self.dynamic_auto_stock_toggle.action_item.get_state())

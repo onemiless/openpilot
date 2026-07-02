@@ -126,6 +126,7 @@ def initialize_params(params) -> list[dict[str, Any]]:
     "DynamicAutoStock",
     "DynamicAutoStockSpeedKph",
     "DynamicAutoStockSpeedLowKph",
+    "TeslaSpeedLimitCruiseButtons",
   ])
 
   # toyota
