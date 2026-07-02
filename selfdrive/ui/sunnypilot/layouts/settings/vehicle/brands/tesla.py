@@ -7,7 +7,54 @@ See the LICENSE.md file in the root directory for more details.
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.vehicle.brands.base import BrandSettings
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.multilang import tr
-from openpilot.system.ui.sunnypilot.widgets.list_view import option_item_sp, toggle_item_sp
+from openpilot.system.ui.sunnypilot.widgets.list_view import button_item_sp, option_item_sp, toggle_item_sp
+
+MPC_PRESET_MOUMOU = 0
+MPC_PRESET_CURRENT = 1
+MPC_PRESET_CUSTOM = 2
+
+MPC_PRESETS = {
+  MPC_PRESET_MOUMOU: {
+    "MpcXObstacleCost": 300,
+    "MpcJerkCost": 500,
+    "MpcAccelChangeCost": 20000,
+    "MpcDangerZoneCost": 10000,
+    "MpcLeadDangerFactor": 75,
+    "MpcComfortBrake": 250,
+    "MpcStopDistance": 600,
+    "MpcJerkFactorStandard": 100,
+    "MpcTFollowRelaxed": 175,
+    "MpcTFollowStandard": 145,
+    "MpcTFollowAggressive": 125,
+  },
+  MPC_PRESET_CURRENT: {
+    "MpcXObstacleCost": 500,
+    "MpcJerkCost": 300,
+    "MpcAccelChangeCost": 10000,
+    "MpcDangerZoneCost": 8000,
+    "MpcLeadDangerFactor": 35,
+    "MpcComfortBrake": 270,
+    "MpcStopDistance": 450,
+    "MpcJerkFactorStandard": 80,
+    "MpcTFollowRelaxed": 165,
+    "MpcTFollowStandard": 135,
+    "MpcTFollowAggressive": 100,
+  },
+}
+
+MPC_TUNING_ITEMS = [
+  ("MpcStopDistance", "Stop Distance", 100, 1200, 25, lambda v: f"{v / 100.0:.2f} m"),
+  ("MpcComfortBrake", "Comfort Brake", 50, 500, 5, lambda v: f"{v / 100.0:.2f} m/s^2"),
+  ("MpcLeadDangerFactor", "Lead Danger Factor", 1, 500, 5, lambda v: f"{v / 100.0:.2f}"),
+  ("MpcTFollowRelaxed", "T Follow Relaxed", 50, 400, 5, lambda v: f"{v / 100.0:.2f} s"),
+  ("MpcTFollowStandard", "T Follow Standard", 50, 400, 5, lambda v: f"{v / 100.0:.2f} s"),
+  ("MpcTFollowAggressive", "T Follow Aggressive", 50, 400, 5, lambda v: f"{v / 100.0:.2f} s"),
+  ("MpcXObstacleCost", "Obstacle Cost", 1, 1000, 25, lambda v: f"{v / 100.0:.2f}"),
+  ("MpcJerkCost", "Jerk Cost", 1, 1000, 25, lambda v: f"{v / 100.0:.2f}"),
+  ("MpcJerkFactorStandard", "Standard Jerk Factor", 1, 300, 5, lambda v: f"{v / 100.0:.2f}"),
+  ("MpcAccelChangeCost", "Accel Change Cost", 1, 50000, 500, lambda v: f"{v / 100.0:.0f}"),
+  ("MpcDangerZoneCost", "Danger Zone Cost", 1, 50000, 500, lambda v: f"{v / 100.0:.0f}"),
+]
 
 class TeslaSettings(BrandSettings):
   def __init__(self):
@@ -44,14 +91,60 @@ class TeslaSettings(BrandSettings):
       param="TeslaSpeedLimitCruiseButtons",
       description=tr("Use Tesla steering-wheel speed buttons to adjust the stock ACC set speed to the active speed limit target."),
     )
+    self._applying_mpc_preset = False
+    self.mpc_moumou_preset = button_item_sp(
+      title=tr("MPC Preset: dev260628XL"),
+      button_text=tr("Apply"),
+      description=tr("Apply the moumou/dev260628XL-tici longitudinal MPC values."),
+      callback=lambda: self._apply_mpc_preset(MPC_PRESET_MOUMOU),
+      enabled=ui_state.is_offroad,
+    )
+    self.mpc_current_preset = button_item_sp(
+      title=tr("MPC Preset: Current"),
+      button_text=tr("Apply"),
+      description=tr("Apply the current branch longitudinal MPC values."),
+      callback=lambda: self._apply_mpc_preset(MPC_PRESET_CURRENT),
+      enabled=ui_state.is_offroad,
+    )
+    self.mpc_tuning_options = []
+    for param, title, min_value, max_value, step, label_callback in MPC_TUNING_ITEMS:
+      self.mpc_tuning_options.append(option_item_sp(
+        title=tr(title),
+        param=param,
+        min_value=min_value,
+        max_value=max_value,
+        value_change_step=step,
+        label_callback=label_callback,
+        on_value_changed=self._on_mpc_tuning_changed,
+        enabled=ui_state.is_offroad,
+        inline=True,
+      ))
     self.items = [self.coop_steering_toggle, self.dynamic_auto_stock_toggle, self.dyn_auto_speed,
                   self.dyn_auto_speed_low, self.stop_line_deceleration,
-                  self.speed_limit_cruise_buttons]
+                  self.speed_limit_cruise_buttons,
+                  self.mpc_moumou_preset, self.mpc_current_preset,
+                  *self.mpc_tuning_options]
 
   def _on_dyn_auto_stock_toggle(self, state):
     show = state
     self.dyn_auto_speed.set_visible(show)
     self.dyn_auto_speed_low.set_visible(show)
+
+  def _apply_mpc_preset(self, preset):
+    values = MPC_PRESETS[preset]
+    self._applying_mpc_preset = True
+    try:
+      for option in self.mpc_tuning_options:
+        value = values[option.action_item.param_key]
+        option.action_item.set_value(value)
+      ui_state.params.put("MpcTuningPreset", preset, block=True)
+    finally:
+      self._applying_mpc_preset = False
+
+  def _on_mpc_tuning_changed(self, _value):
+    if self._applying_mpc_preset:
+      return
+    ui_state.params.put("MpcTuningPreset", MPC_PRESET_CUSTOM, block=True)
 
   def update_settings(self):
     coop_steering_desc = (

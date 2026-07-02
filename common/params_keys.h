@@ -191,6 +191,18 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"StopLineDeceleration", {PERSISTENT | BACKUP, INT, "5"}},  // tenths of m/s^2
     {"TeslaSpeedLimitCruiseButtons", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TrueVEgoUI", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"MpcTuningPreset", {PERSISTENT | BACKUP, INT, "0"}},  // 0=moumou/dev260628XL-tici, 1=current branch, 2=custom
+    {"MpcXObstacleCost", {PERSISTENT | BACKUP, INT, "300"}},  // hundredths
+    {"MpcJerkCost", {PERSISTENT | BACKUP, INT, "500"}},  // hundredths
+    {"MpcAccelChangeCost", {PERSISTENT | BACKUP, INT, "20000"}},  // hundredths
+    {"MpcDangerZoneCost", {PERSISTENT | BACKUP, INT, "10000"}},  // hundredths
+    {"MpcLeadDangerFactor", {PERSISTENT | BACKUP, INT, "75"}},  // hundredths
+    {"MpcComfortBrake", {PERSISTENT | BACKUP, INT, "250"}},  // hundredths of m/s^2
+    {"MpcStopDistance", {PERSISTENT | BACKUP, INT, "600"}},  // hundredths of m
+    {"MpcJerkFactorStandard", {PERSISTENT | BACKUP, INT, "100"}},  // hundredths
+    {"MpcTFollowRelaxed", {PERSISTENT | BACKUP, INT, "175"}},  // hundredths of s
+    {"MpcTFollowStandard", {PERSISTENT | BACKUP, INT, "145"}},  // hundredths of s
+    {"MpcTFollowAggressive", {PERSISTENT | BACKUP, INT, "125"}},  // hundredths of s
 
     // MADS params
     {"Mads", {PERSISTENT | BACKUP, BOOL, "1"}},
