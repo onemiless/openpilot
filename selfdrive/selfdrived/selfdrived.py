@@ -31,6 +31,7 @@ from openpilot.sunnypilot.selfdrive.car.car_specific import CarSpecificEventsSP
 from openpilot.sunnypilot.selfdrive.car.cruise_helpers import CruiseHelper
 from openpilot.sunnypilot.selfdrive.car.intelligent_cruise_button_management.controller import IntelligentCruiseButtonManagement
 from openpilot.sunnypilot.selfdrive.selfdrived.events import EventsSP
+from openpilot.sunnypilot.selfdrive.selfdrived.tesla_mads_debug import log_tesla_mads_debug
 
 REPLAY = "REPLAY" in os.environ
 SIMULATION = "SIMULATION" in os.environ
@@ -81,6 +82,7 @@ class SelfdriveD(CruiseHelper):
     self.tesla_stock_longitudinal_active = False  # cached from carStateSP flags bit 32, avoids race on missed frames
     self.prev_tesla_stock_longitudinal_active = False
     self.dynamic_acc_debug_lagging = False
+    self.tesla_mads_debug_signatures = {}
     self.pose_calibrator = PoseCalibrator()
     self.calibrated_pose: Pose | None = None
     self.excessive_actuation_check = ExcessiveActuationCheck()
@@ -543,6 +545,97 @@ class SelfdriveD(CruiseHelper):
 
     self.icbm.run(CS, self.sm['carControl'], self.sm['longitudinalPlanSP'], self.is_metric)
 
+  def _event_names(self, events):
+    return [str(event) for event in events.names]
+
+  def _button_events_debug(self, CS):
+    return [{"type": str(be.type), "pressed": bool(be.pressed)} for be in CS.buttonEvents]
+
+  def _panda_states_debug(self):
+    states = []
+    for i, panda_state in enumerate(self.sm['pandaStates']):
+      states.append({
+        "index": i,
+        "safety_model": str(panda_state.safetyModel),
+        "safety_param": int(panda_state.safetyParam),
+        "alternative_experience": int(panda_state.alternativeExperience),
+        "controls_allowed": bool(panda_state.controlsAllowed),
+        "controls_allowed_lateral": bool(panda_state.controlsAllowedLateral),
+        "controls_allowed_longitudinal": bool(panda_state.controlsAllowedLongitudinal),
+        "safety_rx_checks_invalid": bool(panda_state.safetyRxChecksInvalid),
+        "faults": [str(fault) for fault in panda_state.faults],
+      })
+    return states
+
+  def _tesla_mads_debug_snapshot(self, CS, stage):
+    return {
+      "stage": stage,
+      "frame": int(self.sm.frame),
+      "initialized": bool(self.initialized),
+      "enabled": bool(self.enabled),
+      "active": bool(self.active),
+      "state": str(self.state_machine.state),
+      "mads_enabled": bool(self.mads.enabled),
+      "mads_active": bool(self.mads.active),
+      "mads_available": bool(self.mads.enabled_toggle),
+      "mads_state": str(self.mads.state_machine.state),
+      "tesla_stock_longitudinal_active": bool(self.tesla_stock_longitudinal_active),
+      "prev_tesla_stock_longitudinal_active": bool(self.prev_tesla_stock_longitudinal_active),
+      "car_state_sp_flags": int(self.car_state_sp_flags),
+      "cruise_enabled": bool(CS.cruiseState.enabled),
+      "cruise_available": bool(CS.cruiseState.available),
+      "brake_pressed": bool(CS.brakePressed),
+      "gas_pressed": bool(CS.gasPressed),
+      "regen_braking": bool(CS.regenBraking),
+      "steering_pressed": bool(CS.steeringPressed),
+      "steering_disengage": bool(CS.steeringDisengage),
+      "standstill": bool(CS.standstill),
+      "v_ego": float(CS.vEgo),
+      "gear_shifter": str(CS.gearShifter),
+      "events": self._event_names(self.events),
+      "events_sp": self._event_names(self.events_sp),
+      "button_events": self._button_events_debug(CS),
+      "panda_states": self._panda_states_debug(),
+      "mismatch_counter": int(self.mismatch_counter),
+      "lateral_mismatch_counter": int(self.mads.lateral_mismatch_counter),
+    }
+
+  def _log_tesla_mads_debug(self, CS, stage):
+    if self.CP.brand != 'tesla':
+      return
+
+    snapshot = self._tesla_mads_debug_snapshot(CS, stage)
+    signature = (
+      stage,
+      snapshot["enabled"],
+      snapshot["active"],
+      snapshot["state"],
+      snapshot["mads_enabled"],
+      snapshot["mads_active"],
+      snapshot["mads_state"],
+      snapshot["tesla_stock_longitudinal_active"],
+      snapshot["prev_tesla_stock_longitudinal_active"],
+      snapshot["cruise_enabled"],
+      snapshot["cruise_available"],
+      snapshot["brake_pressed"],
+      snapshot["gas_pressed"],
+      snapshot["regen_braking"],
+      snapshot["steering_pressed"],
+      snapshot["steering_disengage"],
+      tuple((p["controls_allowed"], p["controls_allowed_lateral"], p["controls_allowed_longitudinal"], p["safety_rx_checks_invalid"])
+            for p in snapshot["panda_states"]),
+      tuple(snapshot["events"]),
+      tuple(snapshot["events_sp"]),
+      tuple((be["type"], be["pressed"]) for be in snapshot["button_events"]),
+      snapshot["mismatch_counter"],
+      snapshot["lateral_mismatch_counter"],
+    )
+    if signature == self.tesla_mads_debug_signatures.get(stage):
+      return
+
+    self.tesla_mads_debug_signatures[stage] = signature
+    log_tesla_mads_debug("selfdrived", "mads_state", **snapshot)
+
   def data_sample(self):
     _car_state = messaging.recv_one(self.car_state_sock)
     CS = _car_state.carState if _car_state else self.CS_prev
@@ -669,6 +762,7 @@ class SelfdriveD(CruiseHelper):
   def step(self):
     CS = self.data_sample()
     self.update_events(CS)
+    self._log_tesla_mads_debug(CS, "after_update_events")
     if self.CP.brand == 'tesla':
       if self.tesla_stock_longitudinal_active != self.prev_tesla_stock_longitudinal_active:
         log_dynamic_acc(
@@ -706,6 +800,7 @@ class SelfdriveD(CruiseHelper):
       self.enabled, self.active = self.state_machine.update(self.events)
     if not self.CP.notCar:
       self.mads.update(CS)
+    self._log_tesla_mads_debug(CS, "after_mads_update")
     self.update_alerts(CS)
 
     self.publish_selfdriveState(CS)
