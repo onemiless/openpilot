@@ -15,7 +15,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=1; plural=0;\n"
+"Plural-Forms: nplurals=2; plural=0;\n"
 
 #: openpilot/selfdrive/ui/layouts/settings/device.py:152
 #, python-format
@@ -23,7 +23,6 @@ msgid " Steering torque response calibration is complete."
 msgstr " 转向扭矩响应校准完成。"
 
 #: openpilot/selfdrive/ui/layouts/settings/device.py:150
-#, python-format
 msgid " Steering torque response calibration is {}% complete."
 msgstr " 转向扭矩响应校准已完成 {}%。"
 
@@ -79,7 +78,6 @@ msgid "<br><br>Steering lag calibration is complete."
 msgstr "<br><br>转向延迟校准完成。"
 
 #: openpilot/selfdrive/ui/layouts/settings/device.py:138
-#, python-format
 msgid "<br><br>Steering lag calibration is {}% complete."
 msgstr "<br><br>转向延迟校准已完成 {}%。"
 
@@ -199,7 +197,7 @@ msgstr "安稳模式已开启"
 #: openpilot/selfdrive/ui/layouts/sidebar.py:138
 #, python-format
 msgid "CONNECT"
-msgstr "CONNECT"
+msgstr "连接"
 
 #: system/ui/widgets/network.py:376
 #, python-format
@@ -480,10 +478,6 @@ msgstr "断开连接"
 #: system/ui/widgets/network.py
 msgid "DISCONNECTING..."
 msgstr "正在断开..."
-
-#: system/ui/widgets/network.py
-msgid "CONNECT"
-msgstr "连接"
 
 #: system/ui/widgets/network.py:327
 #, python-format
@@ -878,7 +872,7 @@ msgstr "设定"
 #: openpilot/selfdrive/ui/layouts/settings/developer.py:79
 #, python-format
 msgid "UI Debug Mode"
-msgstr ""
+msgstr "用户界面调试模式"
 
 #: openpilot/selfdrive/ui/layouts/settings/software.py:79
 #, python-format
@@ -2421,9 +2415,6 @@ msgstr "新手指南"
 msgid "Trips"
 msgstr "行程"
 
-msgid "UI Debug Mode"
-msgstr "用户界面调试模式"
-
 msgid "Unable to restore the settings, try again later."
 msgstr "无法恢复设置，请稍后再试。"
 
@@ -2728,3 +2719,84 @@ msgid ""
 msgstr ""
 "sunnypilot不会接管油门和刹车的控制权。 "
 "系统将使用丰田原厂的纵向控制功能。"
+
+msgid "Accel Change Cost"
+msgstr "加速度变化成本"
+
+msgid "Apply"
+msgstr "应用"
+
+msgid "Apply the current branch longitudinal MPC values."
+msgstr "应用当前分支的纵向 MPC 参数。"
+
+msgid "Apply the moumou/dev260628XL-tici longitudinal MPC values."
+msgstr "应用 moumou/dev260628XL-tici 的纵向 MPC 参数。"
+
+msgid "Comfort Brake"
+msgstr "舒适制动"
+
+msgid "Danger Zone Cost"
+msgstr "危险区成本"
+
+msgid "Higher values add more safety pressure near a lead and brake sooner. Lower values allow following closer before the danger cost rises."
+msgstr "调大后遇到前车会更早增加安全压力并更早刹车；调小后会允许更靠近前车，危险成本上升得更晚。"
+
+msgid "Higher values assume stronger comfortable braking and can allow closer, later braking. Lower values reserve more distance and feel gentler."
+msgstr "调大后系统认为可接受更强的舒适制动，可能更靠近、刹车更晚；调小后会预留更多距离，制动感更柔和。"
+
+msgid "Higher values increase the aggressive following gap. Lower values reduce the aggressive gap and follow closer."
+msgstr "调大后激进模式跟车距离更远；调小后激进模式跟车距离更近。"
+
+msgid "Higher values increase the relaxed following gap. Lower values reduce the relaxed gap and follow closer."
+msgstr "调大后舒适模式跟车距离更远；调小后舒适模式跟车距离更近。"
+
+msgid "Higher values increase the standard following gap. Lower values reduce the standard gap and follow closer."
+msgstr "调大后标准模式跟车距离更远；调小后标准模式跟车距离更近。"
+
+msgid "Higher values make acceleration and braking smoother but slower to react. Lower values react faster and can feel sharper."
+msgstr "调大后加速和刹车更平顺，但反应更慢；调小后反应更快，动作可能更明显。"
+
+msgid "Higher values make standard mode smoother and less eager to change acceleration. Lower values make standard mode more responsive."
+msgstr "调大后标准模式更平顺，更不容易频繁改变加速度；调小后标准模式反应更灵敏。"
+
+msgid "Higher values make the car target a farther stop and brake earlier. Lower values stop closer to the lead and can feel later."
+msgstr "调大后车辆会以更远的停车距离为目标并更早刹车；调小后会更靠近前车停车，感觉可能更晚。"
+
+msgid "Higher values prioritize keeping the desired obstacle distance. Lower values allow smoother speed tracking but may hold a closer gap."
+msgstr "调大后更重视保持目标障碍物距离；调小后速度跟随可能更平顺，但跟车距离可能更近。"
+
+msgid "Higher values resist acceleration changes and smooth the plan. Lower values let the car change acceleration more quickly."
+msgstr "调大后更抑制加速度变化，规划更平顺；调小后车辆更快改变加速度。"
+
+msgid "Higher values strongly avoid getting too close to a lead. Lower values reduce that penalty and can allow closer following."
+msgstr "调大后会更强烈避免贴近前车；调小后该惩罚更弱，可能允许更近跟车。"
+
+msgid "Jerk Cost"
+msgstr "加加速度成本"
+
+msgid "Lead Danger Factor"
+msgstr "前车危险系数"
+
+msgid "MPC Preset: Current"
+msgstr "MPC 预设：当前分支"
+
+msgid "MPC Preset: dev260628XL"
+msgstr "MPC 预设：dev260628XL"
+
+msgid "Obstacle Cost"
+msgstr "障碍物距离成本"
+
+msgid "Standard Jerk Factor"
+msgstr "标准模式加加速度系数"
+
+msgid "T Follow Aggressive"
+msgstr "激进模式跟车时间"
+
+msgid "T Follow Relaxed"
+msgstr "舒适模式跟车时间"
+
+msgid "T Follow Standard"
+msgstr "标准模式跟车时间"
+
+msgid "Stop Distance"
+msgstr "停车距离"

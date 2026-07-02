@@ -43,17 +43,39 @@ MPC_PRESETS = {
 }
 
 MPC_TUNING_ITEMS = [
-  ("MpcStopDistance", "Stop Distance", 100, 1200, 25, lambda v: f"{v / 100.0:.2f} m"),
-  ("MpcComfortBrake", "Comfort Brake", 50, 500, 5, lambda v: f"{v / 100.0:.2f} m/s^2"),
-  ("MpcLeadDangerFactor", "Lead Danger Factor", 1, 500, 5, lambda v: f"{v / 100.0:.2f}"),
-  ("MpcTFollowRelaxed", "T Follow Relaxed", 50, 400, 5, lambda v: f"{v / 100.0:.2f} s"),
-  ("MpcTFollowStandard", "T Follow Standard", 50, 400, 5, lambda v: f"{v / 100.0:.2f} s"),
-  ("MpcTFollowAggressive", "T Follow Aggressive", 50, 400, 5, lambda v: f"{v / 100.0:.2f} s"),
-  ("MpcXObstacleCost", "Obstacle Cost", 1, 1000, 25, lambda v: f"{v / 100.0:.2f}"),
-  ("MpcJerkCost", "Jerk Cost", 1, 1000, 25, lambda v: f"{v / 100.0:.2f}"),
-  ("MpcJerkFactorStandard", "Standard Jerk Factor", 1, 300, 5, lambda v: f"{v / 100.0:.2f}"),
-  ("MpcAccelChangeCost", "Accel Change Cost", 1, 50000, 500, lambda v: f"{v / 100.0:.0f}"),
-  ("MpcDangerZoneCost", "Danger Zone Cost", 1, 50000, 500, lambda v: f"{v / 100.0:.0f}"),
+  ("MpcStopDistance", "Stop Distance",
+   "Higher values make the car target a farther stop and brake earlier. Lower values stop closer to the lead and can feel later.",
+   100, 1200, 25, lambda v: f"{v / 100.0:.2f} m"),
+  ("MpcComfortBrake", "Comfort Brake",
+   "Higher values assume stronger comfortable braking and can allow closer, later braking. Lower values reserve more distance and feel gentler.",
+   50, 500, 5, lambda v: f"{v / 100.0:.2f} m/s^2"),
+  ("MpcLeadDangerFactor", "Lead Danger Factor",
+   "Higher values add more safety pressure near a lead and brake sooner. Lower values allow following closer before the danger cost rises.",
+   1, 500, 5, lambda v: f"{v / 100.0:.2f}"),
+  ("MpcTFollowRelaxed", "T Follow Relaxed",
+   "Higher values increase the relaxed following gap. Lower values reduce the relaxed gap and follow closer.",
+   50, 400, 5, lambda v: f"{v / 100.0:.2f} s"),
+  ("MpcTFollowStandard", "T Follow Standard",
+   "Higher values increase the standard following gap. Lower values reduce the standard gap and follow closer.",
+   50, 400, 5, lambda v: f"{v / 100.0:.2f} s"),
+  ("MpcTFollowAggressive", "T Follow Aggressive",
+   "Higher values increase the aggressive following gap. Lower values reduce the aggressive gap and follow closer.",
+   50, 400, 5, lambda v: f"{v / 100.0:.2f} s"),
+  ("MpcXObstacleCost", "Obstacle Cost",
+   "Higher values prioritize keeping the desired obstacle distance. Lower values allow smoother speed tracking but may hold a closer gap.",
+   1, 1000, 25, lambda v: f"{v / 100.0:.2f}"),
+  ("MpcJerkCost", "Jerk Cost",
+   "Higher values make acceleration and braking smoother but slower to react. Lower values react faster and can feel sharper.",
+   1, 1000, 25, lambda v: f"{v / 100.0:.2f}"),
+  ("MpcJerkFactorStandard", "Standard Jerk Factor",
+   "Higher values make standard mode smoother and less eager to change acceleration. Lower values make standard mode more responsive.",
+   1, 300, 5, lambda v: f"{v / 100.0:.2f}"),
+  ("MpcAccelChangeCost", "Accel Change Cost",
+   "Higher values resist acceleration changes and smooth the plan. Lower values let the car change acceleration more quickly.",
+   1, 50000, 500, lambda v: f"{v / 100.0:.0f}"),
+  ("MpcDangerZoneCost", "Danger Zone Cost",
+   "Higher values strongly avoid getting too close to a lead. Lower values reduce that penalty and can allow closer following.",
+   1, 50000, 500, lambda v: f"{v / 100.0:.0f}"),
 ]
 
 class TeslaSettings(BrandSettings):
@@ -107,13 +129,14 @@ class TeslaSettings(BrandSettings):
       enabled=ui_state.is_offroad,
     )
     self.mpc_tuning_options = []
-    for param, title, min_value, max_value, step, label_callback in MPC_TUNING_ITEMS:
+    for param, title, description, min_value, max_value, step, label_callback in MPC_TUNING_ITEMS:
       self.mpc_tuning_options.append(option_item_sp(
         title=tr(title),
         param=param,
         min_value=min_value,
         max_value=max_value,
         value_change_step=step,
+        description=tr(description),
         label_callback=label_callback,
         on_value_changed=self._on_mpc_tuning_changed,
         enabled=ui_state.is_offroad,
