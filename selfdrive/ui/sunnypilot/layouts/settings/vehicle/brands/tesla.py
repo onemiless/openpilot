@@ -4,14 +4,31 @@ Copyright (c) 2021-, Haibin Wen, sunnypilot, and a number of other contributors.
 This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
+from collections.abc import Callable
+import json
+
+import pyray as rl
+
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.vehicle.brands.base import BrandSettings
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.sunnypilot.widgets.list_view import button_item_sp, option_item_sp, toggle_item_sp
+from openpilot.system.ui.widgets import DialogResult, Widget
+from openpilot.system.ui.widgets.network import NavButton
+from openpilot.system.ui.widgets.option_dialog import MultiOptionDialog
+from openpilot.system.ui.widgets.scroller_tici import Scroller
 
 MPC_PRESET_MOUMOU = 0
 MPC_PRESET_CURRENT = 1
-MPC_PRESET_CUSTOM = 2
+MPC_PRESET_LABELS = {
+  MPC_PRESET_MOUMOU: "dev260628XL",
+  MPC_PRESET_CURRENT: "Current",
+}
+MPC_PRESET_VALUE_PARAMS = {
+  MPC_PRESET_MOUMOU: "MpcTuningMoumouValues",
+  MPC_PRESET_CURRENT: "MpcTuningCurrentValues",
+}
 
 MPC_PRESETS = {
   MPC_PRESET_MOUMOU: {
@@ -78,6 +95,143 @@ MPC_TUNING_ITEMS = [
    1, 50000, 500, lambda v: f"{v / 100.0:.0f}"),
 ]
 
+
+class TeslaMpcSettingsLayout(Widget):
+  def __init__(self, back_btn_callback: Callable):
+    super().__init__()
+    self._back_button = NavButton(tr("Back"))
+    self._back_button.set_click_callback(back_btn_callback)
+    self._preset_dialog: MultiOptionDialog | None = None
+    self._applying_mpc_preset = False
+    self.mpc_tuning_options = []
+    self._initialize_items()
+    self._scroller = Scroller(self.items, line_separator=True, spacing=0)
+
+  def _initialize_items(self):
+    self._preset_item = button_item_sp(
+      title=lambda: tr("MPC Preset"),
+      button_text=lambda: tr("SELECT"),
+      description=lambda: tr("Choose which MPC preset to use. Changes made below are saved back to the selected preset."),
+      callback=self._show_preset_dialog,
+      enabled=ui_state.is_offroad,
+    )
+    self._preset_item.action_item.set_value(self._preset_label(self._active_preset()))
+
+    for param, title, description, min_value, max_value, step, label_callback in MPC_TUNING_ITEMS:
+      self.mpc_tuning_options.append(option_item_sp(
+        title=tr(title),
+        param=param,
+        min_value=min_value,
+        max_value=max_value,
+        value_change_step=step,
+        description=tr(description),
+        label_callback=label_callback,
+        on_value_changed=self._on_mpc_tuning_changed,
+        enabled=ui_state.is_offroad,
+        inline=True,
+      ))
+
+    self.items = [self._preset_item, *self.mpc_tuning_options]
+    self._apply_mpc_preset(self._active_preset(), update_preset_storage=False)
+
+  @staticmethod
+  def _preset_label(preset):
+    return tr(MPC_PRESET_LABELS.get(preset, MPC_PRESET_LABELS[MPC_PRESET_MOUMOU]))
+
+  @staticmethod
+  def _active_preset():
+    try:
+      return int(ui_state.params.get("MpcTuningPreset", return_default=True))
+    except (TypeError, ValueError):
+      return MPC_PRESET_MOUMOU
+
+  @staticmethod
+  def _preset_values(preset):
+    values = dict(MPC_PRESETS[preset])
+    saved = ui_state.params.get(MPC_PRESET_VALUE_PARAMS[preset])
+    if saved:
+      if isinstance(saved, dict):
+        saved_values = saved
+      else:
+        try:
+          saved_values = json.loads(saved)
+        except (TypeError, json.JSONDecodeError):
+          saved_values = {}
+      if not isinstance(saved_values, dict):
+        saved_values = {}
+      for key, value in saved_values.items():
+        if key in values:
+          values[key] = int(value)
+    return values
+
+  @staticmethod
+  def _save_preset_values(preset, values):
+    ui_state.params.put(MPC_PRESET_VALUE_PARAMS[preset], json.dumps(values, sort_keys=True), block=True)
+
+  def _show_preset_dialog(self):
+    labels = [self._preset_label(preset) for preset in MPC_PRESET_LABELS]
+    current = self._preset_label(self._active_preset())
+
+    def handle_selection(result):
+      if result != DialogResult.CONFIRM or self._preset_dialog is None:
+        return
+
+      selected_label = self._preset_dialog.selection
+      for preset in MPC_PRESET_LABELS:
+        if selected_label == self._preset_label(preset):
+          self._apply_mpc_preset(preset)
+          break
+      self._preset_dialog = None
+
+    self._preset_dialog = MultiOptionDialog(tr("Select MPC Preset"), labels, current, callback=handle_selection)
+    gui_app.push_widget(self._preset_dialog)
+
+  def _apply_mpc_preset(self, preset, update_preset_storage=True):
+    values = self._preset_values(preset)
+    self._applying_mpc_preset = True
+    try:
+      for option in self.mpc_tuning_options:
+        value = values[option.action_item.param_key]
+        option.action_item.set_value(value)
+      ui_state.params.put("MpcTuningPreset", preset, block=True)
+      self._preset_item.action_item.set_value(self._preset_label(preset))
+      if update_preset_storage:
+        self._save_preset_values(preset, values)
+    finally:
+      self._applying_mpc_preset = False
+
+  def _on_mpc_tuning_changed(self, _value):
+    if self._applying_mpc_preset:
+      return
+
+    preset = self._active_preset()
+    values = self._preset_values(preset)
+    for option in self.mpc_tuning_options:
+      values[option.action_item.param_key] = option.action_item.get_value()
+    self._save_preset_values(preset, values)
+
+  def _update_state(self):
+    super()._update_state()
+    self._preset_item.action_item.set_enabled(ui_state.is_offroad())
+    self._preset_item.action_item.set_value(self._preset_label(self._active_preset()))
+    for option in self.mpc_tuning_options:
+      option.action_item.set_enabled(ui_state.is_offroad())
+
+  def _render(self, rect):
+    self._back_button.set_position(self._rect.x, self._rect.y + 20)
+    self._back_button.render()
+    content_rect = rl.Rectangle(
+      rect.x,
+      rect.y + self._back_button.rect.height + 40,
+      rect.width,
+      rect.height - self._back_button.rect.height - 40,
+    )
+    self._scroller.render(content_rect)
+
+  def show_event(self):
+    self._scroller.show_event()
+
+
 class TeslaSettings(BrandSettings):
   def __init__(self):
     super().__init__()
@@ -113,61 +267,24 @@ class TeslaSettings(BrandSettings):
       param="TeslaSpeedLimitCruiseButtons",
       description=tr("Use Tesla steering-wheel speed buttons to adjust the stock ACC set speed to the active speed limit target."),
     )
-    self._applying_mpc_preset = False
-    self.mpc_moumou_preset = button_item_sp(
-      title=tr("MPC Preset: dev260628XL"),
-      button_text=tr("Apply"),
-      description=tr("Apply the moumou/dev260628XL-tici longitudinal MPC values."),
-      callback=lambda: self._apply_mpc_preset(MPC_PRESET_MOUMOU),
+    self.mpc_settings = button_item_sp(
+      title=tr("MPC Params"),
+      button_text=tr("Customize"),
+      description=tr("Adjust longitudinal MPC presets and detailed tuning parameters."),
+      callback=self._show_mpc_settings,
       enabled=ui_state.is_offroad,
     )
-    self.mpc_current_preset = button_item_sp(
-      title=tr("MPC Preset: Current"),
-      button_text=tr("Apply"),
-      description=tr("Apply the current branch longitudinal MPC values."),
-      callback=lambda: self._apply_mpc_preset(MPC_PRESET_CURRENT),
-      enabled=ui_state.is_offroad,
-    )
-    self.mpc_tuning_options = []
-    for param, title, description, min_value, max_value, step, label_callback in MPC_TUNING_ITEMS:
-      self.mpc_tuning_options.append(option_item_sp(
-        title=tr(title),
-        param=param,
-        min_value=min_value,
-        max_value=max_value,
-        value_change_step=step,
-        description=tr(description),
-        label_callback=label_callback,
-        on_value_changed=self._on_mpc_tuning_changed,
-        enabled=ui_state.is_offroad,
-        inline=True,
-      ))
     self.items = [self.coop_steering_toggle, self.dynamic_auto_stock_toggle, self.dyn_auto_speed,
                   self.dyn_auto_speed_low, self.stop_line_deceleration,
-                  self.speed_limit_cruise_buttons,
-                  self.mpc_moumou_preset, self.mpc_current_preset,
-                  *self.mpc_tuning_options]
+                  self.speed_limit_cruise_buttons, self.mpc_settings]
 
   def _on_dyn_auto_stock_toggle(self, state):
     show = state
     self.dyn_auto_speed.set_visible(show)
     self.dyn_auto_speed_low.set_visible(show)
 
-  def _apply_mpc_preset(self, preset):
-    values = MPC_PRESETS[preset]
-    self._applying_mpc_preset = True
-    try:
-      for option in self.mpc_tuning_options:
-        value = values[option.action_item.param_key]
-        option.action_item.set_value(value)
-      ui_state.params.put("MpcTuningPreset", preset, block=True)
-    finally:
-      self._applying_mpc_preset = False
-
-  def _on_mpc_tuning_changed(self, _value):
-    if self._applying_mpc_preset:
-      return
-    ui_state.params.put("MpcTuningPreset", MPC_PRESET_CUSTOM, block=True)
+  def _show_mpc_settings(self):
+    gui_app.push_widget(TeslaMpcSettingsLayout(lambda: gui_app.pop_widget()))
 
   def update_settings(self):
     coop_steering_desc = (
@@ -184,5 +301,6 @@ class TeslaSettings(BrandSettings):
     self.coop_steering_toggle.action_item.set_enabled(ui_state.is_offroad())
     self.stop_line_deceleration.action_item.set_enabled(ui_state.has_longitudinal_control)
     self.speed_limit_cruise_buttons.action_item.set_enabled(ui_state.is_offroad())
+    self.mpc_settings.action_item.set_enabled(ui_state.is_offroad())
 
     self._on_dyn_auto_stock_toggle(self.dynamic_auto_stock_toggle.action_item.get_state())

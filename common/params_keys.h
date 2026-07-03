@@ -203,6 +203,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"MpcTFollowRelaxed", {PERSISTENT | BACKUP, INT, "175"}},  // hundredths of s
     {"MpcTFollowStandard", {PERSISTENT | BACKUP, INT, "145"}},  // hundredths of s
     {"MpcTFollowAggressive", {PERSISTENT | BACKUP, INT, "125"}},  // hundredths of s
+    {"MpcTuningMoumouValues", {PERSISTENT | BACKUP, JSON}},
+    {"MpcTuningCurrentValues", {PERSISTENT | BACKUP, JSON}},
 
     // MADS params
     {"Mads", {PERSISTENT | BACKUP, BOOL, "1"}},

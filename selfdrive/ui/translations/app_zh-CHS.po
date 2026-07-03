@@ -1584,7 +1584,7 @@ msgstr "优先权限：成为sunnypilot赞助者"
 
 msgid "Enable \"Always Offroad\" in Device panel, or turn vehicle off to toggle."
 msgstr ""
-"在设备面板中启用 设置模式 ，或关闭车辆进行切换。"
+"请在设备页面启用“始终离线”，或关闭车辆电源后再切换。"
 
 msgid "Enable Always Offroad"
 msgstr "点击进入  设置模式 "
@@ -2046,7 +2046,7 @@ msgid ""
 "Please enable \"Always Offroad\" mode or turn off the vehicle to adjust "
 "these toggles."
 msgstr ""
-"请启用 设置模式 后再调整这些切换开关"
+"请启用“始终离线”模式，或关闭车辆电源后再调整这些开关。"
 
 msgid "Please reboot and try again."
 msgstr "请重启设备并重试。"
@@ -2479,8 +2479,7 @@ msgid ""
 "When enabled, automatic software updates will be off.<br><b>This requires a "
 "reboot to take effect.</b>"
 msgstr ""
-"启用后，软件更新将被禁用。 "
-"<br><b>此操作需重启后方可生效。</b>"
+"启用后将关闭自动软件更新。<br><b>需要重启后生效。</b>"
 
 msgid ""
 "When enabled, pressing the accelerator pedal will disengage sunnypilot."
@@ -2723,6 +2722,9 @@ msgstr ""
 msgid "Accel Change Cost"
 msgstr "加速度变化成本"
 
+msgid "Adjust longitudinal MPC presets and detailed tuning parameters."
+msgstr "调整纵向 MPC 预设和详细调校参数。"
+
 msgid "Apply"
 msgstr "应用"
 
@@ -2735,8 +2737,44 @@ msgstr "应用 moumou/dev260628XL-tici 的纵向 MPC 参数。"
 msgid "Comfort Brake"
 msgstr "舒适制动"
 
+msgid "Choose which MPC preset to use. Changes made below are saved back to the selected preset."
+msgstr "选择要使用的 MPC 预设。下面调整的参数会保存回当前选中的预设。"
+
+msgid "Checks whether GitHub is reachable through the local proxy."
+msgstr "检查是否可以通过本地代理访问 GitHub。"
+
+msgid "Current"
+msgstr "当前分支"
+
+msgid "Customize"
+msgstr "自定义"
+
 msgid "Danger Zone Cost"
 msgstr "危险区成本"
+
+msgid "dev260628XL"
+msgstr "dev260628XL"
+
+msgid "Done"
+msgstr "完成"
+
+msgid "Downloads the latest proxy subscription into /data/mihomo/config.yaml using the saved subscription URL."
+msgstr "使用已保存的订阅地址，将最新代理订阅下载到 /data/mihomo/config.yaml。"
+
+msgid "Dynamic Auto Stock ACC"
+msgstr "动态自动切换原厂 ACC"
+
+msgid "Auto switch to stock ACC when above speed, close to lead, and ego not decelerating."
+msgstr "当车速高于阈值、接近前车且本车未减速时，自动切换到原厂 ACC。"
+
+msgid "Enter Proxy Subscription URL"
+msgstr "输入代理订阅地址"
+
+msgid "Extra deceleration at traffic light and stop sign stops. Higher values stop earlier; 0 disables the extra deceleration."
+msgstr "在红绿灯和停止标志停车时增加额外减速度。数值越大停车越早；0 表示关闭额外减速。"
+
+msgid "GitHub Proxy"
+msgstr "GitHub 代理"
 
 msgid "Higher values add more safety pressure near a lead and brake sooner. Lower values allow following closer before the danger cost rises."
 msgstr "调大后遇到前车会更早增加安全压力并更早刹车；调小后会允许更靠近前车，危险成本上升得更晚。"
@@ -2777,6 +2815,18 @@ msgstr "加加速度成本"
 msgid "Lead Danger Factor"
 msgstr "前车危险系数"
 
+msgid "Manually starts or stops the local GitHub proxy on 127.0.0.1:7890. This is only for commands that explicitly use the proxy."
+msgstr "手动启动或停止 127.0.0.1:7890 上的本地 GitHub 代理。仅对明确使用该代理的命令生效。"
+
+msgid "missing"
+msgstr "缺失"
+
+msgid "MPC Params"
+msgstr "MPC 参数"
+
+msgid "MPC Preset"
+msgstr "MPC 预设"
+
 msgid "MPC Preset: Current"
 msgstr "MPC 预设：当前分支"
 
@@ -2786,8 +2836,53 @@ msgstr "MPC 预设：dev260628XL"
 msgid "Obstacle Cost"
 msgstr "障碍物距离成本"
 
+msgid "Offroad Brightness"
+msgstr "离线亮度"
+
+msgid "running"
+msgstr "运行中"
+
+msgid "Saved locally on this device only."
+msgstr "仅保存在本设备本地。"
+
+msgid "Saves the proxy subscription URL locally on this device. The URL is not stored in the openpilot repository."
+msgstr "将代理订阅地址保存在本设备本地。该地址不会存入 openpilot 仓库。"
+
+msgid "saved"
+msgstr "已保存"
+
+msgid "Screen Off"
+msgstr "关闭屏幕"
+
+msgid "Select MPC Preset"
+msgstr "选择 MPC 预设"
+
+msgid "Set Proxy Subscription"
+msgstr "设置代理订阅"
+
+msgid "SET"
+msgstr "设置"
+
+msgid "Speed Limit Cruise Buttons"
+msgstr "限速巡航按键"
+
+msgid "Speed Threshold High"
+msgstr "高速阈值"
+
+msgid "Speed Threshold Low"
+msgstr "低速阈值"
+
 msgid "Standard Jerk Factor"
 msgstr "标准模式加加速度系数"
+
+msgid "START"
+msgstr "启动"
+
+msgid "STOP"
+msgstr "停止"
+
+msgid "stopped"
+msgstr "已停止"
 
 msgid "T Follow Aggressive"
 msgstr "激进模式跟车时间"
@@ -2800,3 +2895,30 @@ msgstr "标准模式跟车时间"
 
 msgid "Stop Distance"
 msgstr "停车距离"
+
+msgid "Stop Line Deceleration"
+msgstr "停止线减速度"
+
+msgid "Subscription URL is empty."
+msgstr "订阅地址为空。"
+
+msgid "Switch back to SP longitudinal below this speed."
+msgstr "低于该速度时切回 SP 纵向控制。"
+
+msgid "Switch to stock ACC above this speed."
+msgstr "高于该速度时切换到原厂 ACC。"
+
+msgid "Test GitHub Proxy"
+msgstr "测试 GitHub 代理"
+
+msgid "TEST"
+msgstr "测试"
+
+msgid "Update Proxy Subscription"
+msgstr "更新代理订阅"
+
+msgid "Use Tesla steering-wheel speed buttons to adjust the stock ACC set speed to the active speed limit target."
+msgstr "使用 Tesla 方向盘速度按键，将原厂 ACC 设定速度调整到当前限速目标。"
+
+msgid "WAIT"
+msgstr "等待"
