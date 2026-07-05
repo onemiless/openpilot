@@ -66,7 +66,7 @@ def request_panda_deepsleep() -> None:
       with Panda(serial) as panda:
         if panda.is_internal():
           panda.enable_deepsleep()
-          cloudlog.warning("requested internal panda deep sleep before shutdown", serial=serial)
+          cloudlog.warning(f"requested internal panda wake monitor before shutdown serial={serial}")
   except Exception:
     cloudlog.exception("failed to request panda deep sleep before shutdown")
 

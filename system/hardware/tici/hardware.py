@@ -39,7 +39,7 @@ def request_internal_panda_wake_monitor() -> None:
       with Panda(serial) as panda:
         if panda.is_internal():
           panda.enable_deepsleep()
-          cloudlog.warning("requested internal panda wake monitor before shutdown", serial=serial)
+          cloudlog.warning(f"requested internal panda wake monitor before shutdown serial={serial}")
           wake_monitor_kmsg(f"Tici.shutdown requested panda wake monitor serial={serial}")
           return
     wake_monitor_kmsg("Tici.shutdown found no internal panda")
