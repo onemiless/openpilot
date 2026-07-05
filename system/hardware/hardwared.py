@@ -59,6 +59,17 @@ OFFROAD_DANGER_TEMP = 85 if HARDWARE.get_device_type() == "mici" else 75
 prev_offroad_states: dict[str, tuple[bool, str | None]] = {}
 
 
+def request_panda_deepsleep() -> None:
+  try:
+    from panda import Panda
+    for serial in Panda.list():
+      with Panda(serial) as panda:
+        if panda.is_internal():
+          panda.enable_deepsleep()
+          cloudlog.warning("requested internal panda deep sleep before shutdown", serial=serial)
+  except Exception:
+    cloudlog.exception("failed to request panda deep sleep before shutdown")
+
 
 def set_offroad_alert_if_changed(offroad_alert: str, show_alert: bool, extra_text: str | None=None):
   if prev_offroad_states.get(offroad_alert, None) == (show_alert, extra_text):
@@ -394,6 +405,7 @@ def hardware_thread(end_event, hw_queue) -> None:
     # Check if we need to shut down
     if power_monitor.should_shutdown(onroad_conditions["ignition"], in_car, off_ts, started_seen):
       cloudlog.warning(f"shutting device down, offroad since {off_ts}")
+      request_panda_deepsleep()
       params.put_bool("DoShutdown", True, block=True)
 
     msg.deviceState.started = started_ts is not None and not offroad_mode

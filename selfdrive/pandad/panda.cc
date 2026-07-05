@@ -131,7 +131,7 @@ void Panda::set_power_saving(bool power_saving) {
 }
 
 void Panda::enable_deepsleep() {
-  handle->control_write(0xfb, 0, 0);
+  handle->control_write(0xb5, 0, 0);
 }
 
 void Panda::send_heartbeat(bool engaged, bool engaged_mads) {
