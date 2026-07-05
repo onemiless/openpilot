@@ -117,6 +117,22 @@ class TestPowerMonitoring:
         assert not pm.should_shutdown(ignition, True, start_time, False)
     assert pm.should_shutdown(ignition, True, start_time, True)
 
+  def test_max_time_offroad_shutdown_without_harness_or_started_seen(self, mocker):
+    POWER_DRAW = 0 # To stop shutting down for other reasons
+    pm_patch(mocker, "HARDWARE.get_current_power_draw", POWER_DRAW)
+    self.params.put("MaxTimeOffroad", 1, block=True)
+    pm = PowerMonitoring()
+    pm.car_battery_capacity_uWh = CAR_BATTERY_CAPACITY_uWh
+    ignition = False
+    in_car = False
+    offroad_timestamp = ssb - DELAY_SHUTDOWN_TIME_S - 1
+    started_seen = False
+    pm.calculate(GOOD_VOLTAGE, ignition)
+
+    assert pm.should_shutdown(ignition, in_car,
+                              offroad_timestamp,
+                              started_seen)
+
   def test_car_voltage(self, mocker):
     POWER_DRAW = 0 # To stop shutting down for other reasons
     TEST_TIME = 350
