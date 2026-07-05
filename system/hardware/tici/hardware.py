@@ -15,11 +15,36 @@ from openpilot.system.hardware.tici import iwlist
 from openpilot.system.hardware.tici.lpa import TiciLPA
 from openpilot.system.hardware.tici.pins import GPIO
 from openpilot.system.hardware.tici.amplifier import Amplifier
+from openpilot.common.swaglog import cloudlog
 
 MODEM_STATE_PATH = "/dev/shm/modem"
 
 NetworkType = log.DeviceState.NetworkType
 NetworkStrength = log.DeviceState.NetworkStrength
+
+
+def wake_monitor_kmsg(message: str) -> None:
+  try:
+    with open("/dev/kmsg", "w") as f:
+      f.write(f"<3>[wake-monitor] {message}\n")
+  except Exception:
+    pass
+
+
+def request_internal_panda_wake_monitor() -> None:
+  try:
+    from panda import Panda
+    for serial in Panda.list():
+      with Panda(serial) as panda:
+        if panda.is_internal():
+          panda.enable_deepsleep()
+          cloudlog.warning("requested internal panda wake monitor before shutdown", serial=serial)
+          wake_monitor_kmsg(f"Tici.shutdown requested panda wake monitor serial={serial}")
+          return
+    wake_monitor_kmsg("Tici.shutdown found no internal panda")
+  except Exception as e:
+    cloudlog.exception("failed to request internal panda wake monitor before shutdown")
+    wake_monitor_kmsg(f"Tici.shutdown failed to request panda wake monitor: {type(e).__name__}: {e}")
 
 
 def affine_irq(val, action):
@@ -246,6 +271,8 @@ class Tici(HardwareBase):
     return (self.read_param_file("/sys/class/power_supply/bms/voltage_now", int) * self.read_param_file("/sys/class/power_supply/bms/current_now", int) / 1e12)
 
   def shutdown(self):
+    request_internal_panda_wake_monitor()
+    os.sync()
     os.system("sudo poweroff")
 
   def get_thermal_config(self):
