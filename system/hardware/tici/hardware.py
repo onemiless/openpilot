@@ -15,7 +15,6 @@ from openpilot.system.hardware.tici import iwlist
 from openpilot.system.hardware.tici.lpa import TiciLPA
 from openpilot.system.hardware.tici.pins import GPIO
 from openpilot.system.hardware.tici.amplifier import Amplifier
-from openpilot.common.swaglog import cloudlog
 
 MODEM_STATE_PATH = "/dev/shm/modem"
 
@@ -32,7 +31,9 @@ def wake_monitor_kmsg(message: str) -> None:
 
 
 def request_internal_panda_wake_monitor() -> None:
+  cloudlog = None
   try:
+    from openpilot.common.swaglog import cloudlog
     from panda import Panda
     for serial in Panda.list():
       with Panda(serial) as panda:
@@ -43,7 +44,8 @@ def request_internal_panda_wake_monitor() -> None:
           return
     wake_monitor_kmsg("Tici.shutdown found no internal panda")
   except Exception as e:
-    cloudlog.exception("failed to request internal panda wake monitor before shutdown")
+    if cloudlog is not None:
+      cloudlog.exception("failed to request internal panda wake monitor before shutdown")
     wake_monitor_kmsg(f"Tici.shutdown failed to request panda wake monitor: {type(e).__name__}: {e}")
 
 
