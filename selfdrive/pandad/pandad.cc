@@ -327,6 +327,19 @@ void process_panda_state(Panda *panda, PubMaster *pm, bool engaged, bool engaged
   panda->send_heartbeat(engaged, engaged_mads);
 }
 
+void process_wake_monitor_request(Panda *panda) {
+  static Params params;
+
+  if (!params.getBool("PandaWakeMonitorRequest")) {
+    return;
+  }
+
+  params.remove("PandaWakeMonitorRequest");
+  panda->enable_deepsleep();
+  params.putBool("PandaWakeMonitorAck", true);
+  LOGW("enabled panda wake monitor before shutdown");
+}
+
 void process_peripheral_state(Panda *panda, PubMaster *pm, bool no_fan_control, bool is_onroad) {
   static Params params;
   static SubMaster sm({"deviceState", "driverCameraState"});
@@ -432,6 +445,7 @@ void pandad_run(Panda *panda) {
 
     // Process peripheral state at 20 Hz
     if (rk.frame() % 5 == 0) {
+      process_wake_monitor_request(panda);
       process_peripheral_state(panda, &pm, no_fan_control, is_onroad);
     }
 

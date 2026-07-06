@@ -60,6 +60,20 @@ prev_offroad_states: dict[str, tuple[bool, str | None]] = {}
 
 
 def request_panda_deepsleep() -> None:
+  params = Params()
+  try:
+    params.remove("PandaWakeMonitorAck")
+    params.put_bool("PandaWakeMonitorRequest", True, block=True)
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
+      if params.get_bool("PandaWakeMonitorAck"):
+        cloudlog.warning("pandad acknowledged internal panda wake monitor request")
+        return
+      time.sleep(0.05)
+    cloudlog.warning("timed out waiting for pandad wake monitor acknowledgement")
+  except Exception:
+    cloudlog.exception("failed to request panda deep sleep through pandad")
+
   try:
     from panda import Panda
     for serial in Panda.list():
