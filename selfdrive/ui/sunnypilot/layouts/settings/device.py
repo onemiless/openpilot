@@ -79,6 +79,14 @@ class DeviceLayoutSP(DeviceLayout):
       inline=True,
     )
 
+    self._auto_wake_test_toggle = dual_button_item_sp(
+      left_text=lambda: tr("Auto Wake Test"),
+      left_callback=self._toggle_auto_wake_test,
+      right_text="",
+      right_callback=None,
+    )
+    self._auto_wake_test_toggle.action_item.right_button.set_visible(False)
+
     self._route_recording_toggle = dual_button_item_sp(
       left_text=lambda: tr("Route Recording"),
       left_callback=lambda: ui_state.params.put_bool("DisableRouteRecording",
@@ -132,6 +140,8 @@ class DeviceLayoutSP(DeviceLayout):
       self._device_wake_mode,
       LineSeparator(),
       self._max_time_offroad,
+      LineSeparator(),
+      self._auto_wake_test_toggle,
       LineSeparator(height=10),
       self._route_recording_toggle,
       self._quiet_mode_and_dcam,
@@ -192,6 +202,19 @@ class DeviceLayoutSP(DeviceLayout):
     gui_app.push_widget(ConfirmDialog(_offroad_mode_str, tr("Confirm"), callback=lambda result: _set_always_offroad(result)))
 
   @staticmethod
+  def _toggle_auto_wake_test():
+    auto_wake_test_enabled = not ui_state.params.get_bool("DisablePowerDown")
+
+    if auto_wake_test_enabled:
+      ui_state.params.put_bool("DisablePowerDown", True)
+      return
+
+    ui_state.params.put_bool("DisablePowerDown", False)
+    ui_state.params.put("MaxTimeOffroad", "1")
+    for key in ("DoShutdown", "ForcePowerDown", "PandaWakeMonitorRequest", "PandaWakeMonitorAck"):
+      ui_state.params.remove(key)
+
+  @staticmethod
   def _update_max_time_offroad_label(value: int) -> str:
     label = tr("Always On") if value == 0 else f"{value}" + tr("m") if value < 60 else f"{value // 60}" + tr("h")
     label += tr(" (Default)") if value == 1800 else ""
@@ -220,6 +243,15 @@ class DeviceLayoutSP(DeviceLayout):
     # Route Recording button
     self._route_recording_toggle.action_item.left_button.set_button_style(
       ButtonStyle.PRIMARY if not ui_state.params.get_bool("DisableRouteRecording") else ButtonStyle.NORMAL
+    )
+
+    # Auto Wake Test button
+    auto_wake_test_enabled = not ui_state.params.get_bool("DisablePowerDown")
+    self._auto_wake_test_toggle.action_item.left_button.set_text(
+      tr("Stop Auto Wake Test") if auto_wake_test_enabled else tr("Start Auto Wake Test")
+    )
+    self._auto_wake_test_toggle.action_item.left_button.set_button_style(
+      ButtonStyle.PRIMARY if auto_wake_test_enabled else ButtonStyle.NORMAL
     )
 
     # Quiet Mode button
