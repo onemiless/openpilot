@@ -203,12 +203,14 @@ class DeviceLayoutSP(DeviceLayout):
 
   @staticmethod
   def _toggle_auto_wake_test():
-    auto_wake_test_enabled = not ui_state.params.get_bool("DisablePowerDown")
+    auto_wake_test_enabled = ui_state.params.get_bool("AutoWakeTestEnabled")
 
     if auto_wake_test_enabled:
+      ui_state.params.put_bool("AutoWakeTestEnabled", False)
       ui_state.params.put_bool("DisablePowerDown", True)
       return
 
+    ui_state.params.put_bool("AutoWakeTestEnabled", True)
     ui_state.params.put_bool("DisablePowerDown", False)
     ui_state.params.put("MaxTimeOffroad", "1")
     for key in ("DoShutdown", "ForcePowerDown", "PandaWakeMonitorRequest", "PandaWakeMonitorAck"):
@@ -246,7 +248,7 @@ class DeviceLayoutSP(DeviceLayout):
     )
 
     # Auto Wake Test button
-    auto_wake_test_enabled = not ui_state.params.get_bool("DisablePowerDown")
+    auto_wake_test_enabled = ui_state.params.get_bool("AutoWakeTestEnabled")
     self._auto_wake_test_toggle.action_item.left_button.set_text(
       tr("Stop Auto Wake Test") if auto_wake_test_enabled else tr("Start Auto Wake Test")
     )
