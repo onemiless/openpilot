@@ -55,9 +55,12 @@ class DeveloperLayoutSP(DeveloperLayout):
     self.tesla_mads_log_btn = button_item(tr("Tesla MADS Debug Log"), tr("CLEAR"),
                                           tr("Clear the Tesla MADS diagnostic log used for stock longitudinal/MADS handoff debugging."),
                                           callback=self._on_tesla_mads_log_clear_clicked)
+    self.offline_wake_success_btn = button_item(tr("Offline Wake Success"), tr("CLEAR"),
+                                                tr("Clear the panda latched offline wake success record so the next successful wake can be captured."),
+                                                callback=self._on_offline_wake_success_clear_clicked)
 
     self.items: list = [self.show_advanced_controls, self.enable_github_runner_toggle, self.enable_copyparty_toggle,
-                        self.prebuilt_toggle, self.tesla_mads_log_btn, self.error_log_btn,]
+                        self.prebuilt_toggle, self.offline_wake_success_btn, self.tesla_mads_log_btn, self.error_log_btn,]
 
   @staticmethod
   def _on_prebuilt_toggled(state):
@@ -106,6 +109,35 @@ class DeveloperLayoutSP(DeveloperLayout):
     dialog = ConfirmDialog(message, tr("Clear"), tr("Cancel"), rich=True, callback=self._on_tesla_mads_log_clear_confirm)
     gui_app.push_widget(dialog)
 
+  def _on_offline_wake_success_clear_confirm(self, result):
+    if result != DialogResult.CONFIRM:
+      return
+
+    cleared = 0
+    errors = []
+    try:
+      from panda import Panda
+      for serial in Panda.list():
+        try:
+          with Panda(serial) as panda:
+            panda.clear_wake_success()
+            cleared += 1
+        except Exception as e:
+          errors.append(f"{serial}: {type(e).__name__}: {e}")
+    except Exception as e:
+      errors.append(f"Panda.list: {type(e).__name__}: {e}")
+
+    try:
+      with open("/data/offline_wake_debug.log", "a") as f:
+        f.write(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ui cleared offline wake success cleared={cleared} errors={errors}\n")
+    except Exception:
+      pass
+
+  def _on_offline_wake_success_clear_clicked(self):
+    message = tr("Clear panda offline wake success record?") + "<br><br>" + tr("The next successful offline wake will be captured after clearing.")
+    dialog = ConfirmDialog(message, tr("Clear"), tr("Cancel"), rich=True, callback=self._on_offline_wake_success_clear_confirm)
+    gui_app.push_widget(dialog)
+
   def _update_state(self):
     disable_updates = ui_state.params.get_bool("DisableUpdates")
     show_advanced = ui_state.params.get_bool("ShowAdvancedControls")
@@ -125,5 +157,6 @@ class DeveloperLayoutSP(DeveloperLayout):
 
     self.enable_copyparty_toggle.set_visible(show_advanced)
     self.enable_github_runner_toggle.set_visible(show_advanced and not self._is_release_branch)
+    self.offline_wake_success_btn.set_visible(not self._is_release_branch)
     self.tesla_mads_log_btn.set_visible(not self._is_release_branch)
     self.error_log_btn.set_visible(not self._is_release_branch)

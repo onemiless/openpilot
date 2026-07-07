@@ -14,6 +14,26 @@ from openpilot.common.swaglog import cloudlog
 
 from openpilot.sunnypilot.selfdrive.pandad.rivian_long_flasher import flash_rivian_long
 
+OFFLINE_WAKE_DEBUG_LOG = "/data/offline_wake_debug.log"
+
+
+def offline_wake_debug_log(message: str) -> None:
+  try:
+    with open(OFFLINE_WAKE_DEBUG_LOG, "a") as f:
+      f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} pandad.py {message}\n")
+  except Exception:
+    pass
+
+
+def log_latched_offline_wake_success(panda: Panda, serial: str) -> None:
+  try:
+    wake_success = panda.wake_success()
+    if wake_success.get("latched"):
+      wake_debug = panda.wake_debug()
+      offline_wake_debug_log(f"panda offline wake success latched serial={serial} wake_success={wake_success} wake_debug={wake_debug}")
+  except Exception as e:
+    offline_wake_debug_log(f"failed to read panda wake success latch serial={serial}: {type(e).__name__}: {e}")
+
 
 def get_expected_signature() -> bytes:
   fn = os.path.join(FW_PATH, McuType.H7.config.app_fn)
@@ -57,6 +77,7 @@ def flash_panda(panda_serial: str):
     cloudlog.info("Version mismatch after flashing, exiting")
     raise AssertionError
 
+  log_latched_offline_wake_success(panda, panda_serial)
   panda.close()
 
 
