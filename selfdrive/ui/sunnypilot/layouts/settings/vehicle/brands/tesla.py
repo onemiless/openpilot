@@ -9,11 +9,12 @@ import json
 
 import pyray as rl
 
+from opendbc.sunnypilot.car.tesla.values import TeslaFlagsSP
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.vehicle.brands.base import BrandSettings
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.multilang import tr
-from openpilot.system.ui.sunnypilot.widgets.list_view import button_item_sp, option_item_sp, toggle_item_sp
+from openpilot.system.ui.sunnypilot.widgets.list_view import button_item_sp, multiple_button_item_sp, option_item_sp, toggle_item_sp
 from openpilot.system.ui.widgets import DialogResult, Widget
 from openpilot.system.ui.widgets.network import NavButton
 from openpilot.system.ui.widgets.option_dialog import MultiOptionDialog
@@ -236,6 +237,13 @@ class TeslaSettings(BrandSettings):
   def __init__(self):
     super().__init__()
     self.coop_steering_toggle = toggle_item_sp(tr("Cooperative Steering"), "", param="TeslaCoopSteering")
+    self.mads_screen_button = multiple_button_item_sp(
+      title=lambda: tr("MADS Screen Button"),
+      description="",
+      buttons=[lambda: tr("Off"), lambda: tr("3 Finger"), lambda: tr("4 Finger"), lambda: tr("5 Finger")],
+      param="TeslaMadsScreenButton",
+      inline=False,
+    )
     self.dynamic_auto_stock_toggle = toggle_item_sp(
       title=tr("Dynamic Auto Stock ACC"),
       param="DynamicAutoStock",
@@ -274,7 +282,8 @@ class TeslaSettings(BrandSettings):
       callback=self._show_mpc_settings,
       enabled=ui_state.is_offroad,
     )
-    self.items = [self.coop_steering_toggle, self.dynamic_auto_stock_toggle, self.dyn_auto_speed,
+    self.items = [self.coop_steering_toggle, self.mads_screen_button,
+                  self.dynamic_auto_stock_toggle, self.dyn_auto_speed,
                   self.dyn_auto_speed_low, self.stop_line_deceleration,
                   self.speed_limit_cruise_buttons, self.mpc_settings]
 
@@ -299,6 +308,20 @@ class TeslaSettings(BrandSettings):
     self.coop_steering_toggle.set_description(coop_steering_desc)
 
     self.coop_steering_toggle.action_item.set_enabled(ui_state.is_offroad())
+
+    has_vehicle_bus = ui_state.CP_SP is not None and bool(ui_state.CP_SP.flags & TeslaFlagsSP.HAS_VEHICLE_BUS)
+    self.mads_screen_button.set_visible(has_vehicle_bus)
+
+    mads_screen_button_desc = tr("Use a multi-finger press on the infotainment display as a MADS button.\n" +
+                                 "This allows the use of full MADS functionality when enabled.\n" +
+                                 "<b>Note: Setting this to Off may reset your MADS settings to default.</b>")
+    mads_screen_button_desc += "<br><br>" + tr("Dynamic Auto Stock ACC uses 4 Finger for stock ACC switching. Use 3 Finger or 5 Finger for the MADS button when Dynamic Auto Stock ACC is enabled.")
+    if not ui_state.is_offroad():
+      mads_screen_button_disabled_msg = tr("Enable \"Always Offroad\" in Device panel, or turn vehicle off to change.")
+      mads_screen_button_desc = f"<b>{mads_screen_button_disabled_msg}</b><br><br>{mads_screen_button_desc}"
+    self.mads_screen_button.set_description(mads_screen_button_desc)
+    self.mads_screen_button.action_item.set_enabled(ui_state.is_offroad())
+
     self.stop_line_deceleration.action_item.set_enabled(ui_state.has_longitudinal_control)
     self.speed_limit_cruise_buttons.action_item.set_enabled(ui_state.is_offroad())
     self.mpc_settings.action_item.set_enabled(ui_state.is_offroad())

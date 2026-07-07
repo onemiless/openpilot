@@ -2922,3 +2922,30 @@ msgstr "使用 Tesla 方向盘速度按键，将原厂 ACC 设定速度调整到
 
 msgid "WAIT"
 msgstr "等待"
+
+msgid "MADS Screen Button"
+msgstr "MADS 屏幕按键"
+
+msgid "3 Finger"
+msgstr "3 指"
+
+msgid "4 Finger"
+msgstr "4 指"
+
+msgid "5 Finger"
+msgstr "5 指"
+
+msgid ""
+"Use a multi-finger press on the infotainment display as a MADS button.\n"
+"This allows the use of full MADS functionality when enabled.\n"
+"<b>Note: Setting this to Off may reset your MADS settings to default.</b>"
+msgstr ""
+"在中控屏上使用多指触摸作为 MADS 按键。\n"
+"启用后可使用完整 MADS 功能。\n"
+"<b>注意：设为关闭可能会将 MADS 设置重置为默认值。</b>"
+
+msgid "Dynamic Auto Stock ACC uses 4 Finger for stock ACC switching. Use 3 Finger or 5 Finger for the MADS button when Dynamic Auto Stock ACC is enabled."
+msgstr "动态自动切换原厂 ACC 会使用 4 指进行原厂 ACC 切换。启用动态自动切换原厂 ACC 时，建议使用 3 指或 5 指作为 MADS 按键。"
+
+msgid "Enable \"Always Offroad\" in Device panel, or turn vehicle off to change."
+msgstr "请在设备页面启用“设置模式”，或关闭车辆后再更改。"
