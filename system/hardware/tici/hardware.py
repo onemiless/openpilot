@@ -17,9 +17,18 @@ from openpilot.system.hardware.tici.pins import GPIO
 from openpilot.system.hardware.tici.amplifier import Amplifier
 
 MODEM_STATE_PATH = "/dev/shm/modem"
+OFFLINE_WAKE_DEBUG_LOG = "/data/offline_wake_debug.log"
 
 NetworkType = log.DeviceState.NetworkType
 NetworkStrength = log.DeviceState.NetworkStrength
+
+
+def offline_wake_debug_log(message: str) -> None:
+  try:
+    with open(OFFLINE_WAKE_DEBUG_LOG, "a") as f:
+      f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} tici.hardware {message}\n")
+  except Exception:
+    pass
 
 
 def wake_monitor_kmsg(message: str) -> None:
@@ -32,20 +41,28 @@ def wake_monitor_kmsg(message: str) -> None:
 
 def request_internal_panda_wake_monitor() -> None:
   cloudlog = None
+  offline_wake_debug_log("request_internal_panda_wake_monitor start")
   try:
     from openpilot.common.swaglog import cloudlog
     from panda import Panda
-    for serial in Panda.list():
+    serials = Panda.list()
+    offline_wake_debug_log(f"Panda.list returned {serials}")
+    for serial in serials:
       with Panda(serial) as panda:
-        if panda.is_internal():
+        is_internal = panda.is_internal()
+        offline_wake_debug_log(f"opened panda serial={serial} internal={is_internal}")
+        if is_internal:
           panda.enable_deepsleep()
           cloudlog.warning(f"requested internal panda wake monitor before shutdown serial={serial}")
+          offline_wake_debug_log(f"Panda.enable_deepsleep succeeded serial={serial}")
           wake_monitor_kmsg(f"Tici.shutdown requested panda wake monitor serial={serial}")
           return
+    offline_wake_debug_log("found no internal panda")
     wake_monitor_kmsg("Tici.shutdown found no internal panda")
   except Exception as e:
     if cloudlog is not None:
       cloudlog.exception("failed to request internal panda wake monitor before shutdown")
+    offline_wake_debug_log(f"failed to request panda wake monitor: {type(e).__name__}: {e}")
     wake_monitor_kmsg(f"Tici.shutdown failed to request panda wake monitor: {type(e).__name__}: {e}")
 
 
@@ -273,8 +290,10 @@ class Tici(HardwareBase):
     return (self.read_param_file("/sys/class/power_supply/bms/voltage_now", int) * self.read_param_file("/sys/class/power_supply/bms/current_now", int) / 1e12)
 
   def shutdown(self):
+    offline_wake_debug_log("Tici.shutdown start")
     request_internal_panda_wake_monitor()
     os.sync()
+    offline_wake_debug_log("os.sync complete; running sudo poweroff")
     os.system("sudo poweroff")
 
   def get_thermal_config(self):

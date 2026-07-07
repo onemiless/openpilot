@@ -57,32 +57,54 @@ else:
 OFFROAD_DANGER_TEMP = 85 if HARDWARE.get_device_type() == "mici" else 75
 
 prev_offroad_states: dict[str, tuple[bool, str | None]] = {}
+OFFLINE_WAKE_DEBUG_LOG = "/data/offline_wake_debug.log"
+
+
+def offline_wake_debug_log(message: str) -> None:
+  try:
+    with open(OFFLINE_WAKE_DEBUG_LOG, "a") as f:
+      f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} hardwared {message}\n")
+  except Exception:
+    pass
 
 
 def request_panda_deepsleep() -> None:
   params = Params()
+  offline_wake_debug_log("request_panda_deepsleep start")
   try:
     params.remove("PandaWakeMonitorAck")
     params.put_bool("PandaWakeMonitorRequest", True, block=True)
+    offline_wake_debug_log("PandaWakeMonitorRequest set; waiting for pandad ack")
     deadline = time.monotonic() + 2.0
     while time.monotonic() < deadline:
       if params.get_bool("PandaWakeMonitorAck"):
         cloudlog.warning("pandad acknowledged internal panda wake monitor request")
+        offline_wake_debug_log("pandad acked PandaWakeMonitorRequest")
         return
       time.sleep(0.05)
     cloudlog.warning("timed out waiting for pandad wake monitor acknowledgement")
+    offline_wake_debug_log("pandad ack timeout; falling back to direct Panda.enable_deepsleep")
   except Exception:
     cloudlog.exception("failed to request panda deep sleep through pandad")
+    offline_wake_debug_log("failed to request panda wake monitor through pandad")
 
   try:
     from panda import Panda
-    for serial in Panda.list():
+    serials = Panda.list()
+    offline_wake_debug_log(f"Panda.list returned {serials}")
+    for serial in serials:
       with Panda(serial) as panda:
-        if panda.is_internal():
+        is_internal = panda.is_internal()
+        offline_wake_debug_log(f"opened panda serial={serial} internal={is_internal}")
+        if is_internal:
           panda.enable_deepsleep()
           cloudlog.warning(f"requested internal panda wake monitor before shutdown serial={serial}")
+          offline_wake_debug_log(f"direct Panda.enable_deepsleep succeeded serial={serial}")
+          return
+    offline_wake_debug_log("direct fallback found no internal panda")
   except Exception:
     cloudlog.exception("failed to request panda deep sleep before shutdown")
+    offline_wake_debug_log("direct Panda.enable_deepsleep failed")
 
 
 def set_offroad_alert_if_changed(offroad_alert: str, show_alert: bool, extra_text: str | None=None):
@@ -419,6 +441,7 @@ def hardware_thread(end_event, hw_queue) -> None:
     # Check if we need to shut down
     if power_monitor.should_shutdown(onroad_conditions["ignition"], in_car, off_ts, started_seen):
       cloudlog.warning(f"shutting device down, offroad since {off_ts}")
+      offline_wake_debug_log(f"power_monitor requested shutdown offroad_since={off_ts} in_car={in_car} started_seen={started_seen}")
       request_panda_deepsleep()
       params.put_bool("DoShutdown", True, block=True)
 

@@ -5,7 +5,10 @@
 #include <bitset>
 #include <cassert>
 #include <cerrno>
+#include <ctime>
+#include <fstream>
 #include <memory>
+#include <string>
 #include <thread>
 #include <utility>
 
@@ -31,6 +34,18 @@ struct HwmonState {
 };
 
 HwmonState hwmon_state;
+
+void offline_wake_debug_log(const std::string &message) {
+  std::ofstream log("/data/offline_wake_debug.log", std::ios::app);
+  if (!log.is_open()) {
+    return;
+  }
+
+  std::time_t now = std::time(nullptr);
+  char ts[32] = {};
+  std::strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+  log << ts << " pandad " << message << "\n";
+}
 
 bool check_connected(Panda *panda) {
   if (!panda->connected()) {
@@ -334,9 +349,11 @@ void process_wake_monitor_request(Panda *panda) {
     return;
   }
 
+  offline_wake_debug_log("PandaWakeMonitorRequest received");
   params.remove("PandaWakeMonitorRequest");
   panda->enable_deepsleep();
   params.putBool("PandaWakeMonitorAck", true);
+  offline_wake_debug_log("enable_deepsleep complete; PandaWakeMonitorAck set");
   LOGW("enabled panda wake monitor before shutdown");
 }
 
