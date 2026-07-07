@@ -212,7 +212,7 @@ class DeviceLayoutSP(DeviceLayout):
 
     ui_state.params.put_bool("AutoWakeTestEnabled", True)
     ui_state.params.put_bool("DisablePowerDown", False)
-    ui_state.params.put("MaxTimeOffroad", "1")
+    ui_state.params.put("MaxTimeOffroad", 1)
     for key in ("DoShutdown", "ForcePowerDown", "PandaWakeMonitorRequest", "PandaWakeMonitorAck"):
       ui_state.params.remove(key)
 
