@@ -167,7 +167,12 @@ class TeslaMpcSettingsLayout(Widget):
 
   @staticmethod
   def _save_preset_values(preset, values):
-    ui_state.params.put(MPC_PRESET_VALUE_PARAMS[preset], json.dumps(values, sort_keys=True), block=True)
+    ui_state.params.put(MPC_PRESET_VALUE_PARAMS[preset], json.dumps(values, sort_keys=True))
+
+  @staticmethod
+  def _write_live_mpc_values(values):
+    for key in MPC_PRESETS[MPC_PRESET_MOUMOU]:
+      ui_state.params.put(key, int(values[key]))
 
   def _show_preset_dialog(self):
     labels = [self._preset_label(preset) for preset in MPC_PRESET_LABELS]
@@ -194,7 +199,8 @@ class TeslaMpcSettingsLayout(Widget):
       for option in self.mpc_tuning_options:
         value = values[option.action_item.param_key]
         option.action_item.set_value(value)
-      ui_state.params.put("MpcTuningPreset", preset, block=True)
+      self._write_live_mpc_values(values)
+      ui_state.params.put("MpcTuningPreset", preset)
       self._preset_item.action_item.set_value(self._preset_label(preset))
       if update_preset_storage:
         self._save_preset_values(preset, values)
@@ -209,6 +215,7 @@ class TeslaMpcSettingsLayout(Widget):
     values = self._preset_values(preset)
     for option in self.mpc_tuning_options:
       values[option.action_item.param_key] = option.action_item.get_value()
+    self._write_live_mpc_values(values)
     self._save_preset_values(preset, values)
 
   def _update_state(self):
