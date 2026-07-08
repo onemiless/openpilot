@@ -18,6 +18,8 @@ from openpilot.system.hardware.tici.amplifier import Amplifier
 
 MODEM_STATE_PATH = "/dev/shm/modem"
 OFFLINE_WAKE_DEBUG_LOG = "/data/offline_wake_debug.log"
+PANDA_BOOTKICK_TEST_SENTINEL = "/data/panda_bootkick_test_pending"
+PANDA_BOOTKICK_TEST_TTL = 10 * 60
 
 NetworkType = log.DeviceState.NetworkType
 NetworkStrength = log.DeviceState.NetworkStrength
@@ -39,7 +41,25 @@ def wake_monitor_kmsg(message: str) -> None:
     pass
 
 
+def panda_bootkick_test_pending() -> bool:
+  try:
+    mtime = os.path.getmtime(PANDA_BOOTKICK_TEST_SENTINEL)
+    if time.time() - mtime <= PANDA_BOOTKICK_TEST_TTL:
+      return True
+    os.remove(PANDA_BOOTKICK_TEST_SENTINEL)
+  except FileNotFoundError:
+    pass
+  except Exception:
+    pass
+  return False
+
+
 def request_internal_panda_wake_monitor() -> None:
+  if panda_bootkick_test_pending():
+    offline_wake_debug_log("bootkick test pending; skipping Panda.enable_deepsleep before shutdown")
+    wake_monitor_kmsg("Tici.shutdown skipped panda wake monitor for bootkick test")
+    return
+
   cloudlog = None
   offline_wake_debug_log("request_internal_panda_wake_monitor start")
   try:

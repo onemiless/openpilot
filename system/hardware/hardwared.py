@@ -33,6 +33,8 @@ TEMP_TAU = 5.   # 5s time constant
 DISCONNECT_TIMEOUT = 5.  # wait 5 seconds before going offroad after disconnect so you get an alert
 PANDA_STATES_TIMEOUT = round(1000 / SERVICE_LIST['pandaStates'].frequency * 1.5)  # 1.5x the expected pandaState frequency
 ONROAD_CYCLE_TIME = 1  # seconds to wait offroad after requesting an onroad cycle
+PANDA_BOOTKICK_TEST_SENTINEL = "/data/panda_bootkick_test_pending"
+PANDA_BOOTKICK_TEST_TTL = 10 * 60
 
 ThermalBand = namedtuple("ThermalBand", ['min_temp', 'max_temp'])
 HardwareState = namedtuple("HardwareState", ['network_type', 'network_info', 'network_strength', 'network_stats',
@@ -68,8 +70,25 @@ def offline_wake_debug_log(message: str) -> None:
     pass
 
 
+def panda_bootkick_test_pending() -> bool:
+  try:
+    mtime = os.path.getmtime(PANDA_BOOTKICK_TEST_SENTINEL)
+    if time.time() - mtime <= PANDA_BOOTKICK_TEST_TTL:
+      return True
+    os.remove(PANDA_BOOTKICK_TEST_SENTINEL)
+  except FileNotFoundError:
+    pass
+  except Exception:
+    pass
+  return False
+
+
 def request_panda_deepsleep() -> None:
   params = Params()
+  if panda_bootkick_test_pending():
+    offline_wake_debug_log("bootkick test pending; skipping PandaWakeMonitorRequest before shutdown")
+    return
+
   offline_wake_debug_log("request_panda_deepsleep start")
   try:
     params.remove("PandaWakeMonitorAck")

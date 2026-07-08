@@ -23,6 +23,7 @@ from openpilot.system.ui.sunnypilot.widgets.html_render import HtmlModalSP
 from openpilot.system.ui.sunnypilot.widgets.list_view import toggle_item_sp
 
 PREBUILT_PATH = os.path.join(Paths.comma_home(), "prebuilt") if PC else "/data/openpilot/prebuilt"
+PANDA_BOOTKICK_TEST_SENTINEL = "/data/panda_bootkick_test_pending"
 
 
 class DeveloperLayoutSP(DeveloperLayout):
@@ -172,6 +173,10 @@ class DeveloperLayoutSP(DeveloperLayout):
       pass
 
     if scheduled > 0:
+      try:
+        Path(PANDA_BOOTKICK_TEST_SENTINEL).write_text(str(datetime.datetime.now().timestamp()))
+      except Exception:
+        pass
       ui_state.params.put_bool("DoShutdown", True)
 
   def _on_panda_bootkick_test_clicked(self):

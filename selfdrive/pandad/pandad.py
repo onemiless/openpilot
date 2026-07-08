@@ -15,6 +15,7 @@ from openpilot.common.swaglog import cloudlog
 from openpilot.sunnypilot.selfdrive.pandad.rivian_long_flasher import flash_rivian_long
 
 OFFLINE_WAKE_DEBUG_LOG = "/data/offline_wake_debug.log"
+PANDA_BOOTKICK_TEST_SENTINEL = "/data/panda_bootkick_test_pending"
 
 
 def offline_wake_debug_log(message: str) -> None:
@@ -31,6 +32,9 @@ def log_offline_wake_state(panda: Panda, serial: str) -> None:
     wake_debug = panda.wake_debug()
     health = panda.health()
     offline_wake_debug_log(f"panda offline wake state serial={serial} wake_success={wake_success} wake_debug={wake_debug} health={health}")
+    if os.path.exists(PANDA_BOOTKICK_TEST_SENTINEL):
+      os.remove(PANDA_BOOTKICK_TEST_SENTINEL)
+      offline_wake_debug_log("cleared panda bootkick test sentinel after startup wake-state read")
   except Exception as e:
     offline_wake_debug_log(f"failed to read panda wake state serial={serial}: {type(e).__name__}: {e}")
 
