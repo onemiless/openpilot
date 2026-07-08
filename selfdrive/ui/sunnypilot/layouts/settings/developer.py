@@ -58,9 +58,13 @@ class DeveloperLayoutSP(DeveloperLayout):
     self.offline_wake_success_btn = button_item(tr("Offline Wake Success"), tr("CLEAR"),
                                                 tr("Clear the panda latched offline wake success record so the next successful wake can be captured."),
                                                 callback=self._on_offline_wake_success_clear_clicked)
+    self.panda_bootkick_test_btn = button_item(tr("Panda Bootkick Test"), tr("TEST"),
+                                               tr("Schedule a panda bootkick in 90 seconds and power off the device to test whether panda can wake the SoM."),
+                                               callback=self._on_panda_bootkick_test_clicked)
 
     self.items: list = [self.show_advanced_controls, self.enable_github_runner_toggle, self.enable_copyparty_toggle,
-                        self.prebuilt_toggle, self.offline_wake_success_btn, self.tesla_mads_log_btn, self.error_log_btn,]
+                        self.prebuilt_toggle, self.offline_wake_success_btn, self.panda_bootkick_test_btn,
+                        self.tesla_mads_log_btn, self.error_log_btn,]
 
   @staticmethod
   def _on_prebuilt_toggled(state):
@@ -138,6 +142,46 @@ class DeveloperLayoutSP(DeveloperLayout):
     dialog = ConfirmDialog(message, tr("Clear"), tr("Cancel"), rich=True, callback=self._on_offline_wake_success_clear_confirm)
     gui_app.push_widget(dialog)
 
+  @staticmethod
+  def _on_panda_bootkick_test_confirm(result):
+    if result != DialogResult.CONFIRM:
+      return
+
+    scheduled = 0
+    errors = []
+    delay_s = 90
+    try:
+      from panda import Panda
+      for serial in Panda.list():
+        try:
+          with Panda(serial) as panda:
+            if not panda.is_internal():
+              continue
+            panda.clear_wake_success()
+            panda.schedule_bootkick_test(delay_s)
+            scheduled += 1
+        except Exception as e:
+          errors.append(f"{serial}: {type(e).__name__}: {e}")
+    except Exception as e:
+      errors.append(f"Panda.list: {type(e).__name__}: {e}")
+
+    try:
+      with open("/data/offline_wake_debug.log", "a") as f:
+        f.write(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ui scheduled panda bootkick test delay_s={delay_s} scheduled={scheduled} errors={errors}\n")
+    except Exception:
+      pass
+
+    if scheduled > 0:
+      ui_state.params.put_bool("DoShutdown", True)
+
+  def _on_panda_bootkick_test_clicked(self):
+    message = (
+      tr("Run panda bootkick self-test?") + "<br><br>" +
+      tr("The device will power off now. If panda can wake the SoM, it should boot again in about 90 seconds.")
+    )
+    dialog = ConfirmDialog(message, tr("Test"), tr("Cancel"), rich=True, callback=self._on_panda_bootkick_test_confirm)
+    gui_app.push_widget(dialog)
+
   def _update_state(self):
     disable_updates = ui_state.params.get_bool("DisableUpdates")
     show_advanced = ui_state.params.get_bool("ShowAdvancedControls")
@@ -158,5 +202,6 @@ class DeveloperLayoutSP(DeveloperLayout):
     self.enable_copyparty_toggle.set_visible(show_advanced)
     self.enable_github_runner_toggle.set_visible(show_advanced and not self._is_release_branch)
     self.offline_wake_success_btn.set_visible(not self._is_release_branch)
+    self.panda_bootkick_test_btn.set_visible(not self._is_release_branch)
     self.tesla_mads_log_btn.set_visible(not self._is_release_branch)
     self.error_log_btn.set_visible(not self._is_release_branch)

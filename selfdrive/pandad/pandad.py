@@ -25,14 +25,14 @@ def offline_wake_debug_log(message: str) -> None:
     pass
 
 
-def log_latched_offline_wake_success(panda: Panda, serial: str) -> None:
+def log_offline_wake_state(panda: Panda, serial: str) -> None:
   try:
     wake_success = panda.wake_success()
-    if wake_success.get("latched"):
-      wake_debug = panda.wake_debug()
-      offline_wake_debug_log(f"panda offline wake success latched serial={serial} wake_success={wake_success} wake_debug={wake_debug}")
+    wake_debug = panda.wake_debug()
+    health = panda.health()
+    offline_wake_debug_log(f"panda offline wake state serial={serial} wake_success={wake_success} wake_debug={wake_debug} health={health}")
   except Exception as e:
-    offline_wake_debug_log(f"failed to read panda wake success latch serial={serial}: {type(e).__name__}: {e}")
+    offline_wake_debug_log(f"failed to read panda wake state serial={serial}: {type(e).__name__}: {e}")
 
 
 def get_expected_signature() -> bytes:
@@ -77,7 +77,7 @@ def flash_panda(panda_serial: str):
     cloudlog.info("Version mismatch after flashing, exiting")
     raise AssertionError
 
-  log_latched_offline_wake_success(panda, panda_serial)
+  log_offline_wake_state(panda, panda_serial)
   panda.close()
 
 
