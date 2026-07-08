@@ -167,7 +167,7 @@ class TeslaMpcSettingsLayout(Widget):
 
   @staticmethod
   def _save_preset_values(preset, values):
-    ui_state.params.put(MPC_PRESET_VALUE_PARAMS[preset], json.dumps(values, sort_keys=True))
+    ui_state.params.put(MPC_PRESET_VALUE_PARAMS[preset], values)
 
   @staticmethod
   def _write_live_mpc_values(values):
