@@ -4,6 +4,8 @@ Copyright (c) 2021-, Haibin Wen, sunnypilot, and a number of other contributors.
 This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
+from pathlib import Path
+
 from openpilot.selfdrive.ui.layouts.settings.device import DeviceLayout
 from openpilot.selfdrive.ui.onroad.driver_camera_dialog import DriverCameraDialog
 from openpilot.selfdrive.ui.ui_state import ui_state
@@ -33,6 +35,8 @@ offroad_time_options = {
   11: 1440,
   12: 1800,
 }
+
+PANDA_BOOTKICK_TEST_SENTINEL = "/data/panda_bootkick_test_pending"
 
 
 class DeviceLayoutSP(DeviceLayout):
@@ -207,7 +211,7 @@ class DeviceLayoutSP(DeviceLayout):
 
     if auto_wake_test_enabled:
       ui_state.params.put_bool("AutoWakeTestEnabled", False)
-      ui_state.params.put_bool("DisablePowerDown", True)
+      ui_state.params.remove("DisablePowerDown")
       return
 
     ui_state.params.put_bool("AutoWakeTestEnabled", True)
@@ -215,6 +219,10 @@ class DeviceLayoutSP(DeviceLayout):
     ui_state.params.put("MaxTimeOffroad", 1)
     for key in ("DoShutdown", "ForcePowerDown", "PandaWakeMonitorRequest", "PandaWakeMonitorAck"):
       ui_state.params.remove(key)
+    try:
+      Path(PANDA_BOOTKICK_TEST_SENTINEL).unlink(missing_ok=True)
+    except Exception:
+      pass
 
   @staticmethod
   def _update_max_time_offroad_label(value: int) -> str:
