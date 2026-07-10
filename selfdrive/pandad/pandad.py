@@ -101,6 +101,30 @@ def check_panda_support(panda_serials: list[str]) -> list[str]:
   return []
 
 
+def prepare_internal_panda(attempt: int) -> None:
+  """Leave a responsive panda untouched on first start, then recover progressively."""
+  if attempt == 0:
+    return
+
+  if (attempt % 2) == 1:
+    HARDWARE.reset_internal_panda()
+  else:
+    HARDWARE.recover_internal_panda()
+
+
+def recover_panda_from_dfu(dfu_serial: str, attempts: int = 5, retry_delay: float = 0.25) -> None:
+  """Recover a panda despite the short re-enumeration gap after entering DFU."""
+  for attempt in range(attempts):
+    try:
+      PandaDFU(dfu_serial).recover()
+      return
+    except Exception:
+      if attempt == attempts - 1:
+        raise
+      cloudlog.warning(f"DFU device {dfu_serial} disappeared while opening; retrying ({attempt + 1}/{attempts})")
+      time.sleep(retry_delay)
+
+
 def main() -> None:
   # signal pandad to close the relay and exit
   def signal_handler(signum, frame):
@@ -129,16 +153,13 @@ def main() -> None:
   while not do_exit:
     try:
       cloudlog.event("pandad.flash_and_connect", count=count)
-      if (count % 2) == 0:
-        HARDWARE.reset_internal_panda()
-      else:
-        HARDWARE.recover_internal_panda()
+      prepare_internal_panda(count)
       count += 1
 
       # Flash all Pandas in DFU mode
       for serial in PandaDFU.list():
         cloudlog.info(f"Panda in DFU mode found, flashing recovery {serial}")
-        PandaDFU(serial).recover()
+        recover_panda_from_dfu(serial)
         time.sleep(1)
 
       panda_serials = Panda.list()
