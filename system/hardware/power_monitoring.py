@@ -131,10 +131,9 @@ class PowerMonitoring:
                             offroad_time > VOLTAGE_SHUTDOWN_MIN_OFFROAD_TIME_S)
     car_power_shutdown = low_voltage_shutdown or (self.car_battery_capacity_uWh <= 0)
 
-    should_shutdown = max_time_offroad_shutdown or (car_power_shutdown and in_car)
+    should_shutdown = max_time_offroad_shutdown or (car_power_shutdown and in_car and offroad_time > DELAY_SHUTDOWN_TIME_S)
     should_shutdown &= not ignition
     should_shutdown &= not self.params.get_bool("DisablePowerDown")
-    should_shutdown &= offroad_time > DELAY_SHUTDOWN_TIME_S
     should_shutdown |= self.params.get_bool("ForcePowerDown")
     should_shutdown &= max_time_offroad_shutdown or started_seen or (now > MIN_ON_TIME_S)
     return should_shutdown

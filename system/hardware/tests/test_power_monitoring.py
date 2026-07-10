@@ -133,6 +133,15 @@ class TestPowerMonitoring:
                               offroad_timestamp,
                               started_seen)
 
+  def test_explicit_one_minute_max_time_is_not_blocked_by_shutdown_delay(self, mocker):
+    POWER_DRAW = 0
+    pm_patch(mocker, "HARDWARE.get_current_power_draw", POWER_DRAW)
+    self.params.put("MaxTimeOffroad", 1, block=True)
+    pm = PowerMonitoring()
+    pm.car_battery_capacity_uWh = CAR_BATTERY_CAPACITY_uWh
+
+    assert pm.should_shutdown(False, False, ssb - 61, False)
+
   def test_car_voltage(self, mocker):
     POWER_DRAW = 0 # To stop shutting down for other reasons
     TEST_TIME = 350
