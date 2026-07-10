@@ -351,6 +351,13 @@ void process_wake_monitor_request(Panda *panda) {
 
   offline_wake_debug_log("PandaWakeMonitorRequest received");
   params.remove("PandaWakeMonitorRequest");
+  if (auto health = panda->get_state()) {
+    offline_wake_debug_log(util::string_format("pre-enable health harness=%u ignition_line=%u ignition_can=%u sbu1=%u sbu2=%u som_reset=%u",
+                                               health->car_harness_status_pkt, health->ignition_line_pkt, health->ignition_can_pkt,
+                                               health->sbu1_voltage_mV, health->sbu2_voltage_mV, health->som_reset_triggered));
+  } else {
+    offline_wake_debug_log("pre-enable health unavailable");
+  }
   panda->enable_deepsleep();
   params.putBool("PandaWakeMonitorAck", true);
   offline_wake_debug_log("enable_deepsleep complete; PandaWakeMonitorAck set");
