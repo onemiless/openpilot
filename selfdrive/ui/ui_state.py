@@ -17,6 +17,7 @@ from openpilot.selfdrive.ui.sunnypilot.ui_state import UIStateSP, DeviceSP
 
 BACKLIGHT_OFFROAD = 65 if HARDWARE.get_device_type() == "mici" else 50
 PARAM_UPDATE_TIME = 1 / 5.0
+INITIAL_OFFROAD_INTERACTIVE_TIMEOUT = 120
 
 
 class UIStatus(Enum):
@@ -275,7 +276,7 @@ class Device(DeviceSP):
 
     # do initial reset
     if self._interaction_time <= 0:
-      self._reset_interactive_timeout()
+      self._interaction_time = time.monotonic() + max(self.interactive_timeout, INITIAL_OFFROAD_INTERACTIVE_TIMEOUT)
 
     self._update_brightness()
     self._update_wakefulness()
