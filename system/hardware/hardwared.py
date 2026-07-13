@@ -117,8 +117,10 @@ def request_panda_deepsleep() -> None:
         offline_wake_debug_log(f"opened panda serial={serial} internal={is_internal}")
         if is_internal:
           panda.enable_deepsleep()
+          params.remove("PandaWakeMonitorRequest")
+          params.put_bool("PandaWakeMonitorAck", True, block=True)
           cloudlog.warning(f"requested internal panda wake monitor before shutdown serial={serial}")
-          offline_wake_debug_log(f"direct Panda.enable_deepsleep succeeded serial={serial}")
+          offline_wake_debug_log(f"direct Panda.enable_deepsleep succeeded serial={serial}; PandaWakeMonitorAck set")
           return
     offline_wake_debug_log("direct fallback found no internal panda")
   except Exception:
