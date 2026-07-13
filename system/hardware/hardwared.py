@@ -23,7 +23,9 @@ from openpilot.system.statsd import statlog
 from openpilot.common.swaglog import cloudlog
 from openpilot.system.hardware.power_monitoring import PowerMonitoring
 from openpilot.system.hardware.fan_controller import FanController
-from openpilot.system.hardware.offline_wake import offline_wake_debug_log as _offline_wake_debug_log, panda_bootkick_test_pending
+from openpilot.system.hardware.offline_wake import (
+  acknowledge_panda_wake_monitor, offline_wake_debug_log as _offline_wake_debug_log, panda_bootkick_test_pending,
+)
 from openpilot.system.version import terms_version, training_version, get_build_metadata, terms_version_sp
 
 ThermalStatus = log.DeviceState.ThermalStatus
@@ -95,8 +97,7 @@ def request_panda_deepsleep() -> None:
         offline_wake_debug_log(f"opened panda serial={serial} internal={is_internal}")
         if is_internal:
           panda.enable_deepsleep()
-          params.remove("PandaWakeMonitorRequest")
-          params.put_bool("PandaWakeMonitorAck", True, block=True)
+          acknowledge_panda_wake_monitor(params)
           cloudlog.warning(f"requested internal panda wake monitor before shutdown serial={serial}")
           offline_wake_debug_log(f"direct Panda.enable_deepsleep succeeded serial={serial}; PandaWakeMonitorAck set")
           return

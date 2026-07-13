@@ -5,6 +5,27 @@ from concurrent.futures import ThreadPoolExecutor
 from openpilot.system.hardware import offline_wake
 
 
+class FakeParams:
+  def __init__(self):
+    self.removed = []
+    self.written = []
+
+  def remove(self, key):
+    self.removed.append(key)
+
+  def put_bool(self, key, value, block=False):
+    self.written.append((key, value, block))
+
+
+def test_acknowledge_panda_wake_monitor():
+  params = FakeParams()
+
+  offline_wake.acknowledge_panda_wake_monitor(params)
+
+  assert params.removed == ["PandaWakeMonitorRequest"]
+  assert params.written == [("PandaWakeMonitorAck", True, True)]
+
+
 def test_offline_wake_debug_log(tmp_path, monkeypatch):
   log_path = tmp_path / "offline_wake_debug.log"
   monkeypatch.setattr(offline_wake, "OFFLINE_WAKE_DEBUG_LOG", str(log_path))

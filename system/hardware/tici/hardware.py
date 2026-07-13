@@ -15,7 +15,9 @@ from openpilot.system.hardware.tici import iwlist
 from openpilot.system.hardware.tici.lpa import TiciLPA
 from openpilot.system.hardware.tici.pins import GPIO
 from openpilot.system.hardware.tici.amplifier import Amplifier
-from openpilot.system.hardware.offline_wake import offline_wake_debug_log as _offline_wake_debug_log, panda_bootkick_test_pending
+from openpilot.system.hardware.offline_wake import (
+  acknowledge_panda_wake_monitor, offline_wake_debug_log as _offline_wake_debug_log, panda_bootkick_test_pending,
+)
 
 MODEM_STATE_PATH = "/dev/shm/modem"
 NetworkType = log.DeviceState.NetworkType
@@ -47,7 +49,8 @@ def request_internal_panda_wake_monitor() -> None:
     from openpilot.common.swaglog import cloudlog
     from panda import Panda
 
-    if Params().get_bool("PandaWakeMonitorAck"):
+    params = Params()
+    if params.get_bool("PandaWakeMonitorAck"):
       offline_wake_debug_log("PandaWakeMonitorAck already set; skipping duplicate Panda.enable_deepsleep")
       wake_monitor_kmsg("Tici.shutdown using existing panda wake monitor ack")
       return
@@ -63,8 +66,9 @@ def request_internal_panda_wake_monitor() -> None:
           wake_debug = panda.wake_debug()
           offline_wake_debug_log(f"pre-direct-enable health={health} wake_debug={wake_debug}")
           panda.enable_deepsleep()
+          acknowledge_panda_wake_monitor(params)
           cloudlog.warning(f"requested internal panda wake monitor before shutdown serial={serial}")
-          offline_wake_debug_log(f"Panda.enable_deepsleep succeeded serial={serial} post_wake_debug={panda.wake_debug()}")
+          offline_wake_debug_log(f"Panda.enable_deepsleep succeeded serial={serial}; PandaWakeMonitorAck set post_wake_debug={panda.wake_debug()}")
           wake_monitor_kmsg(f"Tici.shutdown requested panda wake monitor serial={serial}")
           return
     offline_wake_debug_log("found no internal panda")

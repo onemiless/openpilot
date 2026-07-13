@@ -10,6 +10,11 @@ PANDA_BOOTKICK_TEST_SENTINEL = "/data/panda_bootkick_test_pending"
 PANDA_BOOTKICK_TEST_TTL = 10 * 60
 
 
+def acknowledge_panda_wake_monitor(params) -> None:
+  params.remove("PandaWakeMonitorRequest")
+  params.put_bool("PandaWakeMonitorAck", True, block=True)
+
+
 @contextmanager
 def _panda_bootkick_test_lock() -> Generator[None, None, None]:
   lock_path = f"{PANDA_BOOTKICK_TEST_SENTINEL}.lock"
