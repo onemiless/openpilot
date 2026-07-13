@@ -11,19 +11,15 @@ from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params
 from openpilot.system.hardware import HARDWARE
 from openpilot.common.swaglog import cloudlog
+from openpilot.system.hardware.offline_wake import offline_wake_debug_log as _offline_wake_debug_log
 
 from openpilot.sunnypilot.selfdrive.pandad.rivian_long_flasher import flash_rivian_long
 
-OFFLINE_WAKE_DEBUG_LOG = "/data/offline_wake_debug.log"
 PANDA_BOOTKICK_TEST_SENTINEL = "/data/panda_bootkick_test_pending"
 
 
 def offline_wake_debug_log(message: str) -> None:
-  try:
-    with open(OFFLINE_WAKE_DEBUG_LOG, "a") as f:
-      f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} pandad.py {message}\n")
-  except Exception:
-    pass
+  _offline_wake_debug_log("pandad.py", message)
 
 
 def log_offline_wake_state(panda: Panda, serial: str) -> None:

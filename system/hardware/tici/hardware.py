@@ -15,22 +15,15 @@ from openpilot.system.hardware.tici import iwlist
 from openpilot.system.hardware.tici.lpa import TiciLPA
 from openpilot.system.hardware.tici.pins import GPIO
 from openpilot.system.hardware.tici.amplifier import Amplifier
+from openpilot.system.hardware.offline_wake import offline_wake_debug_log as _offline_wake_debug_log, panda_bootkick_test_pending
 
 MODEM_STATE_PATH = "/dev/shm/modem"
-OFFLINE_WAKE_DEBUG_LOG = "/data/offline_wake_debug.log"
-PANDA_BOOTKICK_TEST_SENTINEL = "/data/panda_bootkick_test_pending"
-PANDA_BOOTKICK_TEST_TTL = 10 * 60
-
 NetworkType = log.DeviceState.NetworkType
 NetworkStrength = log.DeviceState.NetworkStrength
 
 
 def offline_wake_debug_log(message: str) -> None:
-  try:
-    with open(OFFLINE_WAKE_DEBUG_LOG, "a") as f:
-      f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} tici.hardware {message}\n")
-  except Exception:
-    pass
+  _offline_wake_debug_log("tici.hardware", message)
 
 
 def wake_monitor_kmsg(message: str) -> None:
@@ -39,19 +32,6 @@ def wake_monitor_kmsg(message: str) -> None:
       f.write(f"<3>[wake-monitor] {message}\n")
   except Exception:
     pass
-
-
-def panda_bootkick_test_pending() -> bool:
-  try:
-    mtime = os.path.getmtime(PANDA_BOOTKICK_TEST_SENTINEL)
-    if time.time() - mtime <= PANDA_BOOTKICK_TEST_TTL:
-      return True
-    os.remove(PANDA_BOOTKICK_TEST_SENTINEL)
-  except FileNotFoundError:
-    pass
-  except Exception:
-    pass
-  return False
 
 
 def request_internal_panda_wake_monitor() -> None:

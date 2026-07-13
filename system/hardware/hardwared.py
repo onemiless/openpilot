@@ -23,6 +23,7 @@ from openpilot.system.statsd import statlog
 from openpilot.common.swaglog import cloudlog
 from openpilot.system.hardware.power_monitoring import PowerMonitoring
 from openpilot.system.hardware.fan_controller import FanController
+from openpilot.system.hardware.offline_wake import offline_wake_debug_log as _offline_wake_debug_log, panda_bootkick_test_pending
 from openpilot.system.version import terms_version, training_version, get_build_metadata, terms_version_sp
 
 ThermalStatus = log.DeviceState.ThermalStatus
@@ -33,9 +34,6 @@ TEMP_TAU = 5.   # 5s time constant
 DISCONNECT_TIMEOUT = 5.  # wait 5 seconds before going offroad after disconnect so you get an alert
 PANDA_STATES_TIMEOUT = round(1000 / SERVICE_LIST['pandaStates'].frequency * 1.5)  # 1.5x the expected pandaState frequency
 ONROAD_CYCLE_TIME = 1  # seconds to wait offroad after requesting an onroad cycle
-PANDA_BOOTKICK_TEST_SENTINEL = "/data/panda_bootkick_test_pending"
-PANDA_BOOTKICK_TEST_TTL = 10 * 60
-
 ThermalBand = namedtuple("ThermalBand", ['min_temp', 'max_temp'])
 HardwareState = namedtuple("HardwareState", ['network_type', 'network_info', 'network_strength', 'network_stats',
                                              'network_metered', 'modem_temps'])
@@ -59,28 +57,8 @@ else:
 OFFROAD_DANGER_TEMP = 85 if HARDWARE.get_device_type() == "mici" else 75
 
 prev_offroad_states: dict[str, tuple[bool, str | None]] = {}
-OFFLINE_WAKE_DEBUG_LOG = "/data/offline_wake_debug.log"
-
-
 def offline_wake_debug_log(message: str) -> None:
-  try:
-    with open(OFFLINE_WAKE_DEBUG_LOG, "a") as f:
-      f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} hardwared {message}\n")
-  except Exception:
-    pass
-
-
-def panda_bootkick_test_pending() -> bool:
-  try:
-    mtime = os.path.getmtime(PANDA_BOOTKICK_TEST_SENTINEL)
-    if time.time() - mtime <= PANDA_BOOTKICK_TEST_TTL:
-      return True
-    os.remove(PANDA_BOOTKICK_TEST_SENTINEL)
-  except FileNotFoundError:
-    pass
-  except Exception:
-    pass
-  return False
+  _offline_wake_debug_log("hardwared", message)
 
 
 def request_panda_deepsleep() -> None:
