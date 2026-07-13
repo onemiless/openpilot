@@ -11,12 +11,9 @@ from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params
 from openpilot.system.hardware import HARDWARE
 from openpilot.common.swaglog import cloudlog
-from openpilot.system.hardware.offline_wake import offline_wake_debug_log as _offline_wake_debug_log
+from openpilot.system.hardware.offline_wake import clear_panda_bootkick_test_sentinel, offline_wake_debug_log as _offline_wake_debug_log
 
 from openpilot.sunnypilot.selfdrive.pandad.rivian_long_flasher import flash_rivian_long
-
-PANDA_BOOTKICK_TEST_SENTINEL = "/data/panda_bootkick_test_pending"
-
 
 def offline_wake_debug_log(message: str) -> None:
   _offline_wake_debug_log("pandad.py", message)
@@ -28,8 +25,7 @@ def log_offline_wake_state(panda: Panda, serial: str) -> None:
     wake_debug = panda.wake_debug()
     health = panda.health()
     offline_wake_debug_log(f"panda offline wake state serial={serial} wake_success={wake_success} wake_debug={wake_debug} health={health}")
-    if os.path.exists(PANDA_BOOTKICK_TEST_SENTINEL):
-      os.remove(PANDA_BOOTKICK_TEST_SENTINEL)
+    if clear_panda_bootkick_test_sentinel():
       offline_wake_debug_log("cleared panda bootkick test sentinel after startup wake-state read")
   except Exception as e:
     offline_wake_debug_log(f"failed to read panda wake state serial={serial}: {type(e).__name__}: {e}")
