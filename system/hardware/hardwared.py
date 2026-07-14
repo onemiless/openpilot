@@ -24,7 +24,8 @@ from openpilot.common.swaglog import cloudlog
 from openpilot.system.hardware.power_monitoring import PowerMonitoring
 from openpilot.system.hardware.fan_controller import FanController
 from openpilot.system.hardware.offline_wake import (
-  acknowledge_panda_wake_monitor, offline_wake_debug_log as _offline_wake_debug_log, panda_bootkick_test_pending,
+  CanActivityTracker, acknowledge_panda_wake_monitor, offline_wake_debug_log as _offline_wake_debug_log,
+  panda_bootkick_test_pending,
 )
 from openpilot.system.version import terms_version, training_version, get_build_metadata, terms_version_sp
 
@@ -197,7 +198,7 @@ def hw_state_thread(end_event, hw_queue):
 
 def hardware_thread(end_event, hw_queue) -> None:
   pm = messaging.PubMaster(['deviceState'])
-  sm = messaging.SubMaster(["peripheralState", "gpsLocationExternal", "selfdriveState", "pandaStates"], poll="pandaStates")
+  sm = messaging.SubMaster(["peripheralState", "gpsLocationExternal", "selfdriveState", "pandaStates", "can"], poll="pandaStates")
 
   count = 0
 
@@ -234,6 +235,8 @@ def hardware_thread(end_event, hw_queue) -> None:
 
   params = Params()
   power_monitor = PowerMonitoring()
+  can_activity = CanActivityTracker()
+  shutdown_waiting_for_can_quiet = False
 
   uptime_offroad: float = params.get("UptimeOffroad", return_default=True)
   uptime_onroad: float = params.get("UptimeOnroad", return_default=True)
@@ -246,6 +249,8 @@ def hardware_thread(end_event, hw_queue) -> None:
 
   while not end_event.is_set():
     sm.update(PANDA_STATES_TIMEOUT)
+
+    can_activity.update(sm.updated["can"] and len(sm["can"]) > 0)
 
     pandaStates = sm['pandaStates']
     peripheralState = sm['peripheralState']
@@ -439,11 +444,27 @@ def hardware_thread(end_event, hw_queue) -> None:
     msg.deviceState.somPowerDrawW = som_power_draw
 
     # Check if we need to shut down
-    if power_monitor.should_shutdown(onroad_conditions["ignition"], in_car, off_ts, started_seen):
+    shutdown_requested = power_monitor.should_shutdown(onroad_conditions["ignition"], in_car, off_ts, started_seen)
+    force_power_down = params.get_bool("ForcePowerDown")
+    if shutdown_requested and (force_power_down or can_activity.is_quiet()):
       cloudlog.warning(f"shutting device down, offroad since {off_ts}")
-      offline_wake_debug_log(f"power_monitor requested shutdown offroad_since={off_ts} in_car={in_car} started_seen={started_seen}")
+      shutdown_log_fields = [
+        "power_monitor requested shutdown",
+        f"offroad_since={off_ts}",
+        f"in_car={in_car}",
+        f"started_seen={started_seen}",
+        f"can_quiet_s={can_activity.quiet_duration():.1f}",
+        f"forced={force_power_down}",
+      ]
+      offline_wake_debug_log(" ".join(shutdown_log_fields))
       request_panda_deepsleep()
       params.put_bool("DoShutdown", True, block=True)
+    elif shutdown_requested:
+      if not shutdown_waiting_for_can_quiet:
+        offline_wake_debug_log(f"shutdown delayed until CAN quiet offroad_since={off_ts} in_car={in_car} started_seen={started_seen}")
+      shutdown_waiting_for_can_quiet = True
+    else:
+      shutdown_waiting_for_can_quiet = False
 
     msg.deviceState.started = started_ts is not None and not offroad_mode
     msg.deviceState.startedMonoTime = int(1e9*(started_ts or 0))

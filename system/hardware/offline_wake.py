@@ -8,6 +8,24 @@ from contextlib import contextmanager
 OFFLINE_WAKE_DEBUG_LOG = "/data/offline_wake_debug.log"
 PANDA_BOOTKICK_TEST_SENTINEL = "/data/panda_bootkick_test_pending"
 PANDA_BOOTKICK_TEST_TTL = 10 * 60
+OFFLINE_SHUTDOWN_CAN_QUIET_S = 60.0
+
+
+class CanActivityTracker:
+  def __init__(self, quiet_s: float = OFFLINE_SHUTDOWN_CAN_QUIET_S, now: float | None = None) -> None:
+    self.quiet_s = quiet_s
+    self.last_activity = time.monotonic() if now is None else now
+
+  def update(self, active: bool, now: float | None = None) -> None:
+    if active:
+      self.last_activity = time.monotonic() if now is None else now
+
+  def quiet_duration(self, now: float | None = None) -> float:
+    current_time = time.monotonic() if now is None else now
+    return max(0.0, current_time - self.last_activity)
+
+  def is_quiet(self, now: float | None = None) -> bool:
+    return self.quiet_duration(now) >= self.quiet_s
 
 
 def acknowledge_panda_wake_monitor(params) -> None:
