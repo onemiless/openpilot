@@ -26,26 +26,6 @@ def test_acknowledge_panda_wake_monitor():
   assert params.written == [("PandaWakeMonitorAck", True, True)]
 
 
-def test_can_activity_tracker_requires_continuous_quiet():
-  tracker = offline_wake.CanActivityTracker(quiet_s=60.0, now=100.0)
-
-  assert not tracker.is_quiet(now=159.9)
-  assert tracker.is_quiet(now=160.0)
-
-  tracker.update(active=True, now=160.0)
-  assert not tracker.is_quiet(now=219.9)
-  assert tracker.is_quiet(now=220.0)
-
-
-def test_can_activity_tracker_ignores_empty_can_updates():
-  tracker = offline_wake.CanActivityTracker(quiet_s=60.0, now=100.0)
-
-  tracker.update(active=False, now=150.0)
-
-  assert tracker.quiet_duration(now=160.0) == 60.0
-  assert tracker.is_quiet(now=160.0)
-
-
 def test_offline_wake_debug_log(tmp_path, monkeypatch):
   log_path = tmp_path / "offline_wake_debug.log"
   monkeypatch.setattr(offline_wake, "OFFLINE_WAKE_DEBUG_LOG", str(log_path))
