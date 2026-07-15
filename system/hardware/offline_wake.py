@@ -8,6 +8,42 @@ from contextlib import contextmanager
 OFFLINE_WAKE_DEBUG_LOG = "/data/offline_wake_debug.log"
 PANDA_BOOTKICK_TEST_SENTINEL = "/data/panda_bootkick_test_pending"
 PANDA_BOOTKICK_TEST_TTL = 10 * 60
+OFFLINE_SHUTDOWN_CAN_QUIET_S = 10.0
+OFFLINE_SHUTDOWN_CAN_MAX_WAIT_S = 30.0
+
+
+class CanShutdownGate:
+  def __init__(self, quiet_s: float = OFFLINE_SHUTDOWN_CAN_QUIET_S,
+               max_wait_s: float = OFFLINE_SHUTDOWN_CAN_MAX_WAIT_S, now: float | None = None) -> None:
+    self.quiet_s = quiet_s
+    self.max_wait_s = max_wait_s
+    self.last_activity = time.monotonic() if now is None else now
+    self.requested_since: float | None = None
+
+  def update(self, active: bool, now: float | None = None) -> None:
+    if active:
+      self.last_activity = time.monotonic() if now is None else now
+
+  def reset_request(self) -> None:
+    self.requested_since = None
+
+  def quiet_duration(self, now: float | None = None) -> float:
+    current_time = time.monotonic() if now is None else now
+    return max(0.0, current_time - self.last_activity)
+
+  def wait_duration(self, now: float | None = None) -> float:
+    if self.requested_since is None:
+      return 0.0
+    current_time = time.monotonic() if now is None else now
+    return max(0.0, current_time - self.requested_since)
+
+  def ready(self, force: bool = False, now: float | None = None) -> bool:
+    current_time = time.monotonic() if now is None else now
+    if self.requested_since is None:
+      self.requested_since = current_time
+    quiet = self.quiet_duration(current_time) >= self.quiet_s
+    wait_expired = self.wait_duration(current_time) >= self.max_wait_s
+    return force or quiet or wait_expired
 
 
 def acknowledge_panda_wake_monitor(params) -> None:

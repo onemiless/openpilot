@@ -26,6 +26,30 @@ def test_acknowledge_panda_wake_monitor():
   assert params.written == [("PandaWakeMonitorAck", True, True)]
 
 
+def test_can_shutdown_gate_accepts_quiet_bus():
+  gate = offline_wake.CanShutdownGate(quiet_s=10.0, max_wait_s=30.0, now=100.0)
+
+  assert not gate.ready(now=109.9)
+  assert gate.ready(now=110.0)
+
+
+def test_can_shutdown_gate_bounds_busy_bus_wait():
+  gate = offline_wake.CanShutdownGate(quiet_s=10.0, max_wait_s=30.0, now=100.0)
+
+  assert not gate.ready(now=100.0)
+  gate.update(active=True, now=129.9)
+  assert not gate.ready(now=129.9)
+  gate.update(active=True, now=130.0)
+  assert gate.ready(now=130.0)
+
+
+def test_can_shutdown_gate_force_bypasses_wait():
+  gate = offline_wake.CanShutdownGate(quiet_s=10.0, max_wait_s=30.0, now=100.0)
+  gate.update(active=True, now=101.0)
+
+  assert gate.ready(force=True, now=101.0)
+
+
 def test_offline_wake_debug_log(tmp_path, monkeypatch):
   log_path = tmp_path / "offline_wake_debug.log"
   monkeypatch.setattr(offline_wake, "OFFLINE_WAKE_DEBUG_LOG", str(log_path))
