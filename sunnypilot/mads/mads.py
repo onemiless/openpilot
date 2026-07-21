@@ -141,6 +141,11 @@ class ModularAssistiveDrivingSystem:
     elif any(not ps.controlsAllowedLateral for ps in self.selfdrive.sm['pandaStates']
              if ps.safetyModel not in IGNORED_SAFETY_MODES):
       self.lateral_mismatch_counter += 1
+    else:
+      # Panda state arrives on a separate socket. A brief stale sample during
+      # a longitudinal-source handoff must not accumulate with unrelated
+      # samples and later disengage lateral control.
+      self.lateral_mismatch_counter = 0
 
   def update_events(self, CS: structs.CarState):
     if not self.selfdrive.enabled and self.enabled:

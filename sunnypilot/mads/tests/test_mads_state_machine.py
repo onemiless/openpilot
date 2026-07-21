@@ -7,9 +7,12 @@ See the LICENSE.md file in the root directory for more details.
 
 import pytest
 from pytest_mock import MockerFixture
+from types import SimpleNamespace
 
 from cereal import custom
 from openpilot.common.realtime import DT_CTRL
+from opendbc.car import structs
+from openpilot.sunnypilot.mads.mads import ModularAssistiveDrivingSystem
 from openpilot.sunnypilot.mads.state import StateMachine, SOFT_DISABLE_TIME
 from openpilot.selfdrive.selfdrived.events import ET, NormalPermanentAlert, Events
 from openpilot.sunnypilot.selfdrive.selfdrived.events import EventsSP, EVENTS_SP
@@ -147,3 +150,22 @@ class TestMADSStateMachine:
     self.events_sp.add(max(EVENTS_SP) + 1)
 
     assert self.events_sp.create_alerts([ET.WARNING]) == []
+
+
+def test_lateral_mismatch_requires_consecutive_panda_samples():
+  mads = ModularAssistiveDrivingSystem.__new__(ModularAssistiveDrivingSystem)
+  mads.active = True
+  mads.lateral_mismatch_counter = 0
+  panda_state = SimpleNamespace(controlsAllowedLateral=False, safetyModel=structs.CarParams.SafetyModel.tesla)
+  mads.selfdrive = SimpleNamespace(enabled=False, sm={"pandaStates": [panda_state]})
+
+  mads.data_sample()
+  assert mads.lateral_mismatch_counter == 1
+
+  panda_state.controlsAllowedLateral = True
+  mads.data_sample()
+  assert mads.lateral_mismatch_counter == 0
+
+  panda_state.controlsAllowedLateral = False
+  mads.data_sample()
+  assert mads.lateral_mismatch_counter == 1
