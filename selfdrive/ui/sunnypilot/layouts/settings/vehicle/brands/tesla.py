@@ -257,6 +257,32 @@ class TeslaSettings(BrandSettings):
       description=lambda: tr("Auto switch to stock ACC when above speed, close to lead, and ego not decelerating."),
       callback=self._on_dyn_auto_stock_toggle,
     )
+    self.ap_hybrid_toggle = toggle_item_sp(
+      title=tr("AP Hybrid Control (Experimental)"),
+      param="TeslaApHybrid",
+      description=tr("When Tesla AP is active, keep Tesla longitudinal and automatic speed-limit control while sunnypilot controls steering. " +
+                     "Blinker and curve overrides do not replace AP Hybrid decisions."),
+      enabled=ui_state.is_offroad,
+    )
+    self.camera_offset = option_item_sp(
+      title=tr("Lane Center Offset"),
+      param="CameraOffset",
+      min_value=-20, max_value=20, value_change_step=1,
+      use_float_scaling=True,
+      label_callback=lambda value: f"{value / 100.0:+.2f} m",
+      description=tr("Virtually shifts the camera model: positive moves the planned center left and negative moves it right. " +
+                     "Changes fade in gradually and can take up to about 10 seconds. Adjust only while parked, then verify on a straight road " +
+                     "with clear lane lines. Curves and lane changes may not behave like a simple path translation."),
+      enabled=ui_state.is_offroad,
+      inline=True,
+    )
+    self.reset_camera_offset = button_item_sp(
+      title=tr("Reset Lane Center Offset"),
+      button_text=tr("RESET"),
+      description=tr("Restore the camera model offset to 0.00 m."),
+      callback=lambda: self.camera_offset.action_item.set_value(0),
+      enabled=ui_state.is_offroad,
+    )
     self.dyn_auto_speed = option_item_sp(
       title=tr("Speed Threshold High"), param="DynamicAutoStockSpeedKph",
       min_value=40, max_value=120, value_change_step=5,
@@ -290,7 +316,8 @@ class TeslaSettings(BrandSettings):
       enabled=ui_state.is_offroad,
     )
     self.items = [self.coop_steering_toggle, self.mads_screen_button,
-                  self.dynamic_auto_stock_toggle, self.dyn_auto_speed,
+                  self.camera_offset, self.reset_camera_offset,
+                  self.ap_hybrid_toggle, self.dynamic_auto_stock_toggle, self.dyn_auto_speed,
                   self.dyn_auto_speed_low, self.stop_line_deceleration,
                   self.speed_limit_cruise_buttons, self.mpc_settings]
 
@@ -315,6 +342,9 @@ class TeslaSettings(BrandSettings):
     self.coop_steering_toggle.set_description(coop_steering_desc)
 
     self.coop_steering_toggle.action_item.set_enabled(ui_state.is_offroad())
+    self.camera_offset.action_item.set_enabled(ui_state.is_offroad())
+    self.reset_camera_offset.action_item.set_enabled(ui_state.is_offroad())
+    self.ap_hybrid_toggle.action_item.set_enabled(ui_state.is_offroad() and ui_state.has_longitudinal_control)
 
     has_vehicle_bus = ui_state.CP_SP is not None and bool(ui_state.CP_SP.flags & TeslaFlagsSP.HAS_VEHICLE_BUS)
     self.mads_screen_button.set_visible(has_vehicle_bus)
@@ -322,7 +352,8 @@ class TeslaSettings(BrandSettings):
     mads_screen_button_desc = tr("Use a multi-finger press on the infotainment display as a MADS button.\n" +
                                  "This allows the use of full MADS functionality when enabled.\n" +
                                  "<b>Note: Setting this to Off may reset your MADS settings to default.</b>")
-    mads_screen_button_desc += "<br><br>" + tr("Dynamic Auto Stock ACC uses 4 Finger for stock ACC switching. Use 3 Finger or 5 Finger for the MADS button when Dynamic Auto Stock ACC is enabled.")
+    mads_screen_button_desc += "<br><br>" + tr("Dynamic Auto Stock ACC uses 4 Finger for stock ACC switching. " +
+                                               "Use 3 Finger or 5 Finger for the MADS button when Dynamic Auto Stock ACC is enabled.")
     if not ui_state.is_offroad():
       mads_screen_button_disabled_msg = tr("Enable \"Always Offroad\" in Device panel, or turn vehicle off to change.")
       mads_screen_button_desc = f"<b>{mads_screen_button_disabled_msg}</b><br><br>{mads_screen_button_desc}"

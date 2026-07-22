@@ -81,6 +81,7 @@ class SelfdriveD(CruiseHelper):
 
     self.tesla_stock_longitudinal_active = False  # cached from carStateSP flags bit 32, avoids race on missed frames
     self.prev_tesla_stock_longitudinal_active = False
+    self.tesla_ap_hybrid_active = False  # cached from carStateSP flags bit 512
     self.dynamic_acc_debug_lagging = False
     self.tesla_mads_debug_signatures = {}
     self.pose_calibrator = PoseCalibrator()
@@ -394,6 +395,7 @@ class SelfdriveD(CruiseHelper):
           enabled=self.enabled,
           active=self.active,
           tesla_stock_longitudinal_active=self.tesla_stock_longitudinal_active,
+          tesla_ap_hybrid_active=self.tesla_ap_hybrid_active,
           car_state_sp_flags=int(self.car_state_sp_flags),
           panda_safety_model=str(pandaState.safetyModel),
           expected_safety_model=str(self.CP.safetyConfigs[i].safetyModel) if i < len(self.CP.safetyConfigs) else "ignored",
@@ -581,6 +583,7 @@ class SelfdriveD(CruiseHelper):
       "mads_state": str(self.mads.state_machine.state),
       "tesla_stock_longitudinal_active": bool(self.tesla_stock_longitudinal_active),
       "prev_tesla_stock_longitudinal_active": bool(self.prev_tesla_stock_longitudinal_active),
+      "tesla_ap_hybrid_active": bool(self.tesla_ap_hybrid_active),
       "car_state_sp_flags": int(self.car_state_sp_flags),
       "cruise_enabled": bool(CS.cruiseState.enabled),
       "cruise_available": bool(CS.cruiseState.available),
@@ -615,6 +618,7 @@ class SelfdriveD(CruiseHelper):
       snapshot["mads_state"],
       snapshot["tesla_stock_longitudinal_active"],
       snapshot["prev_tesla_stock_longitudinal_active"],
+      snapshot["tesla_ap_hybrid_active"],
       snapshot["cruise_enabled"],
       snapshot["cruise_available"],
       snapshot["brake_pressed"],
@@ -643,6 +647,7 @@ class SelfdriveD(CruiseHelper):
     if _car_state_sp:
       self.car_state_sp_flags = _car_state_sp.carStateSP.flags
       self.tesla_stock_longitudinal_active = bool(self.car_state_sp_flags & 32)
+      self.tesla_ap_hybrid_active = bool(self.car_state_sp_flags & 512)
 
     self.sm.update(0)
 
@@ -769,6 +774,7 @@ class SelfdriveD(CruiseHelper):
           "selfdrived", "stock_state_changed",
           stock_active=self.tesla_stock_longitudinal_active,
           previous_stock_active=self.prev_tesla_stock_longitudinal_active,
+          ap_hybrid_active=self.tesla_ap_hybrid_active,
           enabled=self.enabled,
           active=self.active,
           cruise_enabled=CS.cruiseState.enabled,
@@ -784,6 +790,7 @@ class SelfdriveD(CruiseHelper):
           "selfdrived", "system_lagging",
           stock_active=self.tesla_stock_longitudinal_active,
           previous_stock_active=self.prev_tesla_stock_longitudinal_active,
+          ap_hybrid_active=self.tesla_ap_hybrid_active,
           enabled=self.enabled,
           active=self.active,
           cruise_enabled=CS.cruiseState.enabled,

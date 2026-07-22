@@ -29,9 +29,25 @@ from opendbc.sunnypilot.car.tesla.dynamic_acc_debug import log_dynamic_acc
 REPLAY = "REPLAY" in os.environ
 
 EventName = log.OnroadEvent.EventName
+TESLA_LONGITUDINAL_CONTEXT_STALE_S = 0.2
 
 # forward
 carlog.addHandler(ForwardingHandler(cloudlog))
+
+
+def get_tesla_longitudinal_context(sm: messaging.SubMaster, now: float) -> tuple[int, bool, bool, float, bool, bool, float]:
+  plan = sm['longitudinalPlanSP']
+  plan_source = int(getattr(plan.longitudinalPlanSource, "raw", plan.longitudinalPlanSource))
+  plan_recv_time = float(sm.recv_time['longitudinalPlanSP'])
+  plan_valid = (sm.seen['longitudinalPlanSP'] and sm.valid['longitudinalPlanSP'] and
+                now - plan_recv_time <= TESLA_LONGITUDINAL_CONTEXT_STALE_S)
+
+  car_control = sm['carControl']
+  lane_change_active = bool(car_control.leftBlinker or car_control.rightBlinker)
+  lane_change_valid = (sm.seen['carControl'] and sm.valid['carControl'] and
+                       now - sm.recv_time['carControl'] <= TESLA_LONGITUDINAL_CONTEXT_STALE_S)
+  return (plan_source, sm.updated['longitudinalPlanSP'], plan_valid, plan_recv_time,
+          lane_change_active, lane_change_valid, now)
 
 
 def obd_callback(params: Params) -> ObdCallback:
@@ -211,6 +227,9 @@ class Car:
     RD: structs.RadarDataT | None = self.RI.update(can_list)
 
     self.sm.update(0)
+
+    if self.CP.brand == 'tesla' and hasattr(self.CI.CS, "update_longitudinal_context"):
+      self.CI.CS.update_longitudinal_context(*get_tesla_longitudinal_context(self.sm, time.monotonic()))
 
     can_rcv_valid = len(can_strs) > 0
 
