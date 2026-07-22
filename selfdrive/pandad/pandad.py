@@ -23,8 +23,11 @@ def log_offline_wake_state(panda: Panda, serial: str) -> None:
   try:
     wake_success = panda.wake_success()
     wake_debug = panda.wake_debug()
+    wake_can_trace = panda.wake_can_trace()
     health = panda.health()
-    offline_wake_debug_log(f"panda offline wake state serial={serial} wake_success={wake_success} wake_debug={wake_debug} health={health}")
+    message = f"panda offline wake state serial={serial} wake_success={wake_success} wake_debug={wake_debug}"
+    message += f" wake_can_trace={wake_can_trace} health={health}"
+    offline_wake_debug_log(message)
     if clear_panda_bootkick_test_sentinel():
       offline_wake_debug_log("cleared panda bootkick test sentinel after startup wake-state read")
   except Exception as e:

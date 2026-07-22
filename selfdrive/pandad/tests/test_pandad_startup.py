@@ -1,6 +1,20 @@
 from openpilot.selfdrive.pandad import pandad
 
 
+def test_offline_wake_log_includes_persistent_can_trace(mocker):
+  panda = mocker.Mock()
+  panda.wake_success.return_value = {"latched": 0}
+  panda.wake_debug.return_value = {"stage": 0x3F}
+  panda.wake_can_trace.return_value = {"peak_delta": 260, "tesla_seen": True}
+  panda.health.return_value = {"faults": 0}
+  log = mocker.patch.object(pandad, "offline_wake_debug_log")
+  mocker.patch.object(pandad, "clear_panda_bootkick_test_sentinel", return_value=False)
+
+  pandad.log_offline_wake_state(panda, "serial")
+
+  assert "wake_can_trace={'peak_delta': 260, 'tesla_seen': True}" in log.call_args.args[0]
+
+
 def test_first_start_does_not_reset_a_responsive_panda(mocker):
   reset = mocker.patch.object(pandad.HARDWARE, "reset_internal_panda")
   recover = mocker.patch.object(pandad.HARDWARE, "recover_internal_panda")
