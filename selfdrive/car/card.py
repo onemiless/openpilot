@@ -274,9 +274,10 @@ class Car:
     co_send.carOutput.actuatorsOutput = self.last_actuators_output
     self.pm.send('carOutput', co_send)
 
-    # Publish the companion SP state first. carState wakes selfdrived's control
-    # cycle, so this ordering makes the matching source flags available before
-    # selfdrived consumes them.
+    # CS and CS_SP are complete snapshots from the same CI.update() cycle before
+    # state_publish() is called. Publish the companion SP snapshot first because
+    # carState wakes selfdrived's control cycle; this is a transport ordering
+    # contract, not a difference in when either snapshot is constructed.
     cs_sp_send = messaging.new_message('carStateSP')
     cs_sp_send.valid = CS.canValid
     cs_sp_send.carStateSP = CS_SP
