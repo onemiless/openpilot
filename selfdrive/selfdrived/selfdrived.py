@@ -59,7 +59,7 @@ def tesla_car_state_sp_fresh(car_state_mono_time: int, car_state_sp_mono_time: i
 
 def tesla_longitudinal_source_from_flags(flags: int) -> str:
   if flags & TESLA_AP_HYBRID_ACTIVE:
-    return "apHybridStock"
+    return "apHybridStock" if flags & TESLA_STOCK_LONGITUDINAL_ACTIVE else "apHybridSp"
   if flags & TESLA_DYNAMIC_STOCK_ACTIVE:
     return "dynamicStock"
   if flags & TESLA_MANUAL_STOCK_ACTIVE:

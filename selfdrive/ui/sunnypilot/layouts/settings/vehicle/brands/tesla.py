@@ -260,8 +260,16 @@ class TeslaSettings(BrandSettings):
     self.ap_hybrid_toggle = toggle_item_sp(
       title=tr("AP Hybrid Control (Experimental)"),
       param="TeslaApHybrid",
-      description=tr("When Tesla AP is active, keep Tesla longitudinal and automatic speed-limit control while sunnypilot controls steering. " +
-                     "Blinker and curve overrides do not replace AP Hybrid decisions."),
+      description=tr("When Tesla AP is active, sunnypilot controls steering while Tesla longitudinal and automatic speed-limit control remain active. " +
+                     "The optional Dynamic AP validation mode can switch longitudinal control to sunnypilot below its low-speed threshold."),
+      enabled=ui_state.is_offroad,
+    )
+    self.dynamic_ap_longitudinal_toggle = toggle_item_sp(
+      title=tr("Dynamic AP Longitudinal Validation (Experimental)"),
+      param="TeslaDynamicApLongitudinal",
+      description=tr("While Tesla AP remains active, use sunnypilot longitudinal below the low-speed threshold and Tesla longitudinal " +
+                     "above the high-speed threshold. sunnypilot steering remains active at all speeds during this validation stage."),
+      callback=self._on_dynamic_ap_longitudinal_toggle,
       enabled=ui_state.is_offroad,
     )
     self.camera_offset = option_item_sp(
@@ -287,13 +295,13 @@ class TeslaSettings(BrandSettings):
       title=tr("Speed Threshold High"), param="DynamicAutoStockSpeedKph",
       min_value=40, max_value=120, value_change_step=5,
       label_callback=lambda v: f"{v} km/h",
-      description=tr("Switch to stock ACC above this speed."),
+      description=tr("Switch to Tesla longitudinal above this speed in Dynamic ACC or Dynamic AP validation mode."),
     )
     self.dyn_auto_speed_low = option_item_sp(
       title=tr("Speed Threshold Low"), param="DynamicAutoStockSpeedLowKph",
       min_value=20, max_value=100, value_change_step=5,
       label_callback=lambda v: f"{v} km/h",
-      description=tr("Switch back to SP longitudinal below this speed."),
+      description=tr("Switch back to sunnypilot longitudinal below this speed in Dynamic ACC or Dynamic AP validation mode."),
     )
     self.stop_line_deceleration = option_item_sp(
       title=tr("Stop Line Deceleration"),
@@ -317,12 +325,20 @@ class TeslaSettings(BrandSettings):
     )
     self.items = [self.coop_steering_toggle, self.mads_screen_button,
                   self.camera_offset, self.reset_camera_offset,
-                  self.ap_hybrid_toggle, self.dynamic_auto_stock_toggle, self.dyn_auto_speed,
+                  self.ap_hybrid_toggle, self.dynamic_ap_longitudinal_toggle,
+                  self.dynamic_auto_stock_toggle, self.dyn_auto_speed,
                   self.dyn_auto_speed_low, self.stop_line_deceleration,
                   self.speed_limit_cruise_buttons, self.mpc_settings]
 
   def _on_dyn_auto_stock_toggle(self, state):
-    show = state
+    self._update_dynamic_speed_visibility()
+
+  def _on_dynamic_ap_longitudinal_toggle(self, state):
+    self._update_dynamic_speed_visibility()
+
+  def _update_dynamic_speed_visibility(self):
+    show = (ui_state.params.get_bool("DynamicAutoStock") or
+            ui_state.params.get_bool("TeslaDynamicApLongitudinal"))
     self.dyn_auto_speed.set_visible(show)
     self.dyn_auto_speed_low.set_visible(show)
 
@@ -345,6 +361,10 @@ class TeslaSettings(BrandSettings):
     self.camera_offset.action_item.set_enabled(ui_state.is_offroad())
     self.reset_camera_offset.action_item.set_enabled(ui_state.is_offroad())
     self.ap_hybrid_toggle.action_item.set_enabled(ui_state.is_offroad() and ui_state.has_longitudinal_control)
+    self.dynamic_ap_longitudinal_toggle.action_item.set_enabled(
+      ui_state.is_offroad() and ui_state.has_longitudinal_control and ui_state.params.get_bool("TeslaApHybrid")
+    )
+    self._update_dynamic_speed_visibility()
 
     has_vehicle_bus = ui_state.CP_SP is not None and bool(ui_state.CP_SP.flags & TeslaFlagsSP.HAS_VEHICLE_BUS)
     self.mads_screen_button.set_visible(has_vehicle_bus)

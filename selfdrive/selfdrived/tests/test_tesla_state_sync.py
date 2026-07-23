@@ -10,6 +10,7 @@ def test_tesla_car_state_sp_freshness_is_bounded():
 
 def test_tesla_longitudinal_source_flags_are_unambiguous():
   assert tesla_longitudinal_source_from_flags(0) == "sp"
+  assert tesla_longitudinal_source_from_flags(512) == "apHybridSp"
   assert tesla_longitudinal_source_from_flags(32 | 1024) == "dynamicStock"
   assert tesla_longitudinal_source_from_flags(32 | 2048) == "manualStock"
   assert tesla_longitudinal_source_from_flags(32 | 512) == "apHybridStock"
