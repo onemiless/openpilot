@@ -274,10 +274,10 @@ class Car:
     co_send.carOutput.actuatorsOutput = self.last_actuators_output
     self.pm.send('carOutput', co_send)
 
-    # CS and CS_SP are complete snapshots from the same CI.update() cycle before
-    # state_publish() is called. Publish the companion SP snapshot first because
-    # carState wakes selfdrived's control cycle; this is a transport ordering
-    # contract, not a difference in when either snapshot is constructed.
+    # CS and CS_SP vehicle state comes from the same CI.update() cycle, and shared
+    # state such as vCruise is finalized before state_publish(). Publish the SP
+    # companion first because carState wakes selfdrived's control cycle. The
+    # canErrorCounter/cumLagMs values added below are carState-only metadata.
     cs_sp_send = messaging.new_message('carStateSP')
     cs_sp_send.valid = CS.canValid
     cs_sp_send.carStateSP = CS_SP
