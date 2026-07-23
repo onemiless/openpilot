@@ -45,6 +45,28 @@ PandaType = log.PandaState.PandaType
 LaneChangeState = log.LaneChangeState
 LaneChangeDirection = log.LaneChangeDirection
 EventName = log.OnroadEvent.EventName
+TESLA_STOCK_LONGITUDINAL_ACTIVE = 32
+TESLA_AP_HYBRID_ACTIVE = 512
+TESLA_DYNAMIC_STOCK_ACTIVE = 1024
+TESLA_MANUAL_STOCK_ACTIVE = 2048
+TESLA_CAR_STATE_SP_MAX_AGE_NS = 50_000_000
+
+
+def tesla_car_state_sp_fresh(car_state_mono_time: int, car_state_sp_mono_time: int) -> bool:
+  age = int(car_state_mono_time) - int(car_state_sp_mono_time)
+  return car_state_sp_mono_time > 0 and 0 <= age <= TESLA_CAR_STATE_SP_MAX_AGE_NS
+
+
+def tesla_longitudinal_source_from_flags(flags: int) -> str:
+  if flags & TESLA_AP_HYBRID_ACTIVE:
+    return "apHybridStock"
+  if flags & TESLA_DYNAMIC_STOCK_ACTIVE:
+    return "dynamicStock"
+  if flags & TESLA_MANUAL_STOCK_ACTIVE:
+    return "manualStock"
+  if flags & TESLA_STOCK_LONGITUDINAL_ACTIVE:
+    return "stockUnknown"
+  return "sp"
 ButtonType = car.CarState.ButtonEvent.Type
 SafetyModel = car.CarParams.SafetyModel
 AlertLevel = log.DriverMonitoringState.AlertLevel
@@ -82,6 +104,9 @@ class SelfdriveD(CruiseHelper):
     self.tesla_stock_longitudinal_active = False  # cached from carStateSP flags bit 32, avoids race on missed frames
     self.prev_tesla_stock_longitudinal_active = False
     self.tesla_ap_hybrid_active = False  # cached from carStateSP flags bit 512
+    self.tesla_longitudinal_source = "sp"
+    self.prev_tesla_longitudinal_source = "sp"
+    self.car_state_sp_mono_time = 0
     self.dynamic_acc_debug_lagging = False
     self.tesla_mads_debug_signatures = {}
     self.pose_calibrator = PoseCalibrator()
@@ -396,6 +421,7 @@ class SelfdriveD(CruiseHelper):
           active=self.active,
           tesla_stock_longitudinal_active=self.tesla_stock_longitudinal_active,
           tesla_ap_hybrid_active=self.tesla_ap_hybrid_active,
+          tesla_longitudinal_source=self.tesla_longitudinal_source,
           car_state_sp_flags=int(self.car_state_sp_flags),
           panda_safety_model=str(pandaState.safetyModel),
           expected_safety_model=str(self.CP.safetyConfigs[i].safetyModel) if i < len(self.CP.safetyConfigs) else "ignored",
@@ -584,6 +610,7 @@ class SelfdriveD(CruiseHelper):
       "tesla_stock_longitudinal_active": bool(self.tesla_stock_longitudinal_active),
       "prev_tesla_stock_longitudinal_active": bool(self.prev_tesla_stock_longitudinal_active),
       "tesla_ap_hybrid_active": bool(self.tesla_ap_hybrid_active),
+      "tesla_longitudinal_source": self.tesla_longitudinal_source,
       "car_state_sp_flags": int(self.car_state_sp_flags),
       "cruise_enabled": bool(CS.cruiseState.enabled),
       "cruise_available": bool(CS.cruiseState.available),
@@ -619,6 +646,7 @@ class SelfdriveD(CruiseHelper):
       snapshot["tesla_stock_longitudinal_active"],
       snapshot["prev_tesla_stock_longitudinal_active"],
       snapshot["tesla_ap_hybrid_active"],
+      snapshot["tesla_longitudinal_source"],
       snapshot["cruise_enabled"],
       snapshot["cruise_available"],
       snapshot["brake_pressed"],
@@ -644,10 +672,16 @@ class SelfdriveD(CruiseHelper):
     _car_state = messaging.recv_one(self.car_state_sock)
     CS = _car_state.carState if _car_state else self.CS_prev
     _car_state_sp = messaging.recv_one_or_none(self.car_state_sp_sock)
-    if _car_state_sp:
+    if _car_state_sp and _car_state_sp.valid:
       self.car_state_sp_flags = _car_state_sp.carStateSP.flags
-      self.tesla_stock_longitudinal_active = bool(self.car_state_sp_flags & 32)
-      self.tesla_ap_hybrid_active = bool(self.car_state_sp_flags & 512)
+      self.car_state_sp_mono_time = int(_car_state_sp.logMonoTime)
+
+    if _car_state and not tesla_car_state_sp_fresh(int(_car_state.logMonoTime), self.car_state_sp_mono_time):
+      self.car_state_sp_flags = 0
+
+    self.tesla_stock_longitudinal_active = bool(self.car_state_sp_flags & TESLA_STOCK_LONGITUDINAL_ACTIVE)
+    self.tesla_ap_hybrid_active = bool(self.car_state_sp_flags & TESLA_AP_HYBRID_ACTIVE)
+    self.tesla_longitudinal_source = tesla_longitudinal_source_from_flags(self.car_state_sp_flags)
 
     self.sm.update(0)
 
@@ -769,12 +803,14 @@ class SelfdriveD(CruiseHelper):
     self.update_events(CS)
     self._log_tesla_mads_debug(CS, "after_update_events")
     if self.CP.brand == 'tesla':
-      if self.tesla_stock_longitudinal_active != self.prev_tesla_stock_longitudinal_active:
+      if self.tesla_longitudinal_source != self.prev_tesla_longitudinal_source:
         log_dynamic_acc(
-          "selfdrived", "stock_state_changed",
+          "selfdrived", "longitudinal_source_changed",
           stock_active=self.tesla_stock_longitudinal_active,
           previous_stock_active=self.prev_tesla_stock_longitudinal_active,
           ap_hybrid_active=self.tesla_ap_hybrid_active,
+          longitudinal_source=self.tesla_longitudinal_source,
+          previous_longitudinal_source=self.prev_tesla_longitudinal_source,
           enabled=self.enabled,
           active=self.active,
           cruise_enabled=CS.cruiseState.enabled,
@@ -813,6 +849,7 @@ class SelfdriveD(CruiseHelper):
     self.publish_selfdriveState(CS)
 
     self.prev_tesla_stock_longitudinal_active = self.tesla_stock_longitudinal_active
+    self.prev_tesla_longitudinal_source = self.tesla_longitudinal_source
     self.CS_prev = CS
 
   def params_thread(self, evt):

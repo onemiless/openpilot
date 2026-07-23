@@ -35,7 +35,7 @@ TESLA_LONGITUDINAL_CONTEXT_STALE_S = 0.2
 carlog.addHandler(ForwardingHandler(cloudlog))
 
 
-def get_tesla_longitudinal_context(sm: messaging.SubMaster, now: float) -> tuple[int, bool, bool, float, bool, bool, float]:
+def get_tesla_longitudinal_context(sm: messaging.SubMaster, now: float) -> tuple[int, bool, bool, float, bool, bool, bool, float]:
   plan = sm['longitudinalPlanSP']
   plan_source = int(getattr(plan.longitudinalPlanSource, "raw", plan.longitudinalPlanSource))
   plan_recv_time = float(sm.recv_time['longitudinalPlanSP'])
@@ -46,8 +46,13 @@ def get_tesla_longitudinal_context(sm: messaging.SubMaster, now: float) -> tuple
   lane_change_active = bool(car_control.leftBlinker or car_control.rightBlinker)
   lane_change_valid = (sm.seen['carControl'] and sm.valid['carControl'] and
                        now - sm.recv_time['carControl'] <= TESLA_LONGITUDINAL_CONTEXT_STALE_S)
+  selfdrive_state_sp = sm['selfdriveStateSP']
+  mads_state_valid = (sm.seen['selfdriveStateSP'] and sm.valid['selfdriveStateSP'] and
+                      now - sm.recv_time['selfdriveStateSP'] <= TESLA_LONGITUDINAL_CONTEXT_STALE_S)
+  lateral_control_ready = ((lane_change_valid and bool(car_control.latActive)) or
+                           (mads_state_valid and bool(selfdrive_state_sp.mads.active)))
   return (plan_source, sm.updated['longitudinalPlanSP'], plan_valid, plan_recv_time,
-          lane_change_active, lane_change_valid, now)
+          lane_change_active, lane_change_valid, lateral_control_ready, now)
 
 
 def obd_callback(params: Params) -> ObdCallback:
@@ -88,7 +93,8 @@ class Car:
 
   def __init__(self, CI=None, RI=None) -> None:
     self.can_sock = messaging.sub_sock('can', timeout=20)
-    self.sm = messaging.SubMaster(['pandaStates', 'carControl', 'onroadEvents'] + ['carControlSP', 'longitudinalPlanSP'])
+    self.sm = messaging.SubMaster(['pandaStates', 'carControl', 'onroadEvents'] +
+                                  ['carControlSP', 'longitudinalPlanSP', 'selfdriveStateSP'])
     self.pm = messaging.PubMaster(['sendcan', 'carState', 'carParams', 'carOutput', 'liveTracks'] + ['carParamsSP', 'carStateSP'])
 
     self.can_rcv_cum_timeout_counter = 0
@@ -268,6 +274,14 @@ class Car:
     co_send.carOutput.actuatorsOutput = self.last_actuators_output
     self.pm.send('carOutput', co_send)
 
+    # Publish the companion SP state first. carState wakes selfdrived's control
+    # cycle, so this ordering makes the matching source flags available before
+    # selfdrived consumes them.
+    cs_sp_send = messaging.new_message('carStateSP')
+    cs_sp_send.valid = CS.canValid
+    cs_sp_send.carStateSP = CS_SP
+    self.pm.send('carStateSP', cs_sp_send)
+
     # kick off controlsd step while we actuate the latest carControl packet
     cs_send = messaging.new_message('carState')
     cs_send.valid = CS.canValid
@@ -288,11 +302,6 @@ class Car:
       cp_sp_send.valid = True
       cp_sp_send.carParamsSP = self.CP_SP_capnp
       self.pm.send('carParamsSP', cp_sp_send)
-
-    cs_sp_send = messaging.new_message('carStateSP')
-    cs_sp_send.valid = CS.canValid
-    cs_sp_send.carStateSP = CS_SP
-    self.pm.send('carStateSP', cs_sp_send)
 
   def controls_update(self, CS: car.CarState, CC: car.CarControl, CC_SP: custom.CarControlSP):
     """control update loop, driven by carControl"""
