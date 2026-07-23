@@ -260,15 +260,15 @@ class TeslaSettings(BrandSettings):
     self.ap_hybrid_toggle = toggle_item_sp(
       title=tr("AP Hybrid Control (Experimental)"),
       param="TeslaApHybrid",
-      description=tr("When Tesla AP is active, sunnypilot controls steering while Tesla longitudinal and automatic speed-limit control remain active. " +
-                     "The optional Dynamic AP validation mode can switch longitudinal control to sunnypilot below its low-speed threshold."),
+      description=tr("Keeps a Tesla AP session active while sunnypilot arbitrates lateral and longitudinal control. " +
+                     "The optional Dynamic AP mode selects both control sources by speed."),
       enabled=ui_state.is_offroad,
     )
     self.dynamic_ap_longitudinal_toggle = toggle_item_sp(
-      title=tr("Dynamic AP Longitudinal Validation (Experimental)"),
+      title=tr("Dynamic AP Control (Experimental)"),
       param="TeslaDynamicApLongitudinal",
-      description=tr("While Tesla AP remains active, use sunnypilot longitudinal below the low-speed threshold and Tesla longitudinal " +
-                     "above the high-speed threshold. sunnypilot steering remains active at all speeds during this validation stage."),
+      description=tr("Below the low-speed threshold, sunnypilot controls steering and speed. Above the high-speed threshold, Tesla AP controls both. " +
+                     "Driver steering input or a turn signal immediately hands steering to sunnypilot; Tesla steering resumes after one stable second."),
       callback=self._on_dynamic_ap_longitudinal_toggle,
       enabled=ui_state.is_offroad,
     )
@@ -295,13 +295,13 @@ class TeslaSettings(BrandSettings):
       title=tr("Speed Threshold High"), param="DynamicAutoStockSpeedKph",
       min_value=40, max_value=120, value_change_step=5,
       label_callback=lambda v: f"{v} km/h",
-      description=tr("Switch to Tesla longitudinal above this speed in Dynamic ACC or Dynamic AP validation mode."),
+      description=tr("Switch to Tesla control above this speed in Dynamic ACC or Dynamic AP mode."),
     )
     self.dyn_auto_speed_low = option_item_sp(
       title=tr("Speed Threshold Low"), param="DynamicAutoStockSpeedLowKph",
       min_value=20, max_value=100, value_change_step=5,
       label_callback=lambda v: f"{v} km/h",
-      description=tr("Switch back to sunnypilot longitudinal below this speed in Dynamic ACC or Dynamic AP validation mode."),
+      description=tr("Switch back to sunnypilot control below this speed in Dynamic ACC or Dynamic AP mode."),
     )
     self.stop_line_deceleration = option_item_sp(
       title=tr("Stop Line Deceleration"),

@@ -49,6 +49,7 @@ TESLA_STOCK_LONGITUDINAL_ACTIVE = 32
 TESLA_AP_HYBRID_ACTIVE = 512
 TESLA_DYNAMIC_STOCK_ACTIVE = 1024
 TESLA_MANUAL_STOCK_ACTIVE = 2048
+TESLA_AP_HYBRID_STOCK_LATERAL_ACTIVE = 8192
 TESLA_CAR_STATE_SP_MAX_AGE_NS = 50_000_000
 
 
@@ -67,6 +68,13 @@ def tesla_longitudinal_source_from_flags(flags: int) -> str:
   if flags & TESLA_STOCK_LONGITUDINAL_ACTIVE:
     return "stockUnknown"
   return "sp"
+
+
+def tesla_split_control_event_filter_active(stock_active: bool, prev_stock_active: bool,
+                                            ap_hybrid_active: bool, prev_ap_hybrid_active: bool) -> bool:
+  return stock_active or prev_stock_active or ap_hybrid_active or prev_ap_hybrid_active
+
+
 ButtonType = car.CarState.ButtonEvent.Type
 SafetyModel = car.CarParams.SafetyModel
 AlertLevel = log.DriverMonitoringState.AlertLevel
@@ -104,6 +112,9 @@ class SelfdriveD(CruiseHelper):
     self.tesla_stock_longitudinal_active = False  # cached from carStateSP flags bit 32, avoids race on missed frames
     self.prev_tesla_stock_longitudinal_active = False
     self.tesla_ap_hybrid_active = False  # cached from carStateSP flags bit 512
+    self.prev_tesla_ap_hybrid_active = False
+    self.tesla_stock_lateral_active = False
+    self.prev_tesla_stock_lateral_active = False
     self.tesla_longitudinal_source = "sp"
     self.prev_tesla_longitudinal_source = "sp"
     self.car_state_sp_mono_time = 0
@@ -284,13 +295,14 @@ class SelfdriveD(CruiseHelper):
       car_events = self.car_events.update(CS, self.CS_prev, self.sm['carControl']).to_msg()
       self.events.add_from_msg(car_events)
 
-      # In Tesla stock-longitudinal mode, DAS_accState=13 is the OEM ACC cancel
-      # state. Treating it as an OP cancel disables SP lateral too, which breaks
-      # the intended split: stock ACC longitudinal with SP lateral.
-      # Also filter on the first frame after leaving stock to prevent stale
-      # disable events from hitting the state machine before MADS can clean up.
-      leaving_stock = self.prev_tesla_stock_longitudinal_active and not self.tesla_stock_longitudinal_active
-      if self.CP.brand == 'tesla' and (self.tesla_stock_longitudinal_active or leaving_stock):
+      # Tesla split-control modes can keep SP lateral active while Tesla AP or
+      # ACC changes state. Filter disable events throughout the split-control
+      # session and its first exit frame so MADS can preserve lateral control.
+      split_control_transition = tesla_split_control_event_filter_active(
+        self.tesla_stock_longitudinal_active, self.prev_tesla_stock_longitudinal_active,
+        self.tesla_ap_hybrid_active, self.prev_tesla_ap_hybrid_active,
+      )
+      if self.CP.brand == 'tesla' and split_control_transition:
         if self.events.has(EventName.buttonCancel):
           self.events.remove(EventName.buttonCancel)
         if self.events.has(EventName.invalidLkasSetting):
@@ -610,6 +622,9 @@ class SelfdriveD(CruiseHelper):
       "tesla_stock_longitudinal_active": bool(self.tesla_stock_longitudinal_active),
       "prev_tesla_stock_longitudinal_active": bool(self.prev_tesla_stock_longitudinal_active),
       "tesla_ap_hybrid_active": bool(self.tesla_ap_hybrid_active),
+      "prev_tesla_ap_hybrid_active": bool(self.prev_tesla_ap_hybrid_active),
+      "tesla_stock_lateral_active": bool(self.tesla_stock_lateral_active),
+      "prev_tesla_stock_lateral_active": bool(self.prev_tesla_stock_lateral_active),
       "tesla_longitudinal_source": self.tesla_longitudinal_source,
       "car_state_sp_flags": int(self.car_state_sp_flags),
       "cruise_enabled": bool(CS.cruiseState.enabled),
@@ -646,6 +661,9 @@ class SelfdriveD(CruiseHelper):
       snapshot["tesla_stock_longitudinal_active"],
       snapshot["prev_tesla_stock_longitudinal_active"],
       snapshot["tesla_ap_hybrid_active"],
+      snapshot["prev_tesla_ap_hybrid_active"],
+      snapshot["tesla_stock_lateral_active"],
+      snapshot["prev_tesla_stock_lateral_active"],
       snapshot["tesla_longitudinal_source"],
       snapshot["cruise_enabled"],
       snapshot["cruise_available"],
@@ -681,6 +699,7 @@ class SelfdriveD(CruiseHelper):
 
     self.tesla_stock_longitudinal_active = bool(self.car_state_sp_flags & TESLA_STOCK_LONGITUDINAL_ACTIVE)
     self.tesla_ap_hybrid_active = bool(self.car_state_sp_flags & TESLA_AP_HYBRID_ACTIVE)
+    self.tesla_stock_lateral_active = bool(self.car_state_sp_flags & TESLA_AP_HYBRID_STOCK_LATERAL_ACTIVE)
     self.tesla_longitudinal_source = tesla_longitudinal_source_from_flags(self.car_state_sp_flags)
 
     self.sm.update(0)
@@ -818,6 +837,22 @@ class SelfdriveD(CruiseHelper):
           car_state_sp_flags=int(self.car_state_sp_flags),
           events=[str(event) for event in self.events.names],
         )
+      if self.tesla_stock_lateral_active != self.prev_tesla_stock_lateral_active:
+        log_dynamic_acc(
+          "selfdrived", "lateral_source_changed",
+          stock_lateral_active=self.tesla_stock_lateral_active,
+          previous_stock_lateral_active=self.prev_tesla_stock_lateral_active,
+          ap_hybrid_active=self.tesla_ap_hybrid_active,
+          longitudinal_source=self.tesla_longitudinal_source,
+          enabled=self.enabled,
+          active=self.active,
+          cruise_enabled=CS.cruiseState.enabled,
+          steering_angle=CS.steeringAngleDeg,
+          steering_torque=CS.steeringTorque,
+          left_blinker=CS.leftBlinker,
+          right_blinker=CS.rightBlinker,
+          events=[str(event) for event in self.events.names],
+        )
 
       lagging = bool(self.rk.lagging)
       if lagging and not self.dynamic_acc_debug_lagging:
@@ -849,6 +884,8 @@ class SelfdriveD(CruiseHelper):
     self.publish_selfdriveState(CS)
 
     self.prev_tesla_stock_longitudinal_active = self.tesla_stock_longitudinal_active
+    self.prev_tesla_ap_hybrid_active = self.tesla_ap_hybrid_active
+    self.prev_tesla_stock_lateral_active = self.tesla_stock_lateral_active
     self.prev_tesla_longitudinal_source = self.tesla_longitudinal_source
     self.CS_prev = CS
 
