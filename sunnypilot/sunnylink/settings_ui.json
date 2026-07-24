@@ -2212,6 +2212,22 @@
             "9": "0.9",
             "10": "1.0"
           }
+        },
+        {
+          "key": "TeslaSpeedLimitCruiseButtons",
+          "widget": "toggle",
+          "title": "Speed Limit Cruise Buttons",
+          "description": "Use Tesla steering-wheel speed buttons to adjust the stock ACC set speed to the active speed limit target.",
+          "enablement": [
+            {
+              "type": "offroad_only"
+            },
+            {
+              "type": "capability",
+              "field": "brand",
+              "equals": "tesla"
+            }
+          ]
         }
       ]
     },

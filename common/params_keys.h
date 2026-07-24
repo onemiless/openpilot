@@ -194,6 +194,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"StopLineDeceleration", {PERSISTENT | BACKUP, INT, "5"}},  // tenths of m/s^2
     {"TeslaApHybrid", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaDynamicApLongitudinal", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"DynamicAutoStockBlinkerToSP", {PERSISTENT | BACKUP, BOOL, "1"}},
+    {"DynamicAutoStockCurveToSP", {PERSISTENT | BACKUP, BOOL, "1"}},
     {"TeslaSpeedLimitCruiseButtons", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TrueVEgoUI", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"MpcTuningPreset", {PERSISTENT | BACKUP, INT, "0"}},  // 0=moumou/dev260628XL-tici, 1=current branch, 2=custom

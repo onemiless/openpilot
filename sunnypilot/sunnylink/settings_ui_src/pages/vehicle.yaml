@@ -126,6 +126,14 @@ sections:
       step: 5
       unit:
         metric: km/h
+    - key: DynamicAutoStockBlinkerToSP
+      widget: toggle
+      title: Turn Signal → SP Longitudinal
+      description: When Dynamic ACC is using Tesla ACC, switch longitudinal control to sunnypilot after a confirmed turn signal.
+    - key: DynamicAutoStockCurveToSP
+      widget: toggle
+      title: Curve → SP Longitudinal
+      description: When Dynamic ACC is using Tesla ACC, switch longitudinal control to sunnypilot when vision or map curve control becomes active.
 - id: toyota
   title: Toyota / Lexus Settings
   description: ''

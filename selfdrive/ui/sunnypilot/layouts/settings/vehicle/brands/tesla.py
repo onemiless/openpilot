@@ -257,6 +257,16 @@ class TeslaSettings(BrandSettings):
       description=lambda: tr("Auto switch to stock ACC when above speed, close to lead, and ego not decelerating."),
       callback=self._on_dyn_auto_stock_toggle,
     )
+    self.dynamic_auto_stock_blinker_to_sp_toggle = toggle_item_sp(
+      title=tr("Turn Signal → SP Longitudinal"),
+      param="DynamicAutoStockBlinkerToSP",
+      description=tr("When Dynamic ACC is using Tesla ACC, switch longitudinal control to sunnypilot after a confirmed turn signal."),
+    )
+    self.dynamic_auto_stock_curve_to_sp_toggle = toggle_item_sp(
+      title=tr("Curve → SP Longitudinal"),
+      param="DynamicAutoStockCurveToSP",
+      description=tr("When Dynamic ACC is using Tesla ACC, switch longitudinal control to sunnypilot when vision or map curve control becomes active."),
+    )
     self.ap_hybrid_toggle = toggle_item_sp(
       title=tr("AP Hybrid Control (Experimental)"),
       param="TeslaApHybrid",
@@ -326,7 +336,10 @@ class TeslaSettings(BrandSettings):
     self.items = [self.coop_steering_toggle, self.mads_screen_button,
                   self.camera_offset, self.reset_camera_offset,
                   self.ap_hybrid_toggle, self.dynamic_ap_longitudinal_toggle,
-                  self.dynamic_auto_stock_toggle, self.dyn_auto_speed,
+                  self.dynamic_auto_stock_toggle,
+                  self.dynamic_auto_stock_blinker_to_sp_toggle,
+                  self.dynamic_auto_stock_curve_to_sp_toggle,
+                  self.dyn_auto_speed,
                   self.dyn_auto_speed_low, self.stop_line_deceleration,
                   self.speed_limit_cruise_buttons, self.mpc_settings]
 
@@ -337,8 +350,11 @@ class TeslaSettings(BrandSettings):
     self._update_dynamic_speed_visibility()
 
   def _update_dynamic_speed_visibility(self):
-    show = (ui_state.params.get_bool("DynamicAutoStock") or
+    dynamic_acc_enabled = ui_state.params.get_bool("DynamicAutoStock")
+    show = (dynamic_acc_enabled or
             ui_state.params.get_bool("TeslaDynamicApLongitudinal"))
+    self.dynamic_auto_stock_blinker_to_sp_toggle.set_visible(dynamic_acc_enabled)
+    self.dynamic_auto_stock_curve_to_sp_toggle.set_visible(dynamic_acc_enabled)
     self.dyn_auto_speed.set_visible(show)
     self.dyn_auto_speed_low.set_visible(show)
 
