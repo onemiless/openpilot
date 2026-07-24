@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from cereal import custom
 from openpilot.common.realtime import DT_CTRL
 from opendbc.car import structs
+from openpilot.sunnypilot.mads.helpers import MadsSteeringModeOnBrake
 from openpilot.sunnypilot.mads.mads import ModularAssistiveDrivingSystem
 from openpilot.sunnypilot.mads.state import StateMachine, SOFT_DISABLE_TIME
 from openpilot.selfdrive.selfdrived.events import ET, NormalPermanentAlert, Events
@@ -169,3 +170,14 @@ def test_lateral_mismatch_requires_consecutive_panda_samples():
   panda_state.controlsAllowedLateral = False
   mads.data_sample()
   assert mads.lateral_mismatch_counter == 1
+
+
+@pytest.mark.parametrize("brake_pressed,regen_braking", [(True, False), (False, True)])
+def test_pause_mode_does_not_reenable_lateral_while_braking(brake_pressed, regen_braking):
+  mads = ModularAssistiveDrivingSystem.__new__(ModularAssistiveDrivingSystem)
+  mads.steering_mode_on_brake = MadsSteeringModeOnBrake.PAUSE
+  mads.pedal_pressed_non_gas_pressed = lambda _: False
+  mads.events_sp = SimpleNamespace(contains_in_list=lambda _: False)
+  car_state = SimpleNamespace(brakePressed=brake_pressed, regenBraking=regen_braking)
+
+  assert not mads.should_silent_lkas_enable(car_state)

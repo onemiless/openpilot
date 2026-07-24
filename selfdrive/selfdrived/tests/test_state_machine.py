@@ -45,6 +45,16 @@ class TestStateMachine:
         assert State.disabled == self.state_machine.state
         self.events.clear()
 
+  def test_immediate_disable_has_priority_over_user_disable(self):
+    self.state_machine.state = State.enabled
+    self.events.add(make_event([ET.USER_DISABLE, ET.IMMEDIATE_DISABLE]))
+
+    self.state_machine.update(self.events)
+
+    assert self.state_machine.state == State.disabled
+    assert ET.IMMEDIATE_DISABLE in self.state_machine.current_alert_types
+    assert ET.USER_DISABLE not in self.state_machine.current_alert_types
+
   def test_soft_disable(self):
     for state in ALL_STATES:
       if state == State.preEnabled:  # preEnabled considers NO_ENTRY instead

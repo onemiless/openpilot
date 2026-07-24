@@ -1,4 +1,3 @@
-import pyray as rl
 import numpy as np
 import time
 import threading
@@ -148,7 +147,7 @@ class UIState(UIStateSP):
         # Check ignition status across all pandas
         if self.panda_type != log.PandaState.PandaType.unknown:
           self.ignition = any(state.ignitionLine or state.ignitionCan for state in panda_states)
-    elif self.sm.frame - self.sm.recv_frame["pandaStates"] > 5 * rl.get_fps():
+    elif not self.sm.alive["pandaStates"]:
       self.panda_type = log.PandaState.PandaType.unknown
 
     # Handle wide road camera state updates

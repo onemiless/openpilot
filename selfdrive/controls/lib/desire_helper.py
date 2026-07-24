@@ -125,7 +125,7 @@ class DesireHelper:
     else:
       self.lane_change_timer += DT_MDL
 
-    self.prev_one_blinker = one_blinker
+    self.prev_one_blinker = one_blinker and lateral_active
 
     if self.lane_turn_direction != TurnDirection.none:
       self.desire = TURN_DESIRES[self.lane_turn_direction]
