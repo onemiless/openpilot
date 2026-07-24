@@ -19,9 +19,11 @@ def test_tesla_longitudinal_source_flags_are_unambiguous():
   assert tesla_longitudinal_source_from_flags(32 | 2048) == "manualStock"
   assert tesla_longitudinal_source_from_flags(32 | 512) == "apHybridStock"
   assert tesla_longitudinal_source_from_flags(32) == "stockUnknown"
+  assert tesla_longitudinal_source_from_flags(16384) == "sp"
 
 
 def test_ap_hybrid_exit_filters_split_control_events_for_one_frame():
   assert tesla_split_control_event_filter_active(False, False, False, True)
   assert tesla_split_control_event_filter_active(False, False, True, True)
+  assert tesla_split_control_event_filter_active(False, False, False, False, True)
   assert not tesla_split_control_event_filter_active(False, False, False, False)

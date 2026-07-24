@@ -11,7 +11,8 @@ class FakeSubMaster:
     self.recv_time = {"longitudinalPlanSP": 10.0, "carControl": 10.0, "selfdriveStateSP": 10.0}
     self.data = {
       "longitudinalPlanSP": SimpleNamespace(longitudinalPlanSource=SimpleNamespace(raw=1)),
-      "carControl": SimpleNamespace(leftBlinker=True, rightBlinker=False, latActive=True),
+      "carControl": SimpleNamespace(leftBlinker=True, rightBlinker=False, latActive=True, longActive=True,
+                                    actuators=SimpleNamespace(accel=-0.25)),
       "selfdriveStateSP": SimpleNamespace(mads=SimpleNamespace(active=True)),
     }
 
@@ -22,7 +23,7 @@ class FakeSubMaster:
 def test_tesla_longitudinal_context_uses_new_plan_and_lane_change_state():
   context = get_tesla_longitudinal_context(FakeSubMaster(), 10.05)
 
-  assert context == (1, True, True, 10.0, True, True, True, 10.05)
+  assert context == (1, True, True, 10.0, True, True, True, 10.05, True, -0.25, True)
 
 
 def test_tesla_longitudinal_context_rejects_stale_messages():
@@ -34,7 +35,7 @@ def test_tesla_longitudinal_context_rejects_stale_messages():
 
   context = get_tesla_longitudinal_context(sm, 10.05)
 
-  assert context == (1, False, False, 9.7, True, False, False, 10.05)
+  assert context == (1, False, False, 9.7, True, False, False, 10.05, True, -0.25, False)
 
 
 def test_tesla_longitudinal_context_accepts_active_mads_at_standstill():

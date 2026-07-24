@@ -35,7 +35,7 @@ TESLA_LONGITUDINAL_CONTEXT_STALE_S = 0.2
 carlog.addHandler(ForwardingHandler(cloudlog))
 
 
-def get_tesla_longitudinal_context(sm: messaging.SubMaster, now: float) -> tuple[int, bool, bool, float, bool, bool, bool, float]:
+def get_tesla_longitudinal_context(sm: messaging.SubMaster, now: float) -> tuple[int, bool, bool, float, bool, bool, bool, float, bool, float, bool]:
   plan = sm['longitudinalPlanSP']
   plan_source = int(getattr(plan.longitudinalPlanSource, "raw", plan.longitudinalPlanSource))
   plan_recv_time = float(sm.recv_time['longitudinalPlanSP'])
@@ -43,16 +43,18 @@ def get_tesla_longitudinal_context(sm: messaging.SubMaster, now: float) -> tuple
                 now - plan_recv_time <= TESLA_LONGITUDINAL_CONTEXT_STALE_S)
 
   car_control = sm['carControl']
-  lane_change_active = bool(car_control.leftBlinker or car_control.rightBlinker)
-  lane_change_valid = (sm.seen['carControl'] and sm.valid['carControl'] and
+  car_control_valid = (sm.seen['carControl'] and sm.valid['carControl'] and
                        now - sm.recv_time['carControl'] <= TESLA_LONGITUDINAL_CONTEXT_STALE_S)
+  lane_change_active = bool(car_control.leftBlinker or car_control.rightBlinker)
+  lane_change_valid = car_control_valid
   selfdrive_state_sp = sm['selfdriveStateSP']
   mads_state_valid = (sm.seen['selfdriveStateSP'] and sm.valid['selfdriveStateSP'] and
                       now - sm.recv_time['selfdriveStateSP'] <= TESLA_LONGITUDINAL_CONTEXT_STALE_S)
   lateral_control_ready = ((lane_change_valid and bool(car_control.latActive)) or
                            (mads_state_valid and bool(selfdrive_state_sp.mads.active)))
   return (plan_source, sm.updated['longitudinalPlanSP'], plan_valid, plan_recv_time,
-          lane_change_active, lane_change_valid, lateral_control_ready, now)
+          lane_change_active, lane_change_valid, lateral_control_ready, now,
+          bool(car_control.longActive), float(car_control.actuators.accel), car_control_valid)
 
 
 def obd_callback(params: Params) -> ObdCallback:

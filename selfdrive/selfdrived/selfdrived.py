@@ -50,6 +50,7 @@ TESLA_AP_HYBRID_ACTIVE = 512
 TESLA_DYNAMIC_STOCK_ACTIVE = 1024
 TESLA_MANUAL_STOCK_ACTIVE = 2048
 TESLA_AP_HYBRID_STOCK_LATERAL_ACTIVE = 8192
+TESLA_AP_HYBRID_EXIT_RECOVERY_ACTIVE = 16384
 TESLA_CAR_STATE_SP_MAX_AGE_NS = 50_000_000
 
 
@@ -71,8 +72,9 @@ def tesla_longitudinal_source_from_flags(flags: int) -> str:
 
 
 def tesla_split_control_event_filter_active(stock_active: bool, prev_stock_active: bool,
-                                            ap_hybrid_active: bool, prev_ap_hybrid_active: bool) -> bool:
-  return stock_active or prev_stock_active or ap_hybrid_active or prev_ap_hybrid_active
+                                            ap_hybrid_active: bool, prev_ap_hybrid_active: bool,
+                                            ap_exit_recovery_active: bool = False) -> bool:
+  return stock_active or prev_stock_active or ap_hybrid_active or prev_ap_hybrid_active or ap_exit_recovery_active
 
 
 ButtonType = car.CarState.ButtonEvent.Type
@@ -115,6 +117,7 @@ class SelfdriveD(CruiseHelper):
     self.prev_tesla_ap_hybrid_active = False
     self.tesla_stock_lateral_active = False
     self.prev_tesla_stock_lateral_active = False
+    self.tesla_ap_hybrid_exit_recovery_active = False
     self.tesla_longitudinal_source = "sp"
     self.prev_tesla_longitudinal_source = "sp"
     self.car_state_sp_mono_time = 0
@@ -301,13 +304,14 @@ class SelfdriveD(CruiseHelper):
       split_control_transition = tesla_split_control_event_filter_active(
         self.tesla_stock_longitudinal_active, self.prev_tesla_stock_longitudinal_active,
         self.tesla_ap_hybrid_active, self.prev_tesla_ap_hybrid_active,
+        self.tesla_ap_hybrid_exit_recovery_active,
       )
       if self.CP.brand == 'tesla' and split_control_transition:
         if self.events.has(EventName.buttonCancel):
           self.events.remove(EventName.buttonCancel)
         if self.events.has(EventName.invalidLkasSetting):
           self.events.remove(EventName.invalidLkasSetting)
-        if self.events.has(EventName.accFaulted):
+        if not self.tesla_ap_hybrid_exit_recovery_active and self.events.has(EventName.accFaulted):
           self.events.remove(EventName.accFaulted)
         if self.events.has(EventName.wrongCarMode):
           self.events.remove(EventName.wrongCarMode)
@@ -625,6 +629,7 @@ class SelfdriveD(CruiseHelper):
       "prev_tesla_ap_hybrid_active": bool(self.prev_tesla_ap_hybrid_active),
       "tesla_stock_lateral_active": bool(self.tesla_stock_lateral_active),
       "prev_tesla_stock_lateral_active": bool(self.prev_tesla_stock_lateral_active),
+      "tesla_ap_hybrid_exit_recovery_active": bool(self.tesla_ap_hybrid_exit_recovery_active),
       "tesla_longitudinal_source": self.tesla_longitudinal_source,
       "car_state_sp_flags": int(self.car_state_sp_flags),
       "cruise_enabled": bool(CS.cruiseState.enabled),
@@ -664,6 +669,7 @@ class SelfdriveD(CruiseHelper):
       snapshot["prev_tesla_ap_hybrid_active"],
       snapshot["tesla_stock_lateral_active"],
       snapshot["prev_tesla_stock_lateral_active"],
+      snapshot["tesla_ap_hybrid_exit_recovery_active"],
       snapshot["tesla_longitudinal_source"],
       snapshot["cruise_enabled"],
       snapshot["cruise_available"],
@@ -700,6 +706,7 @@ class SelfdriveD(CruiseHelper):
     self.tesla_stock_longitudinal_active = bool(self.car_state_sp_flags & TESLA_STOCK_LONGITUDINAL_ACTIVE)
     self.tesla_ap_hybrid_active = bool(self.car_state_sp_flags & TESLA_AP_HYBRID_ACTIVE)
     self.tesla_stock_lateral_active = bool(self.car_state_sp_flags & TESLA_AP_HYBRID_STOCK_LATERAL_ACTIVE)
+    self.tesla_ap_hybrid_exit_recovery_active = bool(self.car_state_sp_flags & TESLA_AP_HYBRID_EXIT_RECOVERY_ACTIVE)
     self.tesla_longitudinal_source = tesla_longitudinal_source_from_flags(self.car_state_sp_flags)
 
     self.sm.update(0)
