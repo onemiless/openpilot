@@ -12,6 +12,7 @@ def test_offline_wake_log_includes_persistent_can_trace(mocker):
 
   pandad.log_offline_wake_state(panda, "serial")
 
+  assert "sample=pre_heartbeat" in log.call_args.args[0]
   assert "wake_can_trace={'peak_delta': 260, 'tesla_seen': True}" in log.call_args.args[0]
 
 

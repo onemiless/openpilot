@@ -25,7 +25,7 @@ def log_offline_wake_state(panda: Panda, serial: str) -> None:
     wake_debug = panda.wake_debug()
     wake_can_trace = panda.wake_can_trace()
     health = panda.health()
-    message = f"panda offline wake state serial={serial} wake_success={wake_success} wake_debug={wake_debug}"
+    message = f"panda offline wake state sample=pre_heartbeat serial={serial} wake_success={wake_success} wake_debug={wake_debug}"
     message += f" wake_can_trace={wake_can_trace} health={health}"
     offline_wake_debug_log(message)
     if clear_panda_bootkick_test_sentinel():

@@ -42,6 +42,19 @@ struct can_frame {
   long src;
 };
 
+struct __attribute__((packed)) panda_wake_success_t {
+  uint32_t magic;
+  uint32_t latched;
+  uint32_t stage;
+  uint32_t boot_count;
+  uint32_t reset_reason;
+  uint32_t can_exti_line;
+  uint32_t harness_status;
+  uint32_t ignition_line;
+  uint32_t ignition_can_seen;
+  uint32_t som_gpio;
+};
+
 
 class Panda {
 private:
@@ -76,6 +89,7 @@ public:
   std::optional<std::string> get_serial();
   void set_power_saving(bool power_saving);
   void enable_deepsleep();
+  std::optional<panda_wake_success_t> get_wake_success();
   void send_heartbeat(bool engaged, bool engaged_mads);
   void set_can_speed_kbps(uint16_t bus, uint16_t speed);
   void set_can_fd_auto(uint16_t bus, bool enabled);

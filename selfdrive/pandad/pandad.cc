@@ -24,6 +24,8 @@
 #define MAX_IR_PANDA_VAL 0
 #define CUTOFF_IL 400
 #define SATURATE_IL 1000
+#define WAKE_SUCCESS_MAGIC 0x57535543U
+#define WAKE_SUCCESS_LOG_DELAY_FRAMES 300U
 
 ExitHandler do_exit;
 
@@ -342,6 +344,24 @@ void process_panda_state(Panda *panda, PubMaster *pm, bool engaged, bool engaged
   panda->send_heartbeat(engaged, engaged_mads);
 }
 
+void log_post_heartbeat_wake_success(Panda *panda) {
+  auto wake_success = panda->get_wake_success();
+  if (!wake_success) {
+    offline_wake_debug_log("panda offline wake state sample=post_heartbeat unavailable");
+    return;
+  }
+
+  offline_wake_debug_log(util::string_format(
+    "panda offline wake state sample=post_heartbeat magic=%u latched=%u stage=%u boot_count=%u "
+    "reset_reason=%u harness=%u ignition_line=%u ignition_can=%u som_gpio=%u",
+    wake_success->magic, wake_success->latched, wake_success->stage, wake_success->boot_count,
+    wake_success->reset_reason, wake_success->harness_status, wake_success->ignition_line,
+    wake_success->ignition_can_seen, wake_success->som_gpio));
+  if (wake_success->magic != WAKE_SUCCESS_MAGIC) {
+    LOGW("invalid Panda wake success magic: %u", wake_success->magic);
+  }
+}
+
 void process_wake_monitor_request(Panda *panda) {
   static Params params;
 
@@ -462,6 +482,7 @@ void pandad_run(Panda *panda) {
   bool engaged_mads = false;
   bool is_onroad = false;
   bool always_offroad = false;
+  bool post_heartbeat_wake_logged = false;
 
   // Main loop: receive CAN first, then process lower priority panda and peripheral state.
   while (!do_exit && check_connected(panda)) {
@@ -483,6 +504,10 @@ void pandad_run(Panda *panda) {
       engaged_mads = process_mads_heartbeat(&sm);
       always_offroad = panda_safety.getOffroadMode();
       process_panda_state(panda, &pm, engaged, engaged_mads, is_onroad, spoofing_started, always_offroad);
+      if (!post_heartbeat_wake_logged && (rk.frame() >= WAKE_SUCCESS_LOG_DELAY_FRAMES)) {
+        log_post_heartbeat_wake_success(panda);
+        post_heartbeat_wake_logged = true;
+      }
       panda_safety.configureSafetyMode(is_onroad);
     }
 

@@ -134,6 +134,12 @@ void Panda::enable_deepsleep() {
   handle->control_write(0xb5, 0, 0);
 }
 
+std::optional<panda_wake_success_t> Panda::get_wake_success() {
+  panda_wake_success_t wake_success = {};
+  int err = handle->control_read(0xd9, 0, 0, (unsigned char*)&wake_success, sizeof(wake_success));
+  return err >= 0 ? std::make_optional(wake_success) : std::nullopt;
+}
+
 void Panda::send_heartbeat(bool engaged, bool engaged_mads) {
   handle->control_write(0xf3, engaged, engaged_mads);
 }
