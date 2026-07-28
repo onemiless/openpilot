@@ -242,6 +242,11 @@ class DeviceLayoutSP(DeviceLayout):
     def start_capture(result: int):
       if result != DialogResult.CONFIRM:
         return
+      # This must happen in the UI process, rather than waiting for the manager
+      # to spawn the recorder. Otherwise an already-pending shutdown can win the
+      # race before the recorder sets DisablePowerDown itself.
+      ui_state.params.put_bool("TeslaOfflineWakeCaptureRestorePowerDown", ui_state.params.get_bool("DisablePowerDown"))
+      ui_state.params.put_bool("DisablePowerDown", True)
       for key in ("DoShutdown", "ForcePowerDown"):
         ui_state.params.remove(key)
       ui_state.params.put_bool("TeslaOfflineWakeCaptureEnabled", True)
