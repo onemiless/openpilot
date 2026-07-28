@@ -27,10 +27,9 @@ def main() -> None:
     print(f"Wake-bus candidates: {report['wake_bus_candidates']}")
   finally:
     params.put_bool("TeslaOfflineWakeCaptureEnabled", False)
-    # The UI enables power protection before manager scheduling can occur. Put
-    # the user's original setting back only after this capture has ended.
-    params.put_bool("DisablePowerDown", params.get_bool("TeslaOfflineWakeCaptureRestorePowerDown"))
-    params.remove("TeslaOfflineWakeCaptureRestorePowerDown")
+    # This is a temporary capture-only safeguard. "Always On" is controlled
+    # independently through MaxTimeOffroad, so leave its setting untouched.
+    params.put_bool("DisablePowerDown", False)
 
 
 if __name__ == "__main__":

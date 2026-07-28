@@ -125,7 +125,6 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"TermsVersion", {PERSISTENT, STRING}},
     {"TorqueBar", {PERSISTENT | BACKUP, BOOL, "1"}},
     {"TeslaOfflineWakeCaptureEnabled", {PERSISTENT, BOOL, "0"}},
-    {"TeslaOfflineWakeCaptureRestorePowerDown", {PERSISTENT, BOOL, "0"}},
     {"TrainingVersion", {PERSISTENT, STRING}},
     {"UbloxAvailable", {PERSISTENT, BOOL}},
     {"UpdateAvailable", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, BOOL}},
