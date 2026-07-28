@@ -91,6 +91,14 @@ class DeviceLayoutSP(DeviceLayout):
     )
     self._auto_wake_test_toggle.action_item.right_button.set_visible(False)
 
+    self._tesla_wake_capture_toggle = dual_button_item_sp(
+      left_text=lambda: tr("Tesla Sleep/Wake CAN Capture"),
+      left_callback=self._toggle_tesla_wake_capture,
+      right_text="",
+      right_callback=None,
+    )
+    self._tesla_wake_capture_toggle.action_item.right_button.set_visible(False)
+
     self._route_recording_toggle = dual_button_item_sp(
       left_text=lambda: tr("Route Recording"),
       left_callback=lambda: ui_state.params.put_bool("DisableRouteRecording",
@@ -146,6 +154,7 @@ class DeviceLayoutSP(DeviceLayout):
       self._max_time_offroad,
       LineSeparator(),
       self._auto_wake_test_toggle,
+      self._tesla_wake_capture_toggle,
       LineSeparator(height=10),
       self._route_recording_toggle,
       self._quiet_mode_and_dcam,
@@ -224,6 +233,25 @@ class DeviceLayoutSP(DeviceLayout):
     except Exception:
       pass
 
+  def _toggle_tesla_wake_capture(self):
+    enabled = ui_state.params.get_bool("TeslaOfflineWakeCaptureEnabled")
+    if enabled:
+      ui_state.params.put_bool("TeslaOfflineWakeCaptureEnabled", False)
+      return
+
+    def start_capture(result: int):
+      if result != DialogResult.CONFIRM:
+        return
+      for key in ("DoShutdown", "ForcePowerDown"):
+        ui_state.params.remove(key)
+      ui_state.params.put_bool("TeslaOfflineWakeCaptureEnabled", True)
+
+    gui_app.push_widget(ConfirmDialog(
+      tr("Start a passive Tesla CAN capture? The device will remain powered until the next wake event is captured. "
+         "Start this before closing the car. No CAN messages will be sent."),
+      tr("Start"), tr("Cancel"), callback=start_capture
+    ))
+
   @staticmethod
   def _update_max_time_offroad_label(value: int) -> str:
     label = tr("Always On") if value == 0 else f"{value}" + tr("m") if value < 60 else f"{value // 60}" + tr("h")
@@ -263,6 +291,16 @@ class DeviceLayoutSP(DeviceLayout):
     self._auto_wake_test_toggle.action_item.left_button.set_button_style(
       ButtonStyle.PRIMARY if auto_wake_test_enabled else ButtonStyle.NORMAL
     )
+
+    # Tesla sleep/wake CAN capture button
+    wake_capture_enabled = ui_state.params.get_bool("TeslaOfflineWakeCaptureEnabled")
+    self._tesla_wake_capture_toggle.action_item.left_button.set_text(
+      tr("Stop Tesla CAN Capture") if wake_capture_enabled else tr("Start Tesla CAN Capture")
+    )
+    self._tesla_wake_capture_toggle.action_item.left_button.set_button_style(
+      ButtonStyle.PRIMARY if wake_capture_enabled else ButtonStyle.NORMAL
+    )
+    self._tesla_wake_capture_toggle.action_item.left_button.set_enabled(ui_state.is_offroad())
 
     # Quiet Mode button
     self._quiet_mode_and_dcam.action_item.left_button.set_button_style(ButtonStyle.PRIMARY if ui_state.params.get_bool("QuietMode") else ButtonStyle.NORMAL)
