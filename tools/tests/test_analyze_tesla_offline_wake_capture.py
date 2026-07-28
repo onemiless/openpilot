@@ -14,3 +14,15 @@ def test_report_keeps_the_first_wake_frame_for_each_bus():
   assert report["wake_activity_observed"]
   assert report["wake_bus_candidates"][0]["bus"] == 2
   assert report["wake_bus_candidates"][0]["first_address"] == 0x318
+
+
+def test_report_ignores_panda_nonphysical_bus_markers():
+  report = analyze([
+    {"type": "marker", "name": "quiet_entered", "t_monotonic_s": 100.0},
+    {"type": "marker", "name": "wake_activity", "t_monotonic_s": 200.0},
+    {"type": "frame", "t_monotonic_s": 200.0, "bus": 128, "address": 0x100, "data": "0102"},
+    {"type": "frame", "t_monotonic_s": 200.1, "bus": 1, "address": 0x200, "data": "0304"},
+  ])
+
+  assert [candidate["bus"] for candidate in report["wake_bus_candidates"]] == [1]
+  assert report["ignored_nonphysical_post_wake_frames"] == 1

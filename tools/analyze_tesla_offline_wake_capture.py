@@ -8,6 +8,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
+PHYSICAL_CAN_BUSES = range(4)
+
 
 def load_records(path: Path):
   with gzip.open(path, "rt", encoding="utf-8") as capture:
@@ -21,6 +23,7 @@ def analyze(records) -> dict[str, Any]:
   first_frame_by_bus: dict[int, dict[str, Any]] = {}
   frame_counts: Counter[int] = Counter()
   address_counts: dict[int, Counter[int]] = defaultdict(Counter)
+  ignored_nonphysical_frames = 0
 
   for record in records:
     if record["type"] == "marker":
@@ -30,6 +33,11 @@ def analyze(records) -> dict[str, Any]:
         wake_at = record["t_monotonic_s"]
     elif record["type"] == "frame" and wake_at is not None and record["t_monotonic_s"] >= wake_at:
       bus = int(record["bus"])
+      # Panda encodes returned/error traffic by setting high bits in `src`.
+      # Those values are not physical CAN buses and cannot wake Panda from STOP.
+      if bus not in PHYSICAL_CAN_BUSES:
+        ignored_nonphysical_frames += 1
+        continue
       first_frame_by_bus.setdefault(bus, record)
       frame_counts[bus] += 1
       address_counts[bus][int(record["address"])] += 1
@@ -53,6 +61,7 @@ def analyze(records) -> dict[str, Any]:
     "wake_activity_observed": wake_at is not None,
     "quiet_started_at_s": quiet_at,
     "wake_started_at_s": wake_at,
+    "ignored_nonphysical_post_wake_frames": ignored_nonphysical_frames,
     "wake_bus_candidates": candidates,
     "recommendation": (
       "Use the earliest candidate bus as the Panda STOP-mode wake RX candidate; validate it with a second capture."
