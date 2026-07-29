@@ -255,7 +255,7 @@ def hardware_thread(end_event, hw_queue) -> None:
     sm.update(PANDA_STATES_TIMEOUT)
     # The Panda can only wake from physical bus 1. Keep the SoM on while
     # that bus is active, then hand off directly to STOP once it has slept.
-    bus1_active = sm.updated["can"] and any(can.src == 1 for can in sm["can"].can)
+    bus1_active = sm.updated["can"] and any(can.src == 1 for can in sm["can"])
     can_shutdown_gate.update(bus1_active)
 
     pandaStates = sm['pandaStates']
