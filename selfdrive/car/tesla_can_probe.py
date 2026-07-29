@@ -35,9 +35,9 @@ def decode_tesla_probe_frame(address: int, data: bytes) -> dict:
       "counter": (data[6] >> 4) & 0xF,
       "checksum": data[7],
     }
-  elif address == 0x249 and len(data) >= 3:
+  elif address == 0x249 and len(data) == 4:
     decoded = {
-      "turn_stalk_state": data[2] & 0x7,
+      "turn_stalk_state": data[2] & 0xF,
       "counter": data[1] & 0xF,
       "checksum": data[0],
     }

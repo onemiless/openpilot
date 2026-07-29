@@ -8,8 +8,8 @@ def test_decode_speed_button_and_turn_messages():
   assert decode_tesla_probe_frame(0x238, bytes([16, 0, 0, 0, 0, 0, 0xA0, 0x55])) == {
     "speed_control_state": 16, "counter": 10, "checksum": 0x55,
   }
-  assert decode_tesla_probe_frame(0x249, bytes([0x44, 0x0B, 0x05])) == {
-    "turn_stalk_state": 5, "counter": 11, "checksum": 0x44,
+  assert decode_tesla_probe_frame(0x249, bytes.fromhex("340b0200")) == {
+    "turn_stalk_state": 2, "counter": 11, "checksum": 0x34,
   }
   assert decode_tesla_probe_frame(0x3E9, bytes([0, 2, 16, 0x21, 0, 0, 0xC0, 0x66])) == {
     "turn_request": 2, "turn_request_reason": 8, "autopilot_active": 1, "acc_active": 1,
@@ -23,7 +23,7 @@ def test_probe_records_bus_direction_and_filters_unrelated_frames(tmp_path):
   probe.update_can([
     (1_000_000_000, [
       (0x238, bytes([32, 0, 0, 0, 0, 0, 0x30, 0x77]), 1),
-      (0x249, bytes([0x11, 0x02, 0x01]), 0xC1),
+      (0x249, bytes.fromhex("f7040600"), 0xC1),
       (0x123, b"\x00", 0),
     ]),
   ])

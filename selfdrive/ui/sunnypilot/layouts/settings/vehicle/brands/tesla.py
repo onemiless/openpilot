@@ -333,6 +333,13 @@ class TeslaSettings(BrandSettings):
                      "This is read-only and takes effect after restart."),
       enabled=ui_state.is_offroad,
     )
+    self.turn_signal_validation = toggle_item_sp(
+      title=tr("Turn Signal CAN Validation"),
+      param="TeslaTurnSignalValidation",
+      description=tr("Allow the stationary one-shot left/right turn-signal validation tool after restart. " +
+                     "No signal is sent automatically."),
+      enabled=ui_state.is_offroad,
+    )
     self.mpc_settings = button_item_sp(
       title=tr("MPC Params"),
       button_text=tr("Customize"),
@@ -348,7 +355,8 @@ class TeslaSettings(BrandSettings):
                   self.dynamic_auto_stock_curve_to_sp_toggle,
                   self.dyn_auto_speed,
                   self.dyn_auto_speed_low, self.stop_line_deceleration,
-                  self.speed_limit_cruise_buttons, self.can_validation_logging, self.mpc_settings]
+                  self.speed_limit_cruise_buttons, self.can_validation_logging,
+                  self.turn_signal_validation, self.mpc_settings]
 
   def _on_dyn_auto_stock_toggle(self, state):
     self._update_dynamic_speed_visibility()
