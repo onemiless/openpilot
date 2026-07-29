@@ -6,6 +6,10 @@ See the LICENSE.md file in the root directory for more details.
 """
 from collections.abc import Callable
 import json
+import os
+import subprocess
+import sys
+import threading
 
 import pyray as rl
 
@@ -16,6 +20,7 @@ from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.sunnypilot.widgets.list_view import button_item_sp, multiple_button_item_sp, option_item_sp, toggle_item_sp
 from openpilot.system.ui.widgets import DialogResult, Widget
+from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog, alert_dialog
 from openpilot.system.ui.widgets.network import NavButton
 from openpilot.system.ui.widgets.option_dialog import MultiOptionDialog
 from openpilot.system.ui.widgets.scroller_tici import Scroller
@@ -30,6 +35,7 @@ MPC_PRESET_VALUE_PARAMS = {
   MPC_PRESET_MOUMOU: "MpcTuningMoumouValues",
   MPC_PRESET_CURRENT: "MpcTuningCurrentValues",
 }
+TURN_SIGNAL_TEST_SCRIPT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../../../debug/tesla_turn_signal_test.py"))
 
 MPC_PRESETS = {
   MPC_PRESET_MOUMOU: {
@@ -243,6 +249,8 @@ class TeslaMpcSettingsLayout(Widget):
 class TeslaSettings(BrandSettings):
   def __init__(self):
     super().__init__()
+    self._turn_signal_test_busy = False
+    self._turn_signal_test_result: str | None = None
     self.coop_steering_toggle = toggle_item_sp(tr("Cooperative Steering"), "", param="TeslaCoopSteering")
     self.mads_screen_button = multiple_button_item_sp(
       title=lambda: tr("MADS Screen Button"),
@@ -340,6 +348,20 @@ class TeslaSettings(BrandSettings):
                      "No signal is sent automatically."),
       enabled=ui_state.is_offroad,
     )
+    self.test_left_turn_signal = button_item_sp(
+      title=tr("Test Left Turn Signal"),
+      button_text=lambda: tr("WAIT") if self._turn_signal_test_busy else tr("TEST"),
+      description=tr("Send one guarded left-turn validation pulse and save CAN echo, rejection, and vehicle feedback to the validation log."),
+      callback=lambda: self._confirm_turn_signal_test("left"),
+      enabled=self._turn_signal_test_enabled,
+    )
+    self.test_right_turn_signal = button_item_sp(
+      title=tr("Test Right Turn Signal"),
+      button_text=lambda: tr("WAIT") if self._turn_signal_test_busy else tr("TEST"),
+      description=tr("Send one guarded right-turn validation pulse and save CAN echo, rejection, and vehicle feedback to the validation log."),
+      callback=lambda: self._confirm_turn_signal_test("right"),
+      enabled=self._turn_signal_test_enabled,
+    )
     self.mpc_settings = button_item_sp(
       title=tr("MPC Params"),
       button_text=tr("Customize"),
@@ -356,7 +378,46 @@ class TeslaSettings(BrandSettings):
                   self.dyn_auto_speed,
                   self.dyn_auto_speed_low, self.stop_line_deceleration,
                   self.speed_limit_cruise_buttons, self.can_validation_logging,
-                  self.turn_signal_validation, self.mpc_settings]
+                  self.turn_signal_validation, self.test_left_turn_signal,
+                  self.test_right_turn_signal, self.mpc_settings]
+
+  def _turn_signal_test_enabled(self):
+    return ui_state.params.get_bool("TeslaTurnSignalValidation") and not self._turn_signal_test_busy
+
+  def _confirm_turn_signal_test(self, direction):
+    label = tr("left") if direction == "left" else tr("right")
+    message = tr("Before testing: keep the vehicle in Park, completely stationary, hold the brake pedal, and ensure AP/SP controls are inactive. " +
+                 "The Panda safety layer will reject the request if any condition is not met.")
+
+    def handle_confirmation(result):
+      if result == DialogResult.CONFIRM:
+        self._run_turn_signal_test(direction)
+
+    gui_app.push_widget(ConfirmDialog(message, f"{tr('Test')} {label}", callback=handle_confirmation))
+
+  def _run_turn_signal_test(self, direction):
+    if self._turn_signal_test_busy:
+      return
+    self._turn_signal_test_busy = True
+
+    def run():
+      try:
+        result = subprocess.run(
+          [sys.executable, TURN_SIGNAL_TEST_SCRIPT, direction],
+          capture_output=True,
+          text=True,
+          timeout=20,
+          check=False,
+        )
+        output = "\n".join(part for part in (result.stdout.strip(), result.stderr.strip()) if part)
+        status = tr("PASS") if result.returncode == 0 else tr("FAIL") if result.returncode == 2 else tr("BLOCKED")
+        self._turn_signal_test_result = f"{status}\n\n{output[-1800:]}\n\n{tr('Saved to:')} /data/tesla_turn_signal_validation.log"
+      except Exception as error:
+        self._turn_signal_test_result = f"{tr('Error')}\n\n{error}\n\n{tr('Saved to:')} /data/tesla_turn_signal_validation.log"
+      finally:
+        self._turn_signal_test_busy = False
+
+    threading.Thread(target=run, daemon=True).start()
 
   def _on_dyn_auto_stock_toggle(self, state):
     self._update_dynamic_speed_visibility()
@@ -399,6 +460,8 @@ class TeslaSettings(BrandSettings):
 
     has_vehicle_bus = ui_state.CP_SP is not None and bool(ui_state.CP_SP.flags & TeslaFlagsSP.HAS_VEHICLE_BUS)
     self.mads_screen_button.set_visible(has_vehicle_bus)
+    self.test_left_turn_signal.set_visible(has_vehicle_bus)
+    self.test_right_turn_signal.set_visible(has_vehicle_bus)
 
     mads_screen_button_desc = tr("Use a multi-finger press on the infotainment display as a MADS button.\n" +
                                  "This allows the use of full MADS functionality when enabled.\n" +
@@ -413,6 +476,13 @@ class TeslaSettings(BrandSettings):
 
     self.stop_line_deceleration.action_item.set_enabled(ui_state.has_longitudinal_control)
     self.speed_limit_cruise_buttons.action_item.set_enabled(ui_state.is_offroad())
+    self.test_left_turn_signal.action_item.set_enabled(self._turn_signal_test_enabled())
+    self.test_right_turn_signal.action_item.set_enabled(self._turn_signal_test_enabled())
     self.mpc_settings.action_item.set_enabled(ui_state.is_offroad())
+
+    if self._turn_signal_test_result is not None:
+      message = self._turn_signal_test_result
+      self._turn_signal_test_result = None
+      gui_app.push_widget(alert_dialog(message))
 
     self._on_dyn_auto_stock_toggle(self.dynamic_auto_stock_toggle.action_item.get_state())
