@@ -20,6 +20,7 @@ def make_state():
 
 def test_validation_guard_accepts_parked_brake_held_vehicle():
   CS, CC = make_state()
+  CS.brakePressed = False
   assert validation_guard(CS, CC) is None
 
 
@@ -33,12 +34,11 @@ def test_validation_guard_blocks_motion_and_active_controls():
   assert validation_guard(CS, CC) == "vehicle is not stationary"
 
   CS, CC = make_state()
-  CS.brakePressed = False
-  assert validation_guard(CS, CC) == "brake pedal is not pressed"
-
-  CS, CC = make_state()
   CC.enabled = True
   assert validation_guard(CS, CC) == "openpilot/sunnypilot controls are active"
+
+  CS, CC = make_state()
+  assert validation_guard(CS, CC, device_started=True) == "device is not in Settings/Offroad state"
 
 
 def test_validation_recorder_persists_replayable_session(tmp_path):

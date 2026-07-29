@@ -61,13 +61,13 @@ def source_details(source: int) -> tuple[int, str]:
   return source, "rx"
 
 
-def validation_guard(CS, CC) -> str | None:
+def validation_guard(CS, CC, device_started: bool = False) -> str | None:
+  if device_started:
+    return "device is not in Settings/Offroad state"
   if CS.gearShifter != car.CarState.GearShifter.park:
     return "vehicle is not in Park"
   if not CS.standstill or abs(CS.vEgo) >= 0.1:
     return "vehicle is not stationary"
-  if not CS.brakePressed:
-    return "brake pedal is not pressed"
   if CS.cruiseState.enabled:
     return "cruise is enabled"
   if CC.enabled or CC.latActive or CC.longActive:
@@ -80,8 +80,8 @@ def wait_for_safe_state(sm: messaging.SubMaster, timeout_s: float = 10.0):
   reason = "car state unavailable"
   while time.monotonic() < deadline:
     sm.update(100)
-    if sm.all_checks(["carState", "carControl"]):
-      reason = validation_guard(sm["carState"], sm["carControl"])
+    if sm.all_checks(["carState", "carControl", "deviceState"]):
+      reason = validation_guard(sm["carState"], sm["carControl"], bool(sm["deviceState"].started))
       if reason is None:
         return sm["carState"], sm["carControl"]
   raise RuntimeError(reason)
@@ -124,13 +124,14 @@ def send_validation_pulse(direction: str, log_path: str = VALIDATION_LOG_PATH) -
       raise RuntimeError("TeslaTurnSignalValidation is disabled; enable it offroad and restart")
 
     turn_state = SCCM_TURN_LEFT if direction == "left" else SCCM_TURN_RIGHT
-    sm = messaging.SubMaster(["carState", "carControl"])
+    sm = messaging.SubMaster(["carState", "carControl", "deviceState"])
     can_sock = messaging.sub_sock("can", timeout=10)
     sendcan = messaging.pub_sock("sendcan")
 
     CS, CC = wait_for_safe_state(sm)
-    recorder.record("guard_passed", gear=str(CS.gearShifter), standstill=bool(CS.standstill), v_ego=float(CS.vEgo),
-                    brake_pressed=bool(CS.brakePressed), cruise_enabled=bool(CS.cruiseState.enabled),
+    recorder.record("guard_passed", device_started=bool(sm["deviceState"].started), gear=str(CS.gearShifter),
+                    standstill=bool(CS.standstill), v_ego=float(CS.vEgo), brake_pressed=bool(CS.brakePressed),
+                    cruise_enabled=bool(CS.cruiseState.enabled),
                     controls_enabled=bool(CC.enabled), lateral_active=bool(CC.latActive), longitudinal_active=bool(CC.longActive))
     counter = wait_for_stalk_counter(can_sock, recorder)
     sequence = [turn_state] * ACTIVE_FRAMES + [SCCM_TURN_IDLE] * RELEASE_FRAMES
@@ -138,7 +139,7 @@ def send_validation_pulse(direction: str, log_path: str = VALIDATION_LOG_PATH) -
 
     for state in sequence:
       CS, CC = wait_for_safe_state(sm, timeout_s=1.0)
-      reason = validation_guard(CS, CC)
+      reason = validation_guard(CS, CC, bool(sm["deviceState"].started))
       if reason is not None:
         raise RuntimeError(reason)
       counter = (counter + 1) % 16
