@@ -6,7 +6,17 @@ import time
 
 
 TESLA_CAN_PROBE_PATH = "/data/tesla_can_probe.log"
-TESLA_CAN_PROBE_PREFIX = "[TESLA-CAN-PROBE-v1]"
+TESLA_CAN_PROBE_PREFIX = "[TESLA-CAN-PROBE-v2]"
+
+_SPEED_CONTROL_ACTIONS = {
+  0: "IDLE",
+  1: "FWD",
+  2: "RWD",
+  4: "UP_2ND",
+  8: "DN_2ND",
+  16: "UP_1ST",
+  32: "DN_1ST",
+}
 
 _EXACT_SEQUENCE_ADDRESSES = {
   0x238: "STW_ACTN_RQ",
@@ -30,8 +40,23 @@ def _source_details(source: int) -> tuple[int, str]:
 def decode_tesla_probe_frame(address: int, data: bytes) -> dict:
   decoded = {}
   if address == 0x238 and len(data) >= 8:
+    speed_control_state = data[0] & 0x3F
     decoded = {
-      "speed_control_state": data[0] & 0x3F,
+      "speed_control_state": speed_control_state,
+      "speed_control_action": _SPEED_CONTROL_ACTIONS.get(speed_control_state, f"UNKNOWN_{speed_control_state}"),
+      "vsl_enable_request": (data[0] >> 6) & 0x1,
+      "speed_control_state_inverse": (data[0] >> 7) & 0x1,
+      "distance_request": data[1],
+      "turn_lever_state": data[2] & 0x3,
+      "high_beam_lever_state": (data[2] >> 2) & 0x3,
+      "wiper_wash_pressed": (data[2] >> 4) & 0x3,
+      "rear_wiper_switch_position": (data[2] >> 6) & 0x3,
+      "steering_wheel_lever_state": data[3] & 0x7,
+      "steering_wheel_condition_fault": (data[3] >> 3) & 0x1,
+      "steering_wheel_condition_pressed": (data[3] >> 4) & 0x3,
+      "horn_pressed": (data[3] >> 6) & 0x3,
+      "steering_wheel_switch_mask": int.from_bytes(data[4:6], byteorder="little"),
+      "wiper_switch_position": data[6] & 0x7,
       "counter": (data[6] >> 4) & 0xF,
       "checksum": data[7],
     }
@@ -75,6 +100,7 @@ class TeslaCanProbe:
     self.last_das_status_log_ns = 0
     self.last_state_signature: tuple | None = None
     self.last_state_log_ns = 0
+    self.last_stw_payloads: dict[tuple[int, str], bytes] = {}
     if enabled:
       threading.Thread(target=self._writer, name="tesla-can-probe-writer", daemon=True).start()
       self._queue("capture_started", monotonic_ns=time.monotonic_ns(), addresses=["0x238", "0x249", "0x39b", "0x3e9"])
@@ -132,6 +158,27 @@ class TeslaCanProbe:
           self.last_das_status_log_ns = mono_time
 
         bus, direction = _source_details(source)
+        if address == 0x238 and len(data) >= 8:
+          # Exclude rolling counter/checksum, but retain the low-nibble wiper state.
+          payload = data[:6] + bytes((data[6] & 0x0F,))
+          stream = (bus, direction)
+          previous_payload = self.last_stw_payloads.get(stream)
+          if payload != previous_payload:
+            changed_bytes = ([index for index, (previous, current) in enumerate(zip(previous_payload, payload, strict=True)) if previous != current]
+                             if previous_payload is not None else list(range(len(payload))))
+            self._queue(
+              "stw_action_change",
+              can_monotonic_ns=mono_time,
+              source=source,
+              bus=bus,
+              direction=direction,
+              previous_payload=previous_payload.hex() if previous_payload is not None else None,
+              payload=payload.hex(),
+              changed_bytes=changed_bytes,
+              data=data.hex(),
+              decoded=decoded,
+            )
+            self.last_stw_payloads[stream] = payload
         self._queue(
           "can_frame",
           can_monotonic_ns=mono_time,
@@ -151,11 +198,12 @@ class TeslaCanProbe:
       return
     now_ns = time.monotonic_ns() if now_ns is None else now_ns
     cruise_speed = round(float(CS.cruiseState.speed), 2)
+    cruise_speed_cluster = round(float(CS.cruiseState.speedCluster), 2)
     speed_limit = round(float(CS_SP.speedLimit), 2)
     signature = (
       bool(CS.leftBlinker), bool(CS.rightBlinker), bool(CS.leftBlindspot), bool(CS.rightBlindspot),
       bool(CS.brakePressed), bool(CS.cruiseState.enabled), bool(CS.cruiseState.available),
-      cruise_speed, speed_limit, int(CS_SP.flags),
+      cruise_speed, cruise_speed_cluster, speed_limit, int(CS_SP.flags),
     )
     if signature != self.last_state_signature or now_ns - self.last_state_log_ns >= _HEARTBEAT_INTERVAL_NS:
       self.last_state_signature = signature
@@ -164,6 +212,7 @@ class TeslaCanProbe:
         "car_state",
         monotonic_ns=now_ns,
         v_ego=round(float(CS.vEgo), 2),
+        v_ego_cluster=round(float(getattr(CS, "vEgoCluster", CS.vEgo)), 2),
         left_blinker=signature[0],
         right_blinker=signature[1],
         left_blindspot=signature[2],
@@ -172,8 +221,9 @@ class TeslaCanProbe:
         cruise_enabled=signature[5],
         cruise_available=signature[6],
         cruise_speed=cruise_speed,
+        cruise_speed_cluster=cruise_speed_cluster,
         speed_limit=speed_limit,
-        car_state_sp_flags=signature[9],
+        car_state_sp_flags=signature[10],
       )
     self._flush_if_due(now_ns)
 

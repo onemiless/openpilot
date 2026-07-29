@@ -5,8 +5,15 @@ from openpilot.selfdrive.car.tesla_can_probe import TeslaCanProbe, decode_tesla_
 
 
 def test_decode_speed_button_and_turn_messages():
-  assert decode_tesla_probe_frame(0x238, bytes([16, 0, 0, 0, 0, 0, 0xA0, 0x55])) == {
-    "speed_control_state": 16, "counter": 10, "checksum": 0x55,
+  assert decode_tesla_probe_frame(0x238, bytes.fromhex("b0299cdc1f00b660")) == {
+    "speed_control_state": 48, "speed_control_action": "UNKNOWN_48",
+    "vsl_enable_request": 0, "speed_control_state_inverse": 1,
+    "distance_request": 41, "turn_lever_state": 0, "high_beam_lever_state": 3,
+    "wiper_wash_pressed": 1, "rear_wiper_switch_position": 2,
+    "steering_wheel_lever_state": 4, "steering_wheel_condition_fault": 1,
+    "steering_wheel_condition_pressed": 1, "horn_pressed": 3,
+    "steering_wheel_switch_mask": 31, "wiper_switch_position": 6,
+    "counter": 11, "checksum": 0x60,
   }
   assert decode_tesla_probe_frame(0x249, bytes.fromhex("340b0200")) == {
     "turn_stalk_state": 2, "counter": 11, "checksum": 0x34,
@@ -42,7 +49,7 @@ def test_probe_logs_state_changes_and_heartbeat(tmp_path):
   cs = SimpleNamespace(
     leftBlinker=False, rightBlinker=False, leftBlindspot=False, rightBlindspot=False,
     brakePressed=False, vEgo=10.0,
-    cruiseState=SimpleNamespace(speed=20.0, enabled=True, available=True),
+    cruiseState=SimpleNamespace(speed=20.0, speedCluster=19.44, enabled=True, available=True),
   )
   cs_sp = SimpleNamespace(speedLimit=22.22, flags=32)
 
@@ -56,3 +63,28 @@ def test_probe_logs_state_changes_and_heartbeat(tmp_path):
   states = [record for record in records if record["event"] == "car_state"]
   assert len(states) == 2
   assert states[-1]["left_blinker"] is True
+  assert states[-1]["cruise_speed_cluster"] == 19.44
+
+
+def test_probe_summarizes_stw_payload_changes_per_direction(tmp_path):
+  log_path = tmp_path / "probe.log"
+  probe = TeslaCanProbe(True, str(log_path))
+  probe.update_can([
+    (1_000_000_000, [
+      (0x238, bytes.fromhex("b0299cdc1f00b660"), 1),
+      (0x238, bytes.fromhex("b0299cdc1f00c670"), 1),  # counter/checksum only
+      (0x238, bytes.fromhex("a02d9cd41f00d66c"), 1),  # physical payload changed
+      (0x238, bytes.fromhex("100000000000e0aa"), 0x81),  # separate TX stream
+    ]),
+  ])
+  probe.flush()
+
+  records = [json.loads(line) for line in log_path.read_text().splitlines()]
+  changes = [record for record in records if record["event"] == "stw_action_change"]
+  assert len(changes) == 3
+  assert changes[1]["direction"] == "rx"
+  assert changes[1]["changed_bytes"] == [0, 1, 3]
+  assert changes[1]["previous_payload"] == "b0299cdc1f0006"
+  assert changes[1]["payload"] == "a02d9cd41f0006"
+  assert changes[2]["direction"] == "txEcho"
+  assert changes[2]["decoded"]["speed_control_action"] == "UP_1ST"
