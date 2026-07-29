@@ -1,0 +1,58 @@
+import json
+from types import SimpleNamespace
+
+from openpilot.selfdrive.car.tesla_can_probe import TeslaCanProbe, decode_tesla_probe_frame
+
+
+def test_decode_speed_button_and_turn_messages():
+  assert decode_tesla_probe_frame(0x238, bytes([16, 0, 0, 0, 0, 0, 0xA0, 0x55])) == {
+    "speed_control_state": 16, "counter": 10, "checksum": 0x55,
+  }
+  assert decode_tesla_probe_frame(0x249, bytes([0x44, 0x0B, 0x05])) == {
+    "turn_stalk_state": 5, "counter": 11, "checksum": 0x44,
+  }
+  assert decode_tesla_probe_frame(0x3E9, bytes([0, 2, 16, 0x21, 0, 0, 0xC0, 0x66])) == {
+    "turn_request": 2, "turn_request_reason": 8, "autopilot_active": 1, "acc_active": 1,
+    "counter": 12, "checksum": 0x66,
+  }
+
+
+def test_probe_records_bus_direction_and_filters_unrelated_frames(tmp_path):
+  log_path = tmp_path / "probe.log"
+  probe = TeslaCanProbe(True, str(log_path))
+  probe.update_can([
+    (1_000_000_000, [
+      (0x238, bytes([32, 0, 0, 0, 0, 0, 0x30, 0x77]), 1),
+      (0x249, bytes([0x11, 0x02, 0x01]), 0xC1),
+      (0x123, b"\x00", 0),
+    ]),
+  ])
+  probe.flush()
+
+  records = [json.loads(line) for line in log_path.read_text().splitlines()]
+  frames = [record for record in records if record["event"] == "can_frame"]
+  assert len(frames) == 2
+  assert frames[0]["bus"] == 1 and frames[0]["direction"] == "rx"
+  assert frames[1]["bus"] == 1 and frames[1]["direction"] == "rejected"
+
+
+def test_probe_logs_state_changes_and_heartbeat(tmp_path):
+  log_path = tmp_path / "probe.log"
+  probe = TeslaCanProbe(True, str(log_path))
+  cs = SimpleNamespace(
+    leftBlinker=False, rightBlinker=False, leftBlindspot=False, rightBlindspot=False,
+    brakePressed=False, vEgo=10.0,
+    cruiseState=SimpleNamespace(speed=20.0, enabled=True, available=True),
+  )
+  cs_sp = SimpleNamespace(speedLimit=22.22, flags=32)
+
+  probe.update_state(cs, cs_sp, 1_000_000_000)
+  probe.update_state(cs, cs_sp, 1_100_000_000)
+  cs.leftBlinker = True
+  probe.update_state(cs, cs_sp, 1_200_000_000)
+  probe.flush()
+
+  records = [json.loads(line) for line in log_path.read_text().splitlines()]
+  states = [record for record in records if record["event"] == "car_state"]
+  assert len(states) == 2
+  assert states[-1]["left_blinker"] is True

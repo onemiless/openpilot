@@ -21,6 +21,7 @@ from opendbc.car.interfaces import CarInterfaceBase, RadarInterfaceBase
 from openpilot.selfdrive.pandad import can_capnp_to_list, can_list_to_can_capnp
 from openpilot.selfdrive.car.cruise import VCruiseHelper
 from openpilot.selfdrive.car.helpers import convert_carControlSP, convert_to_capnp
+from openpilot.selfdrive.car.tesla_can_probe import TeslaCanProbe
 
 from openpilot.sunnypilot.mads.helpers import set_alternative_experience, set_car_specific_params
 from openpilot.sunnypilot.selfdrive.car import interfaces as sunnypilot_interfaces
@@ -148,6 +149,10 @@ class Car:
       self.CI, self.CP, self.CP_SP = CI, CI.CP, CI.CP_SP
       self.RI = RI
 
+    self.tesla_can_probe = TeslaCanProbe(
+      self.CP.brand == 'tesla' and self.params.get_bool("TeslaCanValidationLogging")
+    )
+
     self.CP.alternativeExperience = 0
     # mads
     set_alternative_experience(self.CP, self.CP_SP, self.params)
@@ -220,6 +225,7 @@ class Car:
 
     can_strs = messaging.drain_sock_raw(self.can_sock, wait_for_one=True)
     can_list = can_capnp_to_list(can_strs)
+    self.tesla_can_probe.update_can(can_list)
     if self.CP.brand == 'tesla':
       for mono_time, frames in can_list:
         for address, data, source in frames:
@@ -257,6 +263,7 @@ class Car:
     # TODO: mirror the carState.cruiseState struct?
     CS.vCruise = float(self.v_cruise_helper.v_cruise_kph)
     CS.vCruiseCluster = float(self.v_cruise_helper.v_cruise_cluster_kph)
+    self.tesla_can_probe.update_state(CS, CS_SP)
 
     return CS, CS_SP, RD
 

@@ -326,6 +326,13 @@ class TeslaSettings(BrandSettings):
       param="TeslaSpeedLimitCruiseButtons",
       description=tr("Use Tesla steering-wheel speed buttons to adjust the stock ACC set speed to the active speed limit target."),
     )
+    self.can_validation_logging = toggle_item_sp(
+      title=tr("Tesla CAN Validation Logging"),
+      param="TeslaCanValidationLogging",
+      description=tr("Record turn-stalk, AP body-control, speed-wheel, and AP-state CAN frames for validation. " +
+                     "This is read-only and takes effect after restart."),
+      enabled=ui_state.is_offroad,
+    )
     self.mpc_settings = button_item_sp(
       title=tr("MPC Params"),
       button_text=tr("Customize"),
@@ -341,7 +348,7 @@ class TeslaSettings(BrandSettings):
                   self.dynamic_auto_stock_curve_to_sp_toggle,
                   self.dyn_auto_speed,
                   self.dyn_auto_speed_low, self.stop_line_deceleration,
-                  self.speed_limit_cruise_buttons, self.mpc_settings]
+                  self.speed_limit_cruise_buttons, self.can_validation_logging, self.mpc_settings]
 
   def _on_dyn_auto_stock_toggle(self, state):
     self._update_dynamic_speed_visibility()
