@@ -253,7 +253,10 @@ def hardware_thread(end_event, hw_queue) -> None:
 
   while not end_event.is_set():
     sm.update(PANDA_STATES_TIMEOUT)
-    can_shutdown_gate.update(sm.updated["can"] and len(sm["can"]) > 0)
+    # The Panda can only wake from physical bus 1. Keep the SoM on while
+    # that bus is active, then hand off directly to STOP once it has slept.
+    bus1_active = sm.updated["can"] and any(can.src == 1 for can in sm["can"].can)
+    can_shutdown_gate.update(bus1_active)
 
     pandaStates = sm['pandaStates']
     peripheralState = sm['peripheralState']
@@ -458,8 +461,7 @@ def hardware_thread(end_event, hw_queue) -> None:
         f"offroad_since={off_ts}",
         f"in_car={in_car}",
         f"started_seen={started_seen}",
-        f"can_quiet_s={can_shutdown_gate.quiet_duration():.1f}",
-        f"wait_s={can_shutdown_gate.wait_duration():.1f}",
+        f"bus1_quiet_s={can_shutdown_gate.quiet_duration():.1f}",
         f"forced={force_power_down}",
         f"monitor_ready={monitor_ready}",
       ]
@@ -474,7 +476,6 @@ def hardware_thread(end_event, hw_queue) -> None:
         offline_wake_debug_log("shutdown waiting for CAN quiet or bounded timeout")
         shutdown_wait_logged = True
     else:
-      can_shutdown_gate.reset_request()
       shutdown_wait_logged = False
 
     msg.deviceState.started = started_ts is not None and not offroad_mode
