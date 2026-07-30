@@ -36,6 +36,7 @@ MPC_PRESET_VALUE_PARAMS = {
   MPC_PRESET_CURRENT: "MpcTuningCurrentValues",
 }
 TURN_SIGNAL_TEST_SCRIPT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../../../debug/tesla_turn_signal_test.py"))
+SPEED_BUTTON_TEST_SCRIPT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../../../debug/tesla_speed_button_test.py"))
 
 MPC_PRESETS = {
   MPC_PRESET_MOUMOU: {
@@ -251,6 +252,8 @@ class TeslaSettings(BrandSettings):
     super().__init__()
     self._turn_signal_test_busy = False
     self._turn_signal_test_result: str | None = None
+    self._speed_button_test_busy = False
+    self._speed_button_test_result: str | None = None
     self.coop_steering_toggle = toggle_item_sp(tr("Cooperative Steering"), "", param="TeslaCoopSteering")
     self.mads_screen_button = multiple_button_item_sp(
       title=lambda: tr("MADS Screen Button"),
@@ -348,6 +351,27 @@ class TeslaSettings(BrandSettings):
                      "No signal is sent automatically."),
       enabled=ui_state.is_offroad,
     )
+    self.speed_button_validation = toggle_item_sp(
+      title=tr("Speed Button CAN Validation"),
+      param="TeslaSpeedButtonValidation",
+      description=tr("Allow one-shot speed increase/decrease tests built from a fresh original vehicle 0x238 RX frame. " +
+                     "The automatic speed-button feature remains separate and disabled."),
+      enabled=ui_state.is_offroad,
+    )
+    self.test_speed_increase = button_item_sp(
+      title=tr("Test Speed Increase"),
+      button_text=lambda: tr("WAIT") if self._speed_button_test_busy else tr("TEST"),
+      description=tr("Submit one short increase pulse cloned from the latest original vehicle frame and record the result."),
+      callback=lambda: self._confirm_speed_button_test("increase"),
+      enabled=self._speed_button_test_enabled,
+    )
+    self.test_speed_decrease = button_item_sp(
+      title=tr("Test Speed Decrease"),
+      button_text=lambda: tr("WAIT") if self._speed_button_test_busy else tr("TEST"),
+      description=tr("Submit one short decrease pulse cloned from the latest original vehicle frame and record the result."),
+      callback=lambda: self._confirm_speed_button_test("decrease"),
+      enabled=self._speed_button_test_enabled,
+    )
     self.test_left_turn_signal = button_item_sp(
       title=tr("Test Left Turn Signal"),
       button_text=lambda: tr("WAIT") if self._turn_signal_test_busy else tr("TEST"),
@@ -378,11 +402,62 @@ class TeslaSettings(BrandSettings):
                   self.dyn_auto_speed,
                   self.dyn_auto_speed_low, self.stop_line_deceleration,
                   self.speed_limit_cruise_buttons, self.can_validation_logging,
-                  self.turn_signal_validation, self.test_left_turn_signal,
+                  self.turn_signal_validation, self.speed_button_validation,
+                  self.test_speed_increase, self.test_speed_decrease, self.test_left_turn_signal,
                   self.test_right_turn_signal, self.mpc_settings]
 
   def _turn_signal_test_enabled(self):
     return ui_state.params.get_bool("TeslaTurnSignalValidation") and not self._turn_signal_test_busy
+
+  def _speed_button_test_enabled(self):
+    return ui_state.params.get_bool("TeslaSpeedButtonValidation") and not self._speed_button_test_busy
+
+  def _confirm_speed_button_test(self, action):
+    label = tr("increase") if action == "increase" else tr("decrease")
+    message = tr("Run one speed-button CAN validation now? The test accepts only a fresh original 0x238 RX frame from bus 1, " +
+                 "clones its non-action fields, submits one short pulse, and logs whether Panda and the vehicle respond. " +
+                 "Watch the vehicle set-speed display and run only one test at a time.")
+
+    def handle_confirmation(result):
+      if result == DialogResult.CONFIRM:
+        self._run_speed_button_test(action)
+
+    gui_app.push_widget(ConfirmDialog(message, f"{tr('Test')} {label}", callback=handle_confirmation))
+
+  def _run_speed_button_test(self, action):
+    if self._speed_button_test_busy:
+      return
+    self._speed_button_test_busy = True
+
+    def run():
+      try:
+        result = subprocess.run(
+          [sys.executable, SPEED_BUTTON_TEST_SCRIPT, action],
+          capture_output=True,
+          text=True,
+          timeout=20,
+          check=False,
+        )
+        output = "\n".join(part for part in (result.stdout.strip(), result.stderr.strip()) if part)
+        if result.returncode == 0:
+          status = tr("PASS")
+        elif result.returncode == 3:
+          status = tr("SENT - CHECK VEHICLE")
+        elif result.returncode == 2:
+          status = tr("FAIL")
+        else:
+          status = tr("BLOCKED")
+        self._speed_button_test_result = (
+          f"{status}\n\n{output[-1800:]}\n\n{tr('Saved to:')} /data/tesla_speed_button_validation.log"
+        )
+      except Exception as error:
+        self._speed_button_test_result = (
+          f"{tr('Error')}\n\n{error}\n\n{tr('Saved to:')} /data/tesla_speed_button_validation.log"
+        )
+      finally:
+        self._speed_button_test_busy = False
+
+    threading.Thread(target=run, daemon=True).start()
 
   def _confirm_turn_signal_test(self, direction):
     label = tr("left") if direction == "left" else tr("right")
@@ -462,6 +537,8 @@ class TeslaSettings(BrandSettings):
     self.mads_screen_button.set_visible(has_vehicle_bus)
     self.test_left_turn_signal.set_visible(has_vehicle_bus)
     self.test_right_turn_signal.set_visible(has_vehicle_bus)
+    self.test_speed_increase.set_visible(has_vehicle_bus)
+    self.test_speed_decrease.set_visible(has_vehicle_bus)
 
     mads_screen_button_desc = tr("Use a multi-finger press on the infotainment display as a MADS button.\n" +
                                  "This allows the use of full MADS functionality when enabled.\n" +
@@ -476,6 +553,9 @@ class TeslaSettings(BrandSettings):
 
     self.stop_line_deceleration.action_item.set_enabled(ui_state.has_longitudinal_control)
     self.speed_limit_cruise_buttons.action_item.set_enabled(ui_state.is_offroad())
+    self.speed_button_validation.action_item.set_enabled(ui_state.is_offroad())
+    self.test_speed_increase.action_item.set_enabled(self._speed_button_test_enabled())
+    self.test_speed_decrease.action_item.set_enabled(self._speed_button_test_enabled())
     self.test_left_turn_signal.action_item.set_enabled(self._turn_signal_test_enabled())
     self.test_right_turn_signal.action_item.set_enabled(self._turn_signal_test_enabled())
     self.mpc_settings.action_item.set_enabled(ui_state.is_offroad())
@@ -483,6 +563,11 @@ class TeslaSettings(BrandSettings):
     if self._turn_signal_test_result is not None:
       message = self._turn_signal_test_result
       self._turn_signal_test_result = None
+      gui_app.push_widget(alert_dialog(message))
+
+    if self._speed_button_test_result is not None:
+      message = self._speed_button_test_result
+      self._speed_button_test_result = None
       gui_app.push_widget(alert_dialog(message))
 
     self._on_dyn_auto_stock_toggle(self.dynamic_auto_stock_toggle.action_item.get_state())
