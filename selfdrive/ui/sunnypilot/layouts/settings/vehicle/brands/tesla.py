@@ -386,9 +386,8 @@ class TeslaSettings(BrandSettings):
 
   def _confirm_turn_signal_test(self, direction):
     label = tr("left") if direction == "left" else tr("right")
-    message = tr("Before testing: keep the device in Settings/Offroad state, the vehicle in Park and completely stationary, " +
-                 "and ensure AP/SP controls are inactive. The brake pedal is not required. " +
-                 "The Panda safety layer will reject the request if any condition is not met.")
+    message = tr("Run one turn-signal CAN test now? Python carState/carControl availability is not required. " +
+                 "The result and raw CAN evidence will be saved. Panda may reject transmission unless the vehicle reports Park and standstill.")
 
     def handle_confirmation(result):
       if result == DialogResult.CONFIRM:
