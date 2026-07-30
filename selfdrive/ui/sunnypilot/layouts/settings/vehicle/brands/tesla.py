@@ -332,11 +332,6 @@ class TeslaSettings(BrandSettings):
       label_callback=lambda value: f"{value / 10.0:.1f} m/s^2",
       inline=True,
     )
-    self.speed_limit_cruise_buttons = toggle_item_sp(
-      title=tr("Speed Limit Cruise Buttons"),
-      param="TeslaSpeedLimitCruiseButtons",
-      description=tr("Use Tesla steering-wheel speed buttons to adjust the stock ACC set speed to the active speed limit target."),
-    )
     self.can_validation_logging = toggle_item_sp(
       title=tr("Tesla CAN Validation Logging"),
       param="TeslaCanValidationLogging",
@@ -354,8 +349,7 @@ class TeslaSettings(BrandSettings):
     self.speed_button_validation = toggle_item_sp(
       title=tr("Speed Button CAN Validation"),
       param="TeslaSpeedButtonValidation",
-      description=tr("Allow one-shot speed increase/decrease tests built from a fresh original vehicle 0x238 RX frame. " +
-                     "The automatic speed-button feature remains separate and disabled."),
+      description=tr("Allow one-shot speed increase/decrease tests built from a fresh original vehicle 0x238 RX frame."),
       enabled=ui_state.is_offroad,
     )
     self.test_speed_increase = button_item_sp(
@@ -401,7 +395,7 @@ class TeslaSettings(BrandSettings):
                   self.dynamic_auto_stock_curve_to_sp_toggle,
                   self.dyn_auto_speed,
                   self.dyn_auto_speed_low, self.stop_line_deceleration,
-                  self.speed_limit_cruise_buttons, self.can_validation_logging,
+                  self.can_validation_logging,
                   self.turn_signal_validation, self.speed_button_validation,
                   self.test_speed_increase, self.test_speed_decrease, self.test_left_turn_signal,
                   self.test_right_turn_signal, self.mpc_settings]
@@ -552,7 +546,6 @@ class TeslaSettings(BrandSettings):
     self.mads_screen_button.action_item.set_enabled(ui_state.is_offroad())
 
     self.stop_line_deceleration.action_item.set_enabled(ui_state.has_longitudinal_control)
-    self.speed_limit_cruise_buttons.action_item.set_enabled(ui_state.is_offroad())
     self.speed_button_validation.action_item.set_enabled(ui_state.is_offroad())
     self.test_speed_increase.action_item.set_enabled(self._speed_button_test_enabled())
     self.test_speed_decrease.action_item.set_enabled(self._speed_button_test_enabled())

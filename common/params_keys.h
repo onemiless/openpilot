@@ -198,7 +198,6 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"TeslaDynamicApLongitudinal", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"DynamicAutoStockBlinkerToSP", {PERSISTENT | BACKUP, BOOL, "1"}},
     {"DynamicAutoStockCurveToSP", {PERSISTENT | BACKUP, BOOL, "1"}},
-    {"TeslaSpeedLimitCruiseButtons", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaSpeedButtonValidation", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaTurnSignalValidation", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TrueVEgoUI", {PERSISTENT | BACKUP, BOOL, "0"}},

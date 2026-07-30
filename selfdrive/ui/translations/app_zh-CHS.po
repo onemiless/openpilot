@@ -2863,9 +2863,6 @@ msgstr "设置代理订阅"
 msgid "SET"
 msgstr "设置"
 
-msgid "Speed Limit Cruise Buttons"
-msgstr "限速巡航按键"
-
 msgid "Speed Threshold High"
 msgstr "高速阈值"
 
@@ -2916,9 +2913,6 @@ msgstr "测试"
 
 msgid "Update Proxy Subscription"
 msgstr "更新代理订阅"
-
-msgid "Use Tesla steering-wheel speed buttons to adjust the stock ACC set speed to the active speed limit target."
-msgstr "使用 Tesla 方向盘速度按键，将原厂 ACC 设定速度调整到当前限速目标。"
 
 msgid "WAIT"
 msgstr "等待"
