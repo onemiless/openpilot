@@ -194,6 +194,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"StandstillTimer", {PERSISTENT | BACKUP, BOOL, "1"}},
     {"StopLineDeceleration", {PERSISTENT | BACKUP, INT, "5"}},  // tenths of m/s^2
     {"TeslaApHybrid", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"TeslaAutoSpeedLimit", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaCanValidationLogging", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaDynamicApLongitudinal", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"DynamicAutoStockBlinkerToSP", {PERSISTENT | BACKUP, BOOL, "1"}},

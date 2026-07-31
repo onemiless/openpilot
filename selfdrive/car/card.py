@@ -58,6 +58,18 @@ def get_tesla_longitudinal_context(sm: messaging.SubMaster, now: float) -> tuple
           bool(car_control.longActive), float(car_control.actuators.accel), car_control_valid)
 
 
+def get_tesla_speed_limit_context(sm: messaging.SubMaster, now: float) -> tuple[float, bool, float]:
+  plan = sm['longitudinalPlanSP']
+  plan_recv_time = float(sm.recv_time['longitudinalPlanSP'])
+  plan_valid = (sm.seen['longitudinalPlanSP'] and sm.valid['longitudinalPlanSP'] and
+                now - plan_recv_time <= TESLA_LONGITUDINAL_CONTEXT_STALE_S)
+  resolver = plan.speedLimit.resolver
+  limit_valid = bool(resolver.speedLimitValid or resolver.speedLimitLastValid)
+  target = float(resolver.speedLimitFinalLast)
+  valid = plan_valid and limit_valid and target > 0.0
+  return (target if valid else 0.0, valid, plan_recv_time)
+
+
 def obd_callback(params: Params) -> ObdCallback:
   def set_obd_multiplexing(obd_multiplexing: bool):
     if params.get_bool("ObdMultiplexingEnabled") != obd_multiplexing:
@@ -229,6 +241,8 @@ class Car:
     if self.CP.brand == 'tesla':
       for mono_time, frames in can_list:
         for address, data, source in frames:
+          if source == 1 and address == 0x3C2 and hasattr(self.CI.CS, "update_speed_button_template"):
+            self.CI.CS.update_speed_button_template(data, mono_time)
           if source == 192 and address == 0x2B9 and mono_time - self.dynamic_acc_last_blocked_log_nanos >= 100_000_000:
             self.dynamic_acc_last_blocked_log_nanos = mono_time
             log_dynamic_acc("card", "safety_blocked_das_control", mono_time=mono_time, data=data.hex())
@@ -243,7 +257,11 @@ class Car:
     self.sm.update(0)
 
     if self.CP.brand == 'tesla' and hasattr(self.CI.CS, "update_longitudinal_context"):
-      self.CI.CS.update_longitudinal_context(*get_tesla_longitudinal_context(self.sm, time.monotonic()))
+      now = time.monotonic()
+      self.CI.CS.update_longitudinal_context(*get_tesla_longitudinal_context(self.sm, now))
+      if hasattr(self.CI.CS, "update_speed_limit_target"):
+        target, valid, _ = get_tesla_speed_limit_context(self.sm, now)
+        self.CI.CS.update_speed_limit_target(target, valid)
 
     can_rcv_valid = len(can_strs) > 0
 

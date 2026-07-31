@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from openpilot.selfdrive.car.card import get_tesla_longitudinal_context
+from openpilot.selfdrive.car.card import get_tesla_longitudinal_context, get_tesla_speed_limit_context
 
 
 class FakeSubMaster:
@@ -10,7 +10,12 @@ class FakeSubMaster:
     self.seen = {"longitudinalPlanSP": True, "carControl": True, "selfdriveStateSP": True}
     self.recv_time = {"longitudinalPlanSP": 10.0, "carControl": 10.0, "selfdriveStateSP": 10.0}
     self.data = {
-      "longitudinalPlanSP": SimpleNamespace(longitudinalPlanSource=SimpleNamespace(raw=1)),
+      "longitudinalPlanSP": SimpleNamespace(
+        longitudinalPlanSource=SimpleNamespace(raw=1),
+        speedLimit=SimpleNamespace(resolver=SimpleNamespace(
+          speedLimitValid=True, speedLimitLastValid=False, speedLimitFinalLast=25.0,
+        )),
+      ),
       "carControl": SimpleNamespace(leftBlinker=True, rightBlinker=False, latActive=True, longActive=True,
                                     actuators=SimpleNamespace(accel=-0.25)),
       "selfdriveStateSP": SimpleNamespace(mads=SimpleNamespace(active=True)),
@@ -45,3 +50,20 @@ def test_tesla_longitudinal_context_accepts_active_mads_at_standstill():
   context = get_tesla_longitudinal_context(sm, 10.05)
 
   assert context[6]
+
+
+def test_tesla_speed_limit_context_uses_final_limit_with_configured_offset():
+  context = get_tesla_speed_limit_context(FakeSubMaster(), 10.05)
+
+  assert context == (25.0, True, 10.0)
+
+
+def test_tesla_speed_limit_context_rejects_stale_or_missing_limit():
+  sm = FakeSubMaster()
+  sm.recv_time["longitudinalPlanSP"] = 9.7
+  assert get_tesla_speed_limit_context(sm, 10.05) == (0.0, False, 9.7)
+
+  sm.recv_time["longitudinalPlanSP"] = 10.0
+  sm.data["longitudinalPlanSP"].speedLimit.resolver.speedLimitValid = False
+  sm.data["longitudinalPlanSP"].speedLimit.resolver.speedLimitLastValid = False
+  assert get_tesla_speed_limit_context(sm, 10.05) == (0.0, False, 10.0)
