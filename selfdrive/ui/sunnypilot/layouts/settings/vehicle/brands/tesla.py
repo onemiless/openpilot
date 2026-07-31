@@ -342,20 +342,18 @@ class TeslaSettings(BrandSettings):
     self.turn_signal_validation = toggle_item_sp(
       title=tr("Turn Signal CAN Validation"),
       param="TeslaTurnSignalValidation",
-      description=tr("Allow disengaged/offroad one-shot left/right DAS body-control requests cloned from a fresh original vehicle 0x3E9 frame. " +
+      description=tr("Allow one-shot left/right DAS body-control requests cloned from a fresh original vehicle 0x3E9 frame. " +
                      "No signal is sent automatically; restart after changing this option."),
-      enabled=ui_state.is_offroad,
     )
     self.speed_button_validation = toggle_item_sp(
       title=tr("Speed Button CAN Validation"),
       param="TeslaSpeedButtonValidation",
-      description=tr("Allow disengaged/offroad one-shot speed increase/decrease tests built from a fresh original vehicle 0x3C2 right-scroll frame."),
-      enabled=ui_state.is_offroad,
+      description=tr("Allow one-shot speed increase/decrease tests built from a fresh original vehicle 0x3C2 right-scroll frame."),
     )
     self.auto_speed_limit = toggle_item_sp(
       title=tr("Automatic Tesla Set Speed"),
       param="TeslaAutoSpeedLimit",
-      description=tr("While sunnypilot longitudinal control is active, adjust Tesla's set speed one wheel tick at a time until it reaches " +
+      description=tr("While sunnypilot is engaged, adjust Tesla's set speed one wheel tick at a time until it reaches " +
                      "the resolved Speed Limit target from Cruise settings, including the configured fixed or percentage offset. " +
                      "Restart after changing this option."),
       enabled=ui_state.is_offroad,
@@ -409,10 +407,10 @@ class TeslaSettings(BrandSettings):
                   self.test_right_turn_signal, self.mpc_settings]
 
   def _turn_signal_test_enabled(self):
-    return ui_state.is_offroad() and ui_state.params.get_bool("TeslaTurnSignalValidation") and not self._turn_signal_test_busy
+    return ui_state.params.get_bool("TeslaTurnSignalValidation") and not self._turn_signal_test_busy
 
   def _speed_button_test_enabled(self):
-    return ui_state.is_offroad() and ui_state.params.get_bool("TeslaSpeedButtonValidation") and not self._speed_button_test_busy
+    return ui_state.params.get_bool("TeslaSpeedButtonValidation") and not self._speed_button_test_busy
 
   def _confirm_speed_button_test(self, action):
     label = tr("increase") if action == "increase" else tr("decrease")
@@ -556,7 +554,7 @@ class TeslaSettings(BrandSettings):
     self.mads_screen_button.action_item.set_enabled(ui_state.is_offroad())
 
     self.stop_line_deceleration.action_item.set_enabled(ui_state.has_longitudinal_control)
-    self.speed_button_validation.action_item.set_enabled(ui_state.is_offroad())
+    self.speed_button_validation.action_item.set_enabled(True)
     self.auto_speed_limit.action_item.set_enabled(ui_state.is_offroad() and ui_state.has_longitudinal_control)
     self.test_speed_increase.action_item.set_enabled(self._speed_button_test_enabled())
     self.test_speed_decrease.action_item.set_enabled(self._speed_button_test_enabled())
