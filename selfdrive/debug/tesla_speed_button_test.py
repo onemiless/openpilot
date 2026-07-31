@@ -14,61 +14,57 @@ from openpilot.selfdrive.pandad import can_list_to_can_capnp
 from opendbc.car.can_definitions import CanData
 
 
-STW_ACTION_REQUEST_ADDRESS = 0x238
+SWITCH_STATUS_ADDRESS = 0x3C2
 VEHICLE_BUS = 1
+SWITCH_STATUS_WHEEL_INDEX = 1
 VALIDATION_LOG_PATH = "/data/tesla_speed_button_validation.log"
-VALIDATION_LOG_PREFIX = "[TESLA-SPEED-BUTTON-VALIDATION-v1]"
+VALIDATION_LOG_PREFIX = "[TESLA-SPEED-BUTTON-VALIDATION-v2]"
 MAX_LOG_BYTES = 2 * 1024 * 1024
-FRAME_INTERVAL_S = 0.20
+TX_OBSERVE_S = 0.25
 
 
 class SpeedButtonAction(StrEnum):
-  idle = "idle"
   increase = "increase"
   decrease = "decrease"
-  unknown = "unknown"
 
 
-_NORMALIZED_SPEED_STATES = {
-  SpeedButtonAction.idle: 0,
-  SpeedButtonAction.increase: 16,
-  SpeedButtonAction.decrease: 32,
-}
+def _decode_signed_6(raw_value: int) -> int:
+  raw_value &= 0x3F
+  return raw_value - 0x40 if raw_value & 0x20 else raw_value
 
 
-def tesla_stw_checksum(data: bytes) -> int:
+def _encode_signed_6(value: int) -> int:
+  if not -32 <= value <= 31:
+    raise ValueError(f"right-scroll value outside signed 6-bit range: {value}")
+  return value & 0x3F
+
+
+def switch_status_index(data: bytes) -> int:
   if len(data) != 8:
-    raise ValueError("0x238 STW_ACTN_RQ must contain 8 bytes")
-  return (0x38 + 0x02 + sum(data[:7])) & 0xFF
+    raise ValueError("0x3C2 VCLEFT_switchStatus must contain 8 bytes")
+  return data[0] & 0x3
+
+
+def decode_right_scroll_ticks(data: bytes) -> int:
+  if len(data) != 8:
+    raise ValueError("0x3C2 VCLEFT_switchStatus must contain 8 bytes")
+  return _decode_signed_6(data[3])
 
 
 def is_original_vehicle_speed_frame(address: int, source: int, data: bytes) -> bool:
-  return address == STW_ACTION_REQUEST_ADDRESS and source == VEHICLE_BUS and len(data) == 8
+  return (address == SWITCH_STATUS_ADDRESS and source == VEHICLE_BUS and len(data) == 8 and
+          switch_status_index(data) == SWITCH_STATUS_WHEEL_INDEX)
 
 
-def decode_original_speed_button_state(first_byte: int) -> SpeedButtonAction:
-  if (first_byte & 0xC0) != 0x80:
-    return SpeedButtonAction.unknown
-  normalized_state = (first_byte & 0x3F) ^ 0x30
-  for action, state in _NORMALIZED_SPEED_STATES.items():
-    if normalized_state == state:
-      return action
-  return SpeedButtonAction.unknown
-
-
-def create_speed_button_frame(original_idle_frame: bytes, action: SpeedButtonAction, counter: int) -> bytes:
-  if len(original_idle_frame) != 8 or tesla_stw_checksum(original_idle_frame) != original_idle_frame[7]:
-    raise ValueError("original 0x238 RX template has invalid length or checksum")
-  if decode_original_speed_button_state(original_idle_frame[0]) != SpeedButtonAction.idle:
-    raise ValueError("original 0x238 RX template is not an inverse-encoded idle frame")
-  if action not in _NORMALIZED_SPEED_STATES:
-    raise ValueError(f"unsupported speed-button action: {action}")
+def create_speed_button_frame(original_idle_frame: bytes, action: SpeedButtonAction) -> bytes:
+  if not is_original_vehicle_speed_frame(SWITCH_STATUS_ADDRESS, VEHICLE_BUS, original_idle_frame):
+    raise ValueError("original 0x3C2 RX template is not a wheel-status mux-1 frame")
+  if decode_right_scroll_ticks(original_idle_frame) != 0:
+    raise ValueError("original 0x3C2 RX template is not an idle right-scroll frame")
 
   data = bytearray(original_idle_frame)
-  raw_state = _NORMALIZED_SPEED_STATES[action] ^ 0x30
-  data[0] = (data[0] & 0xC0) | raw_state
-  data[6] = ((counter & 0xF) << 4) | (data[6] & 0xF)
-  data[7] = tesla_stw_checksum(data)
+  tick = 1 if action == SpeedButtonAction.increase else -1
+  data[3] = (data[3] & 0xC0) | _encode_signed_6(tick)
   return bytes(data)
 
 
@@ -112,15 +108,13 @@ def wait_for_original_idle_template(can_sock: messaging.SubSocket, recorder: Val
       data = bytes(frame.dat)
       if not is_original_vehicle_speed_frame(int(frame.address), int(frame.src), data):
         continue
-      checksum_valid = tesla_stw_checksum(data) == data[7]
-      action = decode_original_speed_button_state(data[0]) if checksum_valid else SpeedButtonAction.unknown
+      right_ticks = decode_right_scroll_ticks(data)
       recorder.record("original_rx_observation", source=int(frame.src), bus=VEHICLE_BUS, data=data.hex(),
-                      checksum_valid=checksum_valid, decoded_action=action.value)
-      if checksum_valid and action == SpeedButtonAction.idle:
-        recorder.record("original_rx_template_selected", source=int(frame.src), bus=VEHICLE_BUS, data=data.hex(),
-                        counter=(data[6] >> 4) & 0xF)
+                      switch_status_index=switch_status_index(data), right_scroll_ticks=right_ticks)
+      if right_ticks == 0:
+        recorder.record("original_rx_template_selected", source=int(frame.src), bus=VEHICLE_BUS, data=data.hex())
         return data
-  raise RuntimeError("no fresh checksum-valid inverse-encoded idle 0x238 frame received on bus 1")
+  raise RuntimeError("no fresh idle 0x3C2 wheel-status mux-1 frame received on bus 1")
 
 
 def latest_cruise_speed(car_state_sock: messaging.SubSocket, duration_s: float) -> float | None:
@@ -134,32 +128,38 @@ def latest_cruise_speed(car_state_sock: messaging.SubSocket, duration_s: float) 
 
 
 def observe_transmission(can_sock: messaging.SubSocket, recorder: ValidationRecorder,
-                         duration_s: float) -> tuple[bool, bool]:
+                         duration_s: float) -> tuple[bool, bool, bool]:
   tx_echo = False
   rejected = False
+  original_idle_returned = False
   deadline = time.monotonic() + duration_s
   while time.monotonic() < deadline:
     event = messaging.recv_one_or_none(can_sock)
     if event is None:
       continue
     for frame in event.can:
-      if int(frame.address) != STW_ACTION_REQUEST_ADDRESS or len(frame.dat) != 8:
+      if int(frame.address) != SWITCH_STATUS_ADDRESS or len(frame.dat) != 8:
         continue
       source = int(frame.src)
+      data = bytes(frame.dat)
       if source == VEHICLE_BUS:
-        recorder.record("original_rx_observation", source=source, bus=VEHICLE_BUS, data=frame.dat.hex())
+        right_ticks = decode_right_scroll_ticks(data) if switch_status_index(data) == SWITCH_STATUS_WHEEL_INDEX else None
+        original_idle_returned |= right_ticks == 0
+        recorder.record("original_rx_observation", source=source, bus=VEHICLE_BUS, data=data.hex(),
+                        switch_status_index=switch_status_index(data), right_scroll_ticks=right_ticks)
       elif source == VEHICLE_BUS + 0x80:
         tx_echo = True
-        recorder.record("transmission_echo", source=source, bus=VEHICLE_BUS, data=frame.dat.hex())
+        recorder.record("transmission_echo", source=source, bus=VEHICLE_BUS, data=data.hex(),
+                        right_scroll_ticks=decode_right_scroll_ticks(data))
       elif source == VEHICLE_BUS + 0xC0:
         rejected = True
-        recorder.record("transmission_rejected", source=source, bus=VEHICLE_BUS, data=frame.dat.hex())
-  return tx_echo, rejected
+        recorder.record("transmission_rejected", source=source, bus=VEHICLE_BUS, data=data.hex())
+  return tx_echo, rejected, original_idle_returned
 
 
 def run_validation(action: SpeedButtonAction, log_path: str = VALIDATION_LOG_PATH) -> int:
   recorder = ValidationRecorder(action, log_path)
-  recorder.record("test_started", analysis_source="original_rx_only")
+  recorder.record("test_started", address=hex(SWITCH_STATUS_ADDRESS), analysis_source="fresh_original_rx_template")
   try:
     if not Params().get_bool("TeslaSpeedButtonValidation"):
       raise RuntimeError("TeslaSpeedButtonValidation is disabled; enable it offroad and restart")
@@ -169,24 +169,18 @@ def run_validation(action: SpeedButtonAction, log_path: str = VALIDATION_LOG_PAT
     sendcan = messaging.pub_sock("sendcan")
 
     original_idle = wait_for_original_idle_template(can_sock, recorder)
-    before_speed = latest_cruise_speed(car_state_sock, 0.4)
-    counter = (original_idle[6] >> 4) & 0xF
-    action_data = create_speed_button_frame(original_idle, action, (counter + 1) % 16)
-    release_data = create_speed_button_frame(original_idle, SpeedButtonAction.idle, (counter + 2) % 16)
+    before_speed = latest_cruise_speed(car_state_sock, 0.3)
+    action_data = create_speed_button_frame(original_idle, action)
+    recorder.record("frame_submitted", bus=VEHICLE_BUS, data=action_data.hex(),
+                    right_scroll_ticks=decode_right_scroll_ticks(action_data))
+    sendcan.send(can_list_to_can_capnp([CanData(SWITCH_STATUS_ADDRESS, action_data, VEHICLE_BUS)], msgtype="sendcan"))
+    tx_echo, rejected, original_idle_returned = observe_transmission(can_sock, recorder, TX_OBSERVE_S)
 
-    any_tx_echo = False
-    for phase, data in (("action", action_data), ("release", release_data)):
-      recorder.record("frame_submitted", phase=phase, bus=VEHICLE_BUS, data=data.hex(),
-                      counter=(data[6] >> 4) & 0xF)
-      sendcan.send(can_list_to_can_capnp([CanData(STW_ACTION_REQUEST_ADDRESS, data, VEHICLE_BUS)], msgtype="sendcan"))
-      tx_echo, rejected = observe_transmission(can_sock, recorder, FRAME_INTERVAL_S)
-      any_tx_echo |= tx_echo
-      if rejected and not tx_echo:
-        recorder.record("test_finished", result="PANDA_REJECTED", before_speed=before_speed)
-        print(f"FAIL: Panda rejected {phase} frame; log={log_path}; test_id={recorder.test_id}")
-        return 2
-
-    if not any_tx_echo:
+    if rejected and not tx_echo:
+      recorder.record("test_finished", result="PANDA_REJECTED", before_speed=before_speed)
+      print(f"FAIL: Panda rejected 0x3C2 frame; log={log_path}; test_id={recorder.test_id}")
+      return 2
+    if not tx_echo:
       recorder.record("test_finished", result="NO_TX_ECHO", before_speed=before_speed)
       print(f"FAIL: no Panda transmission echo; log={log_path}; test_id={recorder.test_id}")
       return 2
@@ -198,20 +192,19 @@ def run_validation(action: SpeedButtonAction, log_path: str = VALIDATION_LOG_PAT
       changed_correctly = delta > 0.1 if action == SpeedButtonAction.increase else delta < -0.1
       if abs(delta) > 0.1 and not changed_correctly:
         recorder.record("test_finished", result="WRONG_DIRECTION", before_speed=before_speed,
-                        after_speed=after_speed, delta=delta)
-        message = f"FAIL: set speed changed in the wrong direction ({delta * 3.6:+.1f} km/h); log={log_path}; test_id={recorder.test_id}"
-        print(message)
+                        after_speed=after_speed, delta=delta, original_idle_returned=original_idle_returned)
+        print(f"FAIL: set speed changed in wrong direction ({delta * 3.6:+.1f} km/h); log={log_path}; test_id={recorder.test_id}")
         return 2
 
     result = "PASS" if changed_correctly else "SENT_CHECK_VEHICLE_UI"
-    recorder.record("test_finished", result=result, before_speed=before_speed, after_speed=after_speed)
+    recorder.record("test_finished", result=result, before_speed=before_speed, after_speed=after_speed,
+                    original_idle_returned=original_idle_returned)
     if changed_correctly:
-      message = f"PASS: set speed changed from {before_speed * 3.6:.1f} to {after_speed * 3.6:.1f} km/h; log={log_path}; test_id={recorder.test_id}"
-      print(message)
+      print(f"PASS: set speed changed from {before_speed * 3.6:.1f} to {after_speed * 3.6:.1f} km/h; log={log_path}; test_id={recorder.test_id}")
       return 0
 
-    message = f"SENT: inspect the vehicle set-speed display; no reliable carState speed edge was observed; log={log_path}; test_id={recorder.test_id}"
-    print(message)
+    sent_message = "SENT: inspect the vehicle set-speed display; 0x3C2 was transmitted but no reliable speed edge was observed; "
+    print(sent_message + f"log={log_path}; test_id={recorder.test_id}")
     return 3
   except (RuntimeError, ValueError) as error:
     recorder.record("test_finished", result="BLOCKED", error=str(error))
@@ -220,7 +213,7 @@ def run_validation(action: SpeedButtonAction, log_path: str = VALIDATION_LOG_PAT
 
 
 def main() -> int:
-  parser = argparse.ArgumentParser(description="Tesla RX-template speed-button CAN validation")
+  parser = argparse.ArgumentParser(description="Tesla right-scroll CAN validation")
   parser.add_argument("action", choices=(SpeedButtonAction.increase.value, SpeedButtonAction.decrease.value))
   args = parser.parse_args()
   return run_validation(SpeedButtonAction(args.action))

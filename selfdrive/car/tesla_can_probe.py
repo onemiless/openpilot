@@ -8,20 +8,11 @@ import time
 TESLA_CAN_PROBE_PATH = "/data/tesla_can_probe.log"
 TESLA_CAN_PROBE_PREFIX = "[TESLA-CAN-PROBE-v2]"
 
-_SPEED_CONTROL_ACTIONS = {
-  0: "IDLE",
-  1: "FWD",
-  2: "RWD",
-  4: "UP_2ND",
-  8: "DN_2ND",
-  16: "UP_1ST",
-  32: "DN_1ST",
-}
-
 _EXACT_SEQUENCE_ADDRESSES = {
-  0x238: "STW_ACTN_RQ",
   0x249: "SCCM_leftStalk",
+  0x3C2: "VCLEFT_switchStatus",
   0x3E9: "DAS_bodyControls",
+  0x3F5: "ID3F5VCFRONT_lighting",
 }
 _STATE_ADDRESS = 0x39B  # DAS_status
 _MAX_LOG_BYTES = 8 * 1024 * 1024
@@ -37,28 +28,20 @@ def _source_details(source: int) -> tuple[int, str]:
   return source, "rx"
 
 
+def _signed_6bit(value: int) -> int:
+  value &= 0x3F
+  return value - 0x40 if value & 0x20 else value
+
+
 def decode_tesla_probe_frame(address: int, data: bytes) -> dict:
   decoded = {}
-  if address == 0x238 and len(data) >= 8:
-    speed_control_state = data[0] & 0x3F
+  if address == 0x3C2 and len(data) == 8:
     decoded = {
-      "speed_control_state": speed_control_state,
-      "speed_control_action": _SPEED_CONTROL_ACTIONS.get(speed_control_state, f"UNKNOWN_{speed_control_state}"),
-      "vsl_enable_request": (data[0] >> 6) & 0x1,
-      "speed_control_state_inverse": (data[0] >> 7) & 0x1,
-      "distance_request": data[1],
-      "turn_lever_state": data[2] & 0x3,
-      "high_beam_lever_state": (data[2] >> 2) & 0x3,
-      "wiper_wash_pressed": (data[2] >> 4) & 0x3,
-      "rear_wiper_switch_position": (data[2] >> 6) & 0x3,
-      "steering_wheel_lever_state": data[3] & 0x7,
-      "steering_wheel_condition_fault": (data[3] >> 3) & 0x1,
-      "steering_wheel_condition_pressed": (data[3] >> 4) & 0x3,
-      "horn_pressed": (data[3] >> 6) & 0x3,
-      "steering_wheel_switch_mask": int.from_bytes(data[4:6], byteorder="little"),
-      "wiper_switch_position": data[6] & 0x7,
-      "counter": (data[6] >> 4) & 0xF,
-      "checksum": data[7],
+      "switch_status_index": data[0] & 0x3,
+      "left_scroll_ticks": _signed_6bit(data[2]),
+      "right_scroll_ticks": _signed_6bit(data[3]),
+      "left_pressed": (data[0] >> 5) & 0x3,
+      "right_pressed": (data[1] >> 4) & 0x3,
     }
   elif address == 0x249 and len(data) == 4:
     decoded = {
@@ -74,6 +57,16 @@ def decode_tesla_probe_frame(address: int, data: bytes) -> dict:
       "acc_active": (data[3] >> 5) & 0x1,
       "counter": (data[6] >> 4) & 0xF,
       "checksum": data[7],
+    }
+  elif address == 0x3F5 and len(data) == 8:
+    raw = int.from_bytes(data, byteorder="little")
+    left_state = (raw >> 50) & 0x3
+    right_state = (raw >> 52) & 0x3
+    decoded = {
+      "left_blinker": left_state == 1,
+      "right_blinker": right_state == 1,
+      "left_blinker_state": left_state,
+      "right_blinker_state": right_state,
     }
   elif address == _STATE_ADDRESS and len(data) >= 8:
     raw = int.from_bytes(data, byteorder="little")
@@ -100,10 +93,11 @@ class TeslaCanProbe:
     self.last_das_status_log_ns = 0
     self.last_state_signature: tuple | None = None
     self.last_state_log_ns = 0
-    self.last_stw_payloads: dict[tuple[int, str], bytes] = {}
+    self.last_speed_wheel_ticks: dict[tuple[int, str], int] = {}
     if enabled:
       threading.Thread(target=self._writer, name="tesla-can-probe-writer", daemon=True).start()
-      self._queue("capture_started", monotonic_ns=time.monotonic_ns(), addresses=["0x238", "0x249", "0x39b", "0x3e9"])
+      self._queue("capture_started", monotonic_ns=time.monotonic_ns(),
+                  addresses=["0x249", "0x39b", "0x3c2", "0x3e9", "0x3f5"])
 
   def _queue(self, event: str, **values) -> None:
     self.pending.append({
@@ -158,27 +152,23 @@ class TeslaCanProbe:
           self.last_das_status_log_ns = mono_time
 
         bus, direction = _source_details(source)
-        if address == 0x238 and len(data) >= 8:
-          # Exclude rolling counter/checksum, but retain the low-nibble wiper state.
-          payload = data[:6] + bytes((data[6] & 0x0F,))
+        if address == 0x3C2 and len(data) == 8 and decoded["switch_status_index"] == 1:
           stream = (bus, direction)
-          previous_payload = self.last_stw_payloads.get(stream)
-          if payload != previous_payload:
-            changed_bytes = ([index for index, (previous, current) in enumerate(zip(previous_payload, payload, strict=True)) if previous != current]
-                             if previous_payload is not None else list(range(len(payload))))
+          right_ticks = decoded["right_scroll_ticks"]
+          previous_ticks = self.last_speed_wheel_ticks.get(stream)
+          if right_ticks != previous_ticks:
             self._queue(
-              "stw_action_change",
+              "speed_wheel_change",
               can_monotonic_ns=mono_time,
               source=source,
               bus=bus,
               direction=direction,
-              previous_payload=previous_payload.hex() if previous_payload is not None else None,
-              payload=payload.hex(),
-              changed_bytes=changed_bytes,
+              previous_right_scroll_ticks=previous_ticks,
+              right_scroll_ticks=right_ticks,
               data=data.hex(),
               decoded=decoded,
             )
-            self.last_stw_payloads[stream] = payload
+            self.last_speed_wheel_ticks[stream] = right_ticks
         self._queue(
           "can_frame",
           can_monotonic_ns=mono_time,

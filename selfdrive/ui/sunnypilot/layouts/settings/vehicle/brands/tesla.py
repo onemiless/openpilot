@@ -342,14 +342,14 @@ class TeslaSettings(BrandSettings):
     self.turn_signal_validation = toggle_item_sp(
       title=tr("Turn Signal CAN Validation"),
       param="TeslaTurnSignalValidation",
-      description=tr("Allow the stationary one-shot left/right turn-signal validation tool after restart. " +
-                     "No signal is sent automatically."),
+      description=tr("Allow one-shot left/right DAS body-control requests cloned from a fresh original vehicle 0x3E9 frame. " +
+                     "No signal is sent automatically; restart after changing this option."),
       enabled=ui_state.is_offroad,
     )
     self.speed_button_validation = toggle_item_sp(
       title=tr("Speed Button CAN Validation"),
       param="TeslaSpeedButtonValidation",
-      description=tr("Allow one-shot speed increase/decrease tests built from a fresh original vehicle 0x238 RX frame."),
+      description=tr("Allow one-shot speed increase/decrease tests built from a fresh original vehicle 0x3C2 right-scroll frame."),
       enabled=ui_state.is_offroad,
     )
     self.test_speed_increase = button_item_sp(
@@ -408,8 +408,8 @@ class TeslaSettings(BrandSettings):
 
   def _confirm_speed_button_test(self, action):
     label = tr("increase") if action == "increase" else tr("decrease")
-    message = tr("Run one speed-button CAN validation now? The test accepts only a fresh original 0x238 RX frame from bus 1, " +
-                 "clones its non-action fields, submits one short pulse, and logs whether Panda and the vehicle respond. " +
+    message = tr("Run one speed-button CAN validation now? The test accepts only a fresh original 0x3C2 wheel-status frame from bus 1, " +
+                 "clones it, changes only one signed right-scroll tick, and logs whether Panda and the vehicle respond. " +
                  "Watch the vehicle set-speed display and run only one test at a time.")
 
     def handle_confirmation(result):
@@ -455,8 +455,9 @@ class TeslaSettings(BrandSettings):
 
   def _confirm_turn_signal_test(self, direction):
     label = tr("left") if direction == "left" else tr("right")
-    message = tr("Run one turn-signal CAN test now? Python carState/carControl, gear, and standstill state are not required. " +
-                 "The result and raw CAN evidence will be saved. Panda still validates the message CRC, state, direction, and pulse length.")
+    message = tr("Run one turn-signal CAN test now? Python carState/carControl, gear, brake, and standstill state are not required. " +
+                 "The test clones a fresh original 0x3E9 frame and changes only the DAS request, reason, counter, and checksum. " +
+                 "The result and raw CAN evidence will be saved.")
 
     def handle_confirmation(result):
       if result == DialogResult.CONFIRM:
