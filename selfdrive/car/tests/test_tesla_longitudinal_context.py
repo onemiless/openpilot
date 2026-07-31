@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from openpilot.selfdrive.car.card import get_tesla_longitudinal_context, get_tesla_speed_limit_context
+from openpilot.sunnypilot.selfdrive.car.interfaces import initialize_params
 
 
 class FakeSubMaster:
@@ -23,6 +24,11 @@ class FakeSubMaster:
 
   def __getitem__(self, key):
     return self.data[key]
+
+
+class FakeParams:
+  def get(self, key, return_default=False):
+    return b"1" if key == "TeslaAutoSpeedLimit" else b"0"
 
 
 def test_tesla_longitudinal_context_uses_new_plan_and_lane_change_state():
@@ -67,3 +73,9 @@ def test_tesla_speed_limit_context_rejects_stale_or_missing_limit():
   sm.data["longitudinalPlanSP"].speedLimit.resolver.speedLimitValid = False
   sm.data["longitudinalPlanSP"].speedLimit.resolver.speedLimitLastValid = False
   assert get_tesla_speed_limit_context(sm, 10.05) == (0.0, False, 10.0)
+
+
+def test_tesla_auto_speed_limit_param_is_forwarded_to_opendbc_initialization():
+  params = {key: value for item in initialize_params(FakeParams()) for key, value in item.items()}
+
+  assert params["TeslaAutoSpeedLimit"] == b"1"

@@ -130,6 +130,7 @@ def initialize_params(params) -> list[dict[str, Any]]:
     "DynamicAutoStockCurveToSP",
     "TeslaApHybrid",
     "TeslaDynamicApLongitudinal",
+    "TeslaAutoSpeedLimit",
     "TeslaSpeedButtonValidation",
     "TeslaTurnSignalValidation",
   ])
