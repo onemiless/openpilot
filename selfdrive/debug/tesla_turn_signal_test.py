@@ -37,6 +37,7 @@ class ValidationRecorder:
     self.direction = direction
     self.log_path = log_path
     self.test_id = test_id or uuid.uuid4().hex[:12]
+    self._pending_records: list[dict] = []
     try:
       if os.path.exists(log_path) and os.path.getsize(log_path) > MAX_LOG_BYTES:
         os.replace(log_path, f"{log_path}.1")
@@ -53,10 +54,19 @@ class ValidationRecorder:
       "event": event,
       **values,
     }
+    # Do not perform filesystem I/O while a live CAN validation burst is in
+    # progress. A previous version flushed every observation synchronously and
+    # could make real-time controls miss their deadlines while SP was active.
+    self._pending_records.append(record)
+
+  def flush(self) -> None:
+    if not self._pending_records:
+      return
+    lines = "".join(json.dumps(record, sort_keys=True, default=str) + "\n" for record in self._pending_records)
     try:
       with open(self.log_path, "a", encoding="utf-8") as log_file:
-        log_file.write(json.dumps(record, sort_keys=True, default=str) + "\n")
-        log_file.flush()
+        log_file.write(lines)
+      self._pending_records.clear()
     except OSError:
       pass
 
@@ -245,6 +255,8 @@ def send_validation_pulse(direction: str, log_path: str = VALIDATION_LOG_PATH) -
   except (RuntimeError, ValueError) as error:
     recorder.record("test_finished", result="BLOCKED", error=str(error))
     raise RuntimeError(str(error)) from error
+  finally:
+    recorder.flush()
 
 
 def main() -> int:

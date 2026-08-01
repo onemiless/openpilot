@@ -86,6 +86,8 @@ def test_validation_recorder_persists_replayable_session(tmp_path):
   recorder = ValidationRecorder("left", str(log_path), test_id="test-session")
   recorder.record("frame_sent", request=1, reason=8, counter=12, data="008910000000c045")
   recorder.record("test_finished", result="PASS", feedback=True)
+  assert not log_path.exists()
+  recorder.flush()
 
   records = [json.loads(line) for line in log_path.read_text().splitlines()]
   assert [record["event"] for record in records] == ["frame_sent", "test_finished"]
