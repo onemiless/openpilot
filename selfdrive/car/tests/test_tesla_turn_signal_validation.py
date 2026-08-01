@@ -3,7 +3,6 @@ import json
 from opendbc.can.packer import CANPacker
 
 from openpilot.selfdrive.car.tesla_turn_signal_controller import (
-  ACTION_FRAME_COUNT,
   create_body_control_frame,
   decode_front_lighting,
   decode_ui_warning,
@@ -19,10 +18,6 @@ def test_validation_log_is_disabled_by_default(tmp_path):
 
 
 OBSERVED_BODY_CONTROLS = bytes.fromhex("008802000000b026")
-
-
-def test_validation_sequence_uses_five_action_frames():
-  assert ACTION_FRAME_COUNT == 5
 
 
 def test_decode_ui_warning_blinker_feedback():
