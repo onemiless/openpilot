@@ -424,7 +424,10 @@ class SelfdriveD(CruiseHelper):
         safety_mismatch = pandaState.safetyModel not in IGNORED_SAFETY_MODES
 
       controls_mismatch = (safety_mismatch and self.sm.frame*DT_CTRL > 10.) or pandaState.safetyRxChecksInvalid or self.mismatch_counter >= 200
-      if controls_mismatch and self.sm.frame - self._last_controls_mismatch_log_frame > int(1. / DT_CTRL):
+      # Detailed Tesla mismatch cloud logging is retained for focused diagnosis,
+      # but disabled on the normal dev branch to avoid continuous extra records.
+      tesla_diagnostic_cloudlog_enabled = False
+      if tesla_diagnostic_cloudlog_enabled and controls_mismatch and self.sm.frame - self._last_controls_mismatch_log_frame > int(1. / DT_CTRL):
         self._last_controls_mismatch_log_frame = self.sm.frame
         cloudlog.event(
           "controlsMismatch.detail",

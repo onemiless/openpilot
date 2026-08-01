@@ -12,6 +12,12 @@ from openpilot.selfdrive.car.tesla_turn_signal_controller import (
 )
 
 
+def test_validation_log_is_disabled_by_default(tmp_path):
+  log_path = tmp_path / "turn_signal_validation.log"
+  persist_validation_records([{"event": "frame_sent"}], str(log_path))
+  assert not log_path.exists()
+
+
 OBSERVED_BODY_CONTROLS = bytes.fromhex("008802000000b026")
 
 
@@ -61,7 +67,8 @@ def test_body_control_frames_clone_template_and_update_request_counter_checksum(
   assert tesla_body_controls_checksum(cancel) == cancel[7]
 
 
-def test_validation_recorder_persists_replayable_session(tmp_path):
+def test_validation_recorder_persists_replayable_session(tmp_path, monkeypatch):
+  monkeypatch.setattr("openpilot.selfdrive.car.tesla_turn_signal_controller.TURN_SIGNAL_VALIDATION_LOGGING_ENABLED", True)
   log_path = tmp_path / "turn_signal_validation.log"
   records_to_write = [
     {"test_id": "test-session", "direction": "left", "event": "frame_sent", "request": 1,

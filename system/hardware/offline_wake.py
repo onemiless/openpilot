@@ -6,6 +6,8 @@ from contextlib import contextmanager
 
 
 OFFLINE_WAKE_DEBUG_LOG = "/data/offline_wake_debug.log"
+# Set to True temporarily when another offline-wake trace is required.
+OFFLINE_WAKE_DEBUG_LOGGING_ENABLED = False
 PANDA_BOOTKICK_TEST_SENTINEL = "/data/panda_bootkick_test_pending"
 PANDA_BOOTKICK_TEST_TTL = 10 * 60
 OFFLINE_SHUTDOWN_BUS1_QUIET_S = 300.0
@@ -49,6 +51,9 @@ def _panda_bootkick_test_lock() -> Generator[None, None, None]:
 
 
 def offline_wake_debug_log(process: str, message: str) -> None:
+  if not OFFLINE_WAKE_DEBUG_LOGGING_ENABLED:
+    return
+
   try:
     with open(OFFLINE_WAKE_DEBUG_LOG, "a") as f:
       f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {process} {message}\n")

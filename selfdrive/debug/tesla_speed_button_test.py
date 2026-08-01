@@ -20,6 +20,8 @@ SWITCH_STATUS_WHEEL_INDEX = 1
 VALIDATION_LOG_PATH = "/data/tesla_speed_button_validation.log"
 VALIDATION_LOG_PREFIX = "[TESLA-SPEED-BUTTON-VALIDATION-v2]"
 MAX_LOG_BYTES = 2 * 1024 * 1024
+# Keep the manual validator available, but do not create persistent logs on dev.
+SPEED_BUTTON_VALIDATION_LOGGING_ENABLED = False
 TX_OBSERVE_S = 0.25
 
 
@@ -73,13 +75,17 @@ class ValidationRecorder:
     self.action = action
     self.log_path = log_path
     self.test_id = uuid.uuid4().hex[:12]
-    try:
-      if os.path.exists(log_path) and os.path.getsize(log_path) > MAX_LOG_BYTES:
-        os.replace(log_path, f"{log_path}.1")
-    except OSError:
-      pass
+    if SPEED_BUTTON_VALIDATION_LOGGING_ENABLED:
+      try:
+        if os.path.exists(log_path) and os.path.getsize(log_path) > MAX_LOG_BYTES:
+          os.replace(log_path, f"{log_path}.1")
+      except OSError:
+        pass
 
   def record(self, event: str, **values) -> None:
+    if not SPEED_BUTTON_VALIDATION_LOGGING_ENABLED:
+      return
+
     record = {
       "prefix": VALIDATION_LOG_PREFIX,
       "test_id": self.test_id,

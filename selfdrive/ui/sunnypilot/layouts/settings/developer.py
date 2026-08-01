@@ -18,14 +18,10 @@ from openpilot.system.ui.widgets import DialogResult
 from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog
 from openpilot.system.ui.widgets.list_view import button_item
 
-from openpilot.sunnypilot.selfdrive.selfdrived.tesla_mads_debug import TESLA_MADS_DEBUG_PATH, clear_tesla_mads_debug_logs
 from openpilot.system.ui.sunnypilot.widgets.html_render import HtmlModalSP
 from openpilot.system.ui.sunnypilot.widgets.list_view import toggle_item_sp
 
 PREBUILT_PATH = os.path.join(Paths.comma_home(), "prebuilt") if PC else "/data/openpilot/prebuilt"
-PANDA_BOOTKICK_TEST_SENTINEL = "/data/panda_bootkick_test_pending"
-
-
 class DeveloperLayoutSP(DeveloperLayout):
   def __init__(self):
     super().__init__()
@@ -53,19 +49,8 @@ class DeveloperLayoutSP(DeveloperLayout):
     self.prebuilt_toggle = toggle_item_sp(tr("Quickboot Mode"), "", param="QuickBootToggle", callback=self._on_prebuilt_toggled)
 
     self.error_log_btn = button_item(tr("Error Log"), tr("VIEW"), tr("View the error log for sunnypilot crashes."), callback=self._on_error_log_clicked)
-    self.tesla_mads_log_btn = button_item(tr("Tesla MADS Debug Log"), tr("CLEAR"),
-                                          tr("Clear the Tesla MADS diagnostic log used for stock longitudinal/MADS handoff debugging."),
-                                          callback=self._on_tesla_mads_log_clear_clicked)
-    self.offline_wake_success_btn = button_item(tr("Offline Wake Success"), tr("CLEAR"),
-                                                tr("Clear the panda latched offline wake success record so the next successful wake can be captured."),
-                                                callback=self._on_offline_wake_success_clear_clicked)
-    self.panda_bootkick_test_btn = button_item(tr("Panda Bootkick Test"), tr("TEST"),
-                                               tr("Schedule a panda bootkick in 90 seconds and power off the device to test whether panda can wake the SoM."),
-                                               callback=self._on_panda_bootkick_test_clicked)
-
     self.items: list = [self.show_advanced_controls, self.enable_github_runner_toggle, self.enable_copyparty_toggle,
-                        self.prebuilt_toggle, self.offline_wake_success_btn, self.panda_bootkick_test_btn,
-                        self.tesla_mads_log_btn, self.error_log_btn,]
+                        self.prebuilt_toggle, self.error_log_btn,]
 
   @staticmethod
   def _on_prebuilt_toggled(state):
@@ -97,96 +82,6 @@ class DeveloperLayoutSP(DeveloperLayout):
     dialog = HtmlModalSP(text=text, callback=lambda result: self._on_error_log_closed(result, os.path.exists(self.error_log_path)))
     gui_app.push_widget(dialog)
 
-  def _on_tesla_mads_log_clear_confirm(self, result):
-    if result == DialogResult.CONFIRM:
-      clear_tesla_mads_debug_logs()
-
-  def _on_tesla_mads_log_clear_clicked(self):
-    log_size = 0
-    for path in (TESLA_MADS_DEBUG_PATH, f"{TESLA_MADS_DEBUG_PATH}.1"):
-      try:
-        log_size += os.path.getsize(path)
-      except OSError:
-        pass
-
-    size_kb = log_size / 1024
-    message = tr("Clear Tesla MADS debug log?") + f"<br><br>{TESLA_MADS_DEBUG_PATH}<br>{size_kb:.1f} KB"
-    dialog = ConfirmDialog(message, tr("Clear"), tr("Cancel"), rich=True, callback=self._on_tesla_mads_log_clear_confirm)
-    gui_app.push_widget(dialog)
-
-  def _on_offline_wake_success_clear_confirm(self, result):
-    if result != DialogResult.CONFIRM:
-      return
-
-    cleared = 0
-    errors = []
-    try:
-      from panda import Panda
-      for serial in Panda.list():
-        try:
-          with Panda(serial) as panda:
-            panda.clear_wake_success()
-            cleared += 1
-        except Exception as e:
-          errors.append(f"{serial}: {type(e).__name__}: {e}")
-    except Exception as e:
-      errors.append(f"Panda.list: {type(e).__name__}: {e}")
-
-    try:
-      with open("/data/offline_wake_debug.log", "a") as f:
-        f.write(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ui cleared offline wake success cleared={cleared} errors={errors}\n")
-    except Exception:
-      pass
-
-  def _on_offline_wake_success_clear_clicked(self):
-    message = tr("Clear panda offline wake success record?") + "<br><br>" + tr("The next successful offline wake will be captured after clearing.")
-    dialog = ConfirmDialog(message, tr("Clear"), tr("Cancel"), rich=True, callback=self._on_offline_wake_success_clear_confirm)
-    gui_app.push_widget(dialog)
-
-  @staticmethod
-  def _on_panda_bootkick_test_confirm(result):
-    if result != DialogResult.CONFIRM:
-      return
-
-    scheduled = 0
-    errors = []
-    delay_s = 90
-    try:
-      from panda import Panda
-      for serial in Panda.list():
-        try:
-          with Panda(serial) as panda:
-            if not panda.is_internal():
-              continue
-            panda.clear_wake_success()
-            panda.schedule_bootkick_test(delay_s)
-            scheduled += 1
-        except Exception as e:
-          errors.append(f"{serial}: {type(e).__name__}: {e}")
-    except Exception as e:
-      errors.append(f"Panda.list: {type(e).__name__}: {e}")
-
-    try:
-      with open("/data/offline_wake_debug.log", "a") as f:
-        f.write(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ui scheduled panda bootkick test delay_s={delay_s} scheduled={scheduled} errors={errors}\n")
-    except Exception:
-      pass
-
-    if scheduled > 0:
-      try:
-        Path(PANDA_BOOTKICK_TEST_SENTINEL).write_text(str(datetime.datetime.now().timestamp()))
-      except Exception:
-        pass
-      ui_state.params.put_bool("DoShutdown", True)
-
-  def _on_panda_bootkick_test_clicked(self):
-    message = (
-      tr("Run panda bootkick self-test?") + "<br><br>" +
-      tr("The device will power off now. If panda can wake the SoM, it should boot again in about 90 seconds.")
-    )
-    dialog = ConfirmDialog(message, tr("Test"), tr("Cancel"), rich=True, callback=self._on_panda_bootkick_test_confirm)
-    gui_app.push_widget(dialog)
-
   def _update_state(self):
     disable_updates = ui_state.params.get_bool("DisableUpdates")
     show_advanced = ui_state.params.get_bool("ShowAdvancedControls")
@@ -206,7 +101,4 @@ class DeveloperLayoutSP(DeveloperLayout):
 
     self.enable_copyparty_toggle.set_visible(show_advanced)
     self.enable_github_runner_toggle.set_visible(show_advanced and not self._is_release_branch)
-    self.offline_wake_success_btn.set_visible(not self._is_release_branch)
-    self.panda_bootkick_test_btn.set_visible(not self._is_release_branch)
-    self.tesla_mads_log_btn.set_visible(not self._is_release_branch)
     self.error_log_btn.set_visible(not self._is_release_branch)

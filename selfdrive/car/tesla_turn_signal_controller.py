@@ -26,6 +26,9 @@ RESULT_PARAM = "TeslaTurnSignalTestResult"
 VALIDATION_LOG_PATH = "/data/tesla_turn_signal_validation.log"
 VALIDATION_LOG_PREFIX = "[TESLA-TURN-SIGNAL-VALIDATION-v3]"
 MAX_LOG_BYTES = 2 * 1024 * 1024
+# Validation results still return through Params, while raw evidence logging is
+# disabled on the normal dev branch. Toggle only for a focused diagnostic run.
+TURN_SIGNAL_VALIDATION_LOGGING_ENABLED = False
 
 _UI_WARNING_MESSAGE = DBC("tesla_model3_party").name_to_msg["UI_warning"]
 _FRONT_LIGHTING_MESSAGE = DBC("tesla_model3_vehicle").name_to_msg["ID3F5VCFRONT_lighting"]
@@ -103,7 +106,7 @@ def decode_front_lighting(data: bytes) -> dict[str, int | bool]:
 
 
 def persist_validation_records(records: list[dict], log_path: str = VALIDATION_LOG_PATH) -> None:
-  if not records:
+  if not TURN_SIGNAL_VALIDATION_LOGGING_ENABLED or not records:
     return
   try:
     if os.path.exists(log_path) and os.path.getsize(log_path) > MAX_LOG_BYTES:

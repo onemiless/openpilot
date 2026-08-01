@@ -27,6 +27,8 @@
 #define WAKE_SUCCESS_MAGIC 0x57535543U
 #define WAKE_SUCCESS_LOG_DELAY_FRAMES 300U
 
+static constexpr bool OFFLINE_WAKE_DEBUG_LOGGING_ENABLED = false;
+
 ExitHandler do_exit;
 
 struct HwmonState {
@@ -38,6 +40,11 @@ struct HwmonState {
 HwmonState hwmon_state;
 
 void offline_wake_debug_log(const std::string &message) {
+  // Retain the recorder for future wake diagnosis without normal /data writes.
+  if (!OFFLINE_WAKE_DEBUG_LOGGING_ENABLED) {
+    return;
+  }
+
   std::ofstream log("/data/offline_wake_debug.log", std::ios::app);
   if (!log.is_open()) {
     return;

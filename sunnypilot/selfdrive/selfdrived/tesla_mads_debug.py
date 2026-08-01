@@ -8,6 +8,9 @@ from collections.abc import Mapping, Sequence
 TESLA_MADS_DEBUG_PATH = "/data/tesla_mads_debug.log"
 _MAX_LOG_BYTES = 1024 * 1024
 _LOG_LOCK = threading.Lock()
+# Keep the diagnostic implementation for later investigations without writing
+# a continuous MADS trace on the normal dev branch.
+TESLA_MADS_DEBUG_LOGGING_ENABLED = False
 
 
 def _safe_value(value):
@@ -39,8 +42,11 @@ def _append_tesla_mads_debug(record: dict) -> None:
 
 
 def log_tesla_mads_debug(source: str, event: str, *, sync: bool = False, **values) -> None:
+  if not TESLA_MADS_DEBUG_LOGGING_ENABLED:
+    return
+
   record = {
-    "wall_time": time.time(),
+    "wall_time": time.time_ns() / 1e9,
     "monotonic_ns": time.monotonic_ns(),
     "source": source,
     "event": event,

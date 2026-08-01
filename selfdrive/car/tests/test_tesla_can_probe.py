@@ -4,6 +4,14 @@ from types import SimpleNamespace
 from openpilot.selfdrive.car.tesla_can_probe import TeslaCanProbe, decode_tesla_probe_frame
 
 
+def test_probe_logging_is_disabled_by_default(tmp_path):
+  log_path = tmp_path / "probe.log"
+  probe = TeslaCanProbe(True, str(log_path))
+  probe.update_can([(1_000_000_000, [(0x3C2, bytes.fromhex("0100000100000000"), 1)])])
+  probe.flush()
+  assert not log_path.exists()
+
+
 def test_decode_speed_wheel_and_turn_messages():
   assert decode_tesla_probe_frame(0x3C2, bytes.fromhex("010000ff00000000")) == {
     "switch_status_index": 1,
@@ -27,7 +35,8 @@ def test_decode_speed_wheel_and_turn_messages():
   }
 
 
-def test_probe_records_bus_direction_and_filters_unrelated_frames(tmp_path):
+def test_probe_records_bus_direction_and_filters_unrelated_frames(tmp_path, monkeypatch):
+  monkeypatch.setattr("openpilot.selfdrive.car.tesla_can_probe.TESLA_CAN_PROBE_LOGGING_ENABLED", True)
   log_path = tmp_path / "probe.log"
   probe = TeslaCanProbe(True, str(log_path))
   probe.update_can([
@@ -46,7 +55,8 @@ def test_probe_records_bus_direction_and_filters_unrelated_frames(tmp_path):
   assert frames[1]["bus"] == 1 and frames[1]["direction"] == "rejected"
 
 
-def test_probe_logs_state_changes_and_heartbeat(tmp_path):
+def test_probe_logs_state_changes_and_heartbeat(tmp_path, monkeypatch):
+  monkeypatch.setattr("openpilot.selfdrive.car.tesla_can_probe.TESLA_CAN_PROBE_LOGGING_ENABLED", True)
   log_path = tmp_path / "probe.log"
   probe = TeslaCanProbe(True, str(log_path))
   cs = SimpleNamespace(
@@ -69,7 +79,8 @@ def test_probe_logs_state_changes_and_heartbeat(tmp_path):
   assert states[-1]["cruise_speed_cluster"] == 19.44
 
 
-def test_probe_summarizes_speed_wheel_changes_per_direction(tmp_path):
+def test_probe_summarizes_speed_wheel_changes_per_direction(tmp_path, monkeypatch):
+  monkeypatch.setattr("openpilot.selfdrive.car.tesla_can_probe.TESLA_CAN_PROBE_LOGGING_ENABLED", True)
   log_path = tmp_path / "probe.log"
   probe = TeslaCanProbe(True, str(log_path))
   probe.update_can([

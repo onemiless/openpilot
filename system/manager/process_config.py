@@ -64,11 +64,6 @@ def only_onroad(started: bool, params: Params, CP: car.CarParams) -> bool:
 def only_offroad(started: bool, params: Params, CP: car.CarParams) -> bool:
   return not started
 
-def tesla_offline_wake_capture(started: bool, params: Params, CP: car.CarParams) -> bool:
-  # Keep recording through the driver's wake-up/onroad transition so the
-  # post-wake CAN burst is not truncated by the process manager.
-  return params.get_bool("TeslaOfflineWakeCaptureEnabled")
-
 def use_github_runner(started, params, CP: car.CarParams) -> bool:
   return not PC and params.get_bool("EnableGithubRunner") and (
     not params.get_bool("NetworkMetered") and not params.get_bool("GithubRunnerSufficientVoltage"))
@@ -153,8 +148,6 @@ procs = [
   PythonProcess("lateral_maneuversd", "tools.lateral_maneuvers.lateral_maneuversd", lat_maneuver),
   PythonProcess("radard", "selfdrive.controls.radard", only_onroad),
   PythonProcess("hardwared", "system.hardware.hardwared", always_run),
-  PythonProcess("tesla_offline_wake_captured", "tools.tesla_offline_wake_captured", tesla_offline_wake_capture),
-  PythonProcess("tesla_turn_signal_web", "selfdrive.debug.tesla_turn_signal_web", always_run),
   PythonProcess("modem", "system.hardware.tici.modem", always_run, enabled=TICI),
   PythonProcess("tombstoned", "system.tombstoned", always_run, enabled=not PC),
   PythonProcess("updated", "system.updated.updated", only_offroad, enabled=not PC),

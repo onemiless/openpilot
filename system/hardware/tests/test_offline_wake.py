@@ -53,10 +53,18 @@ def test_can_shutdown_gate_force_bypasses_wait():
 def test_offline_wake_debug_log(tmp_path, monkeypatch):
   log_path = tmp_path / "offline_wake_debug.log"
   monkeypatch.setattr(offline_wake, "OFFLINE_WAKE_DEBUG_LOG", str(log_path))
+  monkeypatch.setattr(offline_wake, "OFFLINE_WAKE_DEBUG_LOGGING_ENABLED", True)
 
   offline_wake.offline_wake_debug_log("test-process", "wake event")
 
   assert log_path.read_text().endswith(" test-process wake event\n")
+
+
+def test_offline_wake_debug_log_is_disabled_by_default(tmp_path, monkeypatch):
+  log_path = tmp_path / "offline_wake_debug.log"
+  monkeypatch.setattr(offline_wake, "OFFLINE_WAKE_DEBUG_LOG", str(log_path))
+  offline_wake.offline_wake_debug_log("test-process", "wake event")
+  assert not log_path.exists()
 
 
 def test_bootkick_test_pending_is_visible_to_all_checkers(tmp_path, monkeypatch):

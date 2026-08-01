@@ -4,8 +4,6 @@ Copyright (c) 2021-, Haibin Wen, sunnypilot, and a number of other contributors.
 This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
-from pathlib import Path
-
 from openpilot.selfdrive.ui.layouts.settings.device import DeviceLayout
 from openpilot.selfdrive.ui.onroad.driver_camera_dialog import DriverCameraDialog
 from openpilot.selfdrive.ui.ui_state import ui_state
@@ -35,9 +33,6 @@ offroad_time_options = {
   11: 1440,
   12: 1800,
 }
-
-PANDA_BOOTKICK_TEST_SENTINEL = "/data/panda_bootkick_test_pending"
-
 
 class DeviceLayoutSP(DeviceLayout):
   def __init__(self):
@@ -82,22 +77,6 @@ class DeviceLayoutSP(DeviceLayout):
       callback=None,
       inline=True,
     )
-
-    self._auto_wake_test_toggle = dual_button_item_sp(
-      left_text=lambda: tr("Auto Wake Test"),
-      left_callback=self._toggle_auto_wake_test,
-      right_text="",
-      right_callback=None,
-    )
-    self._auto_wake_test_toggle.action_item.right_button.set_visible(False)
-
-    self._tesla_wake_capture_toggle = dual_button_item_sp(
-      left_text=lambda: tr("Tesla Sleep/Wake CAN Capture"),
-      left_callback=self._toggle_tesla_wake_capture,
-      right_text="",
-      right_callback=None,
-    )
-    self._tesla_wake_capture_toggle.action_item.right_button.set_visible(False)
 
     self._route_recording_toggle = dual_button_item_sp(
       left_text=lambda: tr("Route Recording"),
@@ -153,8 +132,6 @@ class DeviceLayoutSP(DeviceLayout):
       LineSeparator(),
       self._max_time_offroad,
       LineSeparator(),
-      self._auto_wake_test_toggle,
-      self._tesla_wake_capture_toggle,
       LineSeparator(height=10),
       self._route_recording_toggle,
       self._quiet_mode_and_dcam,
@@ -215,48 +192,6 @@ class DeviceLayoutSP(DeviceLayout):
     gui_app.push_widget(ConfirmDialog(_offroad_mode_str, tr("Confirm"), callback=lambda result: _set_always_offroad(result)))
 
   @staticmethod
-  def _toggle_auto_wake_test():
-    auto_wake_test_enabled = ui_state.params.get_bool("AutoWakeTestEnabled")
-
-    if auto_wake_test_enabled:
-      ui_state.params.put_bool("AutoWakeTestEnabled", False)
-      ui_state.params.remove("DisablePowerDown")
-      return
-
-    ui_state.params.put_bool("AutoWakeTestEnabled", True)
-    ui_state.params.put_bool("DisablePowerDown", False)
-    ui_state.params.put("MaxTimeOffroad", 1)
-    for key in ("DoShutdown", "ForcePowerDown", "PandaWakeMonitorRequest", "PandaWakeMonitorAck"):
-      ui_state.params.remove(key)
-    try:
-      Path(PANDA_BOOTKICK_TEST_SENTINEL).unlink(missing_ok=True)
-    except Exception:
-      pass
-
-  def _toggle_tesla_wake_capture(self):
-    enabled = ui_state.params.get_bool("TeslaOfflineWakeCaptureEnabled")
-    if enabled:
-      ui_state.params.put_bool("TeslaOfflineWakeCaptureEnabled", False)
-      return
-
-    def start_capture(result: int):
-      if result != DialogResult.CONFIRM:
-        return
-      # This must happen in the UI process, rather than waiting for the manager
-      # to spawn the recorder. Otherwise an already-pending shutdown can win the
-      # race before the recorder sets DisablePowerDown itself.
-      ui_state.params.put_bool("DisablePowerDown", True)
-      for key in ("DoShutdown", "ForcePowerDown"):
-        ui_state.params.remove(key)
-      ui_state.params.put_bool("TeslaOfflineWakeCaptureEnabled", True)
-
-    gui_app.push_widget(ConfirmDialog(
-      tr("Start a passive Tesla CAN capture? The device will remain powered until the next wake event is captured. "
-         "Start this before closing the car. No CAN messages will be sent."),
-      tr("Start"), tr("Cancel"), callback=start_capture
-    ))
-
-  @staticmethod
   def _update_max_time_offroad_label(value: int) -> str:
     label = tr("Always On") if value == 0 else f"{value}" + tr("m") if value < 60 else f"{value // 60}" + tr("h")
     label += tr(" (Default)") if value == 1800 else ""
@@ -286,25 +221,6 @@ class DeviceLayoutSP(DeviceLayout):
     self._route_recording_toggle.action_item.left_button.set_button_style(
       ButtonStyle.PRIMARY if not ui_state.params.get_bool("DisableRouteRecording") else ButtonStyle.NORMAL
     )
-
-    # Auto Wake Test button
-    auto_wake_test_enabled = ui_state.params.get_bool("AutoWakeTestEnabled")
-    self._auto_wake_test_toggle.action_item.left_button.set_text(
-      tr("Stop Auto Wake Test") if auto_wake_test_enabled else tr("Start Auto Wake Test")
-    )
-    self._auto_wake_test_toggle.action_item.left_button.set_button_style(
-      ButtonStyle.PRIMARY if auto_wake_test_enabled else ButtonStyle.NORMAL
-    )
-
-    # Tesla sleep/wake CAN capture button
-    wake_capture_enabled = ui_state.params.get_bool("TeslaOfflineWakeCaptureEnabled")
-    self._tesla_wake_capture_toggle.action_item.left_button.set_text(
-      tr("Stop Tesla CAN Capture") if wake_capture_enabled else tr("Start Tesla CAN Capture")
-    )
-    self._tesla_wake_capture_toggle.action_item.left_button.set_button_style(
-      ButtonStyle.PRIMARY if wake_capture_enabled else ButtonStyle.NORMAL
-    )
-    self._tesla_wake_capture_toggle.action_item.left_button.set_enabled(ui_state.is_offroad())
 
     # Quiet Mode button
     self._quiet_mode_and_dcam.action_item.left_button.set_button_style(ButtonStyle.PRIMARY if ui_state.params.get_bool("QuietMode") else ButtonStyle.NORMAL)

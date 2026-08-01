@@ -7,6 +7,9 @@ import time
 
 TESLA_CAN_PROBE_PATH = "/data/tesla_can_probe.log"
 TESLA_CAN_PROBE_PREFIX = "[TESLA-CAN-PROBE-v2]"
+# The probe stays available for manual diagnostics, but production/dev builds
+# must not continuously record raw CAN traffic.
+TESLA_CAN_PROBE_LOGGING_ENABLED = False
 
 _EXACT_SEQUENCE_ADDRESSES = {
   0x249: "SCCM_leftStalk",
@@ -84,17 +87,17 @@ class TeslaCanProbe:
   """Bounded, read-only capture of Tesla messages needed for turn/speed validation."""
 
   def __init__(self, enabled: bool, log_path: str = TESLA_CAN_PROBE_PATH) -> None:
-    self.enabled = enabled
+    self.enabled = enabled and TESLA_CAN_PROBE_LOGGING_ENABLED
     self.log_path = log_path
     self.pending: list[dict] = []
-    self.write_queue: queue.Queue[list[dict]] | None = queue.Queue(maxsize=64) if enabled else None
+    self.write_queue: queue.Queue[list[dict]] | None = queue.Queue(maxsize=64) if self.enabled else None
     self.last_flush_ns = 0
     self.last_das_status_signature: tuple | None = None
     self.last_das_status_log_ns = 0
     self.last_state_signature: tuple | None = None
     self.last_state_log_ns = 0
     self.last_speed_wheel_ticks: dict[tuple[int, str], int] = {}
-    if enabled:
+    if self.enabled:
       threading.Thread(target=self._writer, name="tesla-can-probe-writer", daemon=True).start()
       self._queue("capture_started", monotonic_ns=time.monotonic_ns(),
                   addresses=["0x249", "0x39b", "0x3c2", "0x3e9", "0x3f5"])
