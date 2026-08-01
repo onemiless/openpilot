@@ -22,11 +22,11 @@ def test_validation_sequence_uses_five_action_frames():
   assert ACTION_FRAME_COUNT == 5
 
 
-def test_validation_can_socket_conflates_high_rate_can_messages(mocker):
+def test_validation_can_socket_preserves_rx_order_for_panda_template_matching(mocker):
   sub_sock = mocker.patch("openpilot.selfdrive.debug.tesla_turn_signal_test.messaging.sub_sock")
   create_validation_can_socket()
 
-  sub_sock.assert_called_once_with("can", conflate=True, timeout=100)
+  sub_sock.assert_called_once_with("can", timeout=100)
 
 
 def test_validation_observer_does_not_log_oem_rx_stream(mocker):

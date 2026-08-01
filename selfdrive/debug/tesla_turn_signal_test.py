@@ -104,9 +104,10 @@ def is_original_body_controls_frame(address: int, source: int, data: bytes) -> b
 
 
 def create_validation_can_socket() -> messaging.SubSocket:
-  # CAN is a high-rate stream. Keep only the freshest batch so this diagnostic
-  # cannot build a backlog that starves real-time control processes.
-  return messaging.sub_sock("can", conflate=True, timeout=100)
+  # Preserve RX order: Panda validates the TX against the exact preceding OEM
+  # frame, so a conflated subscriber can select a template that Panda has
+  # already superseded. Logging remains buffered to avoid real-time I/O stalls.
+  return messaging.sub_sock("can", timeout=100)
 
 
 def create_body_control_frame(original_frame: bytes, direction: str, counter: int) -> bytes:
