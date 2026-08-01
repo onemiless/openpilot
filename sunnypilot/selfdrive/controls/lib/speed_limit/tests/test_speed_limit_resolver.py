@@ -152,10 +152,11 @@ class TestSpeedLimitResolverValidation:
     resolver.offset_value = 10
     resolver.offset_max_speed = 100
 
-    resolver.speed_limit = 99 * CV.KPH_TO_MS
+    resolver.speed_limit = 80 * CV.KPH_TO_MS
+    resolver.offset_max_speed = 95
     assert resolver._get_speed_limit_offset() > 0
 
-    resolver.speed_limit = 100 * CV.KPH_TO_MS
+    resolver.offset_max_speed = 85
     assert resolver._get_speed_limit_offset() == 0
 
   def test_zero_offset_threshold_keeps_offset_enabled(self, resolver_class):

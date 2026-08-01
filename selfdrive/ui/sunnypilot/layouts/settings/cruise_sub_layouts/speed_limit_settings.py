@@ -92,7 +92,7 @@ class SpeedLimitSettingsLayout(Widget):
       min_value=0,
       max_value=150,
       value_change_step=5,
-      description=tr("Do not apply the fixed or percentage offset when the detected base speed limit reaches this value. Set to 0 to disable."),
+      description=tr("Do not apply the fixed or percentage offset when the resulting offset speed reaches this value. Set to 0 to disable."),
       label_callback=self._get_offset_max_speed_label,
     )
 

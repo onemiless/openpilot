@@ -93,6 +93,12 @@ def is_original_body_controls_frame(address: int, source: int, data: bytes) -> b
           tesla_body_controls_checksum(data) == data[7])
 
 
+def create_validation_can_socket() -> messaging.SubSocket:
+  # CAN is a high-rate stream. Keep only the freshest batch so this diagnostic
+  # cannot build a backlog that starves real-time control processes.
+  return messaging.sub_sock("can", conflate=True, timeout=100)
+
+
 def create_body_control_frame(original_frame: bytes, direction: str, counter: int) -> bytes:
   if direction not in TURN_REQUESTS:
     raise ValueError(f"unsupported turn request: {direction}")
@@ -166,17 +172,22 @@ def observe_can(can_sock: messaging.SubSocket, recorder: ValidationRecorder, dur
       if frame.address == DAS_BODY_CONTROLS_ADDRESS and len(data) == 8:
         tx_echo |= can_direction == "txEcho"
         rejected |= can_direction == "rejected"
-        recorder.record("body_controls_observation", source=int(frame.src), bus=bus, can_direction=can_direction,
-                        data=data.hex(), decoded=decode_body_controls(data),
-                        checksum_valid=tesla_body_controls_checksum(data) == data[7])
+        if can_direction != "rx":
+          recorder.record("body_controls_observation", source=int(frame.src), bus=bus, can_direction=can_direction,
+                          data=data.hex(), decoded=decode_body_controls(data),
+                          checksum_valid=tesla_body_controls_checksum(data) == data[7])
       elif frame.address == UI_WARNING_ADDRESS and bus == PARTY_BUS and can_direction == "rx" and len(data) == 7:
         decoded = decode_ui_warning(data)
-        feedback |= bool(decoded[f"{expected_direction}_blinker"])
-        recorder.record("ui_warning_observation", source=int(frame.src), bus=bus, data=data.hex(), decoded=decoded)
+        expected_feedback = bool(decoded[f"{expected_direction}_blinker"])
+        if expected_feedback and not feedback:
+          recorder.record("ui_warning_observation", source=int(frame.src), bus=bus, data=data.hex(), decoded=decoded)
+        feedback |= expected_feedback
       elif frame.address == FRONT_LIGHTING_ADDRESS and bus == VEHICLE_BUS and can_direction == "rx" and len(data) == 8:
         decoded = decode_front_lighting(data)
-        feedback |= bool(decoded[f"{expected_direction}_blinker"])
-        recorder.record("front_lighting_observation", source=int(frame.src), bus=bus, data=data.hex(), decoded=decoded)
+        expected_feedback = bool(decoded[f"{expected_direction}_blinker"])
+        if expected_feedback and not feedback:
+          recorder.record("front_lighting_observation", source=int(frame.src), bus=bus, data=data.hex(), decoded=decoded)
+        feedback |= expected_feedback
   return feedback, tx_echo, rejected
 
 
@@ -187,7 +198,7 @@ def send_validation_pulse(direction: str, log_path: str = VALIDATION_LOG_PATH) -
     if not Params().get_bool("TeslaTurnSignalValidation"):
       raise RuntimeError("TeslaTurnSignalValidation is disabled; enable it offroad and restart")
 
-    can_sock = messaging.sub_sock("can", timeout=10)
+    can_sock = create_validation_can_socket()
     sendcan = messaging.pub_sock("sendcan")
 
     feedback = False

@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 
 from opendbc.can.packer import CANPacker
 
@@ -8,7 +9,9 @@ from openpilot.selfdrive.debug.tesla_turn_signal_test import (
   create_body_control_frame,
   decode_front_lighting,
   decode_ui_warning,
+  observe_can,
   tesla_body_controls_checksum,
+  create_validation_can_socket,
 )
 
 
@@ -17,6 +20,23 @@ OBSERVED_BODY_CONTROLS = bytes.fromhex("008802000000b026")
 
 def test_validation_sequence_uses_five_action_frames():
   assert ACTION_FRAME_COUNT == 5
+
+
+def test_validation_can_socket_conflates_high_rate_can_messages(mocker):
+  sub_sock = mocker.patch("openpilot.selfdrive.debug.tesla_turn_signal_test.messaging.sub_sock")
+  create_validation_can_socket()
+
+  sub_sock.assert_called_once_with("can", conflate=True, timeout=100)
+
+
+def test_validation_observer_does_not_log_oem_rx_stream(mocker):
+  idle_frame = SimpleNamespace(address=0x3E9, src=1, dat=OBSERVED_BODY_CONTROLS)
+  event = SimpleNamespace(can=[idle_frame])
+  recorder = SimpleNamespace(record=lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("unexpected log")))
+
+  mocker.patch("openpilot.selfdrive.debug.tesla_turn_signal_test.time.monotonic", side_effect=[0.0, 0.1, 1.0])
+  mocker.patch("openpilot.selfdrive.debug.tesla_turn_signal_test.messaging.recv_one_or_none", return_value=event)
+  assert observe_can(SimpleNamespace(), recorder, 0.2, "left") == (False, False, False)
 
 
 def test_decode_ui_warning_blinker_feedback():
