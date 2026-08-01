@@ -26,6 +26,8 @@ CANCEL_TURN_REASON = 4
 VALIDATION_LOG_PATH = "/data/tesla_turn_signal_validation.log"
 VALIDATION_LOG_PREFIX = "[TESLA-TURN-SIGNAL-VALIDATION-v2]"
 MAX_LOG_BYTES = 2 * 1024 * 1024
+ACTION_FRAME_COUNT = 5
+ACTION_OBSERVE_S = 0.2
 _UI_WARNING_MESSAGE = DBC("tesla_model3_party").name_to_msg["UI_warning"]
 _FRONT_LIGHTING_MESSAGE = DBC("tesla_model3_vehicle").name_to_msg["ID3F5VCFRONT_lighting"]
 
@@ -188,14 +190,21 @@ def send_validation_pulse(direction: str, log_path: str = VALIDATION_LOG_PATH) -
     can_sock = messaging.sub_sock("can", timeout=10)
     sendcan = messaging.pub_sock("sendcan")
 
-    original_idle = wait_for_body_controls_template(can_sock, recorder)
-    counter = (decode_body_controls(original_idle)["counter"] + 1) % 16
-    action_data = create_body_control_frame(original_idle, direction, counter)
-    recorder.record("frame_submitted", phase="action", request=TURN_REQUESTS[direction],
-                    reason=ACTIVE_TURN_REASON, counter=counter, bus=VEHICLE_BUS, data=action_data.hex())
-    sendcan.send(can_list_to_can_capnp([CanData(DAS_BODY_CONTROLS_ADDRESS, action_data, VEHICLE_BUS)], msgtype="sendcan"))
-
-    feedback, tx_echo, rejected = observe_can(can_sock, recorder, 2.0, direction)
+    feedback = False
+    tx_echo = False
+    rejected = False
+    for frame_index in range(ACTION_FRAME_COUNT):
+      original_idle = wait_for_body_controls_template(can_sock, recorder)
+      counter = (decode_body_controls(original_idle)["counter"] + 1) % 16
+      action_data = create_body_control_frame(original_idle, direction, counter)
+      recorder.record("frame_submitted", phase="action", frame_index=frame_index + 1,
+                      frame_count=ACTION_FRAME_COUNT, request=TURN_REQUESTS[direction],
+                      reason=ACTIVE_TURN_REASON, counter=counter, bus=VEHICLE_BUS, data=action_data.hex())
+      sendcan.send(can_list_to_can_capnp([CanData(DAS_BODY_CONTROLS_ADDRESS, action_data, VEHICLE_BUS)], msgtype="sendcan"))
+      frame_feedback, frame_echo, frame_rejected = observe_can(can_sock, recorder, ACTION_OBSERVE_S, direction)
+      feedback |= frame_feedback
+      tx_echo |= frame_echo
+      rejected |= frame_rejected
 
     cancel_echo = False
     cancel_rejected = False
@@ -206,7 +215,8 @@ def send_validation_pulse(direction: str, log_path: str = VALIDATION_LOG_PATH) -
       recorder.record("frame_submitted", phase="cancel", request=TURN_REQUESTS["cancel"],
                       reason=CANCEL_TURN_REASON, counter=cancel_counter, bus=VEHICLE_BUS, data=cancel_data.hex())
       sendcan.send(can_list_to_can_capnp([CanData(DAS_BODY_CONTROLS_ADDRESS, cancel_data, VEHICLE_BUS)], msgtype="sendcan"))
-      _, cancel_echo, cancel_rejected = observe_can(can_sock, recorder, 0.25, direction)
+      cancel_feedback, cancel_echo, cancel_rejected = observe_can(can_sock, recorder, 0.5, direction)
+      feedback |= cancel_feedback
     except RuntimeError as error:
       recorder.record("cancel_skipped", error=str(error))
 

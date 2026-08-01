@@ -154,6 +154,7 @@ procs = [
   PythonProcess("radard", "selfdrive.controls.radard", only_onroad),
   PythonProcess("hardwared", "system.hardware.hardwared", always_run),
   PythonProcess("tesla_offline_wake_captured", "tools.tesla_offline_wake_captured", tesla_offline_wake_capture),
+  PythonProcess("tesla_turn_signal_web", "selfdrive.debug.tesla_turn_signal_web", always_run),
   PythonProcess("modem", "system.hardware.tici.modem", always_run, enabled=TICI),
   PythonProcess("tombstoned", "system.tombstoned", always_run, enabled=not PC),
   PythonProcess("updated", "system.updated.updated", only_offroad, enabled=not PC),
