@@ -8,6 +8,7 @@ import shutil
 import signal
 import fcntl
 import threading
+import socket
 from collections import defaultdict
 from pathlib import Path
 
@@ -29,6 +30,16 @@ OVERLAY_MERGED = os.path.join(STAGING_ROOT, "merged")
 FINALIZED = os.path.join(STAGING_ROOT, "finalized")
 
 OVERLAY_INIT = Path(os.path.join(BASEDIR, ".overlay_init"))
+
+# The Software settings page manages mihomo locally. Keep the subscription and
+# credentials outside the repository, but let updater use the local proxy when
+# a valid downloaded config is present.
+MIHOMO_BASE = Path("/data/mihomo")
+MIHOMO_CONFIG = MIHOMO_BASE / "config.yaml"
+MIHOMO_CONTROL = Path(BASEDIR) / "scripts" / "mihomo_control.py"
+MIHOMO_PROXY_HOST = "127.0.0.1"
+MIHOMO_PROXY_PORT = 7890
+MIHOMO_PROXY_URL = f"http://{MIHOMO_PROXY_HOST}:{MIHOMO_PROXY_PORT}"
 
 # do not allow to engage after this many hours onroad and this many routes
 HOURS_NO_CONNECTIVITY_MAX = 27
@@ -67,8 +78,46 @@ def write_time_to_param(params, param) -> None:
   t = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
   params.put(param, t, block=True)
 
-def run(cmd: list[str], cwd: str | None = None) -> str:
-  return subprocess.check_output(cmd, cwd=cwd, stderr=subprocess.STDOUT, encoding='utf8')
+def run(cmd: list[str], cwd: str | None = None, env: dict[str, str] | None = None) -> str:
+  return subprocess.check_output(cmd, cwd=cwd, env=env, stderr=subprocess.STDOUT, encoding='utf8')
+
+
+def get_mihomo_proxy_env() -> dict[str, str] | None:
+  """Start the user-configured local proxy and return an env for Git requests.
+
+  The subscription URL is intentionally never read here: it remains in the
+  mode-600 file managed by scripts/mihomo_control.py.
+  """
+  if not MIHOMO_CONFIG.is_file() or not MIHOMO_CONTROL.is_file():
+    return None
+
+  try:
+    result = subprocess.run([str(MIHOMO_CONTROL), "start"], capture_output=True, text=True, timeout=15, check=False)
+  except (OSError, subprocess.SubprocessError):
+    cloudlog.exception("updater.mihomo_start_failed")
+    return None
+
+  if result.returncode != 0:
+    cloudlog.warning("updater.mihomo_start_failed: %s", (result.stderr or result.stdout).strip())
+    return None
+
+  try:
+    with socket.create_connection((MIHOMO_PROXY_HOST, MIHOMO_PROXY_PORT), timeout=2):
+      pass
+  except OSError:
+    cloudlog.warning("updater.mihomo_not_listening")
+    return None
+
+  env = os.environ.copy()
+  env.update({
+    "http_proxy": MIHOMO_PROXY_URL,
+    "https_proxy": MIHOMO_PROXY_URL,
+    "HTTP_PROXY": MIHOMO_PROXY_URL,
+    "HTTPS_PROXY": MIHOMO_PROXY_URL,
+    "ALL_PROXY": MIHOMO_PROXY_URL,
+    "NO_PROXY": "localhost,127.0.0.1",
+  })
+  return env
 
 
 def set_consistent_flag(consistent: bool) -> None:
@@ -267,15 +316,10 @@ class Updater:
     if len(self.branches):
       self.params.put("UpdaterAvailableBranches", ','.join(self.branches.keys()), block=True)
 
-    last_uptime_onroad = self.params.get("UptimeOnroad", return_default=True)
-    last_route_count = self.params.get("RouteCount", return_default=True)
     if update_success:
       self.params.put("LastUpdateTime", datetime.datetime.now(datetime.UTC).replace(tzinfo=None), block=True)
-      self.params.put("LastUpdateUptimeOnroad", last_uptime_onroad, block=True)
-      self.params.put("LastUpdateRouteCount", last_route_count, block=True)
-    else:
-      last_uptime_onroad = self.params.get("LastUpdateUptimeOnroad", return_default=True)
-      last_route_count = self.params.get("LastUpdateRouteCount", return_default=True)
+      self.params.put("LastUpdateUptimeOnroad", self.params.get("UptimeOnroad", return_default=True), block=True)
+      self.params.put("LastUpdateRouteCount", self.params.get("RouteCount", return_default=True), block=True)
 
     if exception is None:
       self.params.remove("LastUpdateException")
@@ -313,8 +357,6 @@ class Updater:
     for alert in ("Offroad_UpdateFailed", "Offroad_ConnectivityNeeded", "Offroad_ConnectivityNeededPrompt"):
       set_offroad_alert(alert, False)
 
-    dt_uptime_onroad = (self.params.get("UptimeOnroad", return_default=True) - last_uptime_onroad) / (60*60)
-    dt_route_count = self.params.get("RouteCount", return_default=True) - last_route_count
     build_metadata = get_build_metadata()
     if failed_count > 15 and exception is not None and self.has_internet:
       if build_metadata.tested_channel:
@@ -322,27 +364,23 @@ class Updater:
       else:
         extra_text = exception
       set_offroad_alert("Offroad_UpdateFailed", True, extra_text=extra_text)
-    # 关闭长时间不联网限制
-    # elif failed_count > 0:
-    #   if dt_uptime_onroad > HOURS_NO_CONNECTIVITY_MAX and dt_route_count > ROUTES_NO_CONNECTIVITY_MAX:
-    #     set_offroad_alert("Offroad_ConnectivityNeeded", True)
-    #   elif dt_uptime_onroad > HOURS_NO_CONNECTIVITY_PROMPT and dt_route_count > ROUTES_NO_CONNECTIVITY_PROMPT:
-    #     remaining = max(HOURS_NO_CONNECTIVITY_MAX - dt_uptime_onroad, 1)
-    #     set_offroad_alert("Offroad_ConnectivityNeededPrompt", True, extra_text=f"{remaining} hour{'' if remaining == 1 else 's'}.")
 
   def check_for_update(self) -> None:
     cloudlog.info("checking for updates")
 
     excluded_branches = ('release2', 'release2-staging')
+    git_env = get_mihomo_proxy_env()
+    if git_env is not None:
+      cloudlog.info("using local mihomo proxy for updater Git requests")
 
     try:
-      run(["git", "ls-remote", "origin", "HEAD"], OVERLAY_MERGED)
+      run(["git", "ls-remote", "origin", "HEAD"], OVERLAY_MERGED, env=git_env)
       self._has_internet = True
     except subprocess.CalledProcessError:
       self._has_internet = False
 
     setup_git_options(OVERLAY_MERGED)
-    output = run(["git", "ls-remote", "--heads"], OVERLAY_MERGED)
+    output = run(["git", "ls-remote", "--heads"], OVERLAY_MERGED, env=git_env)
 
     self.branches = defaultdict(lambda: None)
     for line in output.split('\n'):
@@ -374,7 +412,10 @@ class Updater:
     run(["git", "config", "--replace-all", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"], OVERLAY_MERGED)
 
     branch = self.target_branch
-    git_fetch_output = run(["git", "fetch", "origin", branch], OVERLAY_MERGED)
+    git_env = get_mihomo_proxy_env()
+    if git_env is not None:
+      cloudlog.info("using local mihomo proxy for updater Git fetch")
+    git_fetch_output = run(["git", "fetch", "origin", branch], OVERLAY_MERGED, env=git_env)
     cloudlog.info("git fetch success: %s", git_fetch_output)
 
     cloudlog.info("git reset in progress")
@@ -387,7 +428,7 @@ class Updater:
       ["git", "submodule", "update", "--init", "--recursive"],
       ["git", "submodule", "foreach", "--recursive", "git", "reset", "--hard"],
     ]
-    r = [run(cmd, OVERLAY_MERGED) for cmd in cmds]
+    r = [run(cmd, OVERLAY_MERGED, env=git_env) for cmd in cmds]
     cloudlog.info("git reset success: %s", '\n'.join(r))
 
     # TODO: show agnos download progress
