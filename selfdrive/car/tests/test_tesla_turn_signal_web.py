@@ -6,17 +6,20 @@ from http.server import ThreadingHTTPServer
 from openpilot.selfdrive.debug import tesla_turn_signal_web
 
 
-def test_turn_signal_web_page_exposes_both_five_frame_actions():
+def test_turn_signal_web_page_exposes_sp_driven_actions_and_cancel():
   page = tesla_turn_signal_web.render_page().decode()
   assert "左转" in page
   assert "右转" in page
-  assert "5 个同方向" in page
+  assert "SP 判定变道进入完成阶段后自动关闭" in page
+  assert "立即取消" in page
   assert "card 实时线程" in page
 
 
 def test_turn_signal_web_post_runs_requested_direction(monkeypatch):
   requested = []
-  monkeypatch.setattr(tesla_turn_signal_web, "send_validation_pulse", lambda direction: requested.append(direction) or True)
+  monkeypatch.setattr(tesla_turn_signal_web, "_ACTIVE_WEB_TEST_ID", None)
+  monkeypatch.setattr(tesla_turn_signal_web, "start_validation_session",
+                      lambda direction: requested.append(direction) or "test-session")
   server = ThreadingHTTPServer(("127.0.0.1", 0), tesla_turn_signal_web.TurnSignalHandler)
   thread = threading.Thread(target=server.serve_forever, daemon=True)
   thread.start()
@@ -25,7 +28,57 @@ def test_turn_signal_web_post_runs_requested_direction(monkeypatch):
     with urllib.request.urlopen(request, timeout=2) as response:
       payload = json.loads(response.read())
     assert payload["ok"] is True
+    assert payload["test_id"] == "test-session"
     assert requested == ["left"]
+  finally:
+    server.shutdown()
+    server.server_close()
+    thread.join(timeout=2)
+
+
+def test_turn_signal_web_status_and_cancel(monkeypatch):
+  cancelled = []
+  monkeypatch.setattr(tesla_turn_signal_web, "_ACTIVE_WEB_TEST_ID", "test-session")
+  monkeypatch.setattr(tesla_turn_signal_web, "_ACTIVE_WEB_SESSION_STARTED", tesla_turn_signal_web.time.monotonic())
+  monkeypatch.setattr(tesla_turn_signal_web, "get_validation_status",
+                      lambda test_id: {"test_id": test_id, "done": False, "phase": "lane_changing"})
+  monkeypatch.setattr(tesla_turn_signal_web, "cancel_validation_session", cancelled.append)
+  server = ThreadingHTTPServer(("127.0.0.1", 0), tesla_turn_signal_web.TurnSignalHandler)
+  thread = threading.Thread(target=server.serve_forever, daemon=True)
+  thread.start()
+  try:
+    with urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/api/status/test-session", timeout=2) as response:
+      payload = json.loads(response.read())
+    assert payload["phase"] == "lane_changing"
+
+    request = urllib.request.Request(f"http://127.0.0.1:{server.server_port}/api/cancel/test-session", method="POST")
+    with urllib.request.urlopen(request, timeout=2) as response:
+      payload = json.loads(response.read())
+    assert payload["ok"] is True
+    assert cancelled == ["test-session"]
+  finally:
+    server.shutdown()
+    server.server_close()
+    thread.join(timeout=2)
+
+
+def test_turn_signal_web_expires_stale_queued_session(monkeypatch):
+  cancelled = []
+  monkeypatch.setattr(tesla_turn_signal_web, "_ACTIVE_WEB_TEST_ID", "stale-session")
+  monkeypatch.setattr(tesla_turn_signal_web, "_ACTIVE_WEB_SESSION_STARTED", 1.0)
+  monkeypatch.setattr(tesla_turn_signal_web.time, "monotonic",
+                      lambda: 1.0 + tesla_turn_signal_web.WEB_SESSION_TIMEOUT_S)
+  monkeypatch.setattr(tesla_turn_signal_web, "cancel_validation_session", cancelled.append)
+  server = ThreadingHTTPServer(("127.0.0.1", 0), tesla_turn_signal_web.TurnSignalHandler)
+  thread = threading.Thread(target=server.serve_forever, daemon=True)
+  thread.start()
+  try:
+    with urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/api/status/stale-session", timeout=2) as response:
+      payload = json.loads(response.read())
+    assert payload["done"] is True
+    assert payload["result"] == "WEB_SESSION_TIMEOUT"
+    assert cancelled == ["stale-session"]
+    assert tesla_turn_signal_web._ACTIVE_WEB_TEST_ID is None
   finally:
     server.shutdown()
     server.server_close()

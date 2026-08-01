@@ -32,6 +32,7 @@ REPLAY = "REPLAY" in os.environ
 
 EventName = log.OnroadEvent.EventName
 TESLA_LONGITUDINAL_CONTEXT_STALE_S = 0.2
+TESLA_LANE_CHANGE_CONTEXT_STALE_S = 0.5
 
 # forward
 carlog.addHandler(ForwardingHandler(cloudlog))
@@ -109,7 +110,7 @@ class Car:
 
   def __init__(self, CI=None, RI=None) -> None:
     self.can_sock = messaging.sub_sock('can', timeout=20)
-    self.sm = messaging.SubMaster(['pandaStates', 'carControl', 'onroadEvents'] +
+    self.sm = messaging.SubMaster(['pandaStates', 'carControl', 'onroadEvents', 'modelV2'] +
                                   ['carControlSP', 'longitudinalPlanSP', 'selfdriveStateSP'])
     self.pm = messaging.PubMaster(['sendcan', 'carState', 'carParams', 'carOutput', 'liveTracks'] + ['carParamsSP', 'carStateSP'])
 
@@ -255,7 +256,13 @@ class Car:
             self.dynamic_acc_last_blocked_log_nanos = mono_time
             log_dynamic_acc("card", "safety_blocked_das_control", mono_time=mono_time, data=data.hex())
       if self.tesla_turn_signal_controller is not None:
-        self.tesla_turn_signal_controller.advance_time(int(time.monotonic() * 1e9))
+        turn_signal_now_nanos = int(time.monotonic() * 1e9)
+        self.tesla_turn_signal_controller.advance_time(turn_signal_now_nanos)
+        # Cancellation must not depend on controlsd/carControl remaining alive.
+        # Normal action frames still only leave through controls_update().
+        cancel_sends = self.tesla_turn_signal_controller.take_can_sends(turn_signal_now_nanos, cancel_only=True)
+        if cancel_sends:
+          self.can_callbacks[1](cancel_sends)
 
     # Update carState from CAN
     CS, CS_SP = self.CI.update(can_list)
@@ -370,6 +377,18 @@ class Car:
           )
         raise
       if self.tesla_turn_signal_controller is not None:
+        context_now = time.monotonic()
+        model_valid = (self.sm.seen['modelV2'] and self.sm.valid['modelV2'] and
+                       context_now - self.sm.recv_time['modelV2'] <= TESLA_LANE_CHANGE_CONTEXT_STALE_S)
+        lane_change_meta = self.sm['modelV2'].meta
+        self.tesla_turn_signal_controller.update_lane_change_context(
+          now_nanos,
+          valid=model_valid,
+          state=int(getattr(lane_change_meta.laneChangeState, "raw", lane_change_meta.laneChangeState)),
+          direction=int(getattr(lane_change_meta.laneChangeDirection, "raw", lane_change_meta.laneChangeDirection)),
+          lateral_active=bool(CC.latActive),
+          brake_pressed=bool(CS.brakePressed),
+        )
         can_sends.extend(self.tesla_turn_signal_controller.take_can_sends(now_nanos))
       self.pm.send('sendcan', can_list_to_can_capnp(can_sends, msgtype='sendcan', valid=CS.canValid))
 

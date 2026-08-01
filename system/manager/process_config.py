@@ -155,6 +155,7 @@ procs = [
   PythonProcess("statsd", "system.statsd", always_run),
   PythonProcess("beep", "selfdrive.selfdrived.beep", always_run),
   PythonProcess("feedbackd", "selfdrive.ui.feedback.feedbackd", only_onroad),
+  PythonProcess("tesla_turn_signal_web", "selfdrive.debug.tesla_turn_signal_web", always_run, enabled=not PC),
 
   # debug procs
   NativeProcess("bridge", "cereal/messaging", ["./bridge"], notcar),
