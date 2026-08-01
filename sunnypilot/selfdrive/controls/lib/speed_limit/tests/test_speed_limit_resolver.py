@@ -11,10 +11,11 @@ import pytest
 from pytest_mock import MockerFixture
 
 from cereal import custom
+from openpilot.common.constants import CV
 from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit import LIMIT_MAX_MAP_DATA_AGE
 
 from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.speed_limit_resolver import SpeedLimitResolver, ALL_SOURCES
-from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.common import Policy
+from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.common import OffsetType, Policy
 
 SpeedLimitSource = custom.LongitudinalPlanSP.SpeedLimit.Source
 
@@ -142,3 +143,27 @@ class TestSpeedLimitResolverValidation:
     resolver._get_from_map_data(sm_mock)
     assert resolver.limit_solutions[SpeedLimitSource.map] == 0.
     assert resolver.distance_solutions[SpeedLimitSource.map] == 0.
+
+  @pytest.mark.parametrize("offset_type", [OffsetType.fixed, OffsetType.percentage])
+  def test_offset_is_suppressed_at_configured_speed_limit_threshold(self, resolver_class, offset_type):
+    resolver = resolver_class()
+    resolver.is_metric = True
+    resolver.offset_type = offset_type
+    resolver.offset_value = 10
+    resolver.offset_max_speed = 100
+
+    resolver.speed_limit = 99 * CV.KPH_TO_MS
+    assert resolver._get_speed_limit_offset() > 0
+
+    resolver.speed_limit = 100 * CV.KPH_TO_MS
+    assert resolver._get_speed_limit_offset() == 0
+
+  def test_zero_offset_threshold_keeps_offset_enabled(self, resolver_class):
+    resolver = resolver_class()
+    resolver.is_metric = False
+    resolver.offset_type = OffsetType.fixed
+    resolver.offset_value = 5
+    resolver.offset_max_speed = 0
+    resolver.speed_limit = 120 * CV.MPH_TO_MS
+
+    assert resolver._get_speed_limit_offset() == 5 * CV.MPH_TO_MS

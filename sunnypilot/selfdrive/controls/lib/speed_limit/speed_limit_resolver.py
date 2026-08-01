@@ -67,6 +67,7 @@ class SpeedLimitResolver:
       self.params
     )
     self.offset_value = self.params.get("SpeedLimitValueOffset", return_default=True)
+    self.offset_max_speed = self.params.get("SpeedLimitOffsetMaxSpeed", return_default=True)
 
     self.speed_limit = 0.
     self.speed_limit_last = 0.
@@ -95,8 +96,12 @@ class SpeedLimitResolver:
       self.is_metric = self.params.get_bool("IsMetric")
       self.offset_type = self.params.get("SpeedLimitOffsetType", return_default=True)
       self.offset_value = self.params.get("SpeedLimitValueOffset", return_default=True)
+      self.offset_max_speed = self.params.get("SpeedLimitOffsetMaxSpeed", return_default=True)
 
   def _get_speed_limit_offset(self) -> float:
+    offset_max_speed_ms = self.offset_max_speed * (CV.KPH_TO_MS if self.is_metric else CV.MPH_TO_MS)
+    if offset_max_speed_ms > 0. and self.speed_limit >= offset_max_speed_ms:
+      return 0
     if self.offset_type == OffsetType.off:
       return 0
     elif self.offset_type == OffsetType.fixed:
