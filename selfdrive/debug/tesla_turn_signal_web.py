@@ -5,7 +5,8 @@ import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from openpilot.selfdrive.debug.tesla_turn_signal_test import ACTION_FRAME_COUNT, VALIDATION_LOG_PATH, send_validation_pulse
+from openpilot.selfdrive.car.tesla_turn_signal_controller import ACTION_FRAME_COUNT, VALIDATION_LOG_PATH
+from openpilot.selfdrive.debug.tesla_turn_signal_test import send_validation_pulse
 
 
 HOST = "0.0.0.0"
@@ -34,7 +35,7 @@ def render_page(message: str = "") -> bytes:
 </head>
 <body><main>
   <h1>Tesla 转向 CAN 测试</h1>
-  <p>每次发送 {ACTION_FRAME_COUNT} 个同方向 0x3E9 有效帧，然后发送取消帧。请一次只点击一个方向。</p>
+  <p>请求由 card 实时线程使用连续原车模板发送：{ACTION_FRAME_COUNT} 个同方向 0x3E9 有效帧，然后发送取消帧。请一次只点击一个方向。</p>
   <div class="buttons"><button id="left" onclick="run('left')">← 左转</button><button id="right" onclick="run('right')">右转 →</button></div>
   <div id="status">{safe_message}</div>
 </main><script>

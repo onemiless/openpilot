@@ -1,17 +1,14 @@
 import json
-from types import SimpleNamespace
 
 from opendbc.can.packer import CANPacker
 
-from openpilot.selfdrive.debug.tesla_turn_signal_test import (
+from openpilot.selfdrive.car.tesla_turn_signal_controller import (
   ACTION_FRAME_COUNT,
-  ValidationRecorder,
   create_body_control_frame,
   decode_front_lighting,
   decode_ui_warning,
-  observe_can,
+  persist_validation_records,
   tesla_body_controls_checksum,
-  create_validation_can_socket,
 )
 
 
@@ -20,23 +17,6 @@ OBSERVED_BODY_CONTROLS = bytes.fromhex("008802000000b026")
 
 def test_validation_sequence_uses_five_action_frames():
   assert ACTION_FRAME_COUNT == 5
-
-
-def test_validation_can_socket_preserves_rx_order_for_panda_template_matching(mocker):
-  sub_sock = mocker.patch("openpilot.selfdrive.debug.tesla_turn_signal_test.messaging.sub_sock")
-  create_validation_can_socket()
-
-  sub_sock.assert_called_once_with("can", timeout=100)
-
-
-def test_validation_observer_does_not_log_oem_rx_stream(mocker):
-  idle_frame = SimpleNamespace(address=0x3E9, src=1, dat=OBSERVED_BODY_CONTROLS)
-  event = SimpleNamespace(can=[idle_frame])
-  recorder = SimpleNamespace(record=lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("unexpected log")))
-
-  mocker.patch("openpilot.selfdrive.debug.tesla_turn_signal_test.time.monotonic", side_effect=[0.0, 0.1, 1.0])
-  mocker.patch("openpilot.selfdrive.debug.tesla_turn_signal_test.messaging.recv_one_or_none", return_value=event)
-  assert observe_can(SimpleNamespace(), recorder, 0.2, "left") == (False, False, False)
 
 
 def test_decode_ui_warning_blinker_feedback():
@@ -83,11 +63,12 @@ def test_body_control_frames_clone_template_and_update_request_counter_checksum(
 
 def test_validation_recorder_persists_replayable_session(tmp_path):
   log_path = tmp_path / "turn_signal_validation.log"
-  recorder = ValidationRecorder("left", str(log_path), test_id="test-session")
-  recorder.record("frame_sent", request=1, reason=8, counter=12, data="008910000000c045")
-  recorder.record("test_finished", result="PASS", feedback=True)
-  assert not log_path.exists()
-  recorder.flush()
+  records_to_write = [
+    {"test_id": "test-session", "direction": "left", "event": "frame_sent", "request": 1,
+     "reason": 8, "counter": 12, "data": "008910000000c045"},
+    {"test_id": "test-session", "direction": "left", "event": "test_finished", "result": "PASS", "feedback": True},
+  ]
+  persist_validation_records(records_to_write, str(log_path))
 
   records = [json.loads(line) for line in log_path.read_text().splitlines()]
   assert [record["event"] for record in records] == ["frame_sent", "test_finished"]

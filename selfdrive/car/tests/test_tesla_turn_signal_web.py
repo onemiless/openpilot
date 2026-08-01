@@ -11,6 +11,7 @@ def test_turn_signal_web_page_exposes_both_five_frame_actions():
   assert "左转" in page
   assert "右转" in page
   assert "5 个同方向" in page
+  assert "card 实时线程" in page
 
 
 def test_turn_signal_web_post_runs_requested_direction(monkeypatch):

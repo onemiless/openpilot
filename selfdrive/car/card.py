@@ -26,6 +26,7 @@ from openpilot.selfdrive.car.tesla_can_probe import TeslaCanProbe
 from openpilot.sunnypilot.mads.helpers import set_alternative_experience, set_car_specific_params
 from openpilot.sunnypilot.selfdrive.car import interfaces as sunnypilot_interfaces
 from opendbc.sunnypilot.car.tesla.dynamic_acc_debug import log_dynamic_acc
+from opendbc.sunnypilot.car.tesla.values import TeslaSafetyFlagsSP
 
 REPLAY = "REPLAY" in os.environ
 
@@ -164,6 +165,11 @@ class Car:
     self.tesla_can_probe = TeslaCanProbe(
       self.CP.brand == 'tesla' and self.params.get_bool("TeslaCanValidationLogging")
     )
+    self.tesla_turn_signal_controller = None
+    if self.CP.brand == 'tesla':
+      from openpilot.selfdrive.car.tesla_turn_signal_controller import TeslaTurnSignalRealtimeController
+      configured = bool(self.CP_SP.safetyParam & TeslaSafetyFlagsSP.TURN_SIGNAL_VALIDATION)
+      self.tesla_turn_signal_controller = TeslaTurnSignalRealtimeController(configured)
 
     self.CP.alternativeExperience = 0
     # mads
@@ -241,11 +247,15 @@ class Car:
     if self.CP.brand == 'tesla':
       for mono_time, frames in can_list:
         for address, data, source in frames:
+          if self.tesla_turn_signal_controller is not None:
+            self.tesla_turn_signal_controller.observe_frame(mono_time, address, data, source)
           if source == 1 and address == 0x3C2 and hasattr(self.CI.CS, "update_speed_button_template"):
             self.CI.CS.update_speed_button_template(data, mono_time)
           if source == 192 and address == 0x2B9 and mono_time - self.dynamic_acc_last_blocked_log_nanos >= 100_000_000:
             self.dynamic_acc_last_blocked_log_nanos = mono_time
             log_dynamic_acc("card", "safety_blocked_das_control", mono_time=mono_time, data=data.hex())
+      if self.tesla_turn_signal_controller is not None:
+        self.tesla_turn_signal_controller.advance_time(int(time.monotonic() * 1e9))
 
     # Update carState from CAN
     CS, CS_SP = self.CI.update(can_list)
@@ -359,6 +369,8 @@ class Car:
             car_state_sp_flags=int(self.CS_SP_prev.flags),
           )
         raise
+      if self.tesla_turn_signal_controller is not None:
+        can_sends.extend(self.tesla_turn_signal_controller.take_can_sends(now_nanos))
       self.pm.send('sendcan', can_list_to_can_capnp(can_sends, msgtype='sendcan', valid=CS.canValid))
 
       self.CC_prev = CC
@@ -385,6 +397,8 @@ class Car:
       # sunnypilot
       self.dynamic_experimental_control = self.params.get_bool("DynamicExperimentalControl")
       self.v_cruise_helper.read_custom_set_speed_params()
+      if self.tesla_turn_signal_controller is not None:
+        self.tesla_turn_signal_controller.service_params(self.params)
 
       time.sleep(0.1)
 

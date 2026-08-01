@@ -200,6 +200,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"DynamicAutoStockBlinkerToSP", {PERSISTENT | BACKUP, BOOL, "1"}},
     {"DynamicAutoStockCurveToSP", {PERSISTENT | BACKUP, BOOL, "1"}},
     {"TeslaSpeedButtonValidation", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"TeslaTurnSignalTestRequest", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON}},
+    {"TeslaTurnSignalTestResult", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON}},
     {"TeslaTurnSignalValidation", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TrueVEgoUI", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"MpcTuningPreset", {PERSISTENT | BACKUP, INT, "0"}},  // 0=moumou/dev260628XL-tici, 1=current branch, 2=custom
