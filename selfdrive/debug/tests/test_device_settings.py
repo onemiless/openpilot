@@ -22,12 +22,13 @@ class FakeParams:
 
 
 def test_settings_are_whitelisted_and_classified():
-  settings = get_settings()
+  settings = get_settings("tesla")
   assert "TeslaApHybrid" in settings
   assert settings["TeslaApHybrid"]["offroad_only"]
   assert not settings["MpcJerkCost"]["offroad_only"]
   assert "GithubSshKeys" not in settings
   assert "SecOCKey" not in settings
+  assert "HyundaiLongitudinalTuning" not in settings
 
 
 def test_writes_validate_type_and_range():

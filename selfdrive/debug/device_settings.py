@@ -21,10 +21,12 @@ TRANSLATIONS_PATH = Path(__file__).resolve().parents[2] / "selfdrive" / "ui" / "
 CATEGORY_TRANSLATIONS = {
   "Steering": "转向", "Cruise": "巡航", "Display": "显示", "Visuals": "视觉", "Toggles": "通用开关",
   "Device": "设备", "Software": "软件", "Developer": "开发者", "Models": "模型", "Vehicle": "车辆",
-  "Tesla Settings": "Tesla",
+  "Tesla Settings": "车辆",
   "MADS Settings": "MADS 设置", "Torque Settings": "扭矩设置", "Custom ACC Speed Intervals Settings": "自定义 ACC 速度步长",
   "Speed Limit Settings": "限速设置", "Tesla": "特斯拉",
 }
+MENU_ORDER = ("设备", "网络", "sunnylink", "通用开关", "软件", "模型", "转向", "巡航", "视觉", "显示", "地图", "行程", "车辆", "开发者")
+MENU_CATEGORY_ALIASES = {"特斯拉": "车辆", "Tesla": "车辆", "纵向 MPC": "车辆"}
 TITLE_OVERRIDES = {
   "Mads": "启用模块化辅助驾驶（MADS）", "DynamicExperimentalControl": "动态实验控制",
   "DisengageOnAccelerator": "踩加速踏板退出巡航", "CustomAccIncrementsEnabled": "启用自定义 ACC 速度步长",
@@ -135,6 +137,12 @@ MPC_FIELDS = (
   ("MpcTFollowStandard", "标准跟车时距", 50, 400, 1),
   ("MpcTFollowAggressive", "激进跟车时距", 50, 400, 1),
 )
+VEHICLE_SETTING_BRANDS = {
+  "HyundaiLongitudinalTuning": "hyundai", "SubaruStopAndGo": "subaru",
+  "SubaruStopAndGoManualParkingBrake": "subaru", "ToyotaEnforceStockLongitudinal": "toyota",
+  "ToyotaStopAndGoHack": "toyota", "TeslaCoopSteering": "tesla", "DynamicAutoStock": "tesla",
+  "StopLineDeceleration": "tesla",
+}
 
 
 def _has_offroad_only(value: Any) -> bool:
@@ -181,7 +189,7 @@ def _schema_settings() -> list[dict[str, Any]]:
   return settings
 
 
-def get_settings() -> dict[str, dict[str, Any]]:
+def get_settings(brand: str | None = None) -> dict[str, dict[str, Any]]:
   settings = _schema_settings()
   settings.extend(EXTRA_SETTINGS)
   settings.extend({
@@ -192,7 +200,21 @@ def get_settings() -> dict[str, dict[str, Any]]:
   for setting in settings:
     setting["category"] = CATEGORY_TRANSLATIONS.get(setting.get("category", setting["group"]), setting.get("category", setting["group"]))
     setting["group"] = CATEGORY_TRANSLATIONS.get(setting["group"], setting["group"])
-  return {setting["key"]: setting for setting in settings}
+    setting["category"] = MENU_CATEGORY_ALIASES.get(setting["category"], setting["category"])
+  return {
+    setting["key"]: setting for setting in settings
+    if not brand or VEHICLE_SETTING_BRANDS.get(setting["key"], brand) == brand
+  }
+
+
+def _current_brand(params: Params) -> str:
+  value = params.get("CarPlatformBundle")
+  if isinstance(value, str):
+    try:
+      value = json.loads(value)
+    except json.JSONDecodeError:
+      return ""
+  return str(value.get("brand", "")).lower() if isinstance(value, dict) else ""
 
 
 def _read_value(params: Params, setting: dict[str, Any]) -> bool | int | float | str:
@@ -211,16 +233,19 @@ def _read_value(params: Params, setting: dict[str, Any]) -> bool | int | float |
 
 def settings_snapshot(params: Params | None = None) -> dict[str, Any]:
   params = params or Params()
-  settings = get_settings()
+  settings = get_settings(_current_brand(params))
+  visible_settings = [{**setting, "value": _read_value(params, setting), "order": order}
+                      for order, setting in enumerate(settings.values())]
   return {
     "onroad": params.get_bool("IsOnroad"),
-    "settings": [{**setting, "value": _read_value(params, setting)} for setting in settings.values()],
+    "menu": [category for category in MENU_ORDER if any(setting["category"] == category for setting in visible_settings)],
+    "settings": visible_settings,
   }
 
 
 def validate_and_write(key: str, value: Any, params: Params | None = None) -> dict[str, Any]:
   params = params or Params()
-  setting = get_settings().get(key)
+  setting = get_settings(_current_brand(params)).get(key)
   if setting is None:
     raise KeyError(key)
   if setting["offroad_only"] and params.get_bool("IsOnroad"):
