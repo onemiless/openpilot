@@ -6,7 +6,7 @@ from cereal import messaging
 from openpilot.common.params import Params
 
 
-SERVICES = ("carState", "controlsState", "selfdriveState", "selfdriveStateSP", "modelV2")
+SERVICES = ("carState", "carStateSP", "controlsState", "selfdriveState", "selfdriveStateSP", "modelV2")
 MAX_TRAJECTORY_DISTANCE_M = 100.0
 TRAJECTORY_STRIDE = 3
 
@@ -31,7 +31,7 @@ def _line_points(line: object) -> list[list[float]]:
   return points
 
 
-def _model_geometry(model: object) -> dict[str, object]:
+def _model_geometry(model: object, car_state_sp: object) -> dict[str, object]:
   leads = []
   for lead in model.leadsV3:
     if lead.prob >= 0.5 and len(lead.x) and len(lead.y):
@@ -45,6 +45,11 @@ def _model_geometry(model: object) -> dict[str, object]:
     "lane_change": str(model.meta.laneChangeState),
     "lane_change_direction": str(model.meta.laneChangeDirection),
     "hard_brake_predicted": bool(model.meta.hardBrakePredicted),
+    "oem_traffic": {
+      "available": bool(car_state_sp.teslaRoadContext.available),
+      "light_color": int(car_state_sp.teslaRoadContext.trafficLightColor),
+      "stop_line_distance": _number(car_state_sp.teslaRoadContext.stopLineDistance),
+    },
   }
 
 
@@ -58,6 +63,7 @@ class DrivingStatus:
     with self.lock:
       self.sm.update(0)
       car_state = self.sm["carState"]
+      car_state_sp = self.sm["carStateSP"]
       controls_state = self.sm["controlsState"]
       selfdrive_state = self.sm["selfdriveState"]
       sp_state = self.sm["selfdriveStateSP"]
@@ -73,7 +79,7 @@ class DrivingStatus:
         "openpilot_enabled": bool(selfdrive_state.enabled),
         "mads_enabled": bool(sp_state.mads.enabled),
         "alert": alert,
-        "geometry": _model_geometry(model),
+        "geometry": _model_geometry(model, car_state_sp),
         "updated_at": int(time.time()),
       }
 
