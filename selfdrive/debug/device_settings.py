@@ -5,8 +5,10 @@ contain credentials, calibration, or safety state.  This module derives the
 normal user-facing settings from sunnypilot's UI schema and adds the local
 Tesla/MPC controls that are intentionally maintained outside that schema.
 """
+import ast
 import json
 import math
+import re
 from pathlib import Path
 from typing import Any
 
@@ -14,11 +16,101 @@ from openpilot.common.params import Params
 
 
 SETTINGS_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "sunnypilot" / "sunnylink" / "settings_ui.json"
+TRANSLATIONS_PATH = Path(__file__).resolve().parents[2] / "selfdrive" / "ui" / "translations" / "app_zh-CHS.po"
+
+CATEGORY_TRANSLATIONS = {
+  "Steering": "转向", "Cruise": "巡航", "Display": "显示", "Visuals": "视觉", "Toggles": "通用开关",
+  "Device": "设备", "Software": "软件", "Developer": "开发者", "Models": "模型", "Vehicle": "车辆",
+  "Tesla Settings": "Tesla",
+  "MADS Settings": "MADS 设置", "Torque Settings": "扭矩设置", "Custom ACC Speed Intervals Settings": "自定义 ACC 速度步长",
+  "Speed Limit Settings": "限速设置", "Tesla": "特斯拉",
+}
+TITLE_OVERRIDES = {
+  "Mads": "启用模块化辅助驾驶（MADS）", "DynamicExperimentalControl": "动态实验控制",
+  "DisengageOnAccelerator": "踩加速踏板退出巡航", "CustomAccIncrementsEnabled": "启用自定义 ACC 速度步长",
+  "SpeedLimitMode": "限速辅助模式", "SpeedLimitOffsetType": "限速偏移类型", "SpeedLimitValueOffset": "限速偏移值",
+  "SmartCruiseControlVision": "视觉", "SmartCruiseControlMap": "地图", "StandstillTimer": "静止计时器",
+  "RainbowMode": "Tesla 彩虹模式", "OffroadMode": "强制设置模式", "LanguageSetting": "语言",
+  "LateralManeuverMode": "【测试】横向动作模式", "LongitudinalManeuverMode": "【测试】纵向动作模式",
+  "CameraOffset": "调整摄像头偏移", "DynamicAutoStock": "动态原车控制",
+}
+OPTION_OVERRIDES = {
+  "Information": "提示", "Car State Only": "仅车辆状态", "Map Data Only": "仅地图数据",
+  "Car State Priority": "车辆状态优先", "Map Data Priority": "地图数据优先", "Percentage": "百分比",
+  "Always Offroad": "始终设置模式", "Default": "默认",
+}
+PANEL_CATEGORY_OVERRIDES = {
+  "MADS Settings": "转向", "Torque Settings": "转向", "Custom ACC Speed Intervals Settings": "巡航",
+  "Speed Limit Settings": "巡航", "Tesla Settings": "特斯拉",
+}
+
+
+def _load_translations() -> dict[str, str]:
+  """Read the existing Chinese UI catalog without introducing a PO dependency."""
+  translations: dict[str, str] = {}
+  msgid: str | None = None
+  msgstr: str | None = None
+  state: str | None = None
+  for raw_line in TRANSLATIONS_PATH.read_text().splitlines():
+    line = raw_line.strip()
+    if line.startswith("msgid "):
+      if msgid and msgstr:
+        translations[msgid] = msgstr
+      msgid, msgstr, state = ast.literal_eval(line[6:]), "", "id"
+    elif line.startswith("msgstr "):
+      msgstr, state = ast.literal_eval(line[7:]), "str"
+    elif line.startswith('"') and state is not None:
+      if state == "id":
+        msgid = (msgid or "") + ast.literal_eval(line)
+      else:
+        msgstr = (msgstr or "") + ast.literal_eval(line)
+    elif not line:
+      if msgid and msgstr:
+        translations[msgid] = msgstr
+      msgid = msgstr = state = None
+  if msgid and msgstr:
+    translations[msgid] = msgstr
+  return translations
+
+
+TRANSLATIONS = _load_translations()
+
+
+def _translate(text: str, key: str = "", description: bool = False) -> str:
+  if not text:
+    return ""
+  if translated := TRANSLATIONS.get(text):
+    return translated
+  if not description and key in TITLE_OVERRIDES:
+    return TITLE_OVERRIDES[key]
+  if not description and text in OPTION_OVERRIDES:
+    return OPTION_OVERRIDES[text]
+  # Omit untranslated prose instead of mixing English into the Chinese UI.
+  return "" if description else text
+
+
+def _translate_option(text: str, key: str) -> str:
+  translated = _translate(text, key)
+  if translated != text:
+    return translated
+  if match := re.fullmatch(r"(\d+(?:\.\d+)?) seconds?", text):
+    return f"{match.group(1)} 秒"
+  if match := re.fullmatch(r"(\d+) ?s", text):
+    return f"{match.group(1)} 秒"
+  if match := re.fullmatch(r"(\d+) ?m", text):
+    return f"{match.group(1)} 分钟"
+  if match := re.fullmatch(r"(\d+)h", text):
+    return f"{match.group(1)} 小时"
+  if text == "30h (Default)":
+    return "30 小时（默认）"
+  if text == "Moumou":
+    return "Moumou 预设"
+  return text
 
 # These controls are user settings in this branch but have no SunnyLink schema
 # entry.  Only MPC values are allowed onroad: the MPC reloads them at runtime.
 EXTRA_SETTINGS: tuple[dict[str, Any], ...] = (
-  {"key": "TeslaApHybrid", "widget": "toggle", "title": "Tesla AP 混合控制", "group": "Tesla", "offroad_only": True},
+  {"key": "TeslaApHybrid", "widget": "toggle", "title": "Tesla AP 混合控制", "category": "Tesla", "group": "Tesla", "offroad_only": True},
   {"key": "TeslaDynamicApLongitudinal", "widget": "toggle", "title": "Tesla 动态 AP 纵向", "group": "Tesla", "offroad_only": True},
   {"key": "TeslaAutoSpeedLimit", "widget": "toggle", "title": "Tesla 自动限速", "group": "Tesla", "offroad_only": False},
   {"key": "DynamicAutoStockBlinkerToSP", "widget": "toggle", "title": "动态原车：转向灯切换 SP", "group": "Tesla", "offroad_only": True},
@@ -64,8 +156,18 @@ def _schema_settings() -> list[dict[str, Any]]:
       current_panel = value.get("label", panel)
       current_section = value.get("title", section)
       if "key" in value and value.get("widget") in {"toggle", "option", "multiple_button"}:
-        setting = {k: value[k] for k in ("key", "widget", "title", "description", "details", "options", "min", "max", "step", "unit", "value_map", "needs_onroad_cycle") if k in value}
-        setting["group"] = current_panel if not section else f"{panel} / {section}"
+        setting = {k: value[k] for k in ("key", "widget", "min", "max", "step", "unit", "value_map", "needs_onroad_cycle") if k in value}
+        setting["title"] = _translate(value.get("title", value["key"]), value["key"])
+        setting["description"] = _translate(value.get("description", ""), value["key"], description=True)
+        if "details" in value:
+          setting["details"] = _translate(value["details"], value["key"], description=True)
+        if "options" in value:
+          setting["options"] = [{**option, "label": _translate_option(option["label"], value["key"])} for option in value["options"]]
+        setting["category"] = PANEL_CATEGORY_OVERRIDES.get(panel, CATEGORY_TRANSLATIONS.get(panel, panel))
+        if panel == "通用" and section in CATEGORY_TRANSLATIONS:
+          setting["category"] = CATEGORY_TRANSLATIONS[section]
+        translated_section = TRANSLATIONS.get(section, "")
+        setting["group"] = translated_section or setting["category"]
         setting["offroad_only"] = _has_offroad_only(value.get("enablement", []))
         settings.append(setting)
       for child_key, child in value.items():
@@ -83,10 +185,13 @@ def get_settings() -> dict[str, dict[str, Any]]:
   settings = _schema_settings()
   settings.extend(EXTRA_SETTINGS)
   settings.extend({
-    "key": key, "widget": "option", "title": title, "group": "纵向 MPC", "min": minimum, "max": maximum,
+    "key": key, "widget": "option", "title": title, "category": "纵向 MPC", "group": "纵向 MPC", "min": minimum, "max": maximum,
     "step": step, "unit": "原始整数值", "offroad_only": False,
   } for key, title, minimum, maximum, step in MPC_FIELDS)
   # Duplicate keys in a nested schema are harmless; retain the first canonical definition.
+  for setting in settings:
+    setting["category"] = CATEGORY_TRANSLATIONS.get(setting.get("category", setting["group"]), setting.get("category", setting["group"]))
+    setting["group"] = CATEGORY_TRANSLATIONS.get(setting["group"], setting["group"])
   return {setting["key"]: setting for setting in settings}
 
 
