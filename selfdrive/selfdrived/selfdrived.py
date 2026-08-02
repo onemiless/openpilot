@@ -423,7 +423,14 @@ class SelfdriveD(CruiseHelper):
       else:
         safety_mismatch = pandaState.safetyModel not in IGNORED_SAFETY_MODES
 
-      controls_mismatch = (safety_mismatch and self.sm.frame*DT_CTRL > 10.) or pandaState.safetyRxChecksInvalid or self.mismatch_counter >= 200
+      # A Tesla Panda firmware image also embeds opendbc's safety policy.  It
+      # can take longer than the normal startup window to reflash and report
+      # its final safety configuration after an opendbc update. Until then the
+      # Panda remains non-actuating, so avoid presenting a false immediate
+      # controls-mismatch alert during that synchronization window.
+      safety_sync_grace_s = 30. if self.CP.brand == "tesla" else 10.
+      controls_mismatch = (safety_mismatch and self.sm.frame * DT_CTRL > safety_sync_grace_s) or \
+                          pandaState.safetyRxChecksInvalid or self.mismatch_counter >= 200
       # Detailed Tesla mismatch cloud logging is retained for focused diagnosis,
       # but disabled on the normal dev branch to avoid continuous extra records.
       tesla_diagnostic_cloudlog_enabled = False

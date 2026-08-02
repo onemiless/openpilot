@@ -157,8 +157,12 @@ class UIState(UIStateSP):
     elif not self.sm.alive["wideRoadCameraState"] or not self.sm.valid["wideRoadCameraState"]:
       self.light_sensor = -1
 
-    # Update started state
-    self.started = self.sm["deviceState"].started and self.ignition
+    # Keep the driving processes alive while a Tesla remains powered in Park,
+    # but return the display to the settings/home screen. Tesla's ignition can
+    # remain true for a long time after selecting P, which otherwise leaves a
+    # parked car showing the road camera indefinitely.
+    parked = self.sm["carState"].gearShifter == car.CarState.GearShifter.park
+    self.started = self.sm["deviceState"].started and self.ignition and not parked
 
     # Update body state
     if self.CP is not None and self.is_body != self.CP.notCar:

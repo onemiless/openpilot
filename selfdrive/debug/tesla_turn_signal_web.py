@@ -12,6 +12,7 @@ from openpilot.selfdrive.debug.tesla_turn_signal_test import (
   start_validation_session,
 )
 from openpilot.selfdrive.debug.device_settings import settings_snapshot, validate_and_write
+from openpilot.selfdrive.debug.device_hotspot import hotspot_status, set_hotspot_enabled
 from openpilot.selfdrive.debug.device_terminal import change_password, run_command, terminal_status
 from openpilot.selfdrive.debug.driving_status import driving_status_snapshot
 
@@ -76,7 +77,7 @@ def render_page() -> bytes:
     <textarea id="terminal-command" spellcheck="false" placeholder="git status --short"></textarea><pre id="terminal-output"></pre>
   </section>
 <script>
-let settingsState = null, selectedCategory = null, currentPanel = 'settings', drivingLoading = false;
+let settingsState = null, hotspotState = null, selectedCategory = null, currentPanel = 'settings', drivingLoading = false;
 function showPanel(name) {
   currentPanel = name;
   document.getElementById('settings-panel').hidden = name !== 'settings'; document.getElementById('driving-panel').hidden = name !== 'driving'; document.getElementById('turn-panel').hidden = name !== 'turn'; document.getElementById('terminal-panel').hidden = name !== 'terminal';
@@ -100,9 +101,17 @@ function renderSettings(data) {
     else { control = element('input', {type:'number', value:setting.value, min:setting.min ?? '', max:setting.max ?? '', step:setting.step ?? 1, disabled:locked}); control.onchange = () => save(setting, Number(control.value), control); }
     control.title = setting.key; card.append(description, control); root.append(card);
   });
+  if (selectedCategory === '设备' && hotspotState?.available) {
+    const card = element('div', {className:'card'}), description = element('div');
+    description.append(element('h2', {}, '设备 Wi-Fi 热点'));
+    description.append(element('p', {}, hotspotState.active ? '热点已开启。连接后访问 ' + hotspotState.url : '开启后设备会切换为热点；连接手机或电脑后访问 ' + hotspotState.url));
+    const control = element('input', {type:'checkbox', checked:hotspotState.active});
+    control.onchange = () => saveHotspot(control.checked, control); card.append(description, control); root.append(card);
+  }
 }
-async function loadSettings() { try { const r = await fetch('/api/settings', {cache:'no-store'}); if (!r.ok) throw new Error('HTTP ' + r.status); renderSettings(await r.json()); } catch (e) { document.getElementById('mode').textContent = '设置读取失败：' + e; } }
+async function loadSettings() { try { const [settingsResponse, hotspotResponse] = await Promise.all([fetch('/api/settings', {cache:'no-store'}), fetch('/api/hotspot', {cache:'no-store'})]); if (!settingsResponse.ok) throw new Error('HTTP ' + settingsResponse.status); hotspotState = hotspotResponse.ok ? await hotspotResponse.json() : null; renderSettings(await settingsResponse.json()); } catch (e) { document.getElementById('mode').textContent = '设置读取失败：' + e; } }
 async function save(setting, value, control) { control.disabled = true; try { const r = await fetch('/api/settings/' + encodeURIComponent(setting.key), {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value})}); const result = await r.json(); if (!r.ok) throw new Error(result.message || 'HTTP ' + r.status); setting.value = result.value; } catch (e) { alert('保存失败：' + e); } finally { renderSettings(settingsState); } }
+async function saveHotspot(enabled, control) { control.disabled = true; try { const r = await fetch('/api/hotspot', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({enabled})}); const result = await r.json(); if (!r.ok) throw new Error(result.message || 'HTTP ' + r.status); hotspotState = result; renderSettings(settingsState); } catch (e) { alert('热点切换失败：' + e); renderSettings(settingsState); } }
 loadSettings();
 function drawLine(ctx, points, xScale, yScale, color, width) { if (!points.length) return; ctx.beginPath(); points.forEach(([x,y], i) => { const px = ctx.canvas.clientWidth / 2 + y * yScale, py = ctx.canvas.clientHeight - 32 - x * xScale; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }); ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke(); }
 function drawDrivingGeometry(geometry, data) { const canvas = document.getElementById('driving-canvas'), ratio = window.devicePixelRatio || 1, width = Math.max(1, canvas.clientWidth), height = Math.max(1, canvas.clientHeight); if (canvas.width !== width * ratio || canvas.height !== height * ratio) { canvas.width = width * ratio; canvas.height = height * ratio; } const ctx = canvas.getContext('2d'); ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.clearRect(0, 0, width, height); ctx.fillStyle = '#020617'; ctx.fillRect(0, 0, width, height); const xScale = (height - 54) / 100, yScale = Math.min(width / 10, 30), danger = geometry.hard_brake_predicted; ctx.setLineDash([7,7]); (geometry.edges || []).forEach(line => drawLine(ctx, line, xScale, yScale, '#64748b', 2)); ctx.setLineDash([]); (geometry.lanes || []).forEach(line => drawLine(ctx, line, xScale, yScale, '#e2e8f0', 2)); drawLine(ctx, geometry.path || [], xScale, yScale, danger ? '#ef4444' : '#22c55e', 5); const traffic = geometry.oem_traffic || {}; if (traffic.available && traffic.stop_line_distance >= 0 && traffic.stop_line_distance <= 100) { const colors = ['#94a3b8','#ef4444','#22c55e','#facc15'], color = colors[traffic.light_color] || '#f8fafc', py = height - 32 - traffic.stop_line_distance * xScale; ctx.strokeStyle = color; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(width / 2 - 58, py); ctx.lineTo(width / 2 + 58, py); ctx.stroke(); ctx.fillStyle = color; ctx.font = 'bold 13px sans-serif'; ctx.fillText(['未知','红灯','绿灯','黄灯'][traffic.light_color] || '交通灯', width / 2 + 64, py + 4); } ctx.fillStyle = '#2563eb'; ctx.fillRect(width / 2 - 14, height - 30, 28, 20); (geometry.leads || []).forEach(lead => { const px = width / 2 + lead.y * yScale, py = height - 32 - lead.x * xScale; if (py > 0 && py < height) { ctx.fillStyle = danger ? '#ef4444' : '#f97316'; ctx.fillRect(px - 7, py - 7, 14, 14); ctx.fillStyle = '#f8fafc'; ctx.font = '12px sans-serif'; ctx.fillText(Math.round(lead.x) + 'm', px + 10, py + 4); } }); ctx.fillStyle = '#f8fafc'; ctx.font = 'bold 17px sans-serif'; ctx.fillText(data.speed_kph.toFixed(0) + ' km/h', 14, 28); ctx.font = '13px sans-serif'; const mode = data.openpilot_enabled ? 'SP 接管' : data.mads_enabled ? 'MADS 横向' : '未接管'; ctx.fillText(mode + '  ·  设定 ' + data.set_speed_kph.toFixed(0) + ' km/h', 14, 49); if (geometry.lane_change !== 'off') { ctx.fillStyle = '#fbbf24'; ctx.font = 'bold 15px sans-serif'; ctx.fillText('变道 ' + (geometry.lane_change_direction === 'left' ? '←' : geometry.lane_change_direction === 'right' ? '→' : '进行中'), width - 92, 28); } if (danger) { ctx.fillStyle = '#fecaca'; ctx.fillText('注意制动风险', width - 100, 50); } }
@@ -174,6 +183,9 @@ class TurnSignalHandler(BaseHTTPRequestHandler):
     self.wfile.write(body)
 
   def do_GET(self) -> None:
+    if self.path == "/api/hotspot":
+      self._json(HTTPStatus.OK, hotspot_status())
+      return
     if self.path == "/api/driving-status":
       try:
         self._json(HTTPStatus.OK, driving_status_snapshot())
@@ -207,6 +219,20 @@ class TurnSignalHandler(BaseHTTPRequestHandler):
     self._send(HTTPStatus.OK, "text/html; charset=utf-8", render_page())
 
   def do_POST(self) -> None:
+    if self.path == "/api/hotspot":
+      try:
+        content_length = int(self.headers.get("Content-Length", "0"))
+        if content_length <= 0 or content_length > 4096:
+          raise ValueError("请求内容无效")
+        payload = json.loads(self.rfile.read(content_length))
+        if not isinstance(payload, dict) or not isinstance(payload.get("enabled"), bool):
+          raise ValueError("请求必须包含 enabled 开关")
+        self._json(HTTPStatus.OK, set_hotspot_enabled(payload["enabled"]))
+      except RuntimeError as error:
+        self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "message": str(error)})
+      except (TypeError, ValueError, json.JSONDecodeError) as error:
+        self._json(HTTPStatus.BAD_REQUEST, {"ok": False, "message": str(error)})
+      return
     if self.path == "/api/terminal/password":
       try:
         content_length = int(self.headers.get("Content-Length", "0"))
