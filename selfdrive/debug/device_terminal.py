@@ -1,7 +1,6 @@
 """Opt-in, offroad-only command runner for the local device settings web UI."""
 import hmac
 import os
-import secrets
 import signal
 import subprocess
 from pathlib import Path
@@ -20,28 +19,19 @@ def terminal_status(params: Params | None = None) -> dict[str, bool]:
   return {"enabled": params.get_bool("WebTerminalEnabled"), "onroad": params.get_bool("IsOnroad")}
 
 
-def get_or_create_token(params: Params | None = None) -> str:
-  params = params or Params()
-  token = params.get("WebTerminalToken")
-  if not token:
-    token = secrets.token_urlsafe(32)
-    params.put("WebTerminalToken", token, block=True)
-  return token
-
-
-def _authorize(token: str | None, params: Params) -> None:
+def _authorize(serial: str | None, params: Params) -> None:
   if not params.get_bool("WebTerminalEnabled"):
     raise PermissionError("网页终端未启用")
-  expected = get_or_create_token(params)
-  if not token or not hmac.compare_digest(token, expected):
-    raise PermissionError("终端令牌无效")
+  expected = params.get("HardwareSerial")
+  if not expected or not serial or not hmac.compare_digest(serial, expected):
+    raise PermissionError("设备序列号无效")
   if params.get_bool("IsOnroad"):
     raise PermissionError("行驶中禁止运行网页终端命令")
 
 
-def run_command(command: str, token: str | None, params: Params | None = None) -> dict[str, object]:
+def run_command(command: str, serial: str | None, params: Params | None = None) -> dict[str, object]:
   params = params or Params()
-  _authorize(token, params)
+  _authorize(serial, params)
   if not isinstance(command, str) or not command.strip() or len(command) > MAX_COMMAND_LENGTH:
     raise ValueError("命令必须为 1 到 4096 个字符")
 

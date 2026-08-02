@@ -69,7 +69,7 @@ def render_page() -> bytes:
   </section>
   <section id="terminal-panel" hidden>
     <h1>设备终端</h1><p>仅在设置模式（非行驶状态）且设备端显式启用后可用。命令最长 20 秒，输出上限 64 KiB。</p>
-    <div id="terminal-state" class="notice">正在检查终端状态…</div><div class="terminal-row"><input id="terminal-token" type="password" autocomplete="off" placeholder="终端令牌（仅需输入一次）"><button onclick="runTerminal()">运行</button></div><p>令牌仅保存在当前浏览器。</p>
+    <div id="terminal-state" class="notice">正在检查终端状态…</div><div class="terminal-row"><input id="terminal-serial" type="password" autocomplete="off" placeholder="设备序列号（仅需输入一次）"><button onclick="runTerminal()">运行</button></div><p>序列号仅保存在当前浏览器。</p>
     <textarea id="terminal-command" spellcheck="false" placeholder="git status --short"></textarea><pre id="terminal-output"></pre>
   </section>
 <script>
@@ -99,9 +99,9 @@ function renderSettings(data) {
 async function loadSettings() { try { const r = await fetch('/api/settings', {cache:'no-store'}); if (!r.ok) throw new Error('HTTP ' + r.status); renderSettings(await r.json()); } catch (e) { document.getElementById('mode').textContent = '设置读取失败：' + e; } }
 async function save(setting, value, control) { control.disabled = true; try { const r = await fetch('/api/settings/' + encodeURIComponent(setting.key), {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value})}); const result = await r.json(); if (!r.ok) throw new Error(result.message || 'HTTP ' + r.status); setting.value = result.value; } catch (e) { alert('保存失败：' + e); } finally { renderSettings(settingsState); } }
 loadSettings();
-async function loadTerminalStatus() { const el = document.getElementById('terminal-state'); try { const r = await fetch('/api/terminal/status', {cache:'no-store'}); const s = await r.json(); el.textContent = !s.enabled ? '终端未启用：请在设备上显式启用并获取令牌。' : s.onroad ? '行驶中：请先进入设置模式。' : '终端已启用：请输入令牌后运行。'; el.className = 'notice' + ((!s.enabled || s.onroad) ? ' onroad' : ''); } catch (e) { el.textContent = '终端状态读取失败：' + e; } }
-const terminalTokenInput = document.getElementById('terminal-token'); terminalTokenInput.value = localStorage.getItem('openpilotTerminalToken') || '';
-async function runTerminal() { const token = terminalTokenInput.value, command = document.getElementById('terminal-command').value, output = document.getElementById('terminal-output'); output.textContent = '正在运行…'; try { const r = await fetch('/api/terminal/exec', {method:'POST', headers:{'Content-Type':'application/json', 'Authorization':'Bearer ' + token}, body:JSON.stringify({command})}); const result = await r.json(); if (!r.ok) throw new Error(result.message || 'HTTP ' + r.status); localStorage.setItem('openpilotTerminalToken', token); output.textContent = `[exit ${result.exit_code}${result.timed_out ? ', timeout' : ''}]\n` + result.output; } catch (e) { output.textContent = '运行失败：' + e; } }
+async function loadTerminalStatus() { const el = document.getElementById('terminal-state'); try { const r = await fetch('/api/terminal/status', {cache:'no-store'}); const s = await r.json(); el.textContent = !s.enabled ? '终端未启用：请在设备上显式启用。' : s.onroad ? '行驶中：请先进入设置模式。' : '终端已启用：请输入设备序列号后运行。'; el.className = 'notice' + ((!s.enabled || s.onroad) ? ' onroad' : ''); } catch (e) { el.textContent = '终端状态读取失败：' + e; } }
+const terminalSerialInput = document.getElementById('terminal-serial'); terminalSerialInput.value = localStorage.getItem('openpilotTerminalSerial') || '';
+async function runTerminal() { const serial = terminalSerialInput.value, command = document.getElementById('terminal-command').value, output = document.getElementById('terminal-output'); output.textContent = '正在运行…'; try { const r = await fetch('/api/terminal/exec', {method:'POST', headers:{'Content-Type':'application/json', 'X-Device-Serial':serial}, body:JSON.stringify({command})}); const result = await r.json(); if (!r.ok) throw new Error(result.message || 'HTTP ' + r.status); localStorage.setItem('openpilotTerminalSerial', serial); output.textContent = `[exit ${result.exit_code}${result.timed_out ? ', timeout' : ''}]\n` + result.output; } catch (e) { output.textContent = '运行失败：' + e; } }
 loadTerminalStatus();
 let activeTestId = null;
 const phaseText = {
@@ -199,9 +199,7 @@ class TurnSignalHandler(BaseHTTPRequestHandler):
         payload = json.loads(self.rfile.read(content_length))
         if not isinstance(payload, dict) or "command" not in payload:
           raise ValueError("请求必须包含 command")
-        authorization = self.headers.get("Authorization", "")
-        token = authorization.removeprefix("Bearer ") if authorization.startswith("Bearer ") else None
-        self._json(HTTPStatus.OK, run_command(payload["command"], token))
+        self._json(HTTPStatus.OK, run_command(payload["command"], self.headers.get("X-Device-Serial")))
       except PermissionError as error:
         self._json(HTTPStatus.FORBIDDEN, {"ok": False, "message": str(error)})
       except (TypeError, ValueError, json.JSONDecodeError) as error:

@@ -4,10 +4,10 @@ from openpilot.selfdrive.debug.device_terminal import run_command, terminal_stat
 
 
 class FakeParams:
-  def __init__(self, enabled=True, onroad=False, token="test-token"):
+  def __init__(self, enabled=True, onroad=False, serial="test-serial"):
     self.enabled = enabled
     self.onroad = onroad
-    self.values = {"WebTerminalToken": token}
+    self.values = {"HardwareSerial": serial}
 
   def get_bool(self, key):
     return {"WebTerminalEnabled": self.enabled, "IsOnroad": self.onroad}[key]
@@ -20,13 +20,13 @@ class FakeParams:
 
 
 def test_terminal_runs_command_after_authorization():
-  result = run_command("printf terminal-ok", "test-token", FakeParams())
+  result = run_command("printf terminal-ok", "test-serial", FakeParams())
   assert result == {"exit_code": 0, "timed_out": False, "output": "terminal-ok"}
 
 
-def test_terminal_rejects_invalid_token_or_onroad_execution():
+def test_terminal_rejects_invalid_serial_or_onroad_execution():
   with pytest.raises(PermissionError):
     run_command("true", "wrong", FakeParams())
   with pytest.raises(PermissionError):
-    run_command("true", "test-token", FakeParams(onroad=True))
+    run_command("true", "test-serial", FakeParams(onroad=True))
   assert terminal_status(FakeParams(enabled=False)) == {"enabled": False, "onroad": False}
