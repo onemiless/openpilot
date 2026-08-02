@@ -65,7 +65,10 @@ def only_offroad(started: bool, params: Params, CP: car.CarParams) -> bool:
   return not started
 
 def livestream(started: bool, params: Params, CP: car.CarParams) -> bool:
-  return params.get_bool("IsLiveStreaming")
+  # This branch does not run the legacy livestream processes. Keeping their
+  # predicate disabled also makes manager startup independent of stale native
+  # Params extensions left behind by an overlay update.
+  return False
 
 def use_github_runner(started, params, CP: car.CarParams) -> bool:
   return not PC and params.get_bool("EnableGithubRunner") and (
