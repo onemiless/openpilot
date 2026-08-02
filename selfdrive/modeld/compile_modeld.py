@@ -3,7 +3,6 @@ import argparse
 import atexit
 import math
 import os
-import pickle
 import tempfile
 import time
 from functools import partial
@@ -31,6 +30,7 @@ from tinygrad.tensor import Tensor
 from tinygrad.helpers import Context
 from tinygrad.device import Device
 from tinygrad.engine.jit import TinyJit
+from openpilot.selfdrive.modeld.helpers import dump_oob, load_oob
 
 
 NV12Frame = namedtuple("NV12Frame", ['width', 'height', 'stride', 'y_height', 'uv_height', 'size'])
@@ -251,8 +251,11 @@ def compile_jit(jit, make_random_inputs, input_keys, make_queues):
 
   print('capture + replay')
   test_val, test_buffers = random_inputs_run(jit, SEED)
-  print('pickle round trip')
-  jit = pickle.loads(pickle.dumps(jit))
+  print('OOB pickle round trip')
+  with tempfile.TemporaryFile() as f:
+    dump_oob(jit, f)
+    f.seek(0)
+    jit = load_oob(f)
   random_inputs_run(jit, SEED, test_val, test_buffers, expect_match=True)
   random_inputs_run(jit, SEED+1, test_val, test_buffers, expect_match=False)
   return jit
@@ -307,5 +310,5 @@ if __name__ == "__main__":
     out[(cam_w,cam_h)] = compile_jit(warp_enqueue, make_random_warp_inputs, WARP_INPUTS, make_warp_queues)
 
   with open(args.output, "wb") as f:
-    pickle.dump(out, f)
+    dump_oob(out, f)
   print(f"Saved JITs to {args.output} ({os.path.getsize(args.output) / 1e6:.2f} MB)")
