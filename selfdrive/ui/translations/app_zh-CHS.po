@@ -2943,3 +2943,51 @@ msgstr "动态自动切换原厂 ACC 会使用 4 指进行原厂 ACC 切换。�
 
 msgid "Enable \"Always Offroad\" in Device panel, or turn vehicle off to change."
 msgstr "请在设备页面启用“设置模式”，或关闭车辆后再更改。"
+
+msgid "Turn Signal → SP Longitudinal"
+msgstr "转向灯 → SP 纵向控制"
+
+msgid "When Dynamic ACC is using Tesla ACC, switch longitudinal control to sunnypilot after a confirmed turn signal."
+msgstr "动态 ACC 使用原厂 Tesla ACC 时，确认转向灯后切换为 sunnypilot 纵向控制。"
+
+msgid "Curve → SP Longitudinal"
+msgstr "弯道 → SP 纵向控制"
+
+msgid "When Dynamic ACC is using Tesla ACC, switch longitudinal control to sunnypilot when vision or map curve control becomes active."
+msgstr "动态 ACC 使用原厂 Tesla ACC 时，视觉或地图弯道控制生效后切换为 sunnypilot 纵向控制。"
+
+msgid "AP Hybrid Control (Experimental)"
+msgstr "AP 混合控制（实验性）"
+
+msgid "Keeps a Tesla AP session active while sunnypilot arbitrates lateral and longitudinal control. The optional Dynamic AP mode selects both control sources by speed."
+msgstr "保持 Tesla AP 会话运行，同时由 sunnypilot 协调横向和纵向控制；可选的动态 AP 模式会按车速选择两项控制来源。"
+
+msgid "Dynamic AP Control (Experimental)"
+msgstr "动态 AP 控制（实验性）"
+
+msgid "Below the low-speed threshold, sunnypilot controls steering and speed. Above the high-speed threshold, Tesla AP controls both. Driver steering input or a turn signal immediately hands steering to sunnypilot; Tesla steering resumes after one stable second."
+msgstr "低于低速阈值时由 sunnypilot 控制转向和车速；高于高速阈值时由 Tesla AP 控制两者。驾驶员转向输入或打转向灯会立即将转向交给 sunnypilot；稳定一秒后恢复 Tesla 转向。"
+
+msgid "Lane Center Offset"
+msgstr "车道中心偏移"
+
+msgid "Virtually shifts the camera model: positive moves the planned center left and negative moves it right. Changes fade in gradually and can take up to about 10 seconds. Adjust only while parked, then verify on a straight road with clear lane lines. Curves and lane changes may not behave like a simple path translation."
+msgstr "虚拟平移相机模型：正值使规划中心向左，负值向右。调整会逐渐生效，最长约 10 秒。仅在停车时调整，随后请在车道线清晰的直路验证；弯道和变道时的效果不一定等同于简单的路径平移。"
+
+msgid "Reset Lane Center Offset"
+msgstr "重置车道中心偏移"
+
+msgid "Restore the camera model offset to 0.00 m."
+msgstr "将相机模型偏移恢复为 0.00 米。"
+
+msgid "Switch to Tesla control above this speed in Dynamic ACC or Dynamic AP mode."
+msgstr "在动态 ACC 或动态 AP 模式下，高于此车速时切换为 Tesla 控制。"
+
+msgid "Switch back to sunnypilot control below this speed in Dynamic ACC or Dynamic AP mode."
+msgstr "在动态 ACC 或动态 AP 模式下，低于此车速时切回 sunnypilot 控制。"
+
+msgid "Automatic Tesla Set Speed"
+msgstr "Tesla 自动设定速度"
+
+msgid "While sunnypilot is engaged, adjust Tesla's set speed one wheel tick at a time until it reaches the resolved Speed Limit target from Cruise settings, including the configured fixed or percentage offset. Restart after changing this option."
+msgstr "启用 sunnypilot 后，通过滚轮逐档调整 Tesla 设定速度，直到达到巡航设置中解析出的限速目标（包含固定值或百分比偏移）。修改此选项后需要重启。"
