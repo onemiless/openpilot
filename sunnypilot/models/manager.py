@@ -222,7 +222,8 @@ class ModelManagerSP:
       self.selected_bundle = None
 
     except Exception:
-      self.selected_bundle.status = custom.ModelManagerSP.DownloadStatus.failed
+      if self.selected_bundle is not None:
+        self.selected_bundle.status = custom.ModelManagerSP.DownloadStatus.failed
       raise
 
     finally:
