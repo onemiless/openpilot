@@ -6,13 +6,18 @@ from cereal import messaging
 from openpilot.common.params import Params
 
 
-SERVICES = ("carState", "selfdriveState", "selfdriveStateSP", "modelV2")
+SERVICES = ("carState", "controlsState", "selfdriveState", "selfdriveStateSP", "modelV2")
 MAX_TRAJECTORY_DISTANCE_M = 100.0
 TRAJECTORY_STRIDE = 3
 
 
 def _number(value: object, digits: int = 1) -> float:
   return round(float(value), digits)
+
+
+def _set_speed_kph(v_cruise_cluster: float, fallback_v_cruise: float) -> float:
+  """Mirror the on-device HUD: vCruiseCluster is already in display units."""
+  return fallback_v_cruise if v_cruise_cluster == 0.0 else v_cruise_cluster
 
 
 def _line_points(line: object) -> list[list[float]]:
@@ -53,12 +58,13 @@ class DrivingStatus:
     with self.lock:
       self.sm.update(0)
       car_state = self.sm["carState"]
+      controls_state = self.sm["controlsState"]
       selfdrive_state = self.sm["selfdriveState"]
       sp_state = self.sm["selfdriveStateSP"]
       model = self.sm["modelV2"]
 
       alert = " ".join(text for text in (selfdrive_state.alertText1, selfdrive_state.alertText2) if text)
-      cruise_speed = max(float(car_state.vCruiseCluster), float(car_state.cruiseState.speedCluster)) * 3.6
+      cruise_speed = _set_speed_kph(float(car_state.vCruiseCluster), float(controls_state.deprecated.vCruise))
       return {
         "onroad": self.params.get_bool("IsOnroad"),
         "connected": {service: self.sm.alive[service] for service in SERVICES},
