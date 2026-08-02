@@ -8,11 +8,27 @@ from openpilot.selfdrive.debug import tesla_turn_signal_web
 
 def test_turn_signal_web_page_exposes_sp_driven_actions_and_cancel():
   page = tesla_turn_signal_web.render_page().decode()
+  assert "行驶信息" in page
   assert "左转" in page
   assert "右转" in page
-  assert "SP 判定变道进入完成阶段后自动关闭" in page
+  assert "SP 完成变道后会自动关闭转向灯" in page
   assert "立即取消" in page
   assert "card 实时线程" in page
+
+
+def test_turn_signal_web_returns_read_only_driving_status(monkeypatch):
+  snapshot = {"onroad": True, "speed_kph": 42.0}
+  monkeypatch.setattr(tesla_turn_signal_web, "driving_status_snapshot", lambda: snapshot)
+  server = ThreadingHTTPServer(("127.0.0.1", 0), tesla_turn_signal_web.TurnSignalHandler)
+  thread = threading.Thread(target=server.serve_forever, daemon=True)
+  thread.start()
+  try:
+    with urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/api/driving-status", timeout=2) as response:
+      assert json.loads(response.read()) == snapshot
+  finally:
+    server.shutdown()
+    server.server_close()
+    thread.join(timeout=2)
 
 
 def test_turn_signal_web_post_runs_requested_direction(monkeypatch):

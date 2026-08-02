@@ -13,6 +13,7 @@ from openpilot.selfdrive.debug.tesla_turn_signal_test import (
 )
 from openpilot.selfdrive.debug.device_settings import settings_snapshot, validate_and_write
 from openpilot.selfdrive.debug.device_terminal import change_password, run_command, terminal_status
+from openpilot.selfdrive.debug.driving_status import driving_status_snapshot
 
 
 HOST = "0.0.0.0"
@@ -57,11 +58,13 @@ def render_page() -> bytes:
     textarea { width:100%; min-height:130px; box-sizing:border-box; padding:11px; border:1px solid #475569; border-radius:10px; background:#020617; color:#e2e8f0; font:14px ui-monospace,monospace; }
     #terminal-output { min-height:100px; max-height:420px; overflow:auto; text-align:left; white-space:pre-wrap; background:#020617; border-radius:10px; padding:12px; color:#cbd5e1; }
     .terminal-row { display:flex; gap:8px; margin:10px 0; } .terminal-row input { min-width:0; flex:1; padding:9px; border:1px solid #475569; border-radius:9px; background:#0f172a; color:white; }
+    .drive-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; } .metric { background:#1e293b; border-radius:13px; padding:14px; } .metric span { display:block; color:#94a3b8; font-size:13px; } .metric strong { display:block; margin-top:5px; font-size:22px; } .drive-alert { white-space:pre-wrap; }
   </style>
 </head><body><main>
   <h1>车载设置</h1><p>通过手机或电脑访问此页面。行驶中仅允许修改实时生效的白名单设置。</p>
-  <div class="tabs"><button class="tab active" id="settings-tab" onclick="showPanel('settings')">设置</button><button class="tab" id="turn-tab" onclick="showPanel('turn')">转向测试</button><button class="tab" id="terminal-tab" onclick="showPanel('terminal')">终端</button></div>
+  <div class="tabs"><button class="tab active" id="settings-tab" onclick="showPanel('settings')">设置</button><button class="tab" id="driving-tab" onclick="showPanel('driving')">行驶信息</button><button class="tab" id="turn-tab" onclick="showPanel('turn')">转向测试</button><button class="tab" id="terminal-tab" onclick="showPanel('terminal')">终端</button></div>
   <section id="settings-panel"><div id="mode" class="notice">正在读取设置…</div><div id="category-nav" class="category-nav"></div><div id="settings"></div></section>
+  <section id="driving-panel" hidden><h1>行驶信息</h1><p>只读实时数据，每秒刷新一次，不会向车辆发送控制指令。</p><div id="driving-state" class="notice">正在连接车辆数据…</div><div id="driving-info" class="drive-grid"></div><div id="driving-alert" class="notice drive-alert" hidden></div></section>
   <section id="turn-panel" hidden>
     <h1>Tesla 转向 CAN 测试</h1><p>请求由 card 实时线程跟随原车 0x3E9 模板持续发送；SP 完成变道后会自动关闭转向灯。</p>
     <div class="buttons"><button class="turn" id="left" onclick="run('left')">← 左转</button><button class="turn" id="right" onclick="run('right')">右转 →</button></div>
@@ -75,8 +78,8 @@ def render_page() -> bytes:
 <script>
 let settingsState = null, selectedCategory = null;
 function showPanel(name) {
-  document.getElementById('settings-panel').hidden = name !== 'settings'; document.getElementById('turn-panel').hidden = name !== 'turn'; document.getElementById('terminal-panel').hidden = name !== 'terminal';
-  document.getElementById('settings-tab').classList.toggle('active', name === 'settings'); document.getElementById('turn-tab').classList.toggle('active', name === 'turn'); document.getElementById('terminal-tab').classList.toggle('active', name === 'terminal');
+  document.getElementById('settings-panel').hidden = name !== 'settings'; document.getElementById('driving-panel').hidden = name !== 'driving'; document.getElementById('turn-panel').hidden = name !== 'turn'; document.getElementById('terminal-panel').hidden = name !== 'terminal';
+  document.getElementById('settings-tab').classList.toggle('active', name === 'settings'); document.getElementById('driving-tab').classList.toggle('active', name === 'driving'); document.getElementById('turn-tab').classList.toggle('active', name === 'turn'); document.getElementById('terminal-tab').classList.toggle('active', name === 'terminal');
 }
 function element(tag, attrs = {}, text = '') { const e = document.createElement(tag); Object.assign(e, attrs); if (text) e.textContent = text; return e; }
 function renderSettings(data) {
@@ -99,6 +102,10 @@ function renderSettings(data) {
 async function loadSettings() { try { const r = await fetch('/api/settings', {cache:'no-store'}); if (!r.ok) throw new Error('HTTP ' + r.status); renderSettings(await r.json()); } catch (e) { document.getElementById('mode').textContent = '设置读取失败：' + e; } }
 async function save(setting, value, control) { control.disabled = true; try { const r = await fetch('/api/settings/' + encodeURIComponent(setting.key), {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value})}); const result = await r.json(); if (!r.ok) throw new Error(result.message || 'HTTP ' + r.status); setting.value = result.value; } catch (e) { alert('保存失败：' + e); } finally { renderSettings(settingsState); } }
 loadSettings();
+function metric(label, value) { const card = element('div', {className:'metric'}); card.append(element('span', {}, label), element('strong', {}, value)); return card; }
+function boolText(value, yes, no) { return value ? yes : no; }
+async function loadDrivingStatus() { const state = document.getElementById('driving-state'), root = document.getElementById('driving-info'), alert = document.getElementById('driving-alert'); try { const r = await fetch('/api/driving-status', {cache:'no-store'}); const data = await r.json(); if (!r.ok) throw new Error(data.message || 'HTTP ' + r.status); const connected = Object.values(data.connected).every(Boolean); state.textContent = !data.onroad ? '设置模式：等待车辆启动。' : connected ? '行驶中：车辆数据正常。' : '行驶中：部分车辆数据暂未收到。'; state.className = 'notice' + ((!data.onroad || !connected) ? ' onroad' : ''); root.replaceChildren(metric('当前车速', data.speed_kph.toFixed(1) + ' km/h'), metric('巡航设定', data.set_speed_kph.toFixed(1) + ' km/h'), metric('加速度', data.acceleration.toFixed(2) + ' m/s²'), metric('方向盘角度', data.steering_angle_deg.toFixed(1) + '°'), metric('辅助驾驶', boolText(data.openpilot_enabled, '已接管', '未接管')), metric('MADS 横向', boolText(data.mads_enabled, '已启用', '未启用')), metric('踏板 / 静止', (data.gas_pressed ? '油门 ' : '') + (data.brake_pressed ? '刹车 ' : '') + (data.standstill ? '静止' : '行驶') || '无'), metric('设备', data.temperature_c === null ? data.battery_percent.toFixed(0) + '%' : data.battery_percent.toFixed(0) + '% / ' + data.temperature_c.toFixed(0) + '°C')); alert.hidden = !data.alert; alert.textContent = data.alert || ''; } catch (e) { state.textContent = '行驶数据读取失败：' + e; state.className = 'notice onroad'; } }
+loadDrivingStatus(); setInterval(loadDrivingStatus, 1000);
 async function loadTerminalStatus() { const el = document.getElementById('terminal-state'); try { const r = await fetch('/api/terminal/status', {cache:'no-store'}); const s = await r.json(); el.textContent = !s.enabled ? '终端未启用：请在设备上显式启用。' : s.onroad ? '行驶中：请先进入设置模式。' : '终端已启用：请输入密码后运行。'; el.className = 'notice' + ((!s.enabled || s.onroad) ? ' onroad' : ''); } catch (e) { el.textContent = '终端状态读取失败：' + e; } }
 const terminalPasswordInput = document.getElementById('terminal-password'); terminalPasswordInput.value = localStorage.getItem('openpilotTerminalPassword') || '123456';
 async function runTerminal() { const password = terminalPasswordInput.value, command = document.getElementById('terminal-command').value, output = document.getElementById('terminal-output'); output.textContent = '正在运行…'; try { const r = await fetch('/api/terminal/exec', {method:'POST', headers:{'Content-Type':'application/json', 'X-Terminal-Password':password}, body:JSON.stringify({command})}); const result = await r.json(); if (!r.ok) throw new Error(result.message || 'HTTP ' + r.status); localStorage.setItem('openpilotTerminalPassword', password); output.textContent = `[exit ${result.exit_code}${result.timed_out ? ', timeout' : ''}]\n` + result.output; } catch (e) { output.textContent = '运行失败：' + e; } }
@@ -165,6 +172,9 @@ class TurnSignalHandler(BaseHTTPRequestHandler):
     self.wfile.write(body)
 
   def do_GET(self) -> None:
+    if self.path == "/api/driving-status":
+      self._json(HTTPStatus.OK, driving_status_snapshot())
+      return
     if self.path == "/api/terminal/status":
       self._json(HTTPStatus.OK, terminal_status())
       return

@@ -208,7 +208,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"TeslaTurnSignalTestRequest", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON}},
     {"TeslaTurnSignalTestResult", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON}},
     {"TeslaTurnSignalTestStatus", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON}},
-    {"TeslaTurnSignalValidation", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"TeslaTurnSignalValidation", {PERSISTENT | BACKUP, BOOL, "1"}},
     {"TrueVEgoUI", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"MpcTuningPreset", {PERSISTENT | BACKUP, INT, "0"}},  // 0=moumou/dev260628XL-tici, 1=current branch, 2=custom
     {"MpcXObstacleCost", {PERSISTENT | BACKUP, INT, "300"}},  // hundredths
