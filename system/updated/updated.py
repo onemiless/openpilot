@@ -82,6 +82,18 @@ def run(cmd: list[str], cwd: str | None = None, env: dict[str, str] | None = Non
   return subprocess.check_output(cmd, cwd=cwd, env=env, stderr=subprocess.STDOUT, encoding='utf8')
 
 
+def acquire_overlay_lock(lock_file: str | Path):
+  """Return the updater lock, or None when another updater already owns it."""
+  ov_lock_fd = open(lock_file, 'w')
+  try:
+    fcntl.flock(ov_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+  except BlockingIOError:
+    ov_lock_fd.close()
+    cloudlog.warning("another updated instance owns the overlay lock; exiting")
+    return None
+  return ov_lock_fd
+
+
 def get_mihomo_proxy_env() -> dict[str, str] | None:
   """Start the user-configured local proxy and return an env for Git requests.
 
@@ -448,11 +460,11 @@ def main() -> None:
     cloudlog.warning("updates are disabled by the DisableUpdates param")
     exit(0)
 
-  with open(LOCK_FILE, 'w') as ov_lock_fd:
-    try:
-      fcntl.flock(ov_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError as e:
-      raise RuntimeError("couldn't get overlay lock; is another instance running?") from e
+  ov_lock_fd = acquire_overlay_lock(LOCK_FILE)
+  if ov_lock_fd is None:
+    return
+
+  with ov_lock_fd:
 
     # Set low io priority
     proc = psutil.Process()
