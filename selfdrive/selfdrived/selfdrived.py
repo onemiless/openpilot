@@ -77,6 +77,11 @@ def tesla_split_control_event_filter_active(stock_active: bool, prev_stock_activ
   return stock_active or prev_stock_active or ap_hybrid_active or prev_ap_hybrid_active or ap_exit_recovery_active
 
 
+def should_add_radar_can_error(openpilot_longitudinal_control: bool, radar_can_error: bool) -> bool:
+  """Radar faults only gate engagement when SP longitudinal uses radar output."""
+  return openpilot_longitudinal_control and radar_can_error
+
+
 ButtonType = car.CarState.ButtonEvent.Type
 SafetyModel = car.CarParams.SafetyModel
 AlertLevel = log.DriverMonitoringState.AlertLevel
@@ -492,7 +497,7 @@ class SelfdriveD(CruiseHelper):
           self.events.add(EventName.cameraFrameRate)
     if not REPLAY and self.rk.lagging:
       self.events.add(EventName.selfdrivedLagging)
-    if self.sm['radarState'].radarErrors.canError:
+    if should_add_radar_can_error(self.CP.openpilotLongitudinalControl, self.sm['radarState'].radarErrors.canError):
       self.events.add(EventName.canError)
     elif self.sm['radarState'].radarErrors.radarUnavailableTemporary:
       self.events.add(EventName.radarTempUnavailable)

@@ -1,8 +1,15 @@
 from openpilot.selfdrive.selfdrived.selfdrived import (
+  should_add_radar_can_error,
   tesla_car_state_sp_fresh,
   tesla_longitudinal_source_from_flags,
   tesla_split_control_event_filter_active,
 )
+
+
+def test_tesla_radar_can_error_only_blocks_sp_longitudinal():
+  assert not should_add_radar_can_error(False, True)
+  assert not should_add_radar_can_error(True, False)
+  assert should_add_radar_can_error(True, True)
 
 
 def test_tesla_car_state_sp_freshness_is_bounded():
