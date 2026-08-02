@@ -73,7 +73,7 @@ class DrivingStatus:
         "mads_enabled": bool(sp_state.mads.enabled),
         "experimental_mode": bool(selfdrive_state.experimentalMode),
         "alert": alert,
-        "battery_percent": _number(device_state.batteryPercent),
+        "power_draw_w": _number(device_state.powerDrawW),
         "temperature_c": _number(max(temperatures)) if temperatures else None,
         "geometry": _model_geometry(model),
         "updated_at": int(time.time()),
