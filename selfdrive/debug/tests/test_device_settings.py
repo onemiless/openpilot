@@ -29,6 +29,7 @@ def test_settings_are_whitelisted_and_classified():
   assert "GithubSshKeys" not in settings
   assert "SecOCKey" not in settings
   assert "HyundaiLongitudinalTuning" not in settings
+  assert settings["TeslaMadsScreenButton"]["widget"] == "toggle"
 
 
 def test_writes_validate_type_and_range():

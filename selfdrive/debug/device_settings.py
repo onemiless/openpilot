@@ -119,7 +119,7 @@ EXTRA_SETTINGS: tuple[dict[str, Any], ...] = (
   {"key": "DynamicAutoStockCurveToSP", "widget": "toggle", "title": "动态原车：弯道切换 SP", "group": "Tesla", "offroad_only": True},
   {"key": "DynamicAutoStockSpeedKph", "widget": "option", "title": "动态原车切换速度", "group": "Tesla", "min": 0, "max": 200, "step": 1, "unit": "km/h", "offroad_only": True},
   {"key": "DynamicAutoStockSpeedLowKph", "widget": "option", "title": "动态原车回切速度", "group": "Tesla", "min": 0, "max": 200, "step": 1, "unit": "km/h", "offroad_only": True},
-  {"key": "TeslaMadsScreenButton", "widget": "multiple_button", "title": "Tesla MADS 屏幕按钮", "group": "Tesla", "options": [{"value": 0, "label": "关闭"}, {"value": 1, "label": "开启"}], "offroad_only": True},
+  {"key": "TeslaMadsScreenButton", "widget": "toggle", "title": "Tesla MADS 屏幕按钮", "group": "Tesla", "offroad_only": True},
   {"key": "TeslaOfflineWakeCaptureEnabled", "widget": "toggle", "title": "离线唤醒诊断记录", "group": "Tesla", "offroad_only": True},
   {"key": "MpcTuningPreset", "widget": "multiple_button", "title": "纵向 MPC 预设", "group": "纵向 MPC", "options": [{"value": 0, "label": "Moumou"}, {"value": 1, "label": "当前"}, {"value": 2, "label": "自定义"}], "offroad_only": False},
 )
