@@ -167,8 +167,17 @@ class Car:
       self.CP.brand == 'tesla' and self.params.get_bool("TeslaCanValidationLogging")
     )
     self.tesla_turn_signal_controller = None
+    self.tesla_road_context_parser = None
     if self.CP.brand == 'tesla':
+      # DAS_road is visualization-only and is absent on some Tesla hardware.
+      # Keep it outside the CarState parser so an absent optional frame can
+      # never invalidate vehicle CAN or trigger a car-unrecognized event.
+      from opendbc.can import CANParser
+      from opendbc.car import Bus
+      from opendbc.car.tesla.values import CANBUS, DBC
       from openpilot.selfdrive.car.tesla_turn_signal_controller import TeslaTurnSignalRealtimeController
+
+      self.tesla_road_context_parser = CANParser(DBC[self.CP.carFingerprint][Bus.party], [("DAS_road", float("nan"))], CANBUS.party)
       configured = bool(self.CP_SP.safetyParam & TeslaSafetyFlagsSP.TURN_SIGNAL_VALIDATION)
       self.tesla_turn_signal_controller = TeslaTurnSignalRealtimeController(configured)
 
@@ -266,6 +275,13 @@ class Car:
 
     # Update carState from CAN
     CS, CS_SP = self.CI.update(can_list)
+    if self.tesla_road_context_parser is not None:
+      from opendbc.sunnypilot.car.tesla.carstate_ext import publish_tesla_road_context
+
+      self.tesla_road_context_parser.update(can_list)
+      road_values = self.tesla_road_context_parser.vl["DAS_road"]
+      road_timestamp_ns = self.tesla_road_context_parser.ts_nanos["DAS_road"]["DAS_stopLineDist"]
+      publish_tesla_road_context(CS_SP, road_values, road_timestamp_ns, time.monotonic_ns())
     CS_SP = convert_to_capnp(CS_SP)
 
     # Update radar tracks from CAN
