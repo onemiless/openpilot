@@ -19,19 +19,19 @@ def terminal_status(params: Params | None = None) -> dict[str, bool]:
   return {"enabled": params.get_bool("WebTerminalEnabled"), "onroad": params.get_bool("IsOnroad")}
 
 
-def _authorize(serial: str | None, params: Params) -> None:
+def _authorize(password: str | None, params: Params) -> None:
   if not params.get_bool("WebTerminalEnabled"):
     raise PermissionError("网页终端未启用")
-  expected = params.get("HardwareSerial")
-  if not expected or not serial or not hmac.compare_digest(serial, expected):
-    raise PermissionError("设备序列号无效")
+  expected = params.get("WebTerminalPassword", return_default=True)
+  if not password or not hmac.compare_digest(password, expected):
+    raise PermissionError("终端密码错误")
   if params.get_bool("IsOnroad"):
     raise PermissionError("行驶中禁止运行网页终端命令")
 
 
-def run_command(command: str, serial: str | None, params: Params | None = None) -> dict[str, object]:
+def run_command(command: str, password: str | None, params: Params | None = None) -> dict[str, object]:
   params = params or Params()
-  _authorize(serial, params)
+  _authorize(password, params)
   if not isinstance(command, str) or not command.strip() or len(command) > MAX_COMMAND_LENGTH:
     raise ValueError("命令必须为 1 到 4096 个字符")
 
@@ -58,3 +58,11 @@ def run_command(command: str, serial: str | None, params: Params | None = None) 
       output, _ = proc.communicate()
   output = output[-MAX_OUTPUT_LENGTH:]
   return {"exit_code": proc.returncode, "timed_out": timed_out, "output": output}
+
+
+def change_password(current_password: str | None, new_password: str, params: Params | None = None) -> None:
+  params = params or Params()
+  _authorize(current_password, params)
+  if not isinstance(new_password, str) or not 4 <= len(new_password) <= 64:
+    raise ValueError("新密码必须为 4 到 64 个字符")
+  params.put("WebTerminalPassword", new_password, block=True)
