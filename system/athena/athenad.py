@@ -600,32 +600,24 @@ def getNetworks():
 
 
 @dispatcher.add_method
-def startStream(sdp: str) -> dict:
-  from openpilot.system.webrtc.webrtcd import StreamRequestBody
+def startStream(sdp: str, enabled: bool = True) -> dict:
+  from openpilot.system.webrtc.helpers import StreamRequestBody, post_stream_request, wait_for_webrtcd
+  params = Params()
   bridge_services_in = []
 
-  # get live car params to avoid stale notCar edge case
-  cp_bytes = Params().get("CarParams")
+  # Use persistent params: the live value can be absent while a stream is requested.
+  cp_bytes = Params().get("CarParamsPersistent")
   if cp_bytes is not None:
     with car.CarParams.from_bytes(cp_bytes) as CP:
       if CP.notCar:
         bridge_services_in.append("testJoystick")
 
-  body = StreamRequestBody(sdp, "wideRoad", bridge_services_in, ["carState"])
-  try:
-    resp = requests.post(f"http://localhost:{WEBRTCD_PORT}/stream",
-                       json=asdict(body), timeout=10)
-    if not resp.ok:
-      try:
-        error_body = resp.json()
-        raise Exception(error_body.get("message", f"webrtcd returned {resp.status_code}"))
-      except ValueError:
-        resp.raise_for_status()
-    return resp.json()
-  except requests.ConnectTimeout as e:
-    raise Exception("webrtc took too long to respond. is it on?") from e
-  except requests.ConnectionError as e:
-    raise Exception("webrtc is not running. turn on comma body ignition.") from e
+  if params.get_bool("IsOffroad"):
+    # Manager owns the WebRTC services; request their startup before contacting the API.
+    params.put_bool("IsLiveStreaming", True)
+    wait_for_webrtcd()
+
+  return post_stream_request(StreamRequestBody(sdp, "wideRoad", enabled, bridge_services_in, ["carState", "deviceState"]))
 
 
 @dispatcher.add_method
