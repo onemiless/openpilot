@@ -28,6 +28,11 @@ class RoadEdgeLaneChangeController:
     self.left_edge_timer = 0.0
     self.right_edge_timer = 0.0
 
+  def set_enabled(self, enabled: bool):
+    self.enabled = enabled
+    if not enabled:
+      self._reset_state()
+
   def _update_edge_detection(self, road_edge_stds, lane_line_probs):
     left_road_edge_prob = np.clip(1.0 - road_edge_stds[0], 0.0, 1.0)
     right_road_edge_prob = np.clip(1.0 - road_edge_stds[1], 0.0, 1.0)
@@ -62,6 +67,9 @@ class RoadEdgeLaneChangeController:
       self.right_edge_detected = False
 
   def update(self, road_edge_stds, lane_line_probs):
+    if not self.enabled:
+      self._reset_state()
+      return
     self._update_edge_detection(road_edge_stds, lane_line_probs)
 
   def should_trigger_lane_change(self, carstate, lateral_active):
