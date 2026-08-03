@@ -229,6 +229,8 @@ def _read_value(params: Params, setting: dict[str, Any]) -> bool | int | float |
       return ""
     if any(isinstance(option, float) for option in allowed_values):
       return float(value) if value is not None else 0.0
+  if not isinstance(setting.get("step"), int):
+    return float(value) if value is not None else 0.0
   return int(value) if value is not None else 0
 
 
@@ -265,14 +267,17 @@ def validate_and_write(key: str, value: Any, params: Params | None = None) -> di
     else:
       if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         raise ValueError("数值设置必须是有限数字")
-      if int(value) != value:
-        raise ValueError("该设置只接受整数")
-      value = int(value)
+      if isinstance(setting.get("step"), int):
+        if int(value) != value:
+          raise ValueError("该设置只接受整数")
+        value = int(value)
+      else:
+        value = float(value)
     minimum, maximum = setting.get("min"), setting.get("max")
     if minimum is not None and not minimum <= value <= maximum:
       raise ValueError(f"数值必须在 {minimum} 到 {maximum} 之间")
     step = setting.get("step")
-    if step and minimum is not None and (value - minimum) % step:
+    if step and minimum is not None and abs(round((value - minimum) / step) * step - (value - minimum)) > 1e-9:
       raise ValueError(f"数值必须按 {step} 递增")
     params.put(key, str(value), block=True)
   return {**setting, "value": _read_value(params, setting)}
