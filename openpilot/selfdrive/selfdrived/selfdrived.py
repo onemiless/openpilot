@@ -45,6 +45,36 @@ PandaType = log.PandaState.PandaType
 LaneChangeState = log.LaneChangeState
 LaneChangeDirection = log.LaneChangeDirection
 EventName = log.OnroadEvent.EventName
+TESLA_STOCK_LONGITUDINAL_ACTIVE = 32
+TESLA_AP_HYBRID_ACTIVE = 512
+TESLA_DYNAMIC_STOCK_ACTIVE = 1024
+TESLA_MANUAL_STOCK_ACTIVE = 2048
+TESLA_AP_HYBRID_STOCK_LATERAL_ACTIVE = 8192
+TESLA_AP_HYBRID_EXIT_RECOVERY_ACTIVE = 16384
+TESLA_CAR_STATE_SP_MAX_AGE_NS = 50_000_000
+
+
+def tesla_car_state_sp_fresh(car_state_mono_time: int, car_state_sp_mono_time: int) -> bool:
+  age = int(car_state_mono_time) - int(car_state_sp_mono_time)
+  return car_state_sp_mono_time > 0 and 0 <= age <= TESLA_CAR_STATE_SP_MAX_AGE_NS
+
+
+def tesla_longitudinal_source_from_flags(flags: int) -> str:
+  if flags & TESLA_AP_HYBRID_ACTIVE:
+    return "apHybridStock" if flags & TESLA_STOCK_LONGITUDINAL_ACTIVE else "apHybridSp"
+  if flags & TESLA_DYNAMIC_STOCK_ACTIVE:
+    return "dynamicStock"
+  if flags & TESLA_MANUAL_STOCK_ACTIVE:
+    return "manualStock"
+  if flags & TESLA_STOCK_LONGITUDINAL_ACTIVE:
+    return "stockUnknown"
+  return "sp"
+
+
+def tesla_split_control_event_filter_active(stock_active: bool, prev_stock_active: bool,
+                                            ap_hybrid_active: bool, prev_ap_hybrid_active: bool,
+                                            ap_exit_recovery_active: bool = False) -> bool:
+  return stock_active or prev_stock_active or ap_hybrid_active or prev_ap_hybrid_active or ap_exit_recovery_active
 ButtonType = car.CarState.ButtonEvent.Type
 SafetyModel = car.CarParams.SafetyModel
 AlertLevel = log.DriverMonitoringState.AlertLevel
@@ -77,6 +107,19 @@ class SelfdriveD(CruiseHelper):
 
     self.car_events = CarSpecificEvents(self.CP)
 
+    self.car_state_sp_flags = 0  # updated in data_sample(), used by car_events_sp
+
+    self.tesla_stock_longitudinal_active = False  # cached from carStateSP flags bit 32, avoids race on missed frames
+    self.prev_tesla_stock_longitudinal_active = False
+    self.tesla_ap_hybrid_active = False  # cached from carStateSP flags bit 512
+    self.prev_tesla_ap_hybrid_active = False
+    self.tesla_stock_lateral_active = False
+    self.prev_tesla_stock_lateral_active = False
+    self.tesla_ap_hybrid_exit_recovery_active = False
+    self.tesla_longitudinal_source = "sp"
+    self.prev_tesla_longitudinal_source = "sp"
+    self.car_state_sp_mono_time = 0
+
     self.pose_calibrator = PoseCalibrator()
     self.calibrated_pose: Pose | None = None
     self.excessive_actuation_check = ExcessiveActuationCheck()
@@ -92,6 +135,7 @@ class SelfdriveD(CruiseHelper):
 
     # TODO: de-couple selfdrived with card/conflate on carState without introducing controls mismatches
     self.car_state_sock = messaging.sub_sock('carState', timeout=20)
+    self.car_state_sp_sock = messaging.sub_sock('carStateSP', timeout=20)
 
     ignore = self.sensor_packets + self.gps_packets + ['alertDebug', 'lateralManeuverPlan'] + ['modelDataV2SP']
     if True:
@@ -254,7 +298,31 @@ class SelfdriveD(CruiseHelper):
       car_events = self.car_events.update(CS, self.CS_prev, self.sm['carControl']).to_msg()
       self.events.add_from_msg(car_events)
 
-      car_events_sp = self.car_events_sp.update(CS, self.events).to_msg()
+      # Tesla split-control modes can keep SP lateral active while Tesla AP or
+      # ACC changes state. Filter disable events throughout the split-control
+      # session and its first exit frame so MADS can preserve lateral control.
+      split_control_transition = tesla_split_control_event_filter_active(
+        self.tesla_stock_longitudinal_active, self.prev_tesla_stock_longitudinal_active,
+        self.tesla_ap_hybrid_active, self.prev_tesla_ap_hybrid_active,
+        self.tesla_ap_hybrid_exit_recovery_active,
+      )
+      if self.CP.brand == 'tesla' and split_control_transition:
+        if self.events.has(EventName.buttonCancel):
+          self.events.remove(EventName.buttonCancel)
+        if self.events.has(EventName.invalidLkasSetting):
+          self.events.remove(EventName.invalidLkasSetting)
+        if not self.tesla_ap_hybrid_exit_recovery_active and self.events.has(EventName.accFaulted):
+          self.events.remove(EventName.accFaulted)
+        if self.events.has(EventName.wrongCarMode):
+          self.events.remove(EventName.wrongCarMode)
+        if self.events.has(EventName.wrongCruiseMode):
+          self.events.remove(EventName.wrongCruiseMode)
+        if self.events.has(EventName.pcmDisable):
+          self.events.remove(EventName.pcmDisable)
+        if self.events.has(EventName.gasPressedOverride):
+          self.events.remove(EventName.gasPressedOverride)
+
+      car_events_sp = self.car_events_sp.update(CS, self.events, self.car_state_sp_flags).to_msg()
       self.events_sp.add_from_msg(car_events_sp)
 
       if self.CP.notCar:
@@ -493,6 +561,19 @@ class SelfdriveD(CruiseHelper):
   def data_sample(self):
     _car_state = messaging.recv_one(self.car_state_sock)
     CS = _car_state.carState if _car_state else self.CS_prev
+    _car_state_sp = messaging.recv_one_or_none(self.car_state_sp_sock)
+    if _car_state_sp and _car_state_sp.valid:
+      self.car_state_sp_flags = _car_state_sp.carStateSP.flags
+      self.car_state_sp_mono_time = int(_car_state_sp.logMonoTime)
+
+    if _car_state and not tesla_car_state_sp_fresh(int(_car_state.logMonoTime), self.car_state_sp_mono_time):
+      self.car_state_sp_flags = 0
+
+    self.tesla_stock_longitudinal_active = bool(self.car_state_sp_flags & TESLA_STOCK_LONGITUDINAL_ACTIVE)
+    self.tesla_ap_hybrid_active = bool(self.car_state_sp_flags & TESLA_AP_HYBRID_ACTIVE)
+    self.tesla_stock_lateral_active = bool(self.car_state_sp_flags & TESLA_AP_HYBRID_STOCK_LATERAL_ACTIVE)
+    self.tesla_ap_hybrid_exit_recovery_active = bool(self.car_state_sp_flags & TESLA_AP_HYBRID_EXIT_RECOVERY_ACTIVE)
+    self.tesla_longitudinal_source = tesla_longitudinal_source_from_flags(self.car_state_sp_flags)
 
     self.sm.update(0)
 
@@ -624,6 +705,10 @@ class SelfdriveD(CruiseHelper):
     self.publish_selfdriveState(CS)
 
     self.CS_prev = CS
+    self.prev_tesla_stock_longitudinal_active = self.tesla_stock_longitudinal_active
+    self.prev_tesla_ap_hybrid_active = self.tesla_ap_hybrid_active
+    self.prev_tesla_stock_lateral_active = self.tesla_stock_lateral_active
+    self.prev_tesla_longitudinal_source = self.tesla_longitudinal_source
 
   def params_thread(self, evt):
     while not evt.is_set():

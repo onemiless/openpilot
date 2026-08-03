@@ -15,6 +15,7 @@ from openpilot.sunnypilot.selfdrive.selfdrived.events import EventsSP
 EventName = log.OnroadEvent.EventName
 EventNameSP = custom.OnroadEventSP.EventName
 GearShifter = structs.CarState.GearShifter
+_STOCK_LONGITUDINAL_ACTIVE = 32
 
 
 class CarSpecificEventsSP:
@@ -23,8 +24,9 @@ class CarSpecificEventsSP:
     self.CP_SP = CP_SP
 
     self.low_speed_alert = False
+    self._prev_stock_longitudinal = False
 
-  def update(self, CS: structs.CarState, events: Events):
+  def update(self, CS: structs.CarState, events: Events, car_state_sp_flags: int = 0):
     events_sp = EventsSP()
 
     if self.CP.brand == 'chrysler':
@@ -47,5 +49,14 @@ class CarSpecificEventsSP:
         if CS.cruiseState.standstill and not CS.brakePressed and self.CP_SP.enableGasInterceptor:
           if events.has(EventName.resumeRequired):
             events.remove(EventName.resumeRequired)
+
+    # Detect 4-finger longitudinal toggle edges (Tesla)
+    if self.CP.brand == 'tesla':
+      stock_long_active = bool(car_state_sp_flags & _STOCK_LONGITUDINAL_ACTIVE)
+      if stock_long_active and not self._prev_stock_longitudinal:
+        events_sp.add(24)  # stockLongitudinalActive
+      elif not stock_long_active and self._prev_stock_longitudinal:
+        events_sp.add(25)  # stockLongitudinalInactive
+      self._prev_stock_longitudinal = stock_long_active
 
     return events_sp
