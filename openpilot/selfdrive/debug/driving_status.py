@@ -104,7 +104,7 @@ class DrivingStatus:
       alert = " ".join(text for text in (selfdrive_state.alertText1, selfdrive_state.alertText2) if text)
       cruise_speed = _set_speed_kph(float(car_state.vCruiseCluster), float(controls_state.deprecated.vCruise))
       return {
-        "onroad": self.params.get_bool("IsOnroad"),
+        "onroad": not self.params.get_bool("IsOffroad"),
         "connected": {service: self.sm.alive[service] for service in SERVICES},
         "speed_kph": _number(car_state.vEgo * 3.6),
         "set_speed_kph": _number(cruise_speed),

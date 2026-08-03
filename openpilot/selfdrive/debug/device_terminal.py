@@ -16,7 +16,7 @@ COMMAND_TIMEOUT_S = 20
 
 def terminal_status(params: Params | None = None) -> dict[str, bool]:
   params = params or Params()
-  return {"enabled": params.get_bool("WebTerminalEnabled"), "onroad": params.get_bool("IsOnroad")}
+  return {"enabled": params.get_bool("WebTerminalEnabled"), "onroad": not params.get_bool("IsOffroad")}
 
 
 def _authorize(password: str | None, params: Params) -> None:
@@ -25,7 +25,7 @@ def _authorize(password: str | None, params: Params) -> None:
   expected = params.get("WebTerminalPassword", return_default=True)
   if not password or not hmac.compare_digest(password, expected):
     raise PermissionError("终端密码错误")
-  if params.get_bool("IsOnroad"):
+  if not params.get_bool("IsOffroad"):
     raise PermissionError("行驶中禁止运行网页终端命令")
 
 

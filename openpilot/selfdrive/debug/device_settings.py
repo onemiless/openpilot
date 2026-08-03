@@ -238,7 +238,7 @@ def settings_snapshot(params: Params | None = None) -> dict[str, Any]:
   visible_settings = [{**setting, "value": _read_value(params, setting), "order": order}
                       for order, setting in enumerate(settings.values())]
   return {
-    "onroad": params.get_bool("IsOnroad"),
+    "onroad": not params.get_bool("IsOffroad"),
     "menu": [category for category in MENU_ORDER if any(setting["category"] == category for setting in visible_settings)],
     "settings": visible_settings,
   }
@@ -249,7 +249,7 @@ def validate_and_write(key: str, value: Any, params: Params | None = None) -> di
   setting = get_settings(_current_brand(params)).get(key)
   if setting is None:
     raise KeyError(key)
-  if setting["offroad_only"] and params.get_bool("IsOnroad"):
+  if setting["offroad_only"] and not params.get_bool("IsOffroad"):
     raise PermissionError("该设置只能在停车后的设置模式修改")
 
   if setting["widget"] == "toggle":
