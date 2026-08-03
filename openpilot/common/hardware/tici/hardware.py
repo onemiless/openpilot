@@ -15,11 +15,70 @@ from openpilot.common.hardware.base import HardwareBase, ThermalConfig, ThermalZ
 from openpilot.common.esim.lpa import TiciLPA
 from openpilot.common.hardware.tici.pins import GPIO
 from openpilot.common.hardware.tici.amplifier import Amplifier
+from openpilot.system.hardware.offline_wake import (
+  acknowledge_panda_wake_monitor, offline_wake_debug_log as _offline_wake_debug_log, panda_bootkick_test_pending,
+)
 
 MODEM_STATE_PATH = "/dev/shm/modem"
 
 NetworkType = log.DeviceState.NetworkType
 NetworkStrength = log.DeviceState.NetworkStrength
+
+
+def offline_wake_debug_log(message: str) -> None:
+  _offline_wake_debug_log("tici.hardware", message)
+
+
+def wake_monitor_kmsg(message: str) -> None:
+  try:
+    with open("/dev/kmsg", "w") as f:
+      f.write(f"<3>[wake-monitor] {message}\n")
+  except Exception:
+    pass
+
+
+def request_internal_panda_wake_monitor() -> None:
+  if panda_bootkick_test_pending():
+    offline_wake_debug_log("bootkick test pending; skipping Panda.enable_deepsleep before shutdown")
+    wake_monitor_kmsg("Tici.shutdown skipped panda wake monitor for bootkick test")
+    return
+
+  cloudlog = None
+  offline_wake_debug_log("request_internal_panda_wake_monitor start")
+  try:
+    from openpilot.common.params import Params
+    from openpilot.common.swaglog import cloudlog
+    from panda import Panda
+
+    params = Params()
+    if params.get_bool("PandaWakeMonitorAck"):
+      offline_wake_debug_log("PandaWakeMonitorAck already set; skipping duplicate Panda.enable_deepsleep")
+      wake_monitor_kmsg("Tici.shutdown using existing panda wake monitor ack")
+      return
+
+    serials = Panda.list()
+    offline_wake_debug_log(f"Panda.list returned {serials}")
+    for serial in serials:
+      with Panda(serial) as panda:
+        is_internal = panda.is_internal()
+        offline_wake_debug_log(f"opened panda serial={serial} internal={is_internal}")
+        if is_internal:
+          health = panda.health()
+          wake_debug = panda.wake_debug()
+          offline_wake_debug_log(f"pre-direct-enable health={health} wake_debug={wake_debug}")
+          panda.enable_deepsleep()
+          acknowledge_panda_wake_monitor(params)
+          cloudlog.warning(f"requested internal panda wake monitor before shutdown serial={serial}")
+          offline_wake_debug_log(f"Panda.enable_deepsleep succeeded serial={serial}; PandaWakeMonitorAck set post_wake_debug={panda.wake_debug()}")
+          wake_monitor_kmsg(f"Tici.shutdown requested panda wake monitor serial={serial}")
+          return
+    offline_wake_debug_log("found no internal panda")
+    wake_monitor_kmsg("Tici.shutdown found no internal panda")
+  except Exception as e:
+    if cloudlog is not None:
+      cloudlog.exception("failed to request internal panda wake monitor before shutdown")
+    offline_wake_debug_log(f"failed to request panda wake monitor: {type(e).__name__}: {e}")
+    wake_monitor_kmsg(f"Tici.shutdown failed to request panda wake monitor: {type(e).__name__}: {e}")
 
 
 def affine_irq(val, action):
@@ -246,6 +305,10 @@ class Tici(HardwareBase):
     return (self.read_param_file("/sys/class/power_supply/bms/voltage_now", int) * self.read_param_file("/sys/class/power_supply/bms/current_now", int) / 1e12)
 
   def shutdown(self):
+    offline_wake_debug_log("Tici.shutdown start")
+    request_internal_panda_wake_monitor()
+    os.sync()
+    offline_wake_debug_log("os.sync complete; running sudo poweroff")
     subprocess.run("sudo poweroff", shell=True)
 
   def get_thermal_config(self):

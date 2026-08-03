@@ -5,6 +5,8 @@
 #include <bitset>
 #include <cassert>
 #include <cerrno>
+#include <ctime>
+#include <fstream>
 #include <memory>
 #include <thread>
 #include <utility>
@@ -31,6 +33,25 @@ struct HwmonState {
 };
 
 HwmonState hwmon_state;
+
+static constexpr bool OFFLINE_WAKE_DEBUG_LOGGING_ENABLED = false;
+
+void offline_wake_debug_log(const std::string &message) {
+  // Retain the recorder for future wake diagnosis without normal /data writes.
+  if (!OFFLINE_WAKE_DEBUG_LOGGING_ENABLED) {
+    return;
+  }
+
+  std::ofstream log("/data/offline_wake_debug.log", std::ios::app);
+  if (!log.is_open()) {
+    return;
+  }
+
+  std::time_t now = std::time(nullptr);
+  char ts[32] = {};
+  std::strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+  log << ts << " pandad " << message << "\n";
+}
 
 bool check_connected(Panda *panda) {
   if (!panda->connected()) {
@@ -327,6 +348,28 @@ void process_panda_state(Panda *panda, PubMaster *pm, bool engaged, bool engaged
   panda->send_heartbeat(engaged, engaged_mads);
 }
 
+void process_wake_monitor_request(Panda *panda) {
+  static Params params;
+
+  if (!params.getBool("PandaWakeMonitorRequest")) {
+    return;
+  }
+
+  offline_wake_debug_log("PandaWakeMonitorRequest received");
+  params.remove("PandaWakeMonitorRequest");
+  if (auto health = panda->get_state()) {
+    offline_wake_debug_log(util::string_format("pre-enable health harness=%u ignition_line=%u ignition_can=%u sbu1=%u sbu2=%u som_reset=%u",
+                                               health->car_harness_status_pkt, health->ignition_line_pkt, health->ignition_can_pkt,
+                                               health->sbu1_voltage_mV, health->sbu2_voltage_mV, health->som_reset_triggered));
+  } else {
+    offline_wake_debug_log("pre-enable health unavailable");
+  }
+  panda->enable_deepsleep();
+  params.putBool("PandaWakeMonitorAck", true);
+  offline_wake_debug_log("enable_deepsleep complete; PandaWakeMonitorAck set");
+  LOGW("enabled panda wake monitor before shutdown");
+}
+
 void process_peripheral_state(Panda *panda, PubMaster *pm, bool no_fan_control, bool is_onroad) {
   static Params params;
   static SubMaster sm({"deviceState", "driverCameraState"});
@@ -432,6 +475,7 @@ void pandad_run(Panda *panda) {
 
     // Process peripheral state at 20 Hz
     if (rk.frame() % 5 == 0) {
+      process_wake_monitor_request(panda);
       process_peripheral_state(panda, &pm, no_fan_control, is_onroad);
     }
 

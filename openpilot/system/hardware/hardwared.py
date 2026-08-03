@@ -23,6 +23,10 @@ from openpilot.common.swaglog import cloudlog
 from openpilot.sunnypilot.system.statsd import statlog
 from openpilot.system.hardware.power_monitoring import PowerMonitoring
 from openpilot.system.hardware.fan_controller import FanController
+from openpilot.system.hardware.offline_wake import (
+  CanShutdownGate, acknowledge_panda_wake_monitor, offline_wake_debug_log as _offline_wake_debug_log,
+  panda_bootkick_test_pending,
+)
 from openpilot.common.version import terms_version, training_version, get_build_metadata, terms_version_sp
 
 
@@ -58,6 +62,53 @@ else:
 OFFROAD_DANGER_TEMP = 85 if HARDWARE.get_device_type() == "mici" else 75
 
 prev_offroad_states: dict[str, tuple[bool, str | None]] = {}
+def offline_wake_debug_log(message: str) -> None:
+  _offline_wake_debug_log("hardwared", message)
+
+
+def request_panda_deepsleep() -> bool:
+  params = Params()
+  if panda_bootkick_test_pending():
+    offline_wake_debug_log("bootkick test pending; skipping PandaWakeMonitorRequest before shutdown")
+    return True
+
+  offline_wake_debug_log("request_panda_deepsleep start")
+  try:
+    params.remove("PandaWakeMonitorAck")
+    params.put_bool("PandaWakeMonitorRequest", True, block=True)
+    offline_wake_debug_log("PandaWakeMonitorRequest set; waiting for pandad ack")
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
+      if params.get_bool("PandaWakeMonitorAck"):
+        cloudlog.warning("pandad acknowledged internal panda wake monitor request")
+        offline_wake_debug_log("pandad acked PandaWakeMonitorRequest")
+        return True
+      time.sleep(0.05)
+    cloudlog.warning("timed out waiting for pandad wake monitor acknowledgement")
+    offline_wake_debug_log("pandad ack timeout; falling back to direct Panda.enable_deepsleep")
+  except Exception:
+    cloudlog.exception("failed to request panda deep sleep through pandad")
+    offline_wake_debug_log("failed to request panda wake monitor through pandad")
+
+  try:
+    from panda import Panda
+    serials = Panda.list()
+    offline_wake_debug_log(f"Panda.list returned {serials}")
+    for serial in serials:
+      with Panda(serial) as panda:
+        is_internal = panda.is_internal()
+        offline_wake_debug_log(f"opened panda serial={serial} internal={is_internal}")
+        if is_internal:
+          panda.enable_deepsleep()
+          acknowledge_panda_wake_monitor(params)
+          cloudlog.warning(f"requested internal panda wake monitor before shutdown serial={serial}")
+          offline_wake_debug_log(f"direct Panda.enable_deepsleep succeeded serial={serial}; PandaWakeMonitorAck set")
+          return True
+    offline_wake_debug_log("direct fallback found no internal panda")
+  except Exception:
+    cloudlog.exception("failed to request panda deep sleep before shutdown")
+    offline_wake_debug_log("direct Panda.enable_deepsleep failed")
+  return False
 
 
 
@@ -153,7 +204,7 @@ def hw_state_thread(end_event, hw_queue):
 def hardware_thread(end_event, hw_queue) -> None:
   system_stats = LinuxSystemStats()
   pm = messaging.PubMaster(['deviceState'])
-  sm = messaging.SubMaster(["peripheralState", "gpsLocationExternal", "selfdriveState", "pandaStates"], poll="pandaStates")
+  sm = messaging.SubMaster(["peripheralState", "gpsLocationExternal", "selfdriveState", "pandaStates", "can"], poll="pandaStates")
 
   count = 0
 
@@ -200,9 +251,15 @@ def hardware_thread(end_event, hw_queue) -> None:
   thermal_config = HARDWARE.get_thermal_config()
 
   fan_controller = FanController(int(1./DT_HW))
+  can_shutdown_gate = CanShutdownGate()
+  shutdown_wait_logged = False
 
   while not end_event.is_set():
     sm.update(PANDA_STATES_TIMEOUT)
+    # The Panda can only wake from physical bus 1. Keep the SoM on while
+    # that bus is active, then hand off directly to STOP once it has slept.
+    bus1_active = sm.updated["can"] and any(can.src == 1 for can in sm["can"])
+    can_shutdown_gate.update(bus1_active)
 
     pandaStates = sm['pandaStates']
     peripheralState = sm['peripheralState']
@@ -397,9 +454,32 @@ def hardware_thread(end_event, hw_queue) -> None:
     msg.deviceState.somPowerDrawW = som_power_draw
 
     # Check if we need to shut down
-    if power_monitor.should_shutdown(onroad_conditions["ignition"], in_car, off_ts, started_seen):
+    shutdown_requested = power_monitor.should_shutdown(onroad_conditions["ignition"], in_car, off_ts, started_seen)
+    force_power_down = params.get_bool("ForcePowerDown")
+    if shutdown_requested and can_shutdown_gate.ready(force_power_down):
       cloudlog.warning(f"shutting device down, offroad since {off_ts}")
-      params.put_bool("DoShutdown", True, block=True)
+      monitor_ready = request_panda_deepsleep()
+      shutdown_fields = [
+        "power_monitor shutdown ready",
+        f"offroad_since={off_ts}",
+        f"in_car={in_car}",
+        f"started_seen={started_seen}",
+        f"bus1_quiet_s={can_shutdown_gate.quiet_duration():.1f}",
+        f"forced={force_power_down}",
+        f"monitor_ready={monitor_ready}",
+      ]
+      offline_wake_debug_log(" ".join(shutdown_fields))
+      if monitor_ready or force_power_down:
+        params.put_bool("DoShutdown", True, block=True)
+      elif not shutdown_wait_logged:
+        offline_wake_debug_log("shutdown deferred because Panda wake monitor setup failed")
+        shutdown_wait_logged = True
+    elif shutdown_requested:
+      if not shutdown_wait_logged:
+        offline_wake_debug_log("shutdown waiting for CAN quiet or bounded timeout")
+        shutdown_wait_logged = True
+    else:
+      shutdown_wait_logged = False
 
     msg.deviceState.started = started_ts is not None and not offroad_mode
     msg.deviceState.startedMonoTime = int(1e9*(started_ts or 0))

@@ -127,6 +127,7 @@ procs = [
   PythonProcess("journald", "openpilot.system.journald", only_onroad, platform.system() != "Darwin"),
   #PythonProcess("micd", "openpilot.system.micd", iscar),
   PythonProcess("timed", "openpilot.system.timed", always_run, enabled=not PC),
+  PythonProcess("gps_time_sync", "openpilot.sunnypilot.gps_time_sync", always_run, enabled=not PC),
 
   PythonProcess("modeld", "openpilot.selfdrive.modeld.modeld", and_(only_onroad, is_stock_model)),
   #PythonProcess("dmonitoringmodeld", "openpilot.selfdrive.modeld.dmonitoringmodeld", driverview, enabled=(WEBCAM or not PC)),
