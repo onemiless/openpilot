@@ -223,6 +223,18 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"SubaruStopAndGoManualParkingBrake", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaCoopSteering", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaMadsScreenButton", {PERSISTENT | BACKUP, INT, "0"}},
+    {"TeslaApHybrid", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"TeslaAutoSpeedLimit", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"TeslaCanValidationLogging", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"TeslaDynamicApLongitudinal", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"TeslaOfflineWakeCaptureEnabled", {PERSISTENT, BOOL, "0"}},
+    {"TeslaSpeedButtonValidation", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"TeslaStockLongitudinal", {CLEAR_ON_MANAGER_START, BOOL}},
+    {"TeslaTurnSignalTestCancel", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON}},
+    {"TeslaTurnSignalTestRequest", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON}},
+    {"TeslaTurnSignalTestResult", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON}},
+    {"TeslaTurnSignalTestStatus", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON}},
+    {"TeslaTurnSignalValidation", {PERSISTENT | BACKUP, BOOL, "1"}},
     {"ToyotaEnforceStockLongitudinal", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"ToyotaStopAndGoHack", {PERSISTENT | BACKUP, BOOL, "0"}},
 
@@ -237,6 +249,48 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"LaneTurnDesire", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"LaneTurnValue", {PERSISTENT | BACKUP, FLOAT, "19.0"}},
     {"PlanplusControl", {PERSISTENT | BACKUP, FLOAT, "1.0"}},
+
+    // Dynamic auto stock / AP hybrid (Tesla)
+    {"DynamicAutoStock", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"DynamicAutoStockBlinkerToSP", {PERSISTENT | BACKUP, BOOL, "1"}},
+    {"DynamicAutoStockCurveToSP", {PERSISTENT | BACKUP, BOOL, "1"}},
+    {"DynamicAutoStockSpeedKph", {PERSISTENT | BACKUP, INT, "80"}},
+    {"DynamicAutoStockSpeedLowKph", {PERSISTENT | BACKUP, INT, "70"}},
+
+    // MPC tuning
+    {"MpcAccelChangeCost", {PERSISTENT | BACKUP, INT, "20000"}},  // hundredths
+    {"MpcComfortBrake", {PERSISTENT | BACKUP, INT, "250"}},  // hundredths of m/s^2
+    {"MpcDangerZoneCost", {PERSISTENT | BACKUP, INT, "10000"}},  // hundredths
+    {"MpcJerkCost", {PERSISTENT | BACKUP, INT, "500"}},  // hundredths
+    {"MpcJerkFactorStandard", {PERSISTENT | BACKUP, INT, "100"}},  // hundredths
+    {"MpcLeadDangerFactor", {PERSISTENT | BACKUP, INT, "75"}},  // hundredths
+    {"MpcStopDistance", {PERSISTENT | BACKUP, INT, "600"}},  // hundredths of m
+    {"MpcTFollowAggressive", {PERSISTENT | BACKUP, INT, "125"}},  // hundredths of s
+    {"MpcTFollowRelaxed", {PERSISTENT | BACKUP, INT, "175"}},  // hundredths of s
+    {"MpcTFollowStandard", {PERSISTENT | BACKUP, INT, "145"}},  // hundredths of s
+    {"MpcTuningCurrentValues", {PERSISTENT | BACKUP, JSON}},
+    {"MpcTuningMoumouValues", {PERSISTENT | BACKUP, JSON}},
+    {"MpcTuningPreset", {PERSISTENT | BACKUP, INT, "0"}},  // 0=moumou/dev260628XL-tici, 1=current branch, 2=custom
+    {"MpcXObstacleCost", {PERSISTENT | BACKUP, INT, "300"}},  // hundredths
+
+    // Speed limit / stop line (Tesla)
+    {"SpeedLimitOffsetMaxSpeed", {PERSISTENT | BACKUP, INT, "0"}},
+    {"StopLineDeceleration", {PERSISTENT | BACKUP, INT, "5"}},  // tenths of m/s^2
+
+    // Offline wake / panda
+    {"AutoWakeTestEnabled", {PERSISTENT, BOOL}},
+    {"GpsTimeSyncDone", {CLEAR_ON_MANAGER_START, BOOL}},
+    {"PandaSignatures", {CLEAR_ON_MANAGER_START, BYTES}},
+    {"PandaSomResetTriggered", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, BOOL}},
+    {"PandaWakeMonitorAck", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, BOOL}},
+    {"PandaWakeMonitorRequest", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, BOOL}},
+
+    // Web / misc
+    {"DisableRouteRecording", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"StartupSPDir", {PERSISTENT | BACKUP, STRING, "/data/openpilot"}},
+    {"UseMiciLayout", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"WebTerminalEnabled", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"WebTerminalPassword", {PERSISTENT | DONT_LOG | BACKUP, STRING, "123456"}},
 
     // mapd
     {"MapAdvisorySpeedLimit", {CLEAR_ON_ONROAD_TRANSITION, FLOAT}},

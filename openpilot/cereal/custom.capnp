@@ -437,6 +437,16 @@ struct BackupManagerSP @0xf98d843bfd7004a3 {
 
 struct CarStateSP @0xb86e6369214c01c8 {
   speedLimit @0 :Float32;
+  flags @1 :UInt32;
+  teslaRoadContext @2 :TeslaRoadContext;
+}
+
+# Read-only Tesla OEM perception/map context. It is for display only and must
+# never be consumed by lateral or longitudinal control.
+struct TeslaRoadContext {
+  available @0 :Bool;
+  trafficLightColor @1 :UInt8;
+  stopLineDistance @2 :Float32;
 }
 
 struct LiveMapDataSP @0xf416ec09499d9d19 {
