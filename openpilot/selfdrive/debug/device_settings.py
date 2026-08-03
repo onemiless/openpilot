@@ -279,5 +279,5 @@ def validate_and_write(key: str, value: Any, params: Params | None = None) -> di
     step = setting.get("step")
     if step and minimum is not None and abs(round((value - minimum) / step) * step - (value - minimum)) > 1e-9:
       raise ValueError(f"数值必须按 {step} 递增")
-    params.put(key, str(value), block=True)
+    params.put(key, value, block=True)
   return {**setting, "value": _read_value(params, setting)}
