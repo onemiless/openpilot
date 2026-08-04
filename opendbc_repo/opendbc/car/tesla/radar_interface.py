@@ -69,10 +69,20 @@ class RadarInterface(RadarInterfaceBase):
       return False
 
     expected = self.expected_objects
-    id_sets = list(self.part_ids.values())
-    return all(len(ids) == expected for ids in id_sets) and \
-           all(count == expected for count in self.part_counts.values()) and \
-           id_sets[0] == id_sets[1] == id_sets[2]
+    general_ids = self.part_ids[ARS408_GENERAL]
+    quality_ids = self.part_ids[ARS408_QUALITY]
+    return len(general_ids) == expected and \
+           len(quality_ids) == expected and \
+           self.part_counts[ARS408_GENERAL] == expected and \
+           self.part_counts[ARS408_QUALITY] == expected and \
+           general_ids == quality_ids
+
+  def _extended_complete(self):
+    expected = self.expected_objects
+    extended_ids = self.part_ids[ARS408_EXTENDED]
+    return len(extended_ids) == expected and \
+           self.part_counts[ARS408_EXTENDED] == expected and \
+           extended_ids == self.part_ids[ARS408_GENERAL]
 
   def _incomplete_result(self):
     self.incomplete_cycles += 1
@@ -86,14 +96,13 @@ class RadarInterface(RadarInterfaceBase):
   def _decode_cycle(self, timestamp):
     self.rcp.update([(timestamp, self.cycle_frames)])
     objects = {}
-    decode_fields = {
+    core_decode_fields = {
       ARS408_GENERAL: (
         "Obj_ID", "Obj_DistLong", "Obj_DistLat", "Obj_VrelLong", "Obj_VrelLat", "Obj_RCS"),
       ARS408_QUALITY: ("Obj_ID", "Obj_ProbOfExist", "Obj_MeasState"),
-      ARS408_EXTENDED: ("Obj_ID", "Obj_ArelLong", "Obj_Class"),
     }
 
-    for address, fields in decode_fields.items():
+    for address, fields in core_decode_fields.items():
       message_name = ARS408_MESSAGES[address][1]
       values = self.rcp.vl_all[message_name]
       columns = [values[field] for field in fields]
@@ -103,6 +112,21 @@ class RadarInterface(RadarInterfaceBase):
       for row in zip(*columns, strict=True):
         obj = objects.setdefault(int(row[0]), {})
         obj.update(dict(zip(fields[1:], row[1:], strict=True)))
+
+    # Extended object frames have the lowest CAN priority in the ARS408
+    # object list. Under high target load the radar can begin its next cycle
+    # before every Extended frame is transmitted. General and Quality remain
+    # sufficient for safe lead tracking, so only merge Extended data when the
+    # complete set belongs to this cycle.
+    if self._extended_complete():
+      fields = ("Obj_ID", "Obj_ArelLong", "Obj_Class")
+      values = self.rcp.vl_all[ARS408_MESSAGES[ARS408_EXTENDED][1]]
+      columns = [values[field] for field in fields]
+      if all(len(column) == self.expected_objects for column in columns):
+        for row in zip(*columns, strict=True):
+          obj = objects.get(int(row[0]))
+          if obj is not None:
+            obj.update(dict(zip(fields[1:], row[1:], strict=True)))
 
     return objects
 
@@ -146,7 +170,10 @@ class RadarInterface(RadarInterfaceBase):
       point.yRel = y_rel
       point.vRel = v_rel
       point.vLead = point.vRel + self.v_ego
-      point.aRel = float(obj["Obj_ArelLong"])
+      # Missing Extended data must never reuse acceleration from an older
+      # cycle. A neutral value lets the downstream tracker estimate motion
+      # from successive General frames without invalidating the radar stream.
+      point.aRel = float(obj.get("Obj_ArelLong", 0.0))
       point.yvRel = yv_rel
       point.measured = measurement_state in (1, 2, 5)
 
@@ -169,7 +196,7 @@ class RadarInterface(RadarInterfaceBase):
 
         base_address, _message_name, expected_dlc = ARS408_MESSAGES[address]
         if len(data) != expected_dlc:
-          if self.cycle_started:
+          if self.cycle_started and address != ARS408_EXTENDED:
             self.cycle_invalid = True
           continue
 
