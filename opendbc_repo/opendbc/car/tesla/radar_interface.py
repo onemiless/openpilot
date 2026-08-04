@@ -1,13 +1,13 @@
+import logging
 import math
 
 from opendbc.can import CANParser
 from opendbc.car import structs
 from opendbc.car.interfaces import RadarInterfaceBase
+from opendbc.car.tesla.ars408_can import ARS408_BUS, ARS408_MAX_DISTANCE, ARS408_SENSOR_ID
 
 
 ARS408_DBC = "ARS408"
-ARS408_BUS = 1
-ARS408_SENSOR_ID = 5
 ARS408_ADDRESS_OFFSET = ARS408_SENSOR_ID << 4
 
 # The DBC describes SensorID 0. The radar is configured as SensorID 5 so that
@@ -17,6 +17,7 @@ ARS408_STATUS = 0x60A + ARS408_ADDRESS_OFFSET
 ARS408_GENERAL = 0x60B + ARS408_ADDRESS_OFFSET
 ARS408_QUALITY = 0x60C + ARS408_ADDRESS_OFFSET
 ARS408_EXTENDED = 0x60D + ARS408_ADDRESS_OFFSET
+ARS408_RADAR_STATE = 0x201 + ARS408_ADDRESS_OFFSET
 ARS408_MESSAGES = {
   ARS408_STATUS: (0x60A, "Obj_0_Status", 4),
   ARS408_GENERAL: (0x60B, "Obj_1_General", 8),
@@ -24,7 +25,39 @@ ARS408_MESSAGES = {
   ARS408_EXTENDED: (0x60D, "Obj_3_Extended", 8),
 }
 ARS408_MAX_OBJECTS = 100
-MAX_INCOMPLETE_CYCLES = 5
+ARS408_OBJECT_CORRIDOR = 5.5
+ARS408_MIN_PROBABILITY = 3       # >= 75%
+ARS408_MIN_STATIC_PROBABILITY = 5  # >= 99%
+LOG_EVERY_CYCLES = 20
+CONFIG_GRACE_STATE_FRAMES = 5
+
+log = logging.getLogger(__name__)
+
+
+def object_is_usable(obj, previously_tracked=False):
+  measurement_state = int(obj["Obj_MeasState"])
+  probability = int(obj["Obj_ProbOfExist"])
+  d_rel = float(obj["Obj_DistLong"])
+  y_rel = -float(obj["Obj_DistLat"])
+  v_rel = float(obj["Obj_VrelLong"])
+  yv_rel = float(obj["Obj_VrelLat"])
+  dynamic_property = int(obj["Obj_DynProp"])
+
+  if measurement_state in (0, 4) or probability < ARS408_MIN_PROBABILITY:
+    return False
+  # A predicted-only target must first have been observed by the interface.
+  if measurement_state == 3 and not previously_tracked:
+    return False
+  if not (0.0 <= d_rel <= 300.0 and abs(y_rel) <= 100.0 and -100.0 <= v_rel <= 100.0 and abs(yv_rel) <= 60.0):
+    return False
+
+  # ARS408 reports roadside infrastructure as stationary/candidate/crossing
+  # stationary. Keep stopped targets (7), and only keep never-moving static
+  # targets when they are high-confidence and within the current/adjacent
+  # three-lane corridor.
+  if dynamic_property in (1, 3, 5):
+    return probability >= ARS408_MIN_STATIC_PROBABILITY and abs(y_rel) <= ARS408_OBJECT_CORRIDOR
+  return True
 
 
 def get_radar_can_parser(CP):
@@ -33,6 +66,7 @@ def get_radar_can_parser(CP):
     ("Obj_1_General", math.nan),
     ("Obj_2_Quality", math.nan),
     ("Obj_3_Extended", math.nan),
+    ("RadarState", math.nan),
   ]
   return CANParser(ARS408_DBC, messages, ARS408_BUS)
 
@@ -49,6 +83,10 @@ class RadarInterface(RadarInterfaceBase):
     self.part_counts = {address: 0 for address in self.part_ids}
     self.cycle_invalid = False
     self.incomplete_cycles = 0
+    self.last_logged_incomplete = 0
+    self.last_radar_state = None
+    self.last_fault_signature = None
+    self.radar_state_frames = 0
 
   def _start_cycle(self):
     status = self.rcp.vl["Obj_0_Status"]
@@ -86,19 +124,74 @@ class RadarInterface(RadarInterfaceBase):
 
   def _incomplete_result(self):
     self.incomplete_cycles += 1
-    if self.incomplete_cycles < MAX_INCOMPLETE_CYCLES:
-      return None
+    if self.incomplete_cycles == 1 or self.incomplete_cycles - self.last_logged_incomplete >= LOG_EVERY_CYCLES:
+      general_ids = self.part_ids[ARS408_GENERAL]
+      quality_ids = self.part_ids[ARS408_QUALITY]
+      log.warning("ARS408 incomplete cycle: expected=%d general=%d quality=%d missing_general=%s missing_quality=%s consecutive=%d",
+                  self.expected_objects, self.part_counts[ARS408_GENERAL], self.part_counts[ARS408_QUALITY],
+                  sorted(quality_ids - general_ids), sorted(general_ids - quality_ids), self.incomplete_cycles)
+      self.last_logged_incomplete = self.incomplete_cycles
 
+    # A dropped object-list frame is not proof of a broken CAN connection.
+    # Publish the last complete set so radard remains alive and diagnoses do
+    # not become the generic "check connections" alert.
     ret = structs.RadarData()
-    ret.errors.canError = True
+    ret.points = list(self.pts.values())
+    if not self.rcp.can_valid:
+      ret.errors.canError = True
+    self._apply_radar_state_errors(ret)
     return ret
+
+  def _update_radar_state(self, timestamp, data, src):
+    self.rcp.update([(timestamp, [(0x201, data, src)])])
+    state = self.rcp.vl["RadarState"]
+    self.last_radar_state = dict(state)
+    self.radar_state_frames += 1
+
+  def _apply_radar_state_errors(self, ret):
+    state = self.last_radar_state
+    if state is None:
+      return
+
+    temporary_fault = any(int(state[name]) for name in (
+      "RadarState_Interference", "RadarState_Temperature_Error", "RadarState_Temporary_Error"))
+    hard_fault = any(int(state[name]) for name in (
+      "RadarState_Voltage_Error", "RadarState_Persistent_Error"))
+    wrong_config = int(state["RadarState_SensorID"]) != ARS408_SENSOR_ID or \
+                   int(state["RadarState_OutputTypeCfg"]) != 1 or \
+                   not int(state["RadarState_SendQualityCfg"]) or \
+                   not int(state["RadarState_SendExtInfoCfg"]) or \
+                   int(state["RadarState_CtrlRelayCfg"]) != 0 or \
+                   int(state["RadarState_SortIndex"]) != 1 or \
+                   int(state["RadarState_RCS_Threshold"]) != 0 or \
+                   int(state["RadarState_RadarPowerCfg"]) != 0 or \
+                   int(state["RadarState_MaxDistanceCfg"]) != ARS408_MAX_DISTANCE
+
+    ret.errors.radarUnavailableTemporary = temporary_fault
+    ret.errors.radarFault = hard_fault
+    # The controller configures the radar during its first second. Reporting
+    # the power-on/default state as wrongConfig before those attempts complete
+    # invalidates liveTracks and causes an unnecessary takeover request.
+    ret.errors.wrongConfig = wrong_config and self.radar_state_frames >= CONFIG_GRACE_STATE_FRAMES
+    fault_signature = (temporary_fault, hard_fault, wrong_config, self.radar_state_frames < CONFIG_GRACE_STATE_FRAMES,
+                       int(state["RadarState_MotionRxState"]), int(state["RadarState_SendExtInfoCfg"]))
+    if fault_signature != self.last_fault_signature:
+      log.warning("ARS408 state diagnostic: interference=%d temperature=%d temporary=%d voltage=%d persistent=%d "
+                  "sensor_id=%d output_type=%d quality=%d extended=%d motion_rx=%d config_grace=%d",
+                  int(state["RadarState_Interference"]), int(state["RadarState_Temperature_Error"]),
+                  int(state["RadarState_Temporary_Error"]), int(state["RadarState_Voltage_Error"]),
+                  int(state["RadarState_Persistent_Error"]), int(state["RadarState_SensorID"]),
+                  int(state["RadarState_OutputTypeCfg"]), int(state["RadarState_SendQualityCfg"]),
+                  int(state["RadarState_SendExtInfoCfg"]), int(state["RadarState_MotionRxState"]),
+                  int(self.radar_state_frames < CONFIG_GRACE_STATE_FRAMES))
+      self.last_fault_signature = fault_signature
 
   def _decode_cycle(self, timestamp):
     self.rcp.update([(timestamp, self.cycle_frames)])
     objects = {}
     core_decode_fields = {
       ARS408_GENERAL: (
-        "Obj_ID", "Obj_DistLong", "Obj_DistLat", "Obj_VrelLong", "Obj_VrelLat", "Obj_RCS"),
+        "Obj_ID", "Obj_DistLong", "Obj_DistLat", "Obj_VrelLong", "Obj_VrelLat", "Obj_RCS", "Obj_DynProp"),
       ARS408_QUALITY: ("Obj_ID", "Obj_ProbOfExist", "Obj_MeasState"),
     }
 
@@ -139,25 +232,21 @@ class RadarInterface(RadarInterfaceBase):
       return self._incomplete_result()
 
     self.incomplete_cycles = 0
+    self.last_logged_incomplete = 0
     ret = structs.RadarData()
     if not self.rcp.can_valid:
       ret.errors.canError = True
+    self._apply_radar_state_errors(ret)
 
     current_targets = set()
     for object_id in self.part_ids[ARS408_GENERAL]:
       obj = cycle_objects[object_id]
-      measurement_state = int(obj["Obj_MeasState"])
-      probability = int(obj["Obj_ProbOfExist"])
       d_rel = float(obj["Obj_DistLong"])
       y_rel = -float(obj["Obj_DistLat"])
       v_rel = float(obj["Obj_VrelLong"])
       yv_rel = float(obj["Obj_VrelLat"])
 
-      # Drop protocol invalid/deleted states and saturated or physically
-      # impossible values before they can enter longitudinal lead matching.
-      if measurement_state in (0, 4) or probability == 0:
-        continue
-      if not (0.0 <= d_rel <= 300.0 and abs(y_rel) <= 100.0 and -100.0 <= v_rel <= 100.0 and abs(yv_rel) <= 60.0):
+      if not object_is_usable(obj, object_id in self.pts):
         continue
 
       current_targets.add(object_id)
@@ -175,7 +264,7 @@ class RadarInterface(RadarInterfaceBase):
       # from successive General frames without invalidating the radar stream.
       point.aRel = float(obj.get("Obj_ArelLong", 0.0))
       point.yvRel = yv_rel
-      point.measured = measurement_state in (1, 2, 5)
+      point.measured = int(obj["Obj_MeasState"]) in (1, 2, 5)
 
     for object_id in list(self.pts):
       if object_id not in current_targets:
@@ -191,6 +280,9 @@ class RadarInterface(RadarInterfaceBase):
     result = None
     for timestamp, frames in can_packets:
       for address, data, src in frames:
+        if src == ARS408_BUS and address == ARS408_RADAR_STATE and len(data) == 8:
+          self._update_radar_state(timestamp, data, src)
+          continue
         if src != ARS408_BUS or address not in ARS408_MESSAGES:
           continue
 

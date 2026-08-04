@@ -183,6 +183,7 @@ static safety_config tesla_init(uint16_t param) {
     {0x488, 0, 4},  // DAS_steeringControl
     {0x2b9, 0, 8},  // DAS_control
     {0x27D, 0, 3},  // APS_eacMonitor
+    {0x200, 1, 8},  // ARS408 startup-only RadarConfiguration
   };
 
   UNUSED(param);

@@ -11,12 +11,13 @@ from opendbc.safety.tests.common import CANPackerPanda
 MSG_DAS_steeringControl = 0x488
 MSG_APS_eacMonitor = 0x27d
 MSG_DAS_Control = 0x2b9
+MSG_ARS408_CONFIG = 0x200
 
 
 class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyTest, common.LongitudinalAccelSafetyTest):
   RELAY_MALFUNCTION_ADDRS = {0: (MSG_DAS_steeringControl, MSG_APS_eacMonitor)}
   FWD_BLACKLISTED_ADDRS = {2: [MSG_DAS_steeringControl, MSG_APS_eacMonitor]}
-  TX_MSGS = [[MSG_DAS_steeringControl, 0], [MSG_APS_eacMonitor, 0], [MSG_DAS_Control, 0]]
+  TX_MSGS = [[MSG_DAS_steeringControl, 0], [MSG_APS_eacMonitor, 0], [MSG_DAS_Control, 0], [MSG_ARS408_CONFIG, 1]]
 
   STANDSTILL_THRESHOLD = 0.1
   GAS_PRESSED_THRESHOLD = 3
@@ -94,6 +95,11 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
     # OVERRIDDEN: 79.1667 is the max speed in m/s
     self._common_measurement_test(self._speed_msg, 0, 285 / 3.6, 1,
                                   self.safety.get_vehicle_speed_min, self.safety.get_vehicle_speed_max)
+
+  def test_ars408_config_is_limited_to_vehicle_bus_and_eight_bytes(self):
+    self.assertTrue(self._tx(common.make_msg(1, MSG_ARS408_CONFIG, 8)))
+    self.assertFalse(self._tx(common.make_msg(0, MSG_ARS408_CONFIG, 8)))
+    self.assertFalse(self._tx(common.make_msg(1, MSG_ARS408_CONFIG, 7)))
 
 class TestTeslaStockSafety(TestTeslaSafetyBase):
 

@@ -27,6 +27,9 @@ V_EGO_STATIONARY = 4.   # no stationary object flag below this speed
 
 RADAR_TO_CENTER = 2.7   # (deprecated) RADAR is ~ 2.7m ahead from center of car
 RADAR_TO_CAMERA = 1.52  # RADAR is ~ 1.5m ahead from center of mesh frame
+ADJACENT_LANE_MAX_PATH_OFFSET = 5.5
+RADAR_ONLY_MIN_TRACK_FRAMES = 8
+RADAR_ONLY_MIN_WORLD_SPEED = 2.5
 
 
 class Track:
@@ -42,9 +45,15 @@ class Track:
     self.score = 0.0
     self.in_lane_prob = 0.0
     self.in_lane_prob_future = 0.0
+    self.dRel_last = None
+    self.dRel_rate = 0.0
 
   def update(self, md, pt, ready, radar_reaction_factor, radar_lat_factor):
-
+    if self.dRel_last is not None:
+      instantaneous_rate = (pt.dRel - self.dRel_last) / DT_MDL
+      if abs(instantaneous_rate) < 80.0:
+        self.dRel_rate = 0.75 * self.dRel_rate + 0.25 * instantaneous_rate
+    self.dRel_last = pt.dRel
     #pt_yRel = -leads_v3[0].y[0] if track_id in [0, 1] and pt.yRel == 0 and self.ready and leads_v3[0].prob > 0.5 else pt.yRel
     self.dRel = pt.dRel
     self.yRel = pt.yRel
@@ -71,6 +80,15 @@ class Track:
       self.aLeadTau.update(0.0)
 
     self.cnt += 1
+
+  def is_stable_radar_only_vehicle(self, v_ego):
+    # Without ARS408 motion inputs, raw vRel cannot distinguish a same-speed
+    # vehicle from stationary infrastructure. Range rate across frames can:
+    # world speed ~= ego speed + d(distance)/dt.
+    estimated_world_speed = v_ego + self.dRel_rate
+    return self.measured and self.cnt >= RADAR_ONLY_MIN_TRACK_FRAMES and \
+           self.in_lane_prob > 0.35 and self.dRel > 4.0 and \
+           estimated_world_speed > RADAR_ONLY_MIN_WORLD_SPEED
 
   def d_path(self, md):
     lane_xs = md.laneLines[1].x
@@ -362,7 +380,7 @@ class VisionTrack:
       self.aLeadTau *= 0.9
 
 class RadarD:
-  def __init__(self, delay: float = 0.0):
+  def __init__(self, delay: float = 0.0, radar_track_id_zero_is_scc: bool = True):
     self.current_time = 0.0
 
     self.tracks: dict[int, Track] = {}
@@ -385,6 +403,7 @@ class RadarD:
     self.radar_lat_factor = 0.0
 
     self.radar_detected = False
+    self.radar_track_id_zero_is_scc = radar_track_id_zero_is_scc
     #new
     self.sideRadarMinDist = self.params.get_float("SideRadarMinDist") * 0.1
 
@@ -472,7 +491,9 @@ class RadarD:
     ready = self.ready
 
     ## backup SCC radar(0, 1 trackid)
-    if self.enable_radar_tracks <= 0:
+    if not self.radar_track_id_zero_is_scc:
+      track_scc = None
+    elif self.enable_radar_tracks <= 0:
       track_scc = tracks.get(0)
     else:
       track_scc = tracks.pop(0, None)
@@ -565,12 +586,12 @@ class RadarD:
     )
 
     self.radar_state.leadLeft  = min(
-        (ld for ld in left_list if ld['dRel'] > min_dist and abs(ld['dPath']) < 3.5 and abs(ld['vLead']) > 2.8),
+        (ld for ld in left_list if ld['dRel'] > min_dist and abs(ld['dPath']) < ADJACENT_LANE_MAX_PATH_OFFSET),
         key=lambda d: d['dRel'],
         default={'status': False}
     )
     self.radar_state.leadRight = min(
-        (ld for ld in right_list if ld['dRel'] > min_dist and abs(ld['dPath']) < 3.5 and abs(ld['vLead']) > 2.8),
+        (ld for ld in right_list if ld['dRel'] > min_dist and abs(ld['dPath']) < ADJACENT_LANE_MAX_PATH_OFFSET),
         key=lambda d: d['dRel'],
         default={'status': False}
     )
@@ -622,7 +643,12 @@ class RadarD:
     chosen = None
     detected = self.radar_detected
 
-    if self.leadCutIn and self.leadCutIn.get("status") and self.detect_cut_in:
+    cutin_track = self.tracks.get(self.leadCutIn.get("radarTrackId", -1)) if self.leadCutIn else None
+    center_track = self.tracks.get(self.leadCenter.get("radarTrackId", -1)) if self.leadCenter else None
+    cutin_stable = cutin_track is not None and cutin_track.is_stable_radar_only_vehicle(self.v_ego)
+    center_stable = center_track is not None and center_track.is_stable_radar_only_vehicle(self.v_ego)
+
+    if self.leadCutIn and self.leadCutIn.get("status") and self.detect_cut_in and cutin_stable:
       if self.radar_state.leadOne.status:
         if self.leadCutIn["dRel"] < self.radar_state.leadOne.dRel:
           chosen = self.leadCutIn
@@ -633,7 +659,7 @@ class RadarD:
         chosen["modelProb"] = 0.03
         detected = True
 
-    elif self.leadCenter and self.leadCenter["status"]:
+    elif self.leadCenter and self.leadCenter["status"] and center_stable:
       if self.radar_detected:
         if self.radar_state.leadOne.status and self.leadCenter["dRel"] < self.radar_state.leadOne.dRel:
           chosen = self.leadCenter
@@ -708,7 +734,8 @@ def main() -> None:
   #sm = messaging.SubMaster(['modelV2', 'carState', 'liveTracks'], poll='liveTracks')
   pm = messaging.PubMaster(['radarState'])
 
-  RD = RadarD(CP.radarDelay)
+  # ARS408 object ID 0 is a normal tracked target, not an SCC aggregate.
+  RD = RadarD(CP.radarDelay, radar_track_id_zero_is_scc=CP.brand != "tesla")
 
   while 1:
     sm.update()
