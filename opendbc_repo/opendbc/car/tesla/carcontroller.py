@@ -9,7 +9,6 @@ from opendbc.car.tesla.values import CANBUS, CarControllerParams
 
 
 ARS408_BUS = CANBUS.vehicle
-ARS408_SENSOR_OFFSET = 5 << 4
 ARS408_MOTION_STEP = 5  # card runs at 100 Hz; radar motion inputs run at 20 Hz
 
 
@@ -30,7 +29,9 @@ def create_ars408_motion_messages(packer, CP, CS):
   yaw_msg = packer.make_can_msg("YawRateInformation", ARS408_BUS, {
     "RadarDevice_YawRate": yaw_rate,
   })
-  return [(address + ARS408_SENSOR_OFFSET, data, bus) for address, data, bus in (speed_msg, yaw_msg)]
+  # SensorID offsets the radar's transmitted messages only. Vehicle motion
+  # inputs remain at the fixed ARS408 addresses 0x300 and 0x301.
+  return [speed_msg, yaw_msg]
 
 
 class CarController(CarControllerBase):

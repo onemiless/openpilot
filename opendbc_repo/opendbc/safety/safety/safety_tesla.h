@@ -183,8 +183,8 @@ static safety_config tesla_init(uint16_t param) {
     {0x488, 0, 4},  // DAS_steeringControl
     {0x2b9, 0, 8},  // DAS_control
     {0x27D, 0, 3},  // APS_eacMonitor
-    {0x350, 1, 2},  // ARS408 SpeedInformation (SensorID 5)
-    {0x351, 1, 2},  // ARS408 YawRateInformation (SensorID 5)
+    {0x300, 1, 2},  // ARS408 SpeedInformation (fixed input address)
+    {0x301, 1, 2},  // ARS408 YawRateInformation (fixed input address)
   };
 
   UNUSED(param);

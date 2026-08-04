@@ -11,8 +11,8 @@ from opendbc.safety.tests.common import CANPackerPanda
 MSG_DAS_steeringControl = 0x488
 MSG_APS_eacMonitor = 0x27d
 MSG_DAS_Control = 0x2b9
-MSG_ARS408_SpeedInformation = 0x350
-MSG_ARS408_YawRateInformation = 0x351
+MSG_ARS408_SpeedInformation = 0x300
+MSG_ARS408_YawRateInformation = 0x301
 
 
 class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyTest, common.LongitudinalAccelSafetyTest):
