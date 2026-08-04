@@ -11,15 +11,12 @@ from opendbc.safety.tests.common import CANPackerPanda
 MSG_DAS_steeringControl = 0x488
 MSG_APS_eacMonitor = 0x27d
 MSG_DAS_Control = 0x2b9
-MSG_ARS408_SpeedInformation = 0x300
-MSG_ARS408_YawRateInformation = 0x301
 
 
 class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyTest, common.LongitudinalAccelSafetyTest):
   RELAY_MALFUNCTION_ADDRS = {0: (MSG_DAS_steeringControl, MSG_APS_eacMonitor)}
   FWD_BLACKLISTED_ADDRS = {2: [MSG_DAS_steeringControl, MSG_APS_eacMonitor]}
-  TX_MSGS = [[MSG_DAS_steeringControl, 0], [MSG_APS_eacMonitor, 0], [MSG_DAS_Control, 0],
-             [MSG_ARS408_SpeedInformation, 1], [MSG_ARS408_YawRateInformation, 1]]
+  TX_MSGS = [[MSG_DAS_steeringControl, 0], [MSG_APS_eacMonitor, 0], [MSG_DAS_Control, 0]]
 
   STANDSTILL_THRESHOLD = 0.1
   GAS_PRESSED_THRESHOLD = 3
@@ -97,21 +94,6 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
     # OVERRIDDEN: 79.1667 is the max speed in m/s
     self._common_measurement_test(self._speed_msg, 0, 285 / 3.6, 1,
                                   self.safety.get_vehicle_speed_min, self.safety.get_vehicle_speed_max)
-
-  def test_ars408_motion_message_whitelist(self):
-    for controls_allowed in (False, True):
-      self.safety.set_controls_allowed(controls_allowed)
-      for address in (MSG_ARS408_SpeedInformation, MSG_ARS408_YawRateInformation):
-        self.assertTrue(self._tx(common.make_msg(1, address, 2)))
-
-        for bus in (0, 2, 3):
-          self.assertFalse(self._tx(common.make_msg(bus, address, 2)))
-        for length in (1, 3, 4, 8):
-          self.assertFalse(self._tx(common.make_msg(1, address, length)))
-
-    self.assertFalse(self._tx(common.make_msg(1, MSG_ARS408_SpeedInformation - 1, 2)))
-    self.assertFalse(self._tx(common.make_msg(1, MSG_ARS408_YawRateInformation + 1, 2)))
-
 
 class TestTeslaStockSafety(TestTeslaSafetyBase):
 
