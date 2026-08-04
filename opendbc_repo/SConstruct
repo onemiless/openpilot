@@ -30,6 +30,10 @@ AddOption('--mutation',
           action='store_true',
           help='generate mutation-ready code')
 
+AddOption('--coverage',
+          action='store_true',
+          help='build with test coverage options')
+
 ccflags_asan = ["-fsanitize=address", "-fno-omit-frame-pointer"] if GetOption('asan') else []
 ldflags_asan = ["-fsanitize=address"] if GetOption('asan') else []
 

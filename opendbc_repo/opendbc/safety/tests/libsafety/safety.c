@@ -3,6 +3,10 @@
 #include "fake_stm.h"
 #include "can.h"
 
+void putui(uint32_t value) {
+  (void)value;
+}
+
 //int safety_tx_hook(CANPacket_t *to_send) { return 1; }
 
 #include "faults.h"
