@@ -15,7 +15,7 @@ from openpilot.common.hardware import HARDWARE, PC
 
 from openpilot.selfdrive.ui.sunnypilot.ui_state import UIStateSP, DeviceSP
 
-BACKLIGHT_OFFROAD = 65 if HARDWARE.get_device_type() == "mici" else 50
+BACKLIGHT_OFFROAD = 55 if HARDWARE.get_device_type() == "mici" else 40
 PARAM_UPDATE_TIME = 1 / 5.0
 
 
@@ -220,6 +220,7 @@ class UIState(UIStateSP):
 class Device(DeviceSP):
   def __init__(self):
     DeviceSP.__init__(self)
+    self._params = Params()
     self._ignition = False
     self._interaction_time: float = -1
     self._override_interactive_timeout: int | None = None
@@ -227,9 +228,13 @@ class Device(DeviceSP):
     self._prev_timed_out = False
     self._awake: bool = True
 
-    self._offroad_brightness: int = BACKLIGHT_OFFROAD
+    offroad_brightness = self._params.get("Brightness", return_default=True)
+    if offroad_brightness and offroad_brightness > 0:
+      self._offroad_brightness: int = offroad_brightness
+    else:
+      self._offroad_brightness: int = BACKLIGHT_OFFROAD
     self._last_brightness: int = 0
-    self._brightness_filter = FirstOrderFilter(BACKLIGHT_OFFROAD, 10.00, 1 / gui_app.target_fps)
+    self._brightness_filter = FirstOrderFilter(self._offroad_brightness, 10.00, 1 / gui_app.target_fps)
     self._brightness_thread: threading.Thread | None = None
     self._brightness_event = threading.Event()
     self._brightness_target: int = 0
@@ -286,6 +291,7 @@ class Device(DeviceSP):
     if brightness is None:
       brightness = BACKLIGHT_OFFROAD
     self._offroad_brightness = min(max(brightness, 0), 100)
+    self._params.put("Brightness", self._offroad_brightness)
 
   def _update_brightness(self):
     clipped_brightness = self._offroad_brightness
