@@ -33,6 +33,19 @@ def get_mads_limited_brands(CP: structs.CarParams, CP_SP: structs.CarParamsSP, p
   return False
 
 
+def detect_hold_and_tap(a: bool, b: bool, b_prev: bool, tap_pending: bool) -> tuple[bool, bool]:
+  b_rise = (not b_prev) and b
+  b_fall = b_prev and (not b)
+  if a and b_rise:
+    tap_pending = True
+  if not a:
+    tap_pending = False
+  if b_fall and tap_pending:
+    tap_pending = False
+    return True, tap_pending
+  return False, tap_pending
+
+
 def read_steering_mode_param(CP: structs.CarParams, CP_SP: structs.CarParamsSP, params: Params):
   if get_mads_limited_brands(CP, CP_SP, params):
     return MadsSteeringModeOnBrake.DISENGAGE

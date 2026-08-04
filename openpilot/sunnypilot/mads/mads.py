@@ -10,7 +10,7 @@ from openpilot.cereal import log, custom
 from opendbc.car import structs
 from opendbc.car.hyundai.values import HyundaiFlags
 from openpilot.common.params import Params
-from openpilot.sunnypilot.mads.helpers import MadsSteeringModeOnBrake, read_steering_mode_param, MADS_NO_ACC_MAIN_BUTTON
+from openpilot.sunnypilot.mads.helpers import MadsSteeringModeOnBrake, read_steering_mode_param, MADS_NO_ACC_MAIN_BUTTON, detect_hold_and_tap
 from openpilot.sunnypilot.mads.state import StateMachine, GEARS_ALLOW_PAUSED_SILENT
 
 State = custom.ModularAssistiveDrivingSystem.ModularAssistiveDrivingSystemState
@@ -42,6 +42,9 @@ class ModularAssistiveDrivingSystem:
     self.events = self.selfdrive.events
     self.events_sp = self.selfdrive.events_sp
     self.disengage_on_accelerator = Params().get_bool("DisengageOnAccelerator")
+    self._pending_disengage = False
+    self.gas_tap_pending = False
+    self.brake_tap_pending = False
     if self.CP.brand == "hyundai":
       if self.CP.flags & (HyundaiFlags.HAS_LDA_BUTTON | HyundaiFlags.CANFD):
         self.allow_always = True
@@ -58,8 +61,13 @@ class ModularAssistiveDrivingSystem:
     self.unified_engagement_mode = self.params.get_bool("MadsUnifiedEngagementMode")
 
   def read_params(self):
+    prev_enabled = self.enabled_toggle
+    self.enabled_toggle = self.params.get_bool("Mads")
     self.main_enabled_toggle = self.params.get_bool("MadsMainCruiseAllowed")
     self.unified_engagement_mode = self.params.get_bool("MadsUnifiedEngagementMode")
+    # Set flag to disengage on next main-thread update to avoid racing the params thread.
+    if prev_enabled and not self.enabled_toggle and self.active:
+      self._pending_disengage = True
 
   def pedal_pressed_non_gas_pressed(self, CS: structs.CarState) -> bool:
     # ignore `pedalPressed` events caused by gas presses
@@ -67,6 +75,23 @@ class ModularAssistiveDrivingSystem:
       return True
 
     return False
+
+  def both_pedals_gesture(self, CS: structs.CarState) -> bool:
+    """
+    Detect if one pedal is tapped while the other is held.
+
+    This is better than simple both pedals pressed detection.
+    It prevents false positives when driver transitions between pedals
+    for launch control or hill starting.
+    """
+    gas_tap_brake_held, self.gas_tap_pending = detect_hold_and_tap(
+      CS.brakePressed, CS.gasPressed, self.selfdrive.CS_prev.gasPressed, self.gas_tap_pending
+    )
+    brake_tap_gas_held, self.brake_tap_pending = detect_hold_and_tap(
+      CS.gasPressed, CS.brakePressed, self.selfdrive.CS_prev.brakePressed, self.brake_tap_pending
+    )
+
+    return gas_tap_brake_held or brake_tap_gas_held
 
   def should_silent_lkas_enable(self, CS: structs.CarState) -> bool:
     if self.steering_mode_on_brake == MadsSteeringModeOnBrake.PAUSE and (CS.brakePressed or CS.regenBraking or self.pedal_pressed_non_gas_pressed(CS)):
@@ -115,6 +140,11 @@ class ModularAssistiveDrivingSystem:
     elif any(not ps.controlsAllowedLateral for ps in self.selfdrive.sm['pandaStates']
              if ps.safetyModel not in IGNORED_SAFETY_MODES):
       self.lateral_mismatch_counter += 1
+    else:
+      # Panda state arrives on a separate socket. A brief stale sample during
+      # a longitudinal-source handoff must not accumulate with unrelated
+      # samples and later disengage lateral control.
+      self.lateral_mismatch_counter = 0
 
   def update_events(self, CS: structs.CarState):
     if not self.selfdrive.enabled and self.enabled:
@@ -185,15 +215,15 @@ class ModularAssistiveDrivingSystem:
       if self.selfdrive.CS_prev.cruiseState.available:
         self.events_sp.add(EventNameSP.lkasDisable)
 
-    if self.steering_mode_on_brake == MadsSteeringModeOnBrake.DISENGAGE:
-      if self.pedal_pressed_non_gas_pressed(CS):
-        if self.enabled:
-          self.events_sp.add(EventNameSP.lkasDisable)
-        else:
-          # block lkasEnable if being sent, then send pedalPressedAlertOnly event
-          if self.events_sp.contains(EventNameSP.lkasEnable):
-            self.events_sp.remove(EventNameSP.lkasEnable)
-            self.events_sp.add(EventNameSP.pedalPressedAlertOnly)
+    if self.both_pedals_gesture(CS) or (self.steering_mode_on_brake == MadsSteeringModeOnBrake.DISENGAGE
+                               and self.pedal_pressed_non_gas_pressed(CS)):
+      if self.enabled:
+        self.events_sp.add(EventNameSP.lkasDisable)
+      else:
+        # block lkasEnable if being sent, then send pedalPressedAlertOnly event
+        if self.events_sp.contains(EventNameSP.lkasEnable):
+          self.events_sp.remove(EventNameSP.lkasEnable)
+          self.events_sp.add(EventNameSP.pedalPressedAlertOnly)
 
     if self.should_silent_lkas_enable(CS):
       if self.state_machine.state == State.paused:
@@ -208,6 +238,10 @@ class ModularAssistiveDrivingSystem:
     self.events.remove(EventName.wrongCruiseMode)
 
   def update(self, CS: structs.CarState):
+    if self._pending_disengage:
+      self._pending_disengage = False
+      self.events_sp.add(EventNameSP.lkasDisable)
+
     if not self.enabled_toggle:
       return
 
