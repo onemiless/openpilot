@@ -17,11 +17,16 @@ from openpilot.sunnypilot.selfdrive.pandad.rivian_long_flasher import flash_rivi
 
 def get_expected_signature() -> bytes:
   fn = os.path.join(FW_PATH, McuType.H7.config.app_fn)
+  if not os.path.isfile(fn) or os.path.getsize(fn) < 128:
+    cloudlog.warning(f"Panda firmware {fn} missing or too small, building...")
+    target = os.path.relpath(fn, BASEDIR)
+    env = {**os.environ, "PWD": BASEDIR}
+    subprocess.run(["scons", "-C", BASEDIR, target], check=True, env=env)
   return Panda.get_signature_from_firmware(fn)
 
 def flash_panda(panda_serial: str):
   panda = Panda(panda_serial)
-
+  
   # skip flashing if the detected panda is not supported
   if panda.get_type() not in Panda.SUPPORTED_DEVICES:
     cloudlog.warning(f"Panda {panda_serial} is not supported (hw_type: {panda.get_type()}), skipping flash...")
@@ -30,7 +35,6 @@ def flash_panda(panda_serial: str):
 
   fw_signature = get_expected_signature()
   internal_panda = panda.is_internal()
-
   panda_version = "bootstub" if panda.bootstub else panda.get_version()
   panda_signature = b"" if panda.bootstub else panda.get_signature()
   cloudlog.warning(f"Panda {panda_serial} connected, version: {panda_version}, signature {panda_signature.hex()[:16]}, expected {fw_signature.hex()[:16]}")
@@ -104,19 +108,32 @@ def main() -> None:
   while not do_exit:
     try:
       cloudlog.event("pandad.flash_and_connect", count=count)
-      if (count % 2) == 0:
+      if count == 0:
         HARDWARE.reset_internal_panda()
-      else:
-        HARDWARE.recover_internal_panda()
       count += 1
 
-      # Flash all Pandas in DFU mode
-      for serial in PandaDFU.list():
-        cloudlog.info(f"Panda in DFU mode found, flashing recovery {serial}")
-        PandaDFU(serial).recover()
-        time.sleep(1)
+      # The internal panda takes a few seconds to boot its app after a reset.
+      # Wait for it to come back in normal mode before deciding to flash.
+      panda_serials: list[str] = []
+      for _ in range(16):
+        panda_serials = Panda.list()
+        if len(panda_serials) == 1:
+          try:
+            with Panda(panda_serials[0]) as p:
+              if not p.bootstub:
+                break
+          except Exception:
+            pass
+        time.sleep(0.5)
 
-      panda_serials = Panda.list()
+      if len(panda_serials) == 0:
+        # Flash all Pandas in DFU mode
+        for serial in PandaDFU.list():
+          cloudlog.info(f"Panda in DFU mode found, flashing recovery {serial}")
+          PandaDFU(serial).recover()
+          time.sleep(1)
+        panda_serials = Panda.list()
+
       if len(panda_serials):
         # custom flasher for xnor's Rivian Longitudinal Upgrade Kit
         flash_rivian_long(panda_serials)
