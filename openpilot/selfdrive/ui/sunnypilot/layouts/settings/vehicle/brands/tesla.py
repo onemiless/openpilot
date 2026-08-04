@@ -5,12 +5,14 @@ This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
 from collections.abc import Callable
-import json
 
 import pyray as rl
 
 from opendbc.sunnypilot.car.tesla.values import MadsScreenButtonType, TeslaFlagsSP
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.vehicle.brands.base import BrandSettings
+from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.tuning_presets import (
+  MPC_PRESET_LABELS, MPC_PRESET_MOUMOU, MPC_TUNING_KEYS, apply_preset, get_preset_values, save_preset_values, write_live_values,
+)
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.multilang import tr
@@ -19,45 +21,6 @@ from openpilot.system.ui.widgets import DialogResult, Widget
 from openpilot.system.ui.widgets.network import NavButton
 from openpilot.system.ui.widgets.option_dialog import MultiOptionDialog
 from openpilot.system.ui.widgets.scroller_tici import Scroller
-
-MPC_PRESET_MOUMOU = 0
-MPC_PRESET_CURRENT = 1
-MPC_PRESET_LABELS = {
-  MPC_PRESET_MOUMOU: "dev260628XL",
-  MPC_PRESET_CURRENT: "Current",
-}
-MPC_PRESET_VALUE_PARAMS = {
-  MPC_PRESET_MOUMOU: "MpcTuningMoumouValues",
-  MPC_PRESET_CURRENT: "MpcTuningCurrentValues",
-}
-MPC_PRESETS = {
-  MPC_PRESET_MOUMOU: {
-    "MpcXObstacleCost": 300,
-    "MpcJerkCost": 500,
-    "MpcAccelChangeCost": 20000,
-    "MpcDangerZoneCost": 10000,
-    "MpcLeadDangerFactor": 75,
-    "MpcComfortBrake": 250,
-    "MpcStopDistance": 600,
-    "MpcJerkFactorStandard": 100,
-    "MpcTFollowRelaxed": 175,
-    "MpcTFollowStandard": 145,
-    "MpcTFollowAggressive": 125,
-  },
-  MPC_PRESET_CURRENT: {
-    "MpcXObstacleCost": 500,
-    "MpcJerkCost": 300,
-    "MpcAccelChangeCost": 10000,
-    "MpcDangerZoneCost": 8000,
-    "MpcLeadDangerFactor": 35,
-    "MpcComfortBrake": 270,
-    "MpcStopDistance": 450,
-    "MpcJerkFactorStandard": 80,
-    "MpcTFollowRelaxed": 165,
-    "MpcTFollowStandard": 135,
-    "MpcTFollowAggressive": 100,
-  },
-}
 
 MPC_TUNING_ITEMS = [
   ("MpcStopDistance", "Stop Distance",
@@ -147,31 +110,15 @@ class TeslaMpcSettingsLayout(Widget):
 
   @staticmethod
   def _preset_values(preset):
-    values = dict(MPC_PRESETS[preset])
-    saved = ui_state.params.get(MPC_PRESET_VALUE_PARAMS[preset])
-    if saved:
-      if isinstance(saved, dict):
-        saved_values = saved
-      else:
-        try:
-          saved_values = json.loads(saved)
-        except (TypeError, json.JSONDecodeError):
-          saved_values = {}
-      if not isinstance(saved_values, dict):
-        saved_values = {}
-      for key, value in saved_values.items():
-        if key in values:
-          values[key] = int(value)
-    return values
+    return get_preset_values(ui_state.params, preset)
 
   @staticmethod
   def _save_preset_values(preset, values):
-    ui_state.params.put(MPC_PRESET_VALUE_PARAMS[preset], values)
+    save_preset_values(ui_state.params, preset, values)
 
   @staticmethod
   def _write_live_mpc_values(values):
-    for key in MPC_PRESETS[MPC_PRESET_MOUMOU]:
-      ui_state.params.put(key, int(values[key]))
+    write_live_values(ui_state.params, values)
 
   def _show_preset_dialog(self):
     labels = [self._preset_label(preset) for preset in MPC_PRESET_LABELS]
@@ -192,14 +139,13 @@ class TeslaMpcSettingsLayout(Widget):
     gui_app.push_widget(self._preset_dialog)
 
   def _apply_mpc_preset(self, preset, update_preset_storage=True):
-    values = self._preset_values(preset)
+    values = apply_preset(ui_state.params, preset)
     self._applying_mpc_preset = True
     try:
       for option in self.mpc_tuning_options:
         value = values[option.action_item.param_key]
         option.action_item.set_value(value)
       self._write_live_mpc_values(values)
-      ui_state.params.put("MpcTuningPreset", preset)
       self._preset_item.action_item.set_value(self._preset_label(preset))
       if update_preset_storage:
         self._save_preset_values(preset, values)
@@ -214,6 +160,7 @@ class TeslaMpcSettingsLayout(Widget):
     values = self._preset_values(preset)
     for option in self.mpc_tuning_options:
       values[option.action_item.param_key] = option.action_item.get_value()
+    assert set(values) == set(MPC_TUNING_KEYS)
     self._write_live_mpc_values(values)
     self._save_preset_values(preset, values)
 

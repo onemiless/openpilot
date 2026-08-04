@@ -6,6 +6,7 @@ normal user-facing settings from sunnypilot's UI schema and adds the local
 Tesla/MPC controls that are intentionally maintained outside that schema.
 """
 import ast
+# ruff: noqa: E501  # Declarative setting rows are intentionally kept one per line.
 import json
 import math
 import re
@@ -13,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from openpilot.common.params import Params
+from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.tuning_presets import apply_preset
 
 
 SETTINGS_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "sunnypilot" / "sunnylink" / "settings_ui.json"
@@ -280,5 +282,8 @@ def validate_and_write(key: str, value: Any, params: Params | None = None) -> di
     step = setting.get("step")
     if step and minimum is not None and abs(round((value - minimum) / step) * step - (value - minimum)) > 1e-9:
       raise ValueError(f"数值必须按 {step} 递增")
-    params.put(key, value, block=True)
+    if key == "MpcTuningPreset":
+      apply_preset(params, int(value))
+    else:
+      params.put(key, value, block=True)
   return {**setting, "value": _read_value(params, setting)}
