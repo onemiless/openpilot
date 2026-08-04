@@ -291,25 +291,26 @@ class TeslaSettings(BrandSettings):
       callback=self._on_dynamic_ap_longitudinal_toggle,
       enabled=ui_state.is_offroad,
     )
-    self.camera_offset = option_item_sp(
-      title=tr("Lane Center Offset"),
-      param="CameraOffset",
-      min_value=-20, max_value=20, value_change_step=1,
-      use_float_scaling=True,
-      label_callback=lambda value: f"{value / 100.0:+.2f} m",
-      description=tr("Virtually shifts the camera model: positive moves the planned center left and negative moves it right. " +
-                     "Changes fade in gradually and can take up to about 10 seconds. Adjust only while parked, then verify on a straight road " +
-                     "with clear lane lines. Curves and lane changes may not behave like a simple path translation."),
-      enabled=ui_state.is_offroad,
-      inline=True,
-    )
-    self.reset_camera_offset = button_item_sp(
-      title=tr("Reset Lane Center Offset"),
-      button_text=tr("RESET"),
-      description=tr("Restore the camera model offset to 0.00 m."),
-      callback=lambda: self.camera_offset.action_item.set_value(0),
-      enabled=ui_state.is_offroad,
-    )
+    # Lane Center Offset / Reset moved to Models -> Adjust Camera Offset (same CameraOffset param).
+    # self.camera_offset = option_item_sp(
+    #   title=tr("Lane Center Offset"),
+    #   param="CameraOffset",
+    #   min_value=-20, max_value=20, value_change_step=1,
+    #   use_float_scaling=True,
+    #   label_callback=lambda value: f"{value / 100.0:+.2f} m",
+    #   description=tr("Virtually shifts the camera model: positive moves the planned center left and negative moves it right. " +
+    #                  "Changes fade in gradually and can take up to about 10 seconds. Adjust only while parked, then verify on a straight road " +
+    #                  "with clear lane lines. Curves and lane changes may not behave like a simple path translation."),
+    #   enabled=ui_state.is_offroad,
+    #   inline=True,
+    # )
+    # self.reset_camera_offset = button_item_sp(
+    #   title=tr("Reset Lane Center Offset"),
+    #   button_text=tr("RESET"),
+    #   description=tr("Restore the camera model offset to 0.00 m."),
+    #   callback=lambda: self.camera_offset.action_item.set_value(0),
+    #   enabled=ui_state.is_offroad,
+    # )
     self.dyn_auto_speed = option_item_sp(
       title=tr("Speed Threshold High"), param="DynamicAutoStockSpeedKph",
       min_value=40, max_value=120, value_change_step=5,
@@ -346,7 +347,7 @@ class TeslaSettings(BrandSettings):
       enabled=ui_state.is_offroad,
     )
     self.items = [self.coop_steering_toggle, self.mads_screen_button, self.touch_longitudinal_switch_toggle,
-                  self.camera_offset, self.reset_camera_offset,
+                  # self.camera_offset, self.reset_camera_offset,  # moved to Models -> Adjust Camera Offset
                   self.ap_hybrid_toggle, self.dynamic_ap_longitudinal_toggle,
                   self.dynamic_auto_stock_toggle,
                   self.dynamic_auto_stock_blinker_to_sp_toggle,
@@ -387,8 +388,8 @@ class TeslaSettings(BrandSettings):
 
     self.coop_steering_toggle.action_item.set_enabled(ui_state.is_offroad())
     self.touch_longitudinal_switch_toggle.action_item.set_enabled(ui_state.is_offroad())
-    self.camera_offset.action_item.set_enabled(ui_state.is_offroad())
-    self.reset_camera_offset.action_item.set_enabled(ui_state.is_offroad())
+    # self.camera_offset.action_item.set_enabled(ui_state.is_offroad())
+    # self.reset_camera_offset.action_item.set_enabled(ui_state.is_offroad())
     self.ap_hybrid_toggle.action_item.set_enabled(ui_state.is_offroad() and ui_state.has_longitudinal_control)
     self.dynamic_ap_longitudinal_toggle.action_item.set_enabled(
       ui_state.is_offroad() and ui_state.has_longitudinal_control and ui_state.params.get_bool("TeslaApHybrid")
