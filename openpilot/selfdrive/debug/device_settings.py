@@ -120,6 +120,7 @@ EXTRA_SETTINGS: tuple[dict[str, Any], ...] = (
   {"key": "DynamicAutoStockSpeedKph", "widget": "option", "title": "动态原车切换速度", "group": "Tesla", "min": 0, "max": 200, "step": 1, "unit": "km/h", "offroad_only": True},
   {"key": "DynamicAutoStockSpeedLowKph", "widget": "option", "title": "动态原车回切速度", "group": "Tesla", "min": 0, "max": 200, "step": 1, "unit": "km/h", "offroad_only": True},
   {"key": "TeslaMadsScreenButton", "widget": "toggle", "title": "Tesla MADS 屏幕按钮", "group": "Tesla", "offroad_only": True},
+  {"key": "TeslaTouchLongitudinalSwitch", "widget": "toggle", "title": "4指触摸切换原车ACC", "group": "Tesla", "offroad_only": True},
   {"key": "TeslaTurnSignalValidation", "widget": "toggle", "title": "启用 Tesla 转向 CAN 测试", "category": "Developer", "group": "Tesla 测试", "offroad_only": True},
   {"key": "TeslaOfflineWakeCaptureEnabled", "widget": "toggle", "title": "离线唤醒诊断记录", "group": "Tesla", "offroad_only": True},
   {"key": "MpcTuningPreset", "widget": "multiple_button", "title": "纵向 MPC 预设", "group": "纵向 MPC", "options": [{"value": 0, "label": "Moumou"}, {"value": 1, "label": "当前"}, {"value": 2, "label": "自定义"}], "offroad_only": False},

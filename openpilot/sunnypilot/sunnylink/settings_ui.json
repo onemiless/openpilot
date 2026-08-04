@@ -2178,13 +2178,27 @@
             },
             {
               "value": 2,
-              "label": "4-Finger"
-            },
-            {
-              "value": 3,
               "label": "5-Finger"
             }
           ],
+          "visibility": [
+            {
+              "type": "capability",
+              "field": "tesla_has_vehicle_bus",
+              "equals": true
+            }
+          ],
+          "enablement": [
+            {
+              "type": "offroad_only"
+            }
+          ]
+        },
+        {
+          "key": "TeslaTouchLongitudinalSwitch",
+          "widget": "toggle",
+          "title": "4-Finger Longitudinal Switch",
+          "description": "A 4-finger touch on the infotainment screen toggles longitudinal control between sunnypilot and Tesla stock ACC while engaged.",
           "visibility": [
             {
               "type": "capability",

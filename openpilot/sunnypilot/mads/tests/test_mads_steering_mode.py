@@ -230,7 +230,6 @@ class TestBrandSteeringModeRestrictions:
     assert read_steering_mode_param(CP, CP_SP, params) == MadsSteeringModeOnBrake.DISENGAGE
 
   @pytest.mark.parametrize("screen_button", [MadsScreenButtonType.THREE_FINGER,
-                                             MadsScreenButtonType.FOUR_FINGER,
                                              MadsScreenButtonType.FIVE_FINGER])
   def test_tesla_with_vehicle_bus_uses_param(self, mocker, screen_button):
     CP = structs.CarParams()

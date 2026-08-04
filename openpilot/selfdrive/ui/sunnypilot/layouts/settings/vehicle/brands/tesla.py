@@ -9,7 +9,7 @@ import json
 
 import pyray as rl
 
-from opendbc.sunnypilot.car.tesla.values import TeslaFlagsSP
+from opendbc.sunnypilot.car.tesla.values import MadsScreenButtonType, TeslaFlagsSP
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.vehicle.brands.base import BrandSettings
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app
@@ -246,9 +246,19 @@ class TeslaSettings(BrandSettings):
     self.mads_screen_button = multiple_button_item_sp(
       title=lambda: tr("MADS Screen Activation"),
       description="",
-      buttons=[lambda: tr("Off"), lambda: tr("3-Finger"), lambda: tr("4-Finger"), lambda: tr("5-Finger")],
+      buttons=[lambda: tr("Off"), lambda: tr("3-Finger"), lambda: tr("5-Finger")],
       param="TeslaMadsScreenButton",
       inline=False,
+    )
+    if self.mads_screen_button.action_item.selected_button == 3:
+      # Legacy 5-finger value from when the 4-finger option existed
+      ui_state.params.put("TeslaMadsScreenButton", MadsScreenButtonType.FIVE_FINGER)
+    self.touch_longitudinal_switch_toggle = toggle_item_sp(
+      title=tr("4-Finger Longitudinal Switch"),
+      param="TeslaTouchLongitudinalSwitch",
+      description=tr("A 4-finger touch on the infotainment screen toggles longitudinal control " +
+                     "between sunnypilot and Tesla stock ACC while engaged. Restart after changing."),
+      enabled=ui_state.is_offroad,
     )
     self.dynamic_auto_stock_toggle = toggle_item_sp(
       title=tr("Dynamic Auto Stock ACC"),
@@ -335,7 +345,7 @@ class TeslaSettings(BrandSettings):
       callback=self._show_mpc_settings,
       enabled=ui_state.is_offroad,
     )
-    self.items = [self.coop_steering_toggle, self.mads_screen_button,
+    self.items = [self.coop_steering_toggle, self.mads_screen_button, self.touch_longitudinal_switch_toggle,
                   self.camera_offset, self.reset_camera_offset,
                   self.ap_hybrid_toggle, self.dynamic_ap_longitudinal_toggle,
                   self.dynamic_auto_stock_toggle,
@@ -376,6 +386,7 @@ class TeslaSettings(BrandSettings):
     self.coop_steering_toggle.set_description(coop_steering_desc)
 
     self.coop_steering_toggle.action_item.set_enabled(ui_state.is_offroad())
+    self.touch_longitudinal_switch_toggle.action_item.set_enabled(ui_state.is_offroad())
     self.camera_offset.action_item.set_enabled(ui_state.is_offroad())
     self.reset_camera_offset.action_item.set_enabled(ui_state.is_offroad())
     self.ap_hybrid_toggle.action_item.set_enabled(ui_state.is_offroad() and ui_state.has_longitudinal_control)

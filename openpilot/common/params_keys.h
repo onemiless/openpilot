@@ -223,6 +223,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"SubaruStopAndGoManualParkingBrake", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaCoopSteering", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaMadsScreenButton", {PERSISTENT | BACKUP, INT, "0"}},
+    {"TeslaTouchLongitudinalSwitch", {PERSISTENT | BACKUP, BOOL, "1"}},  // 4-finger touch toggles SP/stock longitudinal
     {"TeslaApHybrid", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaAutoSpeedLimit", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaCanValidationLogging", {PERSISTENT | BACKUP, BOOL, "0"}},
