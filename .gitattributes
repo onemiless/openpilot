@@ -37,3 +37,10 @@ openpilot/selfdrive/assets/training/step17.png -filter=lfs -diff=lfs -merge=lfs
 openpilot/selfdrive/assets/training/step18.png -filter=lfs -diff=lfs -merge=lfs
 openpilot/sunnypilot/selfdrive/assets/images/lead_depart.png -filter=lfs -diff=lfs -merge=lfs
 openpilot/sunnypilot/selfdrive/assets/images/spinner_sunnypilot.png -filter=lfs -diff=lfs -merge=lfs
+
+# mihomo runtime assets are opaque binary databases/executables. Never run
+# text normalization or textual overlay/diff handling on them.
+third_party/mihomo/linux-arm64/mihomo binary
+third_party/mihomo/linux-arm64/*.dat binary
+third_party/mihomo/linux-arm64/*.metadb binary
+third_party/mihomo/linux-arm64/*.mmdb binary

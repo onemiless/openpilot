@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: E501  # The embedded HTML/CSS/JavaScript is intentionally compact.
 import json
 import threading
 import time

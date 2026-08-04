@@ -67,13 +67,15 @@ def get_gps_timestamp(timeout: float) -> int | None:
 def main():
   params = Params()
 
-  # Initial sync at boot — only needed if system clock is stale
-  if time.time() < 1740000000 and not params.get_bool("GpsTimeSyncDone"):
+  # Wall-clock time is deliberately used here: this process exists to compare
+  # and repair that clock. Clock changes must only happen while offroad.
+  system_time = time.time()  # noqa: TID251
+  if params.get_bool("IsOffroad") and system_time < 1740000000 and not params.get_bool("GpsTimeSyncDone"):
     cloudlog.info("GPS time sync: system clock is stale, waiting for initial GPS fix...")
     ts = get_gps_timestamp(timeout=INITIAL_FIX_TIMEOUT)
     if ts is not None:
-      cloudlog.info(f"GPS time sync: initial fix acquired, "
-                    f"timestamp={ts} ({time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(ts))} UTC)")
+      formatted_ts = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(ts))
+      cloudlog.info(f"GPS time sync: initial fix acquired, timestamp={ts} ({formatted_ts} UTC)")
       if set_system_time(ts):
         params.put_bool_nonblocking("GpsTimeSyncDone", True)
         cloudlog.info("GPS time sync: initial system clock set successfully")
@@ -83,18 +85,20 @@ def main():
   # Periodic sync loop — runs every 2 minutes to correct clock drift
   while True:
     time.sleep(SYNC_INTERVAL)
+    if not params.get_bool("IsOffroad"):
+      continue
 
     ts = get_gps_timestamp(timeout=PERIODIC_FIX_TIMEOUT)
     if ts is None:
       continue
 
     # Skip if system time is already accurate within threshold
-    if abs(time.time() - ts) <= MIN_TIME_DIFF:
+    system_time = time.time()  # noqa: TID251
+    if abs(system_time - ts) <= MIN_TIME_DIFF:
       continue
 
-    cloudlog.info(f"GPS time sync: periodic sync, "
-                  f"timestamp={ts} ({time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(ts))} UTC), "
-                  f"drift={time.time() - ts:.1f}s")
+    formatted_ts = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(ts))
+    cloudlog.info(f"GPS time sync: periodic sync, timestamp={ts} ({formatted_ts} UTC), drift={system_time - ts:.1f}s")
     if set_system_time(ts):
       cloudlog.info("GPS time sync: system clock updated")
 
