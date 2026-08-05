@@ -128,7 +128,7 @@ opendbc_repo/opendbc/safety/tests/test_tesla.py
 - **雷达启动较慢或 brownout**：旧实现通过 10 秒内多次发送及周期刷新缓解；需要实车确认 frame 时基。
 - **共享 bus 负载导致 Quality/Extended 丢帧**：旧 parser 支持部分周期挽救，但必须 replay 验证目标稳定性。
 - **未发送车辆运动输入**：旧实现仅配置和读取 ARS408，没有发送 speed/yaw motion frames；静止物过滤及相对速度质量依赖雷达自身状态，需实车验证 `RadarState_MotionRxState`。
-- **全车型无条件启用**：`interface.py` 会对 Tesla 候选统一设置 radar 可用。若 NEW 分支同时支持未安装 ARS408 的车辆，应在 Round 2 前决定是否需要显式硬件/参数开关；OLD 当前实现没有该开关。
+- **适用车型前提**：`cpv9-dev-tsl` 是外置 ARS408 专用分支，仅适用于已将 ARS408 接入 bus 1 的 Tesla。未安装该硬件的车辆不得使用此分支；controller 同时遵循 `CP.radarUnavailable`，避免未来平台条件禁用雷达后继续发送配置帧。
 
 ### 低风险
 

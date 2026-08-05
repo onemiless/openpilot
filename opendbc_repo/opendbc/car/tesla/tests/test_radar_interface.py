@@ -1,6 +1,9 @@
+import pytest
+
+from opendbc.can import CANPacker
 from opendbc.car import structs
 from opendbc.car.tesla.radar_interface import (
-  ARS408_EXTENDED, ARS408_GENERAL, ARS408_QUALITY, ARS408_TRACK_GRACE_CYCLES,
+  ARS408_ADDRESS_OFFSET, ARS408_BUS, ARS408_EXTENDED, ARS408_GENERAL, ARS408_QUALITY, ARS408_TRACK_GRACE_CYCLES,
   RadarInterface, object_is_usable,
 )
 
@@ -118,3 +121,33 @@ def test_partial_cycle_keeps_objects_with_both_general_and_quality_frames():
   assert set(objects) == {1}
   assert objects[1]["Obj_DistLong"] == 30.0
   assert objects[1]["Obj_ProbOfExist"] == 5
+
+
+def test_raw_sensor_id_five_can_cycle_produces_radar_point():
+  cp = structs.CarParams()
+  cp.radarUnavailable = False
+  radar = RadarInterface(cp)
+  packer = CANPacker("ARS408")
+
+  def shifted_frame(message, values):
+    address, data, bus = packer.make_can_msg(message, ARS408_BUS, values)
+    return address + ARS408_ADDRESS_OFFSET, data, bus
+
+  status = shifted_frame("Obj_0_Status", {"Obj_NofObjects": 1, "Obj_InterfaceVersion": 1})
+  general = shifted_frame("Obj_1_General", {
+    "Obj_ID": 7, "Obj_DistLong": 42.0, "Obj_DistLat": -1.5,
+    "Obj_VrelLong": -2.0, "Obj_VrelLat": 0.25, "Obj_DynProp": 0,
+  })
+  quality = shifted_frame("Obj_2_Quality", {"Obj_ID": 7, "Obj_ProbOfExist": 5, "Obj_MeasState": 2})
+
+  assert radar.update([(1_000_000_000, [status])]) is None
+  assert radar.update([(1_010_000_000, [general, quality])]) is None
+  result = radar.update([(1_070_000_000, [status])])
+
+  assert result is not None
+  assert len(result.points) == 1
+  assert result.points[0].trackId == 7
+  assert result.points[0].dRel == 42.0
+  assert result.points[0].yRel == pytest.approx(1.5, abs=0.11)
+  assert result.points[0].vRel == -2.0
+  assert result.points[0].measured

@@ -18,7 +18,7 @@ class CarController(CarControllerBase):
     self.apply_angle_last = 0
     self.packer = CANPacker(dbc_names[Bus.party])
     self.tesla_can = TeslaCAN(self.packer)
-    self.ars408_can = ARS408CAN()
+    self.ars408_can = None if CP.radarUnavailable else ARS408CAN()
 
   def update(self, CC, CS, now_nanos):
     actuators = CC.actuators
@@ -28,7 +28,7 @@ class CarController(CarControllerBase):
     # occasionally to recover from a radar power reset. The configuration is
     # volatile, so this does not wear EEPROM. No motion or collision-region
     # frames are transmitted on TeslaCAN.
-    if should_configure_radar(self.frame):
+    if self.ars408_can is not None and should_configure_radar(self.frame):
       can_sends.append(self.ars408_can.create_radar_configuration())
       can_sends.append(self.ars408_can.create_object_count_filter())
       log.info("ARS408 configuration refreshed on Tesla vehicle bus at frame %d", self.frame)

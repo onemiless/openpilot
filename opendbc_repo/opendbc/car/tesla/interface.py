@@ -22,6 +22,7 @@ class CarInterface(CarInterfaceBase):
     ret.steerAtStandstill = True
 
     ret.steerControlType = structs.CarParams.SteerControlType.angle
+    # cpv9-dev-tsl is dedicated to vehicles fitted with an external ARS408 on bus 1.
     ret.radarUnavailable = False
     ret.radarTimeStep = 1.0 / 14.0
 
