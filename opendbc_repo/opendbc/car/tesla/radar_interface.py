@@ -4,7 +4,9 @@ import math
 from opendbc.can import CANParser
 from opendbc.car import structs
 from opendbc.car.interfaces import RadarInterfaceBase
-from opendbc.car.tesla.ars408_can import ARS408_BUS, ARS408_MAX_DISTANCE, ARS408_SENSOR_ID
+from opendbc.car.tesla.ars408_can import (
+  ARS408_BUS, ARS408_MAX_DISTANCE, ARS408_SEND_EXTENDED, ARS408_SENSOR_ID,
+)
 
 
 ARS408_DBC = "ARS408"
@@ -24,12 +26,16 @@ ARS408_MESSAGES = {
   ARS408_QUALITY: (0x60C, "Obj_2_Quality", 7),
   ARS408_EXTENDED: (0x60D, "Obj_3_Extended", 8),
 }
-ARS408_MAX_OBJECTS = 100
+ARS408_PROTOCOL_MAX_OBJECTS = 100
 ARS408_OBJECT_CORRIDOR = 5.5
 ARS408_MIN_PROBABILITY = 3       # >= 75%
+ARS408_MIN_TRACKED_PROBABILITY = 2  # >= 50%, Toyota-style hysteresis for an existing track
 ARS408_MIN_STATIC_PROBABILITY = 5  # >= 99%
+ARS408_TRACK_GRACE_CYCLES = 2
 LOG_EVERY_CYCLES = 20
-CONFIG_GRACE_STATE_FRAMES = 5
+# RadarState is nominally 20 Hz. Cover the full ten-second boot/retry window
+# before turning a transient default configuration into a takeover event.
+CONFIG_GRACE_STATE_FRAMES = 220
 
 log = logging.getLogger(__name__)
 
@@ -43,12 +49,14 @@ def object_is_usable(obj, previously_tracked=False):
   yv_rel = float(obj["Obj_VrelLat"])
   dynamic_property = int(obj["Obj_DynProp"])
 
-  if measurement_state in (0, 4) or probability < ARS408_MIN_PROBABILITY:
+  min_probability = ARS408_MIN_TRACKED_PROBABILITY if previously_tracked else ARS408_MIN_PROBABILITY
+  if measurement_state in (0, 4) or probability < min_probability:
     return False
   # A predicted-only target must first have been observed by the interface.
   if measurement_state == 3 and not previously_tracked:
     return False
-  if not (0.0 <= d_rel <= 300.0 and abs(y_rel) <= 100.0 and -100.0 <= v_rel <= 100.0 and abs(yv_rel) <= 60.0):
+  if not (0.0 <= d_rel <= ARS408_MAX_DISTANCE and abs(y_rel) <= 100.0 and
+          -100.0 <= v_rel <= 100.0 and abs(yv_rel) <= 60.0):
     return False
 
   # ARS408 reports roadside infrastructure as stationary/candidate/crossing
@@ -87,6 +95,7 @@ class RadarInterface(RadarInterfaceBase):
     self.last_radar_state = None
     self.last_fault_signature = None
     self.radar_state_frames = 0
+    self.track_miss_counts = {}
 
   def _start_cycle(self):
     status = self.rcp.vl["Obj_0_Status"]
@@ -94,7 +103,7 @@ class RadarInterface(RadarInterfaceBase):
     self.cycle_frames = []
     self.part_ids = {address: set() for address in (ARS408_GENERAL, ARS408_QUALITY, ARS408_EXTENDED)}
     self.part_counts = {address: 0 for address in self.part_ids}
-    self.cycle_invalid = self.expected_objects > ARS408_MAX_OBJECTS or int(status["Obj_InterfaceVersion"]) != 1
+    self.cycle_invalid = self.expected_objects > ARS408_PROTOCOL_MAX_OBJECTS or int(status["Obj_InterfaceVersion"]) != 1
     self.cycle_started = True
 
   def _add_detail_frame(self, address, frame, object_id):
@@ -160,7 +169,7 @@ class RadarInterface(RadarInterfaceBase):
     wrong_config = int(state["RadarState_SensorID"]) != ARS408_SENSOR_ID or \
                    int(state["RadarState_OutputTypeCfg"]) != 1 or \
                    not int(state["RadarState_SendQualityCfg"]) or \
-                   not int(state["RadarState_SendExtInfoCfg"]) or \
+                   int(state["RadarState_SendExtInfoCfg"]) != int(ARS408_SEND_EXTENDED) or \
                    int(state["RadarState_CtrlRelayCfg"]) != 0 or \
                    int(state["RadarState_SortIndex"]) != 1 or \
                    int(state["RadarState_RCS_Threshold"]) != 0 or \
@@ -169,8 +178,8 @@ class RadarInterface(RadarInterfaceBase):
 
     ret.errors.radarUnavailableTemporary = temporary_fault
     ret.errors.radarFault = hard_fault
-    # The controller configures the radar during its first second. Reporting
-    # the power-on/default state as wrongConfig before those attempts complete
+    # The controller configures the radar throughout its first ten seconds.
+    # Reporting the power-on/default state before those attempts complete
     # invalidates liveTracks and causes an unnecessary takeover request.
     ret.errors.wrongConfig = wrong_config and self.radar_state_frames >= CONFIG_GRACE_STATE_FRAMES
     fault_signature = (temporary_fault, hard_fault, wrong_config, self.radar_state_frames < CONFIG_GRACE_STATE_FRAMES,
@@ -188,23 +197,32 @@ class RadarInterface(RadarInterfaceBase):
 
   def _decode_cycle(self, timestamp):
     self.rcp.update([(timestamp, self.cycle_frames)])
-    objects = {}
     core_decode_fields = {
       ARS408_GENERAL: (
         "Obj_ID", "Obj_DistLong", "Obj_DistLat", "Obj_VrelLong", "Obj_VrelLat", "Obj_RCS", "Obj_DynProp"),
       ARS408_QUALITY: ("Obj_ID", "Obj_ProbOfExist", "Obj_MeasState"),
     }
 
+    decoded_parts = {}
     for address, fields in core_decode_fields.items():
       message_name = ARS408_MESSAGES[address][1]
       values = self.rcp.vl_all[message_name]
       columns = [values[field] for field in fields]
-      if any(len(column) != self.expected_objects for column in columns):
+      if len({len(column) for column in columns}) != 1:
         return None
 
+      rows = {}
       for row in zip(*columns, strict=True):
-        obj = objects.setdefault(int(row[0]), {})
-        obj.update(dict(zip(fields[1:], row[1:], strict=True)))
+        rows[int(row[0])] = dict(zip(fields[1:], row[1:], strict=True))
+      decoded_parts[address] = rows
+
+    # A shared CAN bus can lose one lower-priority Quality frame without
+    # invalidating every other target. Only merge IDs present in both core
+    # messages; the caller applies a short grace period to missing IDs.
+    objects = {}
+    core_ids = set(decoded_parts[ARS408_GENERAL]) & set(decoded_parts[ARS408_QUALITY])
+    for object_id in core_ids:
+      objects[object_id] = decoded_parts[ARS408_GENERAL][object_id] | decoded_parts[ARS408_QUALITY][object_id]
 
     # Extended object frames have the lowest CAN priority in the ARS408
     # object list. Under high target load the radar can begin its next cycle
@@ -224,23 +242,30 @@ class RadarInterface(RadarInterfaceBase):
     return objects
 
   def _build_result(self, timestamp):
-    if not self._cycle_complete():
+    if self.cycle_invalid:
       return self._incomplete_result()
 
     cycle_objects = self._decode_cycle(timestamp)
-    if cycle_objects is None or len(cycle_objects) != self.expected_objects:
+    if cycle_objects is None:
       return self._incomplete_result()
 
-    self.incomplete_cycles = 0
-    self.last_logged_incomplete = 0
+    if not self._cycle_complete():
+      self.incomplete_cycles += 1
+      if self.incomplete_cycles == 1 or self.incomplete_cycles - self.last_logged_incomplete >= LOG_EVERY_CYCLES:
+        log.warning("ARS408 partial cycle salvaged: expected=%d general=%d quality=%d usable_pairs=%d consecutive=%d",
+                    self.expected_objects, self.part_counts[ARS408_GENERAL], self.part_counts[ARS408_QUALITY],
+                    len(cycle_objects), self.incomplete_cycles)
+        self.last_logged_incomplete = self.incomplete_cycles
+    else:
+      self.incomplete_cycles = 0
+      self.last_logged_incomplete = 0
     ret = structs.RadarData()
     if not self.rcp.can_valid:
       ret.errors.canError = True
     self._apply_radar_state_errors(ret)
 
     current_targets = set()
-    for object_id in self.part_ids[ARS408_GENERAL]:
-      obj = cycle_objects[object_id]
+    for object_id, obj in cycle_objects.items():
       d_rel = float(obj["Obj_DistLong"])
       y_rel = -float(obj["Obj_DistLat"])
       v_rel = float(obj["Obj_VrelLong"])
@@ -250,6 +275,7 @@ class RadarInterface(RadarInterfaceBase):
         continue
 
       current_targets.add(object_id)
+      self.track_miss_counts[object_id] = 0
       if object_id not in self.pts:
         self.pts[object_id] = structs.RadarData.RadarPoint()
         self.pts[object_id].trackId = object_id
@@ -268,7 +294,15 @@ class RadarInterface(RadarInterfaceBase):
 
     for object_id in list(self.pts):
       if object_id not in current_targets:
-        del self.pts[object_id]
+        missed_cycles = self.track_miss_counts.get(object_id, 0) + 1
+        self.track_miss_counts[object_id] = missed_cycles
+        if missed_cycles <= ARS408_TRACK_GRACE_CYCLES:
+          # Mirror Toyota's valid-count hysteresis: a one-frame confidence or
+          # list-size fluctuation must not destroy and recreate a real track.
+          self.pts[object_id].measured = False
+        else:
+          del self.pts[object_id]
+          self.track_miss_counts.pop(object_id, None)
 
     ret.points = list(self.pts.values())
     return ret
