@@ -1,9 +1,15 @@
+import logging
+
 import numpy as np
 from opendbc.can import CANPacker
 from opendbc.car import Bus, apply_std_steer_angle_limits
 from opendbc.car.interfaces import CarControllerBase
+from opendbc.car.tesla.ars408_can import ARS408CAN, should_configure_radar
 from opendbc.car.tesla.teslacan import TeslaCAN
 from opendbc.car.tesla.values import CarControllerParams
+
+
+log = logging.getLogger(__name__)
 
 
 class CarController(CarControllerBase):
@@ -12,10 +18,20 @@ class CarController(CarControllerBase):
     self.apply_angle_last = 0
     self.packer = CANPacker(dbc_names[Bus.party])
     self.tesla_can = TeslaCAN(self.packer)
+    self.ars408_can = ARS408CAN()
 
   def update(self, CC, CS, now_nanos):
     actuators = CC.actuators
     can_sends = []
+
+    # Configure the shared-bus ARS408 throughout its boot window and refresh
+    # occasionally to recover from a radar power reset. The configuration is
+    # volatile, so this does not wear EEPROM. No motion or collision-region
+    # frames are transmitted on TeslaCAN.
+    if should_configure_radar(self.frame):
+      can_sends.append(self.ars408_can.create_radar_configuration())
+      can_sends.append(self.ars408_can.create_object_count_filter())
+      log.info("ARS408 configuration refreshed on Tesla vehicle bus at frame %d", self.frame)
 
     # Disengage and allow for user override on high torque inputs
     # TODO: move this to a generic disengageRequested carState field and set CC.cruiseControl.cancel based on it

@@ -2,12 +2,14 @@ from opendbc.car import get_safety_config, structs
 from opendbc.car.interfaces import CarInterfaceBase
 from opendbc.car.tesla.carcontroller import CarController
 from opendbc.car.tesla.carstate import CarState
+from opendbc.car.tesla.radar_interface import RadarInterface
 from opendbc.car.tesla.values import TeslaSafetyFlags
 
 
 class CarInterface(CarInterfaceBase):
   CarState = CarState
   CarController = CarController
+  RadarInterface = RadarInterface
 
   @staticmethod
   def _get_params(ret: structs.CarParams, candidate, fingerprint, car_fw, alpha_long, is_release, docs) -> structs.CarParams:
@@ -20,7 +22,8 @@ class CarInterface(CarInterfaceBase):
     ret.steerAtStandstill = True
 
     ret.steerControlType = structs.CarParams.SteerControlType.angle
-    ret.radarUnavailable = True
+    ret.radarUnavailable = False
+    ret.radarTimeStep = 1.0 / 14.0
 
     ret.alphaLongitudinalAvailable = True
     if alpha_long:
