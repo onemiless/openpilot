@@ -5,10 +5,27 @@ This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
 import numpy as np
+from pathlib import Path
+import pytest
 
 from openpilot.common.transformations.camera import DEVICE_CAMERAS
 from openpilot.common.transformations.model import get_warp_matrix
 from openpilot.sunnypilot.modeld_v2.camera_offset_helper import CameraOffsetHelper
+
+
+MODEL_RUNNERS = (
+  Path(__file__).parents[3] / "selfdrive/modeld/modeld.py",
+  Path(__file__).parents[1] / "modeld.py",
+)
+
+
+@pytest.mark.parametrize("runner", MODEL_RUNNERS, ids=("stock", "tinygrad"))
+def test_model_runner_applies_camera_offset(runner):
+  source = runner.read_text()
+  assert "from openpilot.sunnypilot.modeld_v2.camera_offset_helper import CameraOffsetHelper" in source
+  assert "camera_offset_helper = CameraOffsetHelper()" in source
+  assert 'camera_offset_helper.set_offset(params.get("CameraOffset", return_default=True))' in source
+  assert "camera_offset_helper.update(" in source
 
 
 class MockStruct:
@@ -82,3 +99,17 @@ class TestCameraOffset:
     assert not np.array_equal(extra_out, extra_transform)
     assert main_out[0, 1] != 0.0
     assert main_out[0, 2] != 0.0
+
+  def test_update_uses_main_intrinsics_when_extra_wide_camera_is_unavailable(self):
+    sm = MockStruct(
+      deviceState=MockStruct(deviceType='mici'),
+      roadCameraState=MockStruct(sensor='os04c10'),
+      liveCalibration=MockStruct(rpyCalib=[0.0, 0.0, 0.0], height=[1.22])
+    )
+    transform = np.eye(3, dtype=np.float32)
+    self.camera_offset.set_offset(0.2)
+
+    _, extra_out = self.camera_offset.update(transform, transform, sm, False, False)
+    expected = CameraOffsetHelper.apply_camera_offset(transform, self.dc.fcam.intrinsics, 1.22, 0.02)
+
+    np.testing.assert_array_almost_equal(extra_out, expected)
