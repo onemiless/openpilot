@@ -120,12 +120,14 @@ class TeslaCanVisualization:
     self.object_frames: dict[int, tuple[dict[str, float], int, int]] = {}
     self.road_sign_frames: dict[int, tuple[dict[str, float], int, int]] = {}
     self.long_control_frames: dict[int, tuple[dict[str, float], int, int]] = {}
+    self.latest_long_control_frame: tuple[dict[str, float], int, int] | None = None
 
   def reset(self) -> None:
     self.frames.clear()
     self.object_frames.clear()
     self.road_sign_frames.clear()
     self.long_control_frames.clear()
+    self.latest_long_control_frame = None
 
   def update(self, can_packets: list[tuple[int, list[tuple[int, bytes, int]]]]) -> None:
     if not can_packets:
@@ -197,7 +199,11 @@ class TeslaCanVisualization:
           values = {name: samples[index] for name, samples in all_values.items() if index < len(samples)}
           previous = self.long_control_frames.get(stack)
           if timestamp and (previous is None or timestamp >= previous[1]):
-            self.long_control_frames[stack] = (values, timestamp, bus)
+            frame = (values, timestamp, bus)
+            self.long_control_frames[stack] = frame
+            # Samples inside one cereal CAN event share a timestamp. Preserve
+            # their wire order so the last multiplexed sample is current.
+            self.latest_long_control_frame = frame
 
   @staticmethod
   def _fresh(frame: tuple[dict[str, float], int, int] | None, now_ns: int, stale_ns: int = FRAME_STALE_NS) -> bool:
@@ -494,12 +500,6 @@ class TeslaCanVisualization:
   def _pedestrian_detection(self, now_ns: int) -> dict[str, Any]:
     frame = self._frame("APP_pedestrianDetection", now_ns)
     values = frame[0] if frame else {}
-    closest = []
-    for index in (1, 2, 3):
-      x = float(values.get(f"APP_closestPedestrian{index}dX", 0.0))
-      y = float(values.get(f"APP_closestPedestrian{index}dY", 0.0))
-      if x != 0.0 or y != 0.0:
-        closest.append({"index": index, "x_m": _round(x), "y_m": _round(y)})
     flags = {
       "front_main": _bool(values, "APP_pedestrianDetectedFrontMain"),
       "front_fisheye": _bool(values, "APP_pedestrianDetectedFrontFisheye"),
@@ -510,11 +510,22 @@ class TeslaCanVisualization:
       "right_repeater": _bool(values, "APP_pedestrianDetectedRightRepeater"),
       "backup": _bool(values, "APP_pedestrianDetectedBackup"),
     }
+    detected_any = bool(frame) and any(flags.values())
+    closest = []
+    if detected_any:
+      for index in (1, 2, 3):
+        x = float(values.get(f"APP_closestPedestrian{index}dX", 0.0))
+        y = float(values.get(f"APP_closestPedestrian{index}dY", 0.0))
+        # Both coordinates saturate at the DBC extrema in the idle frame.
+        # Coordinates are only meaningful while at least one camera flag is
+        # asserted, and saturated endpoints are still suppressed.
+        if (x != 0.0 or y != 0.0) and -12.8 < x < 12.4 and -12.8 < y < 12.4:
+          closest.append({"index": index, "x_m": _round(x), "y_m": _round(y)})
     return {
       "available": bool(frame),
       "bus": self._bus(frame),
       **flags,
-      "detected_any": bool(frame) and any(flags.values()),
+      "detected_any": detected_any,
       "closest": closest,
     }
 
@@ -549,25 +560,128 @@ class TeslaCanVisualization:
     frame = self._frame("DAS_integratedSafetyFront", now_ns)
     values = frame[0] if frame else {}
     distance = float(values.get("DAS_targetDistanceFront", 0.0))
-    target_present = bool(frame) and distance > 0.0
+    distance_valid = bool(frame) and _bool(values, "DAS_targetDistanceFrontQF")
+    target_present = distance_valid and 0.0 < distance < 12.7
     relative_velocity = float(values.get("DAS_relativeVelocityFront", 0.0))
     relative_accel = float(values.get("DAS_relativeAccelerationFront", 0.0))
     time_to_impact = float(values.get("DAS_timeToImpactFront", 0.0))
     impact_velocity = float(values.get("DAS_predictedImpactVelFront", 0.0))
     impact_overlap = float(values.get("DAS_predictedImpactOvrlapFront", 0.0))
+    tti_valid = target_present and _bool(values, "DAS_timeToImpactFrontQF") and 0.0 < time_to_impact < 511.0
+    velocity_valid = target_present and _bool(values, "DAS_relativeVelocityFrontQF") and relative_velocity > -32.0
+    accel_valid = target_present and _bool(values, "DAS_relativeAccelerationFrontQF") and relative_accel > -12.8
+    impact_velocity_valid = target_present and _bool(values, "DAS_predictedImpactVelFrontQF")
+    impact_overlap_valid = target_present and _bool(values, "DAS_predictedImpactOvrlapFrontQF")
+    imminent_valid = bool(frame) and _bool(values, "DAS_imminentCollisionFrontQF")
     return {
       "available": bool(frame),
       "bus": self._bus(frame),
+      "valid_target": target_present,
       "target_distance_m": _round(distance) if target_present else None,
-      "target_distance_quality": _bool(values, "DAS_targetDistanceFrontQF") if frame else False,
-      "relative_velocity_mps": _round(relative_velocity) if target_present and relative_velocity > -32.0 else None,
+      "target_distance_quality": distance_valid,
+      "relative_velocity_mps": _round(relative_velocity) if velocity_valid else None,
       "relative_velocity_quality": _bool(values, "DAS_relativeVelocityFrontQF") if frame else False,
-      "relative_acceleration_mps2": _round(relative_accel) if target_present and relative_accel > -12.8 else None,
-      "time_to_impact_s": _round(time_to_impact) if target_present and time_to_impact > 0.0 else None,
-      "imminent_collision": _bool(values, "DAS_imminentCollisionFront") if frame else False,
-      "predicted_impact_velocity_mps": _round(impact_velocity) if target_present and impact_velocity > 0.0 else None,
-      "predicted_impact_overlap_pct": _round(impact_overlap) if target_present and impact_overlap > 0.0 else None,
+      "relative_acceleration_mps2": _round(relative_accel) if accel_valid else None,
+      "time_to_impact_s": _round(time_to_impact) if tti_valid else None,
+      "imminent_collision": imminent_valid and _bool(values, "DAS_imminentCollisionFront"),
+      "predicted_impact_velocity_mps": _round(impact_velocity) if impact_velocity_valid else None,
+      "predicted_impact_overlap_pct": _round(impact_overlap) if impact_overlap_valid else None,
       "idf_enabled": _bool(values, "DAS_idfEnableFlag") if frame else False,
+    }
+
+  def _longitudinal_shadow(self, now_ns: int) -> dict[str, Any]:
+    latest = self.latest_long_control_frame if self._fresh(self.latest_long_control_frame, now_ns) else None
+    latest_values = latest[0] if latest else {}
+    current_stack = _int(latest_values, "DAS_longControlStack") if latest else None
+
+    torque_profile = self._long_control_frame(2, now_ns)
+    velocity_profile = self._long_control_frame(3, now_ns)
+    aeb = self._long_control_frame(4, now_ns)
+    pedal = self._long_control_frame(5, now_ns)
+    torque = self._long_control_frame(6, now_ns)
+    tp = torque_profile[0] if torque_profile else {}
+    vp = velocity_profile[0] if velocity_profile else {}
+    aeb_values = aeb[0] if aeb else {}
+    pedal_values = pedal[0] if pedal else {}
+    torque_values = torque[0] if torque else {}
+    aeb_state = _int(aeb_values, "DAS_aebControl_active") if aeb else None
+
+    return {
+      "available": bool(latest),
+      "bus": self._bus(latest),
+      "read_only": True,
+      "current_stack": LONG_CONTROL_STACKS.get(current_stack, "unknown") if current_stack is not None else None,
+      "current_stack_code": current_stack,
+      "gear_request": _int(latest_values, "DAS_gearRequest") if latest else None,
+      "torque_profiler": {
+        "available": bool(torque_profile),
+        "accel_min_mps2": _round(tp["DAS_torqueProfiler_accelMinPed"]) if "DAS_torqueProfiler_accelMinPed" in tp else None,
+        "accel_max_mps2": _round(tp["DAS_torqueProfiler_accelMaxPed"]) if "DAS_torqueProfiler_accelMaxPed" in tp else None,
+        "target_speed_kph": _round(tp["DAS_torqueProfiler_targetSpeedPed"]) if "DAS_torqueProfiler_targetSpeedPed" in tp else None,
+      },
+      "velocity_profile": {
+        "available": bool(velocity_profile),
+        "accel_mps2": _round(vp["DAS_velocityProfile_accelFwd_t0"]) if "DAS_velocityProfile_accelFwd_t0" in vp else None,
+        "future_target_speed_kph": _round(vp["DAS_velocityProfile_futureTargetSpeedFwd"]) if "DAS_velocityProfile_futureTargetSpeedFwd" in vp else None,
+        "calculation_delay_s": _round(vp["DAS_velocityProfile_calcDelay"], 3) if "DAS_velocityProfile_calcDelay" in vp else None,
+      },
+      "aeb": {
+        "available": bool(aeb) and aeb_state in (0, 1, 2),
+        "state": aeb_state,
+        "active": aeb_state == 2,
+        "target_accel_mps2": _round(aeb_values["DAS_aebControl_targetAccelDis"]) if aeb and aeb_state in (0, 1, 2) else None,
+      },
+      "pedal_control": {
+        "available": bool(pedal),
+        "accelerator_pct": _round(pedal_values["DAS_pedalControl_accelPedalPos"]) if "DAS_pedalControl_accelPedalPos" in pedal_values else None,
+        "brake_torque_nm": _round(pedal_values["DAS_pedalControl_brakeTorqueCommand"]) if "DAS_pedalControl_brakeTorqueCommand" in pedal_values else None,
+      },
+      "torque_control": {
+        "available": bool(torque),
+        "system_torque_nm": (_round(torque_values["DAS_torqueControl_sysTorqueCommandFwd"])
+                             if "DAS_torqueControl_sysTorqueCommandFwd" in torque_values else None),
+        "standstill_request": _bool(torque_values, "DAS_torqueControl_standstillRequest") if torque else False,
+      },
+    }
+
+  def _proximity_safety(self, now_ns: int) -> dict[str, Any]:
+    frame = self._frame("DAS_status2", now_ns)
+    values = frame[0] if frame else {}
+    severity = _int(values, "DAS_pmmObstacleSeverity") if frame else None
+    long_warning = _int(values, "DAS_longCollisionWarning") if frame else None
+    return {
+      "available": bool(frame),
+      "bus": self._bus(frame),
+      "read_only": True,
+      "obstacle_severity": severity if severity is not None and severity < 7 else None,
+      "long_collision_warning": long_warning if long_warning is not None and long_warning < 15 else None,
+      "ultrasonics_fault_reason": _int(values, "DAS_pmmUltrasonicsFaultReason") if frame else None,
+      "radar_fault_reason": _int(values, "DAS_pmmRadarFaultReason") if frame else None,
+      "camera_fault_reason": _int(values, "DAS_pmmCameraFaultReason") if frame else None,
+      "system_fault_reason": _int(values, "DAS_pmmSysFaultReason") if frame else None,
+      "activation_failure_status": _int(values, "DAS_activationFailureStatus") if frame else None,
+    }
+
+  def _parking_obstacle(self, now_ns: int) -> dict[str, Any]:
+    frame = self._frame("PARK_oocStatus", now_ns)
+    values = frame[0] if frame else {}
+    distance_cm = float(values.get("PARK_oocDistance", 511.0))
+    confidence = _int(values, "PARK_oocConfidence")
+    x_cm = float(values.get("PARK_oocVehicleX", 394.0))
+    y_cm = float(values.get("PARK_oocVehicleY", 126.0))
+    valid = bool(frame) and 0.0 <= distance_cm < 500.0 and 0 < confidence < 127
+    side_code = _int(values, "PARK_oocCollisionSide") if frame else None
+    return {
+      "available": bool(frame),
+      "bus": self._bus(frame),
+      "valid_obstacle": valid,
+      "distance_m": _round(distance_cm / 100.0) if valid else None,
+      "confidence": confidence if valid else None,
+      "x_m": _round(x_cm / 100.0) if valid and x_cm != 394.0 else None,
+      "y_m": _round(y_cm / 100.0) if valid and y_cm != 126.0 else None,
+      "collision_side": COLLISION_SIDES.get(side_code, "unknown") if valid else None,
+      "direct_echo_only": _bool(values, "PARK_oocDirectEchoOnly") if valid else False,
+      "untracked_time_s": _round(values["PARK_oocUntrackedTime"]) if valid else None,
     }
 
   def snapshot(self, now_ns: int | None = None) -> dict[str, Any]:
@@ -581,6 +695,9 @@ class TeslaCanVisualization:
     pedestrian_detection = self._pedestrian_detection(now_ns)
     blind_spot = self._blind_spot(now_ns)
     front_safety = self._front_safety(now_ns)
+    longitudinal_shadow = self._longitudinal_shadow(now_ns)
+    proximity_safety = self._proximity_safety(now_ns)
+    parking_obstacle = self._parking_obstacle(now_ns)
     buses = sorted({
       *(navigation.get("sources") or []),
       *(traffic.get("sources") or []),
@@ -591,12 +708,22 @@ class TeslaCanVisualization:
       *([pedestrian_detection["bus"]] if pedestrian_detection.get("bus") else []),
       *([blind_spot["bus"]] if blind_spot.get("bus") else []),
       *([front_safety["bus"]] if front_safety.get("bus") else []),
+      *([longitudinal_shadow["bus"]] if longitudinal_shadow.get("bus") else []),
+      *([proximity_safety["bus"]] if proximity_safety.get("bus") else []),
+      *([parking_obstacle["bus"]] if parking_obstacle.get("bus") else []),
     })
     return {
       "available": bool(navigation["available"] or lanes["available"] or vehicles or traffic["available"] or driver_assist["available"]
-                        or road_sign["available"] or pedestrian_detection["available"] or blind_spot["available"] or front_safety["available"]),
+                        or road_sign["available"] or pedestrian_detection["available"] or blind_spot["available"] or front_safety["available"]
+                        or longitudinal_shadow["available"] or proximity_safety["available"] or parking_obstacle["available"]),
       "dbc": DBC_NAME,
       "buses": buses,
+      "capabilities": {
+        "read_only": True,
+        "ch_bus_configured": self.ch_bus is not None,
+        "oem_object_list_available": bool(self.object_frames) and self.ch_bus is not None,
+        "control_integration_enabled": False,
+      },
       "navigation": navigation,
       "lanes": lanes,
       "vehicles": vehicles,
@@ -607,6 +734,9 @@ class TeslaCanVisualization:
       "pedestrian_detection": pedestrian_detection,
       "blind_spot": blind_spot,
       "front_safety": front_safety,
+      "longitudinal_shadow": longitudinal_shadow,
+      "proximity_safety": proximity_safety,
+      "parking_obstacle": parking_obstacle,
       "pedestrians": [vehicle for vehicle in vehicles if vehicle["type"] == "pedestrian"],
       "cyclists": [vehicle for vehicle in vehicles if vehicle["type"] in ("bicycle", "motorcycle")],
     }

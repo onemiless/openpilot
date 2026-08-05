@@ -21,7 +21,7 @@ def test_tesla_can_visualization_builds_scene_from_multiple_buses():
       "UI_inSuperchargerGeofence": 1,
       "UI_rejectNav": 1,
     }),
-    _frame(packer, "DAS_lanes", 2, {
+    _frame(packer, "DAS_lanes", 4, {
       "DAS_leftLaneExists": 1,
       "DAS_rightLaneExists": 1,
       "DAS_virtualLaneWidth": 3.5,
@@ -33,7 +33,7 @@ def test_tesla_can_visualization_builds_scene_from_multiple_buses():
       "DAS_leftLineUsage": 2,
       "DAS_rightLineUsage": 2,
     }),
-    _frame(packer, "APP_trafficControl", 0, {
+    _frame(packer, "APP_trafficControl", 2, {
       "APP_tcFeatureState": 3,
       "APP_tcStateMachine": 4,
       "APP_tcControlSource": 3,
@@ -43,7 +43,7 @@ def test_tesla_can_visualization_builds_scene_from_multiple_buses():
       "APP_tcVisionLight": 1,
       "APP_tcVisionLine": 1,
     }),
-    _frame(packer, "DAS_object", 2, {
+    _frame(packer, "DAS_object", 4, {
       "DAS_objectId": 0,
       "DAS_leadVehType": 2,
       "DAS_leadVehRelevantForControl": 1,
@@ -53,13 +53,13 @@ def test_tesla_can_visualization_builds_scene_from_multiple_buses():
       "DAS_leadVehId": 7,
     }),
   ]
-  visualization = TeslaCanVisualization()
+  visualization = TeslaCanVisualization(ch_bus=4)
   visualization.update([(1_000_000_000, frames)])
 
   scene = visualization.snapshot(1_100_000_000)
 
   assert scene["available"]
-  assert scene["buses"] == ["AP", "PARTY", "VEH"]
+  assert scene["buses"] == ["AP", "CH", "VEH"]
   assert scene["navigation"]["route_active"]
   assert scene["navigation"]["next_branch_distance_m"] == 120
   assert scene["navigation"]["speed_limit"] == 60
@@ -80,7 +80,7 @@ def test_tesla_can_visualization_builds_scene_from_multiple_buses():
 
 def test_tesla_can_visualization_hides_stale_optional_data():
   packer = CANPacker("tesla_modely_hw4_perception")
-  frame = _frame(packer, "APP_trafficControl", 0, {
+  frame = _frame(packer, "APP_trafficControl", 2, {
     "APP_tcFeatureState": 3,
     "APP_tcControlType": 3,
     "APP_tcControlDistance": 20,
@@ -96,13 +96,13 @@ def test_tesla_can_visualization_hides_stale_optional_data():
 
 def test_tesla_can_visualization_reset_discards_cached_vehicle_data():
   packer = CANPacker("tesla_modely_hw4_perception")
-  frame = _frame(packer, "DAS_object", 2, {
+  frame = _frame(packer, "DAS_object", 4, {
     "DAS_objectId": 0,
     "DAS_leadVehType": 2,
     "DAS_leadVehDx": 15,
     "DAS_leadVehId": 4,
   })
-  visualization = TeslaCanVisualization()
+  visualization = TeslaCanVisualization(ch_bus=4)
   visualization.update([(1_000_000_000, [frame])])
   assert visualization.snapshot(1_100_000_000)["vehicles"]
 
@@ -115,14 +115,14 @@ def test_tesla_can_visualization_hides_idle_traffic_control_without_light():
   values must not render as a green light a few meters ahead."""
   packer = CANPacker("tesla_modely_hw4_perception")
   frames = [
-    _frame(packer, "APP_trafficControl", 0, {
+    _frame(packer, "APP_trafficControl", 2, {
       "APP_tcFeatureState": 0,
       "APP_tcStateMachine": 0,
       "APP_tcControlType": 1,
       "APP_tcControlDistance": 1,
       "APP_tcControlLightState": 2,
     }),
-    _frame(packer, "DAS_object", 2, {
+    _frame(packer, "DAS_object", 4, {
       "DAS_objectId": 4,
       "DAS_roadSignId": 255,
       "DAS_roadSignStopLineDist": 1.0,
@@ -130,7 +130,7 @@ def test_tesla_can_visualization_hides_idle_traffic_control_without_light():
       "DAS_roadSignSource": 0,
     }),
   ]
-  visualization = TeslaCanVisualization()
+  visualization = TeslaCanVisualization(ch_bus=4)
   visualization.update([(1_000_000_000, frames)])
 
   traffic = visualization.snapshot(1_100_000_000)["traffic"]
@@ -146,11 +146,11 @@ def test_tesla_can_visualization_hides_idle_traffic_control_without_light():
 
 def test_tesla_can_visualization_traffic_light_sign_gates_stop_line_and_arrow():
   packer = CANPacker("tesla_modely_hw4_perception")
-  visualization = TeslaCanVisualization()
+  visualization = TeslaCanVisualization(ch_bus=4)
 
   def sign_traffic(sign_values):
     visualization.reset()
-    visualization.update([(1_000_000_000, [_frame(packer, "DAS_object", 2, {"DAS_objectId": 4, **sign_values})])])
+    visualization.update([(1_000_000_000, [_frame(packer, "DAS_object", 4, {"DAS_objectId": 4, **sign_values})])])
     return visualization.snapshot(1_100_000_000)["traffic"]
 
   invalid = sign_traffic({
@@ -179,8 +179,8 @@ def test_tesla_can_visualization_rear_uses_live_flags_not_trip_latches():
   packer = CANPacker("tesla_modely_hw4_perception")
 
   def rear_snapshot(**flags):
-    visualization = TeslaCanVisualization()
-    visualization.update([(1_000_000_000, [_frame(packer, "DAS_visualDebug", 2, flags)])])
+    visualization = TeslaCanVisualization(ch_bus=4)
+    visualization.update([(1_000_000_000, [_frame(packer, "DAS_visualDebug", 4, flags)])])
     return visualization.snapshot(1_100_000_000)["rear_vehicles"]
 
   only_trip = rear_snapshot(DAS_rearLeftVehDetectedTrip=1, DAS_rearRightVehDetectedTrip=1)
@@ -199,12 +199,12 @@ def test_tesla_can_visualization_rear_uses_live_flags_not_trip_latches():
 def test_tesla_can_visualization_decodes_road_sign_pedestrian_blind_spot_and_front_safety():
   packer = CANPacker("tesla_modely_hw4_perception")
   frames = [
-    _frame(packer, "UI_driverAssistRoadSign", 2, {
+    _frame(packer, "UI_driverAssistRoadSign", 4, {
       "UI_roadSign": 1,
       "UI_stopSignStopLineDist": 12.0,
       "UI_stopSignStopLineConf": 100,
     }),
-    _frame(packer, "UI_driverAssistRoadSign", 2, {
+    _frame(packer, "UI_driverAssistRoadSign", 4, {
       "UI_roadSign": 2,
       "UI_trafficLightStopLineDist": 30.0,
       "UI_trafficLightStopLineConf": 90,
@@ -216,20 +216,24 @@ def test_tesla_can_visualization_decodes_road_sign_pedestrian_blind_spot_and_fro
       "APP_closestPedestrian1dY": -1.6,
       "APP_closestPedestrian2dX": 5.0,
     }),
-    _frame(packer, "DAS_status", 0, {
+    _frame(packer, "DAS_status", 2, {
       "DAS_blindSpotRearLeft": 2,
       "DAS_blindSpotRearRight": 1,
       "DAS_sideCollisionWarning": 1,
       "DAS_forwardCollisionWarning": 1,
     }),
-    _frame(packer, "DAS_integratedSafetyFront", 0, {
+    _frame(packer, "DAS_integratedSafetyFront", 2, {
       "DAS_targetDistanceFront": 12.0,
+      "DAS_targetDistanceFrontQF": 1,
       "DAS_relativeVelocityFront": -4.0,
+      "DAS_relativeVelocityFrontQF": 1,
       "DAS_timeToImpactFront": 30,
+      "DAS_timeToImpactFrontQF": 1,
       "DAS_predictedImpactOvrlapFront": 62.5,
+      "DAS_predictedImpactOvrlapFrontQF": 1,
     }),
   ]
-  visualization = TeslaCanVisualization()
+  visualization = TeslaCanVisualization(ch_bus=4)
   visualization.update([(1_000_000_000, frames)])
 
   scene = visualization.snapshot(1_100_000_000)
@@ -267,8 +271,8 @@ def test_tesla_can_visualization_decodes_road_sign_pedestrian_blind_spot_and_fro
 def test_tesla_can_visualization_gates_road_sign_stop_line_sna():
   """Idle/SNA road sign frames must not produce a bogus stop line distance."""
   packer = CANPacker("tesla_modely_hw4_perception")
-  visualization = TeslaCanVisualization()
-  visualization.update([(1_000_000_000, [_frame(packer, "UI_driverAssistRoadSign", 2, {
+  visualization = TeslaCanVisualization(ch_bus=4)
+  visualization.update([(1_000_000_000, [_frame(packer, "UI_driverAssistRoadSign", 4, {
     "UI_roadSign": 2,
     "UI_trafficLightStopLineDist": -8.0,
     "UI_trafficLightStopLineConf": 0,
@@ -333,3 +337,88 @@ def test_tesla_can_visualization_requires_front_safety_quality_flags():
   assert front_safety["time_to_impact_s"] is None
   assert front_safety["predicted_impact_overlap_pct"] is None
   assert not front_safety["imminent_collision"]
+
+
+def test_tesla_can_visualization_decodes_read_only_longitudinal_shadow():
+  packer = CANPacker("tesla_modely_hw4_perception")
+  frames = [
+    _frame(packer, "DAS_longControl", 2, {
+      "DAS_longControlStack": 2,
+      "DAS_torqueProfiler_accelMinPed": -3.0,
+      "DAS_torqueProfiler_accelMaxPed": 1.0,
+      "DAS_torqueProfiler_targetSpeedPed": 80.0,
+    }),
+    _frame(packer, "DAS_longControl", 2, {
+      "DAS_longControlStack": 4,
+      "DAS_aebControl_active": 2,
+      "DAS_aebControl_targetAccelDis": -3.0,
+    }),
+  ]
+  visualization = TeslaCanVisualization()
+  visualization.update([(1_000_000_000, frames)])
+
+  shadow = visualization.snapshot(1_100_000_000)["longitudinal_shadow"]
+  assert shadow["available"]
+  assert shadow["read_only"]
+  assert shadow["current_stack"] == "aeb_control"
+  assert shadow["torque_profiler"]["target_speed_kph"] == 80.0
+  assert shadow["aeb"]["active"]
+  assert shadow["aeb"]["target_accel_mps2"] == -3.0
+
+
+def test_tesla_can_visualization_decodes_valid_parking_obstacle_and_pmm_status():
+  packer = CANPacker("tesla_modely_hw4_perception")
+  frames = [
+    _frame(packer, "PARK_oocStatus", 1, {
+      "PARK_oocDistance": 180,
+      "PARK_oocConfidence": 90,
+      "PARK_oocVehicleX": 50,
+      "PARK_oocVehicleY": -20,
+      "PARK_oocCollisionSide": 1,
+      "PARK_oocUntrackedTime": 0.2,
+    }),
+    _frame(packer, "DAS_status2", 2, {
+      "DAS_pmmObstacleSeverity": 3,
+      "DAS_longCollisionWarning": 2,
+      "DAS_pmmUltrasonicsFaultReason": 0,
+    }),
+  ]
+  visualization = TeslaCanVisualization()
+  visualization.update([(1_000_000_000, frames)])
+
+  scene = visualization.snapshot(1_100_000_000)
+  obstacle = scene["parking_obstacle"]
+  assert obstacle["available"]
+  assert obstacle["valid_obstacle"]
+  assert obstacle["distance_m"] == 1.8
+  assert obstacle["x_m"] == 0.5
+  assert obstacle["y_m"] == -0.2
+  assert obstacle["collision_side"] == "right"
+
+  proximity = scene["proximity_safety"]
+  assert proximity["available"]
+  assert proximity["read_only"]
+  assert proximity["obstacle_severity"] == 3
+  assert proximity["long_collision_warning"] == 2
+
+
+def test_tesla_can_visualization_exposes_ch_objects_only_when_ch_source_is_configured():
+  packer = CANPacker("tesla_modely_hw4_perception")
+  frame = _frame(packer, "DAS_object", 4, {
+    "DAS_objectId": 2,
+    "DAS_rightVehType": 2,
+    "DAS_rightVehDx": 8.0,
+    "DAS_rightVehDy": -2.0,
+    "DAS_rightVehId": 12,
+  })
+  visualization = TeslaCanVisualization(ch_bus=4)
+  visualization.update([(1_000_000_000, [frame])])
+
+  scene = visualization.snapshot(1_100_000_000)
+  assert scene["capabilities"]["ch_bus_configured"]
+  assert scene["capabilities"]["oem_object_list_available"]
+  assert not scene["capabilities"]["control_integration_enabled"]
+  assert scene["vehicles"][0]["category"] == "right"
+  assert scene["vehicles"][0]["x_m"] == 8.0
+  assert scene["vehicles"][0]["y_m"] == -2.1
+  assert scene["vehicles"][0]["track_id"] == 12
