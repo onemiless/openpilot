@@ -12,8 +12,7 @@ from openpilot.common.params import Params
 from openpilot.common.hardware import HARDWARE
 from openpilot.common.swaglog import cloudlog
 from openpilot.system.hardware.offline_wake import (
-  clear_panda_bootkick_test_sentinel, offline_wake_debug_enabled,
-  offline_wake_debug_log as _offline_wake_debug_log,
+  clear_panda_bootkick_test_sentinel, offline_wake_debug_log as _offline_wake_debug_log,
 )
 
 from openpilot.sunnypilot.selfdrive.pandad.rivian_long_flasher import flash_rivian_long
@@ -24,9 +23,6 @@ def offline_wake_debug_log(message: str) -> None:
 
 
 def log_offline_wake_state(panda: Panda, serial: str) -> None:
-  if not offline_wake_debug_enabled():
-    return
-
   try:
     wake_success = panda.wake_success()
     wake_debug = panda.wake_debug()

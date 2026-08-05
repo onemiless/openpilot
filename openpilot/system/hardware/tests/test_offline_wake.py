@@ -55,6 +55,16 @@ def test_wake_monitor_ready_requires_firmware_magic_and_armed_stage() -> None:
   assert offline_wake.PANDA_WAKE_MONITOR_ARMED_STAGE == Panda.WAKE_MONITOR_ARMED_STAGE
 
 
+def test_debug_log_is_created_automatically(tmp_path, monkeypatch) -> None:
+  log_path = tmp_path / "offline_wake_debug.log"
+  monkeypatch.setattr(offline_wake, "OFFLINE_WAKE_DEBUG_LOG", str(log_path))
+
+  offline_wake.offline_wake_debug_log("test", "wake monitor armed")
+
+  assert log_path.exists()
+  assert "test wake monitor armed" in log_path.read_text()
+
+
 def test_hardwared_fallback_reenables_heartbeat_before_arming(monkeypatch) -> None:
   import panda as panda_module
 

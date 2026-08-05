@@ -10,7 +10,6 @@
 #include <memory>
 #include <thread>
 #include <utility>
-#include <unistd.h>
 
 #include "openpilot/cereal/gen/cpp/car.capnp.h"
 #include "openpilot/cereal/messaging/messaging.h"
@@ -35,13 +34,7 @@ struct HwmonState {
 
 HwmonState hwmon_state;
 
-static constexpr char OFFLINE_WAKE_DEBUG_SENTINEL[] = "/data/enable_offline_wake_debug";
-
 void offline_wake_debug_log(const std::string &message) {
-  if (access(OFFLINE_WAKE_DEBUG_SENTINEL, F_OK) != 0) {
-    return;
-  }
-
   std::ofstream log("/data/offline_wake_debug.log", std::ios::app);
   if (!log.is_open()) {
     return;
