@@ -10,6 +10,7 @@ from openpilot.common.params import Params
 from openpilot.common.realtime import drop_realtime
 from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.ui.lib.prime_state import PrimeState
+from openpilot.selfdrive.ui.state_helpers import onroad_ui_active
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.common.hardware import HARDWARE, PC
 
@@ -157,8 +158,9 @@ class UIState(UIStateSP):
     elif not self.sm.alive["wideRoadCameraState"] or not self.sm.valid["wideRoadCameraState"]:
       self.light_sensor = -1
 
-    # Update started state
-    self.started = self.sm["deviceState"].started and self.ignition
+    # Tesla can remain powered for a long time after selecting Park. Keep the
+    # driving processes alive, but return the display to settings mode in Park.
+    self.started = onroad_ui_active(self.sm["deviceState"].started, self.ignition, self.sm["carState"].gearShifter)
 
     # Update body state
     if self.CP is not None and self.is_body != self.CP.notCar:

@@ -27,6 +27,11 @@ def tesla_ap_control_state(flags: int, is_tesla: bool) -> tuple[bool, bool]:
   return ap_longitudinal, ap_lateral
 
 
+def smart_cruise_label_dimensions(_name: str) -> tuple[int, int, int]:
+  """Return the original font size, vertical padding, and box width."""
+  return 36, 5, 160
+
+
 class SmartCruiseControlRenderer(Widget):
   def __init__(self):
     super().__init__()
@@ -70,10 +75,7 @@ class SmartCruiseControlRenderer(Widget):
 
   def _draw_icon(self, rect_center_x, rect_height, x_offset, y_offset, name, alpha=1.0):
     text = name
-    is_dynamic_acc_label = text in ("AP", "ACC", "SCC-V")
-    font_size = 72 if is_dynamic_acc_label else 36
-    padding_v = 10 if is_dynamic_acc_label else 5
-    box_width = 320 if is_dynamic_acc_label else 160
+    font_size, padding_v, box_width = smart_cruise_label_dimensions(text)
 
     sz = measure_text_cached(self.font, text, font_size)
     box_height = int(sz.y + padding_v * 2)

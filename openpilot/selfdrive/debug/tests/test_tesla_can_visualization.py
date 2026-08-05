@@ -278,3 +278,58 @@ def test_tesla_can_visualization_gates_road_sign_stop_line_sna():
   assert road_sign["available"]
   assert road_sign["traffic_light_stop_line_distance_m"] is None
   assert road_sign["traffic_light_stop_line_confidence"] is None
+
+
+def test_tesla_can_visualization_rejects_same_address_from_wrong_physical_bus():
+  """0x30A on PARTY is not the CH DAS_object message."""
+  packer = CANPacker("tesla_modely_hw4_perception")
+  visualization = TeslaCanVisualization()
+  visualization.update([(1_000_000_000, [_frame(packer, "DAS_object", 0, {
+    "DAS_objectId": 0,
+    "DAS_leadVehType": 2,
+    "DAS_leadVehDx": 8.0,
+    "DAS_leadVehId": 7,
+  })])])
+
+  scene = visualization.snapshot(1_100_000_000)
+  assert scene["vehicles"] == []
+  assert "PARTY" not in scene["buses"]
+
+
+def test_tesla_can_visualization_hides_pedestrian_coordinates_without_detection_flag():
+  """The 12.4 m coordinate is a saturated idle/SNA value, not a pedestrian."""
+  packer = CANPacker("tesla_modely_hw4_perception")
+  visualization = TeslaCanVisualization()
+  visualization.update([(1_000_000_000, [_frame(packer, "APP_pedestrianDetection", 1, {
+    "APP_closestPedestrian1dX": 12.4,
+    "APP_closestPedestrian1dY": 12.4,
+    "APP_closestPedestrian2dX": 12.4,
+    "APP_closestPedestrian2dY": 12.4,
+    "APP_closestPedestrian3dX": 12.4,
+    "APP_closestPedestrian3dY": 12.4,
+  })])])
+
+  pedestrians = visualization.snapshot(1_100_000_000)["pedestrian_detection"]
+  assert pedestrians["available"]
+  assert not pedestrians["detected_any"]
+  assert pedestrians["closest"] == []
+
+
+def test_tesla_can_visualization_requires_front_safety_quality_flags():
+  packer = CANPacker("tesla_modely_hw4_perception")
+  visualization = TeslaCanVisualization()
+  visualization.update([(1_000_000_000, [_frame(packer, "DAS_integratedSafetyFront", 2, {
+    "DAS_targetDistanceFront": 12.0,
+    "DAS_relativeVelocityFront": -4.0,
+    "DAS_timeToImpactFront": 30.0,
+    "DAS_predictedImpactOvrlapFront": 62.5,
+    "DAS_imminentCollisionFront": 1,
+  })])])
+
+  front_safety = visualization.snapshot(1_100_000_000)["front_safety"]
+  assert front_safety["available"]
+  assert front_safety["target_distance_m"] is None
+  assert front_safety["relative_velocity_mps"] is None
+  assert front_safety["time_to_impact_s"] is None
+  assert front_safety["predicted_impact_overlap_pct"] is None
+  assert not front_safety["imminent_collision"]

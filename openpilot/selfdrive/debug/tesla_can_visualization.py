@@ -13,18 +13,26 @@ from opendbc.can import CANParser
 
 
 DBC_NAME = "tesla_modely_hw4_perception"
-MESSAGE_NAMES = (
+VEH_MESSAGES = (
   "UI_driverAssistMapData",
+  "PARK_oocStatus",
+  "APP_pedestrianDetection",
+)
+PARTY_MESSAGES = (
+  "APP_trafficControl",
+  "DAS_longControl",
+  "DAS_status2",
+  "DAS_status",
+  "DAS_integratedSafetyFront",
+)
+CH_MESSAGES = (
   "DAS_visualDebug",
   "DAS_lanes",
-  "APP_trafficControl",
   "UI_driverAssistRoadSign",
-  "APP_pedestrianDetection",
-  "DAS_status",
   "DAS_statusCH",
-  "DAS_integratedSafetyFront",
   "DAS_object",
 )
+MESSAGE_NAMES = (*VEH_MESSAGES, *PARTY_MESSAGES, *CH_MESSAGES)
 BUS_NAMES = {0: "PARTY", 1: "VEH", 2: "AP"}
 FRAME_STALE_NS = 2_000_000_000
 NAV_STALE_NS = 5_000_000_000
@@ -62,6 +70,11 @@ PLANNER_STATES = {
 BEHAVIOR_TYPES = {0: "invalid", 1: "in_lane", 2: "lane_change_left", 3: "lane_change_right"}
 HEALTH_STATES = {0: "unavailable", 1: "nominal", 2: "degraded", 3: "severely_degraded", 4: "aborting", 5: "fault"}
 ROAD_SURFACES = {0: "unknown", 1: "normal", 2: "enhanced"}
+LONG_CONTROL_STACKS = {
+  0: "none", 1: "reserved", 2: "torque_profiler", 3: "velocity_profile",
+  4: "aeb_control", 5: "pedal_control", 6: "torque_control", 7: "sna",
+}
+COLLISION_SIDES = {0: "none", 1: "right", 2: "left", 3: "front", 4: "rear", 5: "unknown", 7: "sna"}
 
 
 def _round(value: float, digits: int = 2) -> float:
@@ -79,25 +92,49 @@ def _bool(values: dict[str, float], name: str) -> bool:
 class TeslaCanVisualization:
   """Decode optional OEM context without participating in vehicle control."""
 
-  def __init__(self, buses: tuple[int, ...] = (0, 1, 2)) -> None:
-    optional_messages = [(name, math.nan) for name in MESSAGE_NAMES]
-    self.parsers = {bus: CANParser(DBC_NAME, optional_messages, bus) for bus in buses}
+  def __init__(self, buses: tuple[int, ...] = (0, 1, 2), ch_bus: int | None = None) -> None:
+    if ch_bus in (1, 2):
+      raise ValueError("CH must use a dedicated CAN source, not VEH or AP-PARTY")
+
+    # The harness exposes VEH on source 1 and the Autopilot side of PARTY on
+    # source 2. CH is not present on the stock three-bus Panda connection. A
+    # DBC must never be applied by address alone across these networks: e.g.
+    # PARTY also carries 0x30A, but it is not the CH DAS_object message.
+    self.ch_bus = ch_bus
+    enabled_buses = set(buses)
+    message_buses: dict[int, tuple[str, ...]] = {}
+    if 1 in enabled_buses:
+      message_buses[1] = VEH_MESSAGES
+    if 2 in enabled_buses:
+      message_buses[2] = PARTY_MESSAGES
+    if ch_bus is not None:
+      message_buses[ch_bus] = CH_MESSAGES
+
+    self.parser_messages = message_buses
+    self.bus_names = {**BUS_NAMES, **({ch_bus: "CH"} if ch_bus is not None else {})}
+    self.parsers = {
+      bus: CANParser(DBC_NAME, [(name, math.nan) for name in names], bus)
+      for bus, names in message_buses.items()
+    }
     self.frames: dict[str, tuple[dict[str, float], int, int]] = {}
     self.object_frames: dict[int, tuple[dict[str, float], int, int]] = {}
     self.road_sign_frames: dict[int, tuple[dict[str, float], int, int]] = {}
+    self.long_control_frames: dict[int, tuple[dict[str, float], int, int]] = {}
 
   def reset(self) -> None:
     self.frames.clear()
     self.object_frames.clear()
     self.road_sign_frames.clear()
+    self.long_control_frames.clear()
 
   def update(self, can_packets: list[tuple[int, list[tuple[int, bytes, int]]]]) -> None:
     if not can_packets:
       return
     for bus, parser in self.parsers.items():
       updated = parser.update(can_packets)
-      for name in MESSAGE_NAMES[:-1]:
-        if name == "UI_driverAssistRoadSign":
+      message_names = self.parser_messages[bus]
+      for name in message_names:
+        if name in ("UI_driverAssistRoadSign", "DAS_object", "DAS_longControl"):
           continue
         message = parser.dbc.name_to_msg[name]
         if message.address not in updated:
@@ -109,7 +146,10 @@ class TeslaCanVisualization:
 
       # UI_driverAssistRoadSign is multiplexed on UI_roadSign (1=stop sign
       # group, 2=traffic light group, 3/4=map/fleet speed groups, 5=spline id).
-      road_sign_address = parser.dbc.name_to_msg["UI_driverAssistRoadSign"].address
+      if "UI_driverAssistRoadSign" in message_names:
+        road_sign_address = parser.dbc.name_to_msg["UI_driverAssistRoadSign"].address
+      else:
+        road_sign_address = -1
       if road_sign_address in updated:
         all_values = parser.vl_all["UI_driverAssistRoadSign"]
         mux_ids = all_values.get("UI_roadSign", [])
@@ -123,20 +163,41 @@ class TeslaCanVisualization:
           if timestamp and (previous is None or timestamp >= previous[1]):
             self.road_sign_frames[mux_id] = (values, timestamp, bus)
 
-      object_address = parser.dbc.name_to_msg["DAS_object"].address
+      if "DAS_object" not in message_names:
+        object_address = -1
+      else:
+        object_address = parser.dbc.name_to_msg["DAS_object"].address
       if object_address not in updated:
-        continue
-      all_values = parser.vl_all["DAS_object"]
-      object_ids = all_values.get("DAS_objectId", [])
-      timestamp = max(parser.ts_nanos["DAS_object"].values(), default=0)
-      for index, object_id_value in enumerate(object_ids):
-        object_id = int(object_id_value)
-        if not 0 <= object_id <= 5:
-          continue
-        values = {name: samples[index] for name, samples in all_values.items() if index < len(samples)}
-        previous = self.object_frames.get(object_id)
-        if previous is None or timestamp >= previous[1]:
-          self.object_frames[object_id] = (values, timestamp, bus)
+        pass
+      else:
+        all_values = parser.vl_all["DAS_object"]
+        object_ids = all_values.get("DAS_objectId", [])
+        timestamp = max(parser.ts_nanos["DAS_object"].values(), default=0)
+        for index, object_id_value in enumerate(object_ids):
+          object_id = int(object_id_value)
+          if not 0 <= object_id <= 5:
+            continue
+          values = {name: samples[index] for name, samples in all_values.items() if index < len(samples)}
+          previous = self.object_frames.get(object_id)
+          if previous is None or timestamp >= previous[1]:
+            self.object_frames[object_id] = (values, timestamp, bus)
+
+      if "DAS_longControl" not in message_names:
+        long_control_address = -1
+      else:
+        long_control_address = parser.dbc.name_to_msg["DAS_longControl"].address
+      if long_control_address in updated:
+        all_values = parser.vl_all["DAS_longControl"]
+        stack_ids = all_values.get("DAS_longControlStack", [])
+        timestamp = max(parser.ts_nanos["DAS_longControl"].values(), default=0)
+        for index, stack_value in enumerate(stack_ids):
+          stack = int(stack_value)
+          if not 0 <= stack <= 7:
+            continue
+          values = {name: samples[index] for name, samples in all_values.items() if index < len(samples)}
+          previous = self.long_control_frames.get(stack)
+          if timestamp and (previous is None or timestamp >= previous[1]):
+            self.long_control_frames[stack] = (values, timestamp, bus)
 
   @staticmethod
   def _fresh(frame: tuple[dict[str, float], int, int] | None, now_ns: int, stale_ns: int = FRAME_STALE_NS) -> bool:
@@ -150,9 +211,12 @@ class TeslaCanVisualization:
     frame = self.object_frames.get(mux)
     return frame if self._fresh(frame, now_ns) else None
 
-  @staticmethod
-  def _bus(frame: tuple[dict[str, float], int, int] | None) -> str | None:
-    return BUS_NAMES.get(frame[2], str(frame[2])) if frame else None
+  def _long_control_frame(self, mux: int, now_ns: int) -> tuple[dict[str, float], int, int] | None:
+    frame = self.long_control_frames.get(mux)
+    return frame if self._fresh(frame, now_ns) else None
+
+  def _bus(self, frame: tuple[dict[str, float], int, int] | None) -> str | None:
+    return self.bus_names.get(frame[2], str(frame[2])) if frame else None
 
   def _navigation(self, now_ns: int) -> dict[str, Any]:
     map_frame = self._frame("UI_driverAssistMapData", now_ns, NAV_STALE_NS)
