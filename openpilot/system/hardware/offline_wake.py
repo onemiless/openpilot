@@ -6,11 +6,12 @@ from contextlib import contextmanager
 
 
 OFFLINE_WAKE_DEBUG_LOG = "/data/offline_wake_debug.log"
-# Set to True temporarily when another offline-wake trace is required.
-OFFLINE_WAKE_DEBUG_LOGGING_ENABLED = False
+OFFLINE_WAKE_DEBUG_SENTINEL = "/data/enable_offline_wake_debug"
 PANDA_BOOTKICK_TEST_SENTINEL = "/data/panda_bootkick_test_pending"
 PANDA_BOOTKICK_TEST_TTL = 10 * 60
 OFFLINE_SHUTDOWN_BUS1_QUIET_S = 300.0
+PANDA_WAKE_DEBUG_MAGIC = 0x57414B48
+PANDA_WAKE_MONITOR_ARMED_STAGE = 0x30
 
 
 class CanShutdownGate:
@@ -38,6 +39,11 @@ def acknowledge_panda_wake_monitor(params) -> None:
   params.put_bool("PandaWakeMonitorAck", True, block=True)
 
 
+def panda_wake_monitor_ready(wake_debug: dict | None) -> bool:
+  return wake_debug is not None and wake_debug.get("magic") == PANDA_WAKE_DEBUG_MAGIC \
+    and wake_debug.get("stage") == PANDA_WAKE_MONITOR_ARMED_STAGE
+
+
 @contextmanager
 def _panda_bootkick_test_lock() -> Generator[None, None, None]:
   lock_path = f"{PANDA_BOOTKICK_TEST_SENTINEL}.lock"
@@ -50,8 +56,12 @@ def _panda_bootkick_test_lock() -> Generator[None, None, None]:
     os.close(fd)
 
 
+def offline_wake_debug_enabled() -> bool:
+  return os.path.exists(OFFLINE_WAKE_DEBUG_SENTINEL)
+
+
 def offline_wake_debug_log(process: str, message: str) -> None:
-  if not OFFLINE_WAKE_DEBUG_LOGGING_ENABLED:
+  if not offline_wake_debug_enabled():
     return
 
   try:

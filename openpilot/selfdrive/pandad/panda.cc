@@ -130,8 +130,12 @@ void Panda::set_power_saving(bool power_saving) {
   handle->control_write(0xe7, power_saving, 0);
 }
 
-void Panda::enable_deepsleep() {
-  handle->control_write(0xfb, 0, 0);
+std::optional<wake_debug_t> Panda::enable_deepsleep() {
+  handle->control_write(PANDA_REQUEST_ENABLE_WAKE_MONITOR, 0, 0);
+
+  wake_debug_t wake_debug = {};
+  int err = handle->control_read(PANDA_REQUEST_GET_WAKE_DEBUG, 0, 0, (unsigned char*)&wake_debug, sizeof(wake_debug));
+  return err == static_cast<int>(sizeof(wake_debug)) ? std::make_optional(wake_debug) : std::nullopt;
 }
 
 void Panda::send_heartbeat(bool engaged, bool engaged_mads) {

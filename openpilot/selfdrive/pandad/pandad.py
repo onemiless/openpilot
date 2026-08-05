@@ -11,8 +11,34 @@ from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params
 from openpilot.common.hardware import HARDWARE
 from openpilot.common.swaglog import cloudlog
+from openpilot.system.hardware.offline_wake import (
+  clear_panda_bootkick_test_sentinel, offline_wake_debug_enabled,
+  offline_wake_debug_log as _offline_wake_debug_log,
+)
 
 from openpilot.sunnypilot.selfdrive.pandad.rivian_long_flasher import flash_rivian_long
+
+
+def offline_wake_debug_log(message: str) -> None:
+  _offline_wake_debug_log("pandad.py", message)
+
+
+def log_offline_wake_state(panda: Panda, serial: str) -> None:
+  if not offline_wake_debug_enabled():
+    return
+
+  try:
+    wake_success = panda.wake_success()
+    wake_debug = panda.wake_debug()
+    wake_can_trace = panda.wake_can_trace()
+    health = panda.health()
+    message = f"panda offline wake state sample=pre_heartbeat serial={serial} wake_success={wake_success} wake_debug={wake_debug}"
+    message += f" wake_can_trace={wake_can_trace} health={health}"
+    offline_wake_debug_log(message)
+    if clear_panda_bootkick_test_sentinel():
+      offline_wake_debug_log("cleared panda bootkick test sentinel after startup wake-state read")
+  except Exception as e:
+    offline_wake_debug_log(f"failed to read panda wake state serial={serial}: {type(e).__name__}: {e}")
 
 
 def get_expected_signature() -> bytes:
@@ -26,7 +52,7 @@ def get_expected_signature() -> bytes:
 
 def flash_panda(panda_serial: str):
   panda = Panda(panda_serial)
-  
+
   # skip flashing if the detected panda is not supported
   if panda.get_type() not in Panda.SUPPORTED_DEVICES:
     cloudlog.warning(f"Panda {panda_serial} is not supported (hw_type: {panda.get_type()}), skipping flash...")
@@ -61,6 +87,7 @@ def flash_panda(panda_serial: str):
     cloudlog.info("Version mismatch after flashing, exiting")
     raise AssertionError
 
+  log_offline_wake_state(panda, panda_serial)
   panda.close()
 
 

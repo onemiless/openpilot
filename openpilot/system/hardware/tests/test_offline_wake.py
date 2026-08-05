@@ -1,6 +1,9 @@
 import os
 
+from panda import Panda
+
 from openpilot.system.hardware import offline_wake
+from openpilot.system.hardware import hardwared
 
 
 class FakeParams:
@@ -39,6 +42,68 @@ def test_acknowledge_wake_monitor_replaces_request_with_blocking_ack() -> None:
 
   assert params.removed == ["PandaWakeMonitorRequest"]
   assert params.writes == [("PandaWakeMonitorAck", True, True)]
+
+
+def test_wake_monitor_ready_requires_firmware_magic_and_armed_stage() -> None:
+  ready = {"magic": offline_wake.PANDA_WAKE_DEBUG_MAGIC, "stage": offline_wake.PANDA_WAKE_MONITOR_ARMED_STAGE}
+
+  assert offline_wake.panda_wake_monitor_ready(ready)
+  assert not offline_wake.panda_wake_monitor_ready({**ready, "stage": 0x31})
+  assert not offline_wake.panda_wake_monitor_ready({**ready, "magic": 0})
+  assert not offline_wake.panda_wake_monitor_ready(None)
+  assert offline_wake.PANDA_WAKE_DEBUG_MAGIC == Panda.WAKE_DEBUG_MAGIC
+  assert offline_wake.PANDA_WAKE_MONITOR_ARMED_STAGE == Panda.WAKE_MONITOR_ARMED_STAGE
+
+
+def test_hardwared_fallback_reenables_heartbeat_before_arming(monkeypatch) -> None:
+  import panda as panda_module
+
+  events = []
+
+  class RequestParams(FakeParams):
+    def get_bool(self, key: str) -> bool:
+      assert key == "PandaWakeMonitorAck"
+      return False
+
+  class InternalPanda:
+    @classmethod
+    def list(cls):
+      return ["internal"]
+
+    def __init__(self, serial: str, disable_checks: bool):
+      assert serial == "internal"
+      assert not disable_checks
+
+    def __enter__(self):
+      return self
+
+    def __exit__(self, exc_type, exc, traceback):
+      return False
+
+    def is_internal(self):
+      return True
+
+    def send_heartbeat(self, engaged: bool, engaged_mads: bool):
+      assert not engaged
+      assert not engaged_mads
+      events.append("heartbeat")
+
+    def enable_deepsleep(self):
+      events.append("arm")
+
+    def wake_debug(self):
+      return {"magic": offline_wake.PANDA_WAKE_DEBUG_MAGIC, "stage": offline_wake.PANDA_WAKE_MONITOR_ARMED_STAGE}
+
+  params = RequestParams()
+  times = iter((0.0, 3.0))
+  monkeypatch.setattr(hardwared, "Params", lambda: params)
+  monkeypatch.setattr(hardwared, "panda_bootkick_test_pending", lambda: False)
+  monkeypatch.setattr(hardwared.time, "monotonic", lambda: next(times))
+  monkeypatch.setattr(panda_module, "Panda", InternalPanda)
+
+  assert hardwared.request_panda_deepsleep()
+  assert events == ["heartbeat", "arm"]
+  assert params.writes[-1] == ("PandaWakeMonitorAck", True, True)
 
 
 def test_recent_bootkick_sentinel_is_pending(tmp_path, monkeypatch) -> None:

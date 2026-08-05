@@ -25,7 +25,7 @@ from openpilot.system.hardware.power_monitoring import PowerMonitoring
 from openpilot.system.hardware.fan_controller import FanController
 from openpilot.system.hardware.offline_wake import (
   CanShutdownGate, acknowledge_panda_wake_monitor, offline_wake_debug_log as _offline_wake_debug_log,
-  panda_bootkick_test_pending,
+  panda_bootkick_test_pending, panda_wake_monitor_ready,
 )
 from openpilot.common.version import terms_version, training_version, get_build_metadata, terms_version_sp
 
@@ -95,14 +95,22 @@ def request_panda_deepsleep() -> bool:
     serials = Panda.list()
     offline_wake_debug_log(f"Panda.list returned {serials}")
     for serial in serials:
-      with Panda(serial) as panda:
+      with Panda(serial, disable_checks=False) as panda:
         is_internal = panda.is_internal()
         offline_wake_debug_log(f"opened panda serial={serial} internal={is_internal}")
         if is_internal:
+          # Start a fresh heartbeat window so stage 0x30 can be read back
+          # before the firmware transitions from armed monitor to STOP.
+          panda.send_heartbeat(False, False)
           panda.enable_deepsleep()
+          wake_debug = panda.wake_debug()
+          if not panda_wake_monitor_ready(wake_debug):
+            cloudlog.error(f"internal panda wake monitor did not arm serial={serial} wake_debug={wake_debug}")
+            offline_wake_debug_log(f"direct Panda.enable_deepsleep unconfirmed serial={serial} wake_debug={wake_debug}")
+            continue
           acknowledge_panda_wake_monitor(params)
           cloudlog.warning(f"requested internal panda wake monitor before shutdown serial={serial}")
-          offline_wake_debug_log(f"direct Panda.enable_deepsleep succeeded serial={serial}; PandaWakeMonitorAck set")
+          offline_wake_debug_log(f"direct Panda.enable_deepsleep confirmed serial={serial}; PandaWakeMonitorAck set wake_debug={wake_debug}")
           return True
     offline_wake_debug_log("direct fallback found no internal panda")
   except Exception:

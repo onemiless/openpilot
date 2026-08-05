@@ -10,6 +10,7 @@
 #include <memory>
 #include <thread>
 #include <utility>
+#include <unistd.h>
 
 #include "openpilot/cereal/gen/cpp/car.capnp.h"
 #include "openpilot/cereal/messaging/messaging.h"
@@ -34,11 +35,10 @@ struct HwmonState {
 
 HwmonState hwmon_state;
 
-static constexpr bool OFFLINE_WAKE_DEBUG_LOGGING_ENABLED = false;
+static constexpr char OFFLINE_WAKE_DEBUG_SENTINEL[] = "/data/enable_offline_wake_debug";
 
 void offline_wake_debug_log(const std::string &message) {
-  // Retain the recorder for future wake diagnosis without normal /data writes.
-  if (!OFFLINE_WAKE_DEBUG_LOGGING_ENABLED) {
+  if (access(OFFLINE_WAKE_DEBUG_SENTINEL, F_OK) != 0) {
     return;
   }
 
@@ -364,9 +364,18 @@ void process_wake_monitor_request(Panda *panda) {
   } else {
     offline_wake_debug_log("pre-enable health unavailable");
   }
-  panda->enable_deepsleep();
+  auto wake_debug = panda->enable_deepsleep();
+  if (!wake_debug || wake_debug->magic != WAKE_DEBUG_MAGIC || wake_debug->stage != PANDA_WAKE_MONITOR_ARMED_STAGE) {
+    const uint32_t magic = wake_debug ? wake_debug->magic : 0U;
+    const uint32_t stage = wake_debug ? wake_debug->stage : 0U;
+    params.remove("PandaWakeMonitorAck");
+    offline_wake_debug_log(util::string_format("enable_deepsleep unconfirmed magic=%u stage=%u", magic, stage));
+    LOGE("failed to arm panda wake monitor: magic=0x%08x stage=0x%02x", magic, stage);
+    return;
+  }
   params.putBool("PandaWakeMonitorAck", true);
-  offline_wake_debug_log("enable_deepsleep complete; PandaWakeMonitorAck set");
+  offline_wake_debug_log(util::string_format("enable_deepsleep confirmed magic=%u stage=%u; PandaWakeMonitorAck set",
+                                             wake_debug->magic, wake_debug->stage));
   LOGW("enabled panda wake monitor before shutdown");
 }
 
