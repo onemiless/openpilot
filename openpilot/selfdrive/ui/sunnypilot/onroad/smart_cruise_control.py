@@ -14,6 +14,19 @@ from openpilot.system.ui.sunnypilot.lib.utils import AlertFadeAnimator
 from openpilot.system.ui.widgets import Widget
 
 
+STOCK_LONGITUDINAL_ACTIVE = 32
+AP_HYBRID_ACTIVE = 512
+AP_HYBRID_STOCK_LATERAL_ACTIVE = 8192
+STOCK_ACC_BG_COLOR = rl.Color(255, 215, 0, 200)
+AP_FULL_CONTROL_BG_COLOR = rl.Color(0, 134, 233, 220)
+
+
+def tesla_ap_control_state(flags: int, is_tesla: bool) -> tuple[bool, bool]:
+  ap_longitudinal = is_tesla and bool(flags & AP_HYBRID_ACTIVE) and bool(flags & STOCK_LONGITUDINAL_ACTIVE)
+  ap_lateral = ap_longitudinal and bool(flags & AP_HYBRID_STOCK_LATERAL_ACTIVE)
+  return ap_longitudinal, ap_lateral
+
+
 class SmartCruiseControlRenderer(Widget):
   def __init__(self):
     super().__init__()
@@ -22,6 +35,9 @@ class SmartCruiseControlRenderer(Widget):
     self.map_enabled = False
     self.map_active = False
     self.long_override = False
+    self.stock_longitudinal = False
+    self.ap_longitudinal = False
+    self.ap_lateral = False
 
     self._vision_fade = AlertFadeAnimator(gui_app.target_fps)
     self._map_fade = AlertFadeAnimator(gui_app.target_fps)
@@ -43,19 +59,32 @@ class SmartCruiseControlRenderer(Widget):
     if sm.updated["carControl"]:
       self.long_override = sm["carControl"].cruiseControl.override
 
+    if sm.updated["carStateSP"]:
+      flags = int(sm["carStateSP"].flags)
+      self.stock_longitudinal = bool(flags & STOCK_LONGITUDINAL_ACTIVE)
+      is_tesla = ui_state.CP is not None and ui_state.CP.brand == "tesla"
+      self.ap_longitudinal, self.ap_lateral = tesla_ap_control_state(flags, is_tesla)
+
     self._vision_fade.update(self.vision_active)
     self._map_fade.update(self.map_active)
 
   def _draw_icon(self, rect_center_x, rect_height, x_offset, y_offset, name, alpha=1.0):
     text = name
-    font_size = 36
-    padding_v = 5
-    box_width = 160
+    is_dynamic_acc_label = text in ("AP", "ACC", "SCC-V")
+    font_size = 72 if is_dynamic_acc_label else 36
+    padding_v = 10 if is_dynamic_acc_label else 5
+    box_width = 320 if is_dynamic_acc_label else 160
 
     sz = measure_text_cached(self.font, text, font_size)
     box_height = int(sz.y + padding_v * 2)
 
-    if self.long_override:
+    if text == "AP" and self.ap_lateral:
+      color = AP_FULL_CONTROL_BG_COLOR
+      box_color = rl.Color(color.r, color.g, color.b, int(alpha * color.a))
+    elif text in ("AP", "ACC"):
+      color = STOCK_ACC_BG_COLOR
+      box_color = rl.Color(color.r, color.g, color.b, int(alpha * color.a))
+    elif self.long_override:
       color = COLORS.OVERRIDE
       box_color = rl.Color(color.r, color.g, color.b, int(alpha * 200))
     else:
@@ -88,7 +117,9 @@ class SmartCruiseControlRenderer(Widget):
     y_scc_m = 0
     idx = 0
 
-    if self.vision_enabled:
+    show_primary_label = self.vision_enabled or self.ap_longitudinal
+
+    if show_primary_label:
       y_scc_v = orders[idx]
       idx += 1
 
@@ -96,9 +127,10 @@ class SmartCruiseControlRenderer(Widget):
       y_scc_m = orders[idx]
       idx += 1
 
-    if self.vision_enabled:
+    if show_primary_label:
       alpha = self._vision_fade.alpha if self.vision_active else 1.0
-      self._draw_icon(rect.x + rect.width / 2, rect.height, x_offset, y_scc_v, "SCC-V", alpha)
+      label = "AP" if self.ap_longitudinal else ("ACC" if self.stock_longitudinal else "SCC-V")
+      self._draw_icon(rect.x + rect.width / 2, rect.height, x_offset, y_scc_v, label, alpha)
 
     if self.map_enabled:
       alpha = self._map_fade.alpha if self.map_active else 1.0
