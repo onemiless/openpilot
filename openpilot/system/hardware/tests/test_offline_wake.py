@@ -35,6 +35,18 @@ def test_shutdown_gate_force_bypasses_quiet_period() -> None:
   assert gate.ready(force=True, now=100.0)
 
 
+def test_wake_can_activity_covers_all_physical_vehicle_buses() -> None:
+  class CanMessage:
+    def __init__(self, src: int):
+      self.src = src
+
+  for src in (0, 1, 2):
+    assert offline_wake.wake_can_activity([CanMessage(src)])
+
+  assert not offline_wake.wake_can_activity([CanMessage(128), CanMessage(129), CanMessage(130)])
+  assert not offline_wake.wake_can_activity([])
+
+
 def test_acknowledge_wake_monitor_replaces_request_with_blocking_ack() -> None:
   params = FakeParams()
 

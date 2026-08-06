@@ -8,14 +8,17 @@ from contextlib import contextmanager
 OFFLINE_WAKE_DEBUG_LOG = "/data/offline_wake_debug.log"
 PANDA_BOOTKICK_TEST_SENTINEL = "/data/panda_bootkick_test_pending"
 PANDA_BOOTKICK_TEST_TTL = 10 * 60
-OFFLINE_SHUTDOWN_BUS1_QUIET_S = 300.0
+OFFLINE_SHUTDOWN_CAN_QUIET_S = 300.0
+# Kept for compatibility with older diagnostics and local scripts.
+OFFLINE_SHUTDOWN_BUS1_QUIET_S = OFFLINE_SHUTDOWN_CAN_QUIET_S
+OFFLINE_WAKE_CAN_BUSES = (0, 1, 2)
 PANDA_WAKE_DEBUG_MAGIC = 0x57414B48
 PANDA_WAKE_MONITOR_ARMED_STAGE = 0x30
 
 
 class CanShutdownGate:
-  """Allow shutdown only after the eventual Panda wake bus is quiet."""
-  def __init__(self, quiet_s: float = OFFLINE_SHUTDOWN_BUS1_QUIET_S, now: float | None = None) -> None:
+  """Allow shutdown only after every armed physical CAN bus is quiet."""
+  def __init__(self, quiet_s: float = OFFLINE_SHUTDOWN_CAN_QUIET_S, now: float | None = None) -> None:
     self.quiet_s = quiet_s
     self.last_activity = time.monotonic() if now is None else now
 
@@ -31,6 +34,11 @@ class CanShutdownGate:
     current_time = time.monotonic() if now is None else now
     quiet = self.quiet_duration(current_time) >= self.quiet_s
     return force or quiet
+
+
+def wake_can_activity(can_messages) -> bool:
+  """Ignore Panda echo buses and track the three physical vehicle CAN buses."""
+  return any(int(message.src) in OFFLINE_WAKE_CAN_BUSES for message in can_messages)
 
 
 def acknowledge_panda_wake_monitor(params) -> None:

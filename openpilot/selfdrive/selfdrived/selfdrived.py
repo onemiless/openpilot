@@ -77,6 +77,28 @@ def tesla_split_control_event_filter_active(stock_active: bool, prev_stock_activ
                                             ap_hybrid_active: bool, prev_ap_hybrid_active: bool,
                                             ap_exit_recovery_active: bool = False) -> bool:
   return stock_active or prev_stock_active or ap_hybrid_active or prev_ap_hybrid_active or ap_exit_recovery_active
+
+
+def filter_tesla_split_control_events(events: Events, ap_exit_recovery_active: bool) -> None:
+  # Keep accelerator override: it disables only SP longitudinal actuation while
+  # preserving the mixed-control session and SP lateral control. Removing it
+  # leaves longActive set, so Panda rejects the non-inactive Tesla DAS_control
+  # frames while the pedal is down and OEM AP can time out.
+  suppressed_events = (
+    EventName.buttonCancel,
+    EventName.invalidLkasSetting,
+    EventName.wrongCarMode,
+    EventName.wrongCruiseMode,
+    EventName.pcmDisable,
+  )
+  if not ap_exit_recovery_active:
+    suppressed_events += (EventName.accFaulted,)
+
+  for event in suppressed_events:
+    if events.has(event):
+      events.remove(event)
+
+
 ButtonType = car.CarState.ButtonEvent.Type
 SafetyModel = car.CarParams.SafetyModel
 AlertLevel = log.DriverMonitoringState.AlertLevel
@@ -311,20 +333,7 @@ class SelfdriveD(CruiseHelper):
         self.tesla_ap_hybrid_exit_recovery_active,
       )
       if self.CP.brand == 'tesla' and split_control_transition:
-        if self.events.has(EventName.buttonCancel):
-          self.events.remove(EventName.buttonCancel)
-        if self.events.has(EventName.invalidLkasSetting):
-          self.events.remove(EventName.invalidLkasSetting)
-        if not self.tesla_ap_hybrid_exit_recovery_active and self.events.has(EventName.accFaulted):
-          self.events.remove(EventName.accFaulted)
-        if self.events.has(EventName.wrongCarMode):
-          self.events.remove(EventName.wrongCarMode)
-        if self.events.has(EventName.wrongCruiseMode):
-          self.events.remove(EventName.wrongCruiseMode)
-        if self.events.has(EventName.pcmDisable):
-          self.events.remove(EventName.pcmDisable)
-        if self.events.has(EventName.gasPressedOverride):
-          self.events.remove(EventName.gasPressedOverride)
+        filter_tesla_split_control_events(self.events, self.tesla_ap_hybrid_exit_recovery_active)
 
       car_events_sp = self.car_events_sp.update(CS, self.events, self.car_state_sp_flags).to_msg()
       self.events_sp.add_from_msg(car_events_sp)
