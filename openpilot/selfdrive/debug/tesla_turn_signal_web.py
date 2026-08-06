@@ -60,14 +60,15 @@ def render_page() -> bytes:
     textarea { width:100%; min-height:130px; box-sizing:border-box; padding:11px; border:1px solid #475569; border-radius:10px; background:#020617; color:#e2e8f0; font:14px ui-monospace,monospace; }
     #terminal-output { min-height:100px; max-height:420px; overflow:auto; text-align:left; white-space:pre-wrap; background:#020617; border-radius:10px; padding:12px; color:#cbd5e1; }
     .terminal-row { display:flex; gap:8px; margin:10px 0; } .terminal-row input { min-width:0; flex:1; padding:9px; border:1px solid #475569; border-radius:9px; background:#0f172a; color:white; }
-    .drive-alert { white-space:pre-wrap; } #driving-canvas { display:block; width:100%; height:min(72vh,640px); margin:12px 0; border-radius:13px; background:linear-gradient(#172554,#020617); }
+    .drive-alert { white-space:pre-wrap; } #driving-canvas { display:block; width:100%; height:min(72vh,640px); margin:12px 0; border:1px solid #334155; border-radius:18px; background:#07111f; }
+    .can-diagnostics { margin-top:10px; } .can-diagnostics summary { cursor:pointer; color:#94a3b8; font-size:13px; padding:8px 2px; user-select:none; }
     .can-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:9px; margin-top:10px; } .can-detail { background:#1e293b; border-radius:11px; padding:11px; color:#cbd5e1; font-size:12px; line-height:1.55; } .can-detail strong { display:block; color:#93c5fd; font-size:14px; margin-bottom:3px; } .can-detail .ok { color:#86efac; } .can-detail.warn { color:#fbbf24; }
   </style>
 </head><body><main>
   <h1>车载设置</h1><p>通过手机或电脑访问此页面。行驶中仅允许修改实时生效的白名单设置。</p>
   <div class="tabs"><button class="tab active" id="settings-tab" onclick="showPanel('settings')">设置</button><button class="tab" id="driving-tab" onclick="showPanel('driving')">行驶信息</button><button class="tab" id="turn-tab" onclick="showPanel('turn')">转向测试</button><button class="tab" id="terminal-tab" onclick="showPanel('terminal')">终端</button></div>
   <section id="settings-panel"><div id="mode" class="notice">正在读取设置…</div><div id="category-nav" class="category-nav"></div><div id="settings"></div></section>
-  <section id="driving-panel" hidden><h1>行驶道路视图</h1><p>只读实时视图；融合 SP 模型与 HW4 Model Y 原车 CAN，不启动视频或屏幕采集。</p><div id="driving-state" class="notice">正在连接车辆数据…</div><canvas id="driving-canvas" aria-label="预测道路轨迹与原车感知"></canvas><div id="can-details" class="can-grid"></div><div id="driving-alert" class="notice drive-alert" hidden></div></section>
+  <section id="driving-panel" hidden><h1>行驶道路视图</h1><p>只读实时视图；融合 SP 模型与 HW4 Model Y 原车 CAN，不启动视频或屏幕采集。</p><div id="driving-state" class="notice">正在连接车辆数据…</div><canvas id="driving-canvas" aria-label="预测道路轨迹与原车感知"></canvas><details id="can-diagnostics" class="can-diagnostics"><summary>CAN 诊断详情（可选）</summary><div id="can-details" class="can-grid"></div></details><div id="driving-alert" class="notice drive-alert" hidden></div></section>
   <section id="turn-panel" hidden>
     <h1>Tesla 转向 CAN 测试</h1><p>请求由 card 实时线程跟随原车 0x3E9 模板持续发送；SP 完成变道后会自动关闭转向灯。</p>
     <div class="buttons"><button class="turn" id="left" onclick="run('left')">← 左转</button><button class="turn" id="right" onclick="run('right')">右转 →</button></div>
@@ -115,7 +116,7 @@ async function loadSettings() { try { const [settingsResponse, hotspotResponse] 
 async function save(setting, value, control) { control.disabled = true; try { const r = await fetch('/api/settings/' + encodeURIComponent(setting.key), {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value})}); const result = await r.json(); if (!r.ok) throw new Error(result.message || 'HTTP ' + r.status); setting.value = result.value; } catch (e) { alert('保存失败：' + e); } finally { renderSettings(settingsState); } }
 async function saveHotspot(enabled, control) { control.disabled = true; try { const r = await fetch('/api/hotspot', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({enabled})}); const result = await r.json(); if (!r.ok) throw new Error(result.message || 'HTTP ' + r.status); hotspotState = result; renderSettings(settingsState); } catch (e) { alert('热点切换失败：' + e); renderSettings(settingsState); } }
 loadSettings();
-function drawLine(ctx, points, xScale, yScale, color, width) { if (!points.length) return; ctx.beginPath(); points.forEach(([x,y], i) => { const px = ctx.canvas.clientWidth / 2 - y * yScale, py = ctx.canvas.clientHeight - 32 - x * xScale; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }); ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke(); }
+function drawLine(ctx, points, xScale, yScale, color, width) { if (!points.length) return; ctx.beginPath(); points.forEach(([x,y], i) => { const px = ctx.canvas.clientWidth / 2 - y * yScale, py = ctx.canvas.clientHeight - 38 - x * xScale; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }); ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke(); }
 const canText = {
   lead:'前方', left:'左侧', right:'右侧', cutin:'切入', car:'车辆', truck:'卡车', motorcycle:'摩托车', bicycle:'自行车', pedestrian:'行人', unknown:'未知',
   red:'红灯', green:'绿灯', yellow:'黄灯', white:'白灯', off:'信号灯熄灭', none:'无', stop_sign:'停止标志', traffic_light:'红绿灯', yield:'让行', crosswalk:'人行横道', pedestrian_crossing:'行人过街', ramp_meter:'匝道灯', speed_bump:'减速带', speed_hump:'减速丘',
@@ -126,14 +127,53 @@ const canText = {
 };
 function ct(value) { return canText[value] || String(value ?? '—').replaceAll('_', ' '); }
 // openpilot/Tesla coordinates use positive y to the vehicle's left, while canvas x grows rightward.
-function canvasPoint(canvas, x, y, xScale, yScale) { return [canvas.clientWidth / 2 - y * yScale, canvas.clientHeight - 32 - x * xScale]; }
+function canvasPoint(canvas, x, y, xScale, yScale) { return [canvas.clientWidth / 2 - y * yScale, canvas.clientHeight - 38 - x * xScale]; }
+function roundedRect(ctx,x,y,w,h,r=8){const q=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+q,y);ctx.lineTo(x+w-q,y);ctx.quadraticCurveTo(x+w,y,x+w,y+q);ctx.lineTo(x+w,y+h-q);ctx.quadraticCurveTo(x+w,y+h,x+w-q,y+h);ctx.lineTo(x+q,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-q);ctx.lineTo(x,y+q);ctx.quadraticCurveTo(x,y,x+q,y);ctx.closePath();}
+function fillRoundedRect(ctx,x,y,w,h,color,r=8){roundedRect(ctx,x,y,w,h,r);ctx.fillStyle=color;ctx.fill();}
+function drawRoadBackground(ctx,width,height,xScale){
+  const sky=ctx.createLinearGradient(0,0,0,height);sky.addColorStop(0,'#13233b');sky.addColorStop(.42,'#0b1728');sky.addColorStop(1,'#020617');ctx.fillStyle=sky;ctx.fillRect(0,0,width,height);
+  const horizon=58,roadBottom=Math.min(width*.47,330);const road=ctx.createLinearGradient(0,horizon,0,height);road.addColorStop(0,'#172033');road.addColorStop(1,'#090f1c');ctx.fillStyle=road;ctx.beginPath();ctx.moveTo(width/2-22,horizon);ctx.lineTo(width/2+22,horizon);ctx.lineTo(width/2+roadBottom,height);ctx.lineTo(width/2-roadBottom,height);ctx.closePath();ctx.fill();
+  ctx.strokeStyle='#33415588';ctx.lineWidth=1;ctx.font='10px sans-serif';ctx.fillStyle='#64748b';for(const metres of [20,40,60,80]){const y=height-38-metres*xScale;if(y<=horizon)continue;const progress=(height-y)/(height-horizon),half=roadBottom-(roadBottom-22)*progress;ctx.beginPath();ctx.moveTo(width/2-half,y);ctx.lineTo(width/2+half,y);ctx.stroke();ctx.fillText(metres+'m',width/2+half+5,y+3);}
+}
+function drawObjectLabel(ctx,text,x,y,color){ctx.font='bold 11px sans-serif';const w=Math.ceil(ctx.measureText(text).width)+14;fillRoundedRect(ctx,x,y-15,w,21,'#020617dd',7);ctx.fillStyle=color;ctx.fillRect(x,y-15,3,21);ctx.fillStyle='#f8fafc';ctx.fillText(text,x+8,y);}
 function drawCanVehicle(ctx, vehicle, xScale, yScale) {
   const [px, py] = canvasPoint(ctx.canvas, vehicle.x_m, vehicle.y_m, xScale, yScale); if (py < 52 || py > ctx.canvas.clientHeight - 20) return;
   const color = vehicle.relevant_for_control ? '#ef4444' : vehicle.category === 'left' ? '#60a5fa' : vehicle.category === 'right' ? '#c084fc' : '#f97316'; ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2;
   if (vehicle.type === 'pedestrian') { ctx.beginPath(); ctx.arc(px, py - 6, 4, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.moveTo(px, py - 2); ctx.lineTo(px, py + 8); ctx.moveTo(px, py + 2); ctx.lineTo(px - 5, py + 7); ctx.moveTo(px, py + 2); ctx.lineTo(px + 5, py + 7); ctx.stroke(); }
   else if (vehicle.type === 'bicycle' || vehicle.type === 'motorcycle') { ctx.beginPath(); ctx.arc(px - 6, py + 4, 4, 0, Math.PI * 2); ctx.arc(px + 6, py + 4, 4, 0, Math.PI * 2); ctx.moveTo(px - 6, py + 4); ctx.lineTo(px, py - 4); ctx.lineTo(px + 6, py + 4); ctx.stroke(); }
-  else { const w = vehicle.type === 'truck' ? 21 : 16, h = vehicle.type === 'truck' ? 27 : 20; ctx.fillRect(px - w / 2, py - h / 2, w, h); ctx.fillStyle = '#0f172a'; ctx.fillRect(px - w / 2 + 3, py - h / 2 + 3, w - 6, 5); }
-  ctx.fillStyle = '#f8fafc'; ctx.font = '11px sans-serif'; const rel = Number(vehicle.relative_speed); const velocity = Number.isFinite(rel) ? '  Δv ' + rel.toFixed(0) : ''; ctx.fillText(ct(vehicle.category) + ' ' + vehicle.x_m.toFixed(0) + 'm' + velocity, px + 12, py + 4);
+  else { const w = vehicle.type === 'truck' ? 22 : 17, h = vehicle.type === 'truck' ? 29 : 22; fillRoundedRect(ctx,px-w/2,py-h/2,w,h,color,vehicle.type==='truck'?4:7);ctx.fillStyle='#0f172a';fillRoundedRect(ctx,px-w/2+3,py-h/2+3,w-6,6,'#0f172a',2); }
+  const rel = Number(vehicle.relative_speed); const velocity = Number.isFinite(rel) ? '  Δv ' + rel.toFixed(0) : ''; drawObjectLabel(ctx,ct(vehicle.category)+' '+vehicle.x_m.toFixed(0)+'m'+velocity,px+12,py+4,color);
+}
+function drawHudChip(ctx, label, x, y, color = '#2563eb') {
+  ctx.font='bold 12px sans-serif'; const w=Math.ceil(ctx.measureText(label).width)+18; fillRoundedRect(ctx,x,y-15,w,22,'#020617cc',8);ctx.fillStyle=color;ctx.fillRect(x,y-15,4,22);ctx.fillStyle='#f8fafc';ctx.fillText(label,x+10,y);return w;
+}
+function drawPedestrianCameraIndicators(ctx, pedestrian, width, height) {
+  if (!pedestrian?.available) return;
+  const front=pedestrian.front_main||pedestrian.front_fisheye||pedestrian.front_narrow, left=pedestrian.left_pillar||pedestrian.left_repeater, right=pedestrian.right_pillar||pedestrian.right_repeater;
+  ctx.fillStyle='#fbbf24'; ctx.font='bold 13px sans-serif';
+  if(front){ctx.textAlign='center';ctx.fillText('⚠ 前方相机发现行人',width/2,174);}
+  if(left){ctx.textAlign='left';ctx.fillText('⚠ 左侧行人',12,height/2);}
+  if(right){ctx.textAlign='right';ctx.fillText('右侧行人 ⚠',width-12,height/2);}
+  if(pedestrian.backup){ctx.textAlign='center';ctx.fillText('⚠ 后方行人',width/2,height-58);}
+  ctx.textAlign='left';
+}
+function drawParkingObstacle(ctx, obstacle, xScale, yScale, width, height) {
+  if (!obstacle?.valid_obstacle) return;
+  let px=width/2, py=height-48; if(obstacle.x_m!=null&&obstacle.y_m!=null){[px,py]=canvasPoint(ctx.canvas,obstacle.x_m,obstacle.y_m,xScale,yScale);} else if(obstacle.collision_side==='left')px=width/2-46;else if(obstacle.collision_side==='right')px=width/2+46;else if(obstacle.collision_side==='front')py=height-82;
+  ctx.strokeStyle='#fb7185';ctx.lineWidth=3;ctx.beginPath();ctx.arc(px,py,10,0,Math.PI*2);ctx.stroke();drawObjectLabel(ctx,'障碍 '+obstacle.distance_m.toFixed(1)+'m',px+14,py+4,'#fb7185');
+}
+function drawCanvasSummary(ctx, can, width) {
+  const vehicles=can.vehicles||[], pedestrian=can.pedestrian_detection||{}, pedestrianCount=Math.max(vehicles.filter(v=>v.type==='pedestrian').length,(pedestrian.closest||[]).length), chips=[];
+  chips.push([can.available?'原车 CAN':'等待原车 CAN',can.available?'#34d399':'#94a3b8']);
+  if(vehicles.length)chips.push(['目标 '+vehicles.length,'#f97316']);
+  if(pedestrianCount)chips.push(['行人 '+pedestrianCount,'#fbbf24']);
+  if(can.lanes?.available)chips.push(['车道 CAN','#22d3ee']);
+  if(can.longitudinal_shadow?.aeb?.active)chips.push(['AEB 激活','#ef4444']);
+  if(can.front_safety?.imminent_collision||can.proximity_safety?.long_collision_warning>0)chips.push(['碰撞预警','#ef4444']);
+  let x=12,y=116; for(const [label,color] of chips){const w=drawHudChip(ctx,label,x,y,color);x+=w+6;if(x>width-105){x=12;y+=28;}}
+}
+function renderOptionalCanDetails(can, modelLeads) {
+  const diagnostics=document.getElementById('can-diagnostics'),root=document.getElementById('can-details');if(diagnostics.open)renderCanDetails(can,modelLeads);else if(root.childElementCount)root.replaceChildren();
 }
 function drawTraffic(ctx, traffic, xScale, width, height, mapSign) {
   const sign = traffic?.road_sign_available ? {distance: traffic.stop_line_distance_m, color: traffic.road_sign_color, arrow: traffic.road_sign_arrow, label: traffic.road_sign_type} : null;
@@ -169,19 +209,19 @@ function renderCanDetails(can, modelLeads = []) {
 }
 function drawDrivingGeometry(geometry, data) {
   const canvas = document.getElementById('driving-canvas'), ratio = window.devicePixelRatio || 1, width = Math.max(1, canvas.clientWidth), height = Math.max(1, canvas.clientHeight); if (canvas.width !== width * ratio || canvas.height !== height * ratio) { canvas.width = width * ratio; canvas.height = height * ratio; }
-  const ctx = canvas.getContext('2d'); ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.clearRect(0, 0, width, height); const grad = ctx.createLinearGradient(0,0,0,height); grad.addColorStop(0,'#172554'); grad.addColorStop(1,'#020617'); ctx.fillStyle=grad; ctx.fillRect(0,0,width,height); const xScale = (height - 70) / 100, yScale = Math.min(width / 12, 31), danger = geometry.hard_brake_predicted, can = geometry.oem_can || {};
-  ctx.fillStyle='#111827aa'; ctx.beginPath(); ctx.moveTo(width/2-28,58); ctx.lineTo(width/2+28,58); ctx.lineTo(width/2+Math.min(width*.42,260),height); ctx.lineTo(width/2-Math.min(width*.42,260),height); ctx.fill();
+  const ctx = canvas.getContext('2d'); ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.clearRect(0, 0, width, height); const xScale = (height - 78) / 100, yScale = Math.min(width / 12, 31), danger = geometry.hard_brake_predicted, can = geometry.oem_can || {}; drawRoadBackground(ctx,width,height,xScale);
   ctx.setLineDash([7,7]); (geometry.edges || []).forEach(line => drawLine(ctx,line,xScale,yScale,'#64748b',2)); ctx.setLineDash([]); (geometry.lanes || []).forEach(line => drawLine(ctx,line,xScale,yScale,'#e2e8f0',2));
   const oemLanes = can.lanes || {}; if (oemLanes.available) { drawLine(ctx,oemLanes.left||[],xScale,yScale,'#22d3ee',3); drawLine(ctx,oemLanes.right||[],xScale,yScale,'#22d3ee',3); ctx.setLineDash([5,5]); drawLine(ctx,oemLanes.center||[],xScale,yScale,'#0891b2',2); ctx.setLineDash([]); }
   drawLine(ctx, geometry.path || [], xScale, yScale, danger ? '#ef4444' : '#22c55e', 5); const legacyTraffic=geometry.oem_traffic||{}; const traffic=can.traffic?.available?can.traffic:legacyTraffic.available?{available:true,control_available:true,light_state:['none','red','green','yellow'][legacyTraffic.light_color]||'unknown',control_distance_m:legacyTraffic.stop_line_distance,control_type:'traffic_light'}:{}; drawTraffic(ctx, traffic, xScale, width, height, can.road_sign || {});
-  (can.vehicles || []).forEach(vehicle => drawCanVehicle(ctx,vehicle,xScale,yScale)); (geometry.leads || []).forEach(lead => { if ((can.vehicles||[]).some(v => v.category==='lead')) return; const [px,py]=canvasPoint(canvas,lead.x,lead.y,xScale,yScale); if(py>50&&py<height){ctx.fillStyle=danger?'#ef4444':'#f97316';ctx.fillRect(px-7,py-7,14,14);ctx.fillStyle='#f8fafc';ctx.font='12px sans-serif';ctx.fillText(Math.round(lead.x)+'m',px+10,py+4);} });
-  const ped = can.pedestrian_detection || {}; (ped.closest || []).forEach(c => { if (!c.x_m && !c.y_m) return; const [px,py]=canvasPoint(canvas,c.x_m,c.y_m,xScale,yScale); if (py < 52 || py > height - 20) return; ctx.strokeStyle='#f59e0b'; ctx.fillStyle='#f59e0b'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(px,py-6,4,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.moveTo(px,py-2); ctx.lineTo(px,py+8); ctx.moveTo(px,py+2); ctx.lineTo(px-5,py+7); ctx.moveTo(px,py+2); ctx.lineTo(px+5,py+7); ctx.stroke(); ctx.fillStyle='#f8fafc'; ctx.font='11px sans-serif'; ctx.fillText('行人 '+Math.round(c.x_m)+'m',px+12,py+4); });
+  (can.vehicles || []).forEach(vehicle => drawCanVehicle(ctx,vehicle,xScale,yScale)); (geometry.leads || []).forEach(lead => { if ((can.vehicles||[]).some(v => v.category==='lead')) return; const [px,py]=canvasPoint(canvas,lead.x,lead.y,xScale,yScale); if(py>50&&py<height){const color=danger?'#ef4444':'#f97316';fillRoundedRect(ctx,px-8,py-8,16,16,color,6);drawObjectLabel(ctx,'SP '+Math.round(lead.x)+'m',px+11,py+4,color);} });
+  const ped = can.pedestrian_detection || {}; (ped.closest || []).forEach(c => { if (!c.x_m && !c.y_m) return; const [px,py]=canvasPoint(canvas,c.x_m,c.y_m,xScale,yScale); if (py < 52 || py > height - 20) return; ctx.strokeStyle='#f59e0b'; ctx.fillStyle='#f59e0b'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(px,py-6,4,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.moveTo(px,py-2); ctx.lineTo(px,py+8); ctx.moveTo(px,py+2); ctx.lineTo(px-5,py+7); ctx.moveTo(px,py+2); ctx.lineTo(px+5,py+7); ctx.stroke(); drawObjectLabel(ctx,'行人 '+Math.round(c.x_m)+'m',px+12,py+4,'#f59e0b'); });
+  drawPedestrianCameraIndicators(ctx,ped,width,height); drawParkingObstacle(ctx,can.parking_obstacle||{},xScale,yScale,width,height);
   const rear = can.rear_vehicles || {}, blind = can.blind_spot || {};
-  if (blind.left_live || rear.left_live) { ctx.fillStyle='#60a5fa'; ctx.font='bold 19px sans-serif'; ctx.fillText('◀ 左后车',14,height-18); } if (blind.right_live || rear.right_live) { ctx.fillStyle='#c084fc'; ctx.font='bold 19px sans-serif'; ctx.fillText('右后车 ▶',width-95,height-18); }
-  ctx.fillStyle='#2563eb'; ctx.fillRect(width/2-14,height-30,28,20); ctx.fillStyle='#f8fafc'; ctx.font='bold 17px sans-serif'; ctx.fillText(data.speed_kph.toFixed(0)+' km/h',14,28); ctx.font='13px sans-serif'; const mode=data.openpilot_enabled?'SP 接管':data.mads_enabled?'MADS 横向':'未接管'; ctx.fillText(mode+'  ·  设定 '+data.set_speed_kph.toFixed(0)+' km/h',14,49);
-  const fs = can.front_safety || {}; if (fs.available && fs.target_distance_m != null) { ctx.fillStyle='#34d399'; ctx.font='bold 13px sans-serif'; ctx.fillText('前方目标 '+fs.target_distance_m.toFixed(1)+'m'+(fs.time_to_impact_s!=null?' · TTI '+fs.time_to_impact_s.toFixed(1)+'s':''),14,70); }
-  const nav=can.navigation||{}; if(nav.available){ctx.textAlign='right';ctx.fillStyle='#dbeafe';ctx.font='bold 14px sans-serif';const branch=nav.next_branch_distance_m!=null?nav.next_branch_distance_m+'m '+(nav.next_branch_left_off_ramp?'↖ 左出口':nav.next_branch_right_off_ramp?'右出口 ↗':'下一分支'):nav.route_active?'导航路线已激活':'导航可用';ctx.fillText(branch,width-14,28);ctx.font='12px sans-serif';const limit=nav.speed_limit_unlimited?'不限速':nav.speed_limit!=null?'限速 '+nav.speed_limit+' '+nav.speed_limit_unit.toUpperCase():ct(nav.road_class);ctx.fillText(limit,width-14,48);ctx.textAlign='left';}
-  if(geometry.lane_change!=='off'){ctx.fillStyle='#fbbf24';ctx.font='bold 15px sans-serif';ctx.fillText('变道 '+(geometry.lane_change_direction==='left'?'←':geometry.lane_change_direction==='right'?'→':'进行中'),width-92,70);} if(danger){ctx.fillStyle='#fecaca';ctx.fillText('注意制动风险',width-100,90);} renderCanDetails(can, geometry.leads || []);
+  if (blind.left_live || rear.left_live) { drawHudChip(ctx,'◀ 左后车',12,height-16,'#60a5fa'); } if (blind.right_live || rear.right_live) { ctx.font='bold 12px sans-serif';const rw=Math.ceil(ctx.measureText('右后车 ▶').width)+18;drawHudChip(ctx,'右后车 ▶',width-rw-12,height-16,'#c084fc'); }
+  ctx.fillStyle='#2563eb';roundedRect(ctx,width/2-17,height-35,34,25,9);ctx.fill();ctx.fillStyle='#93c5fd';ctx.fillRect(width/2-8,height-31,16,5);fillRoundedRect(ctx,10,10,178,62,'#020617b8',12);ctx.fillStyle='#f8fafc';ctx.font='bold 21px sans-serif';ctx.fillText(data.speed_kph.toFixed(0)+' km/h',22,36);ctx.font='13px sans-serif';const mode=data.openpilot_enabled?'SP 接管':data.mads_enabled?'MADS 横向':'未接管';ctx.fillStyle=data.openpilot_enabled?'#86efac':'#cbd5e1';ctx.fillText(mode+'  ·  设定 '+data.set_speed_kph.toFixed(0),22,58);
+  const fs = can.front_safety || {}; if (fs.available && fs.target_distance_m != null) { drawHudChip(ctx,'前方 '+fs.target_distance_m.toFixed(1)+'m'+(fs.time_to_impact_s!=null?' · TTI '+fs.time_to_impact_s.toFixed(1)+'s':''),12,91,fs.imminent_collision?'#ef4444':'#34d399'); }
+  const nav=can.navigation||{}; if(nav.available){const panelW=Math.min(172,width*.42);fillRoundedRect(ctx,width-panelW-10,10,panelW,50,'#020617b8',12);ctx.textAlign='right';ctx.fillStyle='#dbeafe';ctx.font='bold 14px sans-serif';const branch=nav.next_branch_distance_m!=null?nav.next_branch_distance_m+'m '+(nav.next_branch_left_off_ramp?'↖ 左出口':nav.next_branch_right_off_ramp?'右出口 ↗':'下一分支'):nav.route_active?'导航路线已激活':'导航可用';ctx.fillText(branch,width-20,31);ctx.font='12px sans-serif';const limit=nav.speed_limit_unlimited?'不限速':nav.speed_limit!=null?'限速 '+nav.speed_limit+' '+nav.speed_limit_unit.toUpperCase():ct(nav.road_class);ctx.fillText(limit,width-20,50);ctx.textAlign='left';}
+  if(geometry.lane_change!=='off'){ctx.fillStyle='#fbbf24';ctx.font='bold 15px sans-serif';ctx.fillText('变道 '+(geometry.lane_change_direction==='left'?'←':geometry.lane_change_direction==='right'?'→':'进行中'),width-92,70);} if(danger){ctx.fillStyle='#fecaca';ctx.fillText('注意制动风险',width-100,90);} drawCanvasSummary(ctx,can,width); renderOptionalCanDetails(can,geometry.leads||[]);
 }
 async function loadDrivingStatus() { if (drivingLoading) return; drivingLoading = true; const state = document.getElementById('driving-state'), alert = document.getElementById('driving-alert'); try { const r = await fetch('/api/driving-status', {cache:'no-store'}); const data = await r.json(); if (!r.ok) throw new Error(data.message || 'HTTP ' + r.status); const connected = Object.values(data.connected).every(Boolean); state.textContent = !data.onroad ? '设置模式：等待车辆启动。' : connected ? '行驶中：车辆数据正常。' : '行驶中：部分车辆数据暂未收到。'; state.className = 'notice' + ((!data.onroad || !connected) ? ' onroad' : ''); drawDrivingGeometry(data.geometry, data); alert.hidden = !data.alert; alert.textContent = data.alert || ''; } catch (e) { state.textContent = '行驶数据读取失败：' + e; state.className = 'notice onroad'; } finally { drivingLoading = false; } }
 setInterval(() => { if (currentPanel === 'driving') loadDrivingStatus(); }, 500);
