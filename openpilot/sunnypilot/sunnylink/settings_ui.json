@@ -1593,6 +1593,10 @@
                   "label": "Always On"
                 },
                 {
+                  "value": 1,
+                  "label": "1m"
+                },
+                {
                   "value": 5,
                   "label": "5m"
                 },

@@ -206,6 +206,8 @@ class TestPowerMonitoring:
       (None, MAX_TIME_OFFROAD_S + 1, True),  # exceeds 30h (1800+ mins)
 
       # Valid max time values (in minutes)
+      (1, 0, False),  # one-minute test option has not elapsed
+      (1, 1, True),  # one-minute test option has elapsed
       (60, 59, False),  # under limit
       (60, 120, True),  # over limit
       (10, 8, False),  # under limit
