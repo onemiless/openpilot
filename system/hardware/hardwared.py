@@ -450,8 +450,9 @@ def hardware_thread(end_event, hw_queue) -> None:
     statlog.sample("som_power_draw", som_power_draw)
     msg.deviceState.somPowerDrawW = som_power_draw
 
-    # Check if we need to shut down
-    shutdown_requested = power_monitor.should_shutdown(onroad_conditions["ignition"], in_car, off_ts, started_seen)
+    # Automatic shutdown is intentionally disabled for this fork. Manual
+    # shutdown/reboot requests still go directly through manager.
+    shutdown_requested = False
     force_power_down = params.get_bool("ForcePowerDown")
     if shutdown_requested and can_shutdown_gate.ready(force_power_down):
       cloudlog.warning(f"shutting device down, offroad since {off_ts}")
