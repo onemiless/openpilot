@@ -186,6 +186,20 @@ class TestRemainActiveMode:
     assert mads.state_machine.state == State.enabled
 
 
+class TestMadsOnlyLongitudinalIsolation:
+  def test_enable_event_is_filtered_before_main_state_machine(self, mocker):
+    mads, sd = make_mads(mocker, MadsSteeringModeOnBrake.REMAIN_ACTIVE)
+    mads.unified_engagement_mode = True
+    mads.state_machine.state = State.enabled
+    mads.enabled = True
+    mads.active = True
+    sd.events.add(EventName.pcmEnable)
+
+    mads.prepare_events(make_car_state(v_ego=10.0))
+
+    assert not sd.events.has(EventName.pcmEnable)
+
+
 # lateral mismatch counter
 
 class TestLateralMismatchCounter:

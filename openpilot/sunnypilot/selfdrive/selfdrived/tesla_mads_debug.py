@@ -8,9 +8,9 @@ from collections.abc import Mapping, Sequence
 TESLA_MADS_DEBUG_PATH = "/data/tesla_mads_debug.log"
 _MAX_LOG_BYTES = 1024 * 1024
 _LOG_LOCK = threading.Lock()
-# Keep the diagnostic implementation for later investigations without writing
-# a continuous MADS trace on the normal dev branch.
-TESLA_MADS_DEBUG_LOGGING_ENABLED = False
+# The caller deduplicates full state signatures, so this remains event-driven
+# and bounded while retaining the exact transition that caused a re-engagement.
+TESLA_MADS_DEBUG_LOGGING_ENABLED = True
 
 
 def _safe_value(value):

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import subprocess
 import time
 from opendbc.car.structs import car
@@ -7,8 +8,10 @@ from openpilot.common.realtime import Ratekeeper
 import threading
 
 AudibleAlert = car.CarControl.HUDControl.AudibleAlert
-BEEP_PULSE_SECONDS = 0.001
+BEEP_PULSE_SECONDS = 0.0002
 BEEP_GAP_SECONDS = 0.02
+GPIO_PIN = 42
+GPIO_VALUE_PATH = f"/sys/class/gpio/gpio{GPIO_PIN}/value"
 
 class Beepd:
   def __init__(self):
@@ -16,53 +19,56 @@ class Beepd:
     self.mads_enabled = None
     # timestamp until which promptRepeat should be suppressed
     self.prompt_suppress_until = 0
+    self.beep_lock = threading.Lock()
+    self.gpio_fd = None
     self.enable_gpio()
     #self.startup_beep()
 
   def enable_gpio(self):
-    # 尝试 export，忽略已 export 的错误
+    # GPIO setup may require root, but pulse edges must not spawn processes:
+    # their startup latency would dominate a sub-millisecond beep.
     try:
-      subprocess.run("echo 42 | sudo tee /sys/class/gpio/export",
-                     shell=True,
-                     stderr=subprocess.DEVNULL,
-                     stdout=subprocess.DEVNULL,
-                     encoding='utf8')
-    except Exception:
-      pass
-    subprocess.run("echo \"out\" | sudo tee /sys/class/gpio/gpio42/direction",
-                   shell=True,
-                   stderr=subprocess.DEVNULL,
-                   stdout=subprocess.DEVNULL,
-                   encoding='utf8')
+      subprocess.run(["sudo", "tee", "/sys/class/gpio/export"], input=str(GPIO_PIN),
+                     stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL, text=True, check=False)
+      subprocess.run(["sudo", "tee", f"/sys/class/gpio/gpio{GPIO_PIN}/direction"], input="out",
+                     stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL, text=True, check=False)
+      subprocess.run(["sudo", "chmod", "0666", GPIO_VALUE_PATH],
+                     stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL, check=False)
+      self.gpio_fd = os.open(GPIO_VALUE_PATH, os.O_WRONLY | os.O_CLOEXEC)
+      self._beep(False)
+    except OSError:
+      self.gpio_fd = None
 
   def _beep(self, on):
-    val = "1" if on else "0"
-    subprocess.run(f"echo \"{val}\" | sudo tee /sys/class/gpio/gpio42/value",
-                   shell=True,
-                   stderr=subprocess.DEVNULL,
-                   stdout=subprocess.DEVNULL,
-                   encoding='utf8')
+    if self.gpio_fd is None:
+      return
+    os.lseek(self.gpio_fd, 0, os.SEEK_SET)
+    os.write(self.gpio_fd, b"1" if on else b"0")
+
+  def _pulse_sequence(self, count):
+    def run_sequence():
+      for pulse in range(count):
+        self._beep(True)
+        time.sleep(BEEP_PULSE_SECONDS)
+        self._beep(False)
+        if pulse < count - 1:
+          time.sleep(BEEP_GAP_SECONDS)
+
+    lock = getattr(self, "beep_lock", None)
+    if lock is None:
+      run_sequence()
+    else:
+      with lock:
+        run_sequence()
 
   def engage(self):
-    self._beep(True)
-    time.sleep(BEEP_PULSE_SECONDS)
-    self._beep(False)
+    self._pulse_sequence(1)
 
   def disengage(self):
-    for pulse in range(2):
-      self._beep(True)
-      time.sleep(BEEP_PULSE_SECONDS)
-      self._beep(False)
-      if pulse == 0:
-        time.sleep(BEEP_GAP_SECONDS)
+    self._pulse_sequence(2)
 
   def warning(self):
-    for pulse in range(3):
-      self._beep(True)
-      time.sleep(BEEP_PULSE_SECONDS)
-      self._beep(False)
-      if pulse < 2:
-        time.sleep(BEEP_GAP_SECONDS)
+    self._pulse_sequence(3)
 
   #def startup_beep(self):
     #self._beep(True)

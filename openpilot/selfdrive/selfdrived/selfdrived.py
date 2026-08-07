@@ -828,6 +828,10 @@ class SelfdriveD(CruiseHelper):
   def step(self):
     CS = self.data_sample()
     self.update_events(CS)
+    if not self.CP.notCar:
+      # MADS must remove pcmEnable/buttonEnable while a lateral-only session is
+      # already active before the main state machine can enable longitudinal.
+      self.mads.prepare_events(CS)
     self._log_tesla_mads_debug(CS, "after_update_events")
     if self.CP.brand == 'tesla':
       if self.tesla_longitudinal_source != self.prev_tesla_longitudinal_source:
@@ -885,7 +889,7 @@ class SelfdriveD(CruiseHelper):
     if not self.CP.passive and self.initialized:
       self.enabled, self.active = self.state_machine.update(self.events)
     if not self.CP.notCar:
-      self.mads.update(CS)
+      self.mads.update_state()
     self._log_tesla_mads_debug(CS, "after_mads_update")
     self.update_alerts(CS)
 

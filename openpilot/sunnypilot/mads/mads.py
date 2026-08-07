@@ -237,20 +237,32 @@ class ModularAssistiveDrivingSystem:
     self.events.remove(EventName.pedalPressed)
     self.events.remove(EventName.wrongCruiseMode)
 
-  def update(self, CS: structs.CarState):
+  def prepare_events(self, CS: structs.CarState) -> bool:
+    """Filter MADS events before the main longitudinal state machine consumes them."""
     if self._pending_disengage:
       self._pending_disengage = False
       self.events_sp.add(EventNameSP.lkasDisable)
 
     if not self.enabled_toggle:
-      return
+      return False
 
     self.data_sample()
 
     self.update_events(CS)
+    return True
+
+  def update_state(self) -> None:
+    """Advance the MADS state after the main state machine has consumed filtered events."""
+    if not self.enabled_toggle:
+      return
 
     if not self.CP.passive and self.selfdrive.initialized:
       self.enabled, self.active = self.state_machine.update()
 
     # Copy of previous SelfdriveD states for MADS events handling
     self.selfdrive.enabled_prev = self.selfdrive.enabled
+
+  def update(self, CS: structs.CarState):
+    # Compatibility wrapper for callers and unit tests outside SelfdriveD.
+    if self.prepare_events(CS):
+      self.update_state()

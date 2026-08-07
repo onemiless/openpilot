@@ -1,3 +1,4 @@
+import os
 from unittest.mock import Mock, call
 
 import pytest
@@ -29,6 +30,7 @@ def test_mads_enable_and_disable_have_distinct_beeps(beepd):
 
 
 def test_mads_beeps_use_very_short_pulses(monkeypatch):
+  assert BEEP_PULSE_SECONDS == pytest.approx(0.0002)
   beep = Beepd.__new__(Beepd)
   beep._beep = Mock()
   sleep = Mock()
@@ -53,3 +55,21 @@ def test_mads_beeps_use_very_short_pulses(monkeypatch):
     call(BEEP_PULSE_SECONDS), call(BEEP_GAP_SECONDS),
     call(BEEP_PULSE_SECONDS),
   ]
+
+
+def test_gpio_edges_use_persistent_fd_without_subprocess(monkeypatch):
+  beep = Beepd.__new__(Beepd)
+  beep.gpio_fd = 42
+  run = Mock()
+  seek = Mock()
+  write = Mock()
+  monkeypatch.setattr("openpilot.selfdrive.selfdrived.beep.subprocess.run", run)
+  monkeypatch.setattr("openpilot.selfdrive.selfdrived.beep.os.lseek", seek)
+  monkeypatch.setattr("openpilot.selfdrive.selfdrived.beep.os.write", write)
+
+  beep._beep(True)
+  beep._beep(False)
+
+  run.assert_not_called()
+  assert seek.call_args_list == [call(42, 0, os.SEEK_SET), call(42, 0, os.SEEK_SET)]
+  assert write.call_args_list == [call(42, b"1"), call(42, b"0")]
