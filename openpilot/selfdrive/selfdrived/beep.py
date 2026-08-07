@@ -7,10 +7,13 @@ from openpilot.common.realtime import Ratekeeper
 import threading
 
 AudibleAlert = car.CarControl.HUDControl.AudibleAlert
+BEEP_PULSE_SECONDS = 0.001
+BEEP_GAP_SECONDS = 0.02
 
 class Beepd:
   def __init__(self):
     self.current_alert = AudibleAlert.none
+    self.mads_enabled = None
     # timestamp until which promptRepeat should be suppressed
     self.prompt_suppress_until = 0
     self.enable_gpio()
@@ -42,22 +45,24 @@ class Beepd:
 
   def engage(self):
     self._beep(True)
-    time.sleep(0.05)
+    time.sleep(BEEP_PULSE_SECONDS)
     self._beep(False)
 
   def disengage(self):
-    for _ in range(2):
+    for pulse in range(2):
       self._beep(True)
-      time.sleep(0.01)
+      time.sleep(BEEP_PULSE_SECONDS)
       self._beep(False)
-      time.sleep(0.01)
+      if pulse == 0:
+        time.sleep(BEEP_GAP_SECONDS)
 
   def warning(self):
-    for _ in range(3):
+    for pulse in range(3):
       self._beep(True)
-      time.sleep(0.01)
+      time.sleep(BEEP_PULSE_SECONDS)
       self._beep(False)
-      time.sleep(0.01)
+      if pulse < 2:
+        time.sleep(BEEP_GAP_SECONDS)
 
   #def startup_beep(self):
     #self._beep(True)
@@ -68,7 +73,7 @@ class Beepd:
     threading.Thread(target=func, daemon=True).start()
 
   def update_alert(self, new_alert):
-    now = time.time()
+    now = time.monotonic()
     if new_alert != self.current_alert:
       self.current_alert = new_alert
       print(f"[BEEP] New alert: {new_alert}")
@@ -91,6 +96,18 @@ class Beepd:
     if sm.updated['selfdriveState']:
       new_alert = sm['selfdriveState'].alertSound.raw
       self.update_alert(new_alert)
+
+    if sm.updated['selfdriveStateSP']:
+      self.update_mads(bool(sm['selfdriveStateSP'].mads.enabled))
+
+  def update_mads(self, enabled):
+    if self.mads_enabled is None:
+      self.mads_enabled = enabled
+      return
+
+    if enabled != self.mads_enabled:
+      self.mads_enabled = enabled
+      self.dispatch_beep(self.engage if enabled else self.disengage)
 
   def test_beepd_thread(self):
     frame = 0
@@ -117,7 +134,7 @@ class Beepd:
     if test:
       threading.Thread(target=self.test_beepd_thread, daemon=True).start()
 
-    sm = messaging.SubMaster(['selfdriveState'])
+    sm = messaging.SubMaster(['selfdriveState', 'selfdriveStateSP'])
     rk = Ratekeeper(20)
 
     while True:
