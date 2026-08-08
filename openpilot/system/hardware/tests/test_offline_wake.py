@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 from panda import Panda
 
@@ -18,21 +19,13 @@ class FakeParams:
     self.writes.append((key, value, block))
 
 
-def test_shutdown_gate_requires_continuous_quiet_period() -> None:
-  gate = offline_wake.CanShutdownGate(quiet_s=5.0, now=10.0)
+def test_shutdown_is_not_blocked_by_sleeping_vehicle_can() -> None:
+  shutdown_path = Path(hardwared.__file__).read_text().split("# Check if we need to shut down", 1)[1].split(
+    "msg.deviceState.started", 1
+  )[0]
 
-  assert not gate.ready(now=14.9)
-  assert gate.ready(now=15.0)
-
-  gate.update(active=True, now=16.0)
-  assert not gate.ready(now=20.9)
-  assert gate.ready(now=21.0)
-
-
-def test_shutdown_gate_force_bypasses_quiet_period() -> None:
-  gate = offline_wake.CanShutdownGate(quiet_s=300.0, now=100.0)
-
-  assert gate.ready(force=True, now=100.0)
+  assert "if shutdown_requested:" in shutdown_path
+  assert "can_shutdown_gate.ready" not in shutdown_path
 
 
 def test_wake_can_activity_covers_all_physical_vehicle_buses() -> None:
@@ -45,6 +38,21 @@ def test_wake_can_activity_covers_all_physical_vehicle_buses() -> None:
 
   assert not offline_wake.wake_can_activity([CanMessage(128), CanMessage(129), CanMessage(130)])
   assert not offline_wake.wake_can_activity([])
+
+
+def test_can_activity_diagnostics_track_each_physical_bus() -> None:
+  class CanMessage:
+    def __init__(self, src: int):
+      self.src = src
+
+  tracker = offline_wake.CanActivityTracker(now=10.0)
+  tracker.update([CanMessage(0), CanMessage(0), CanMessage(2), CanMessage(129)], now=12.0)
+
+  assert tracker.snapshot(now=15.0) == {
+    0: {"frames": 2, "last_activity_s": 3.0},
+    1: {"frames": 0, "last_activity_s": 5.0},
+    2: {"frames": 1, "last_activity_s": 3.0},
+  }
 
 
 def test_acknowledge_wake_monitor_replaces_request_with_blocking_ack() -> None:

@@ -8,32 +8,35 @@ from contextlib import contextmanager
 OFFLINE_WAKE_DEBUG_LOG = "/data/offline_wake_debug.log"
 PANDA_BOOTKICK_TEST_SENTINEL = "/data/panda_bootkick_test_pending"
 PANDA_BOOTKICK_TEST_TTL = 10 * 60
-OFFLINE_SHUTDOWN_CAN_QUIET_S = 300.0
-# Kept for compatibility with older diagnostics and local scripts.
-OFFLINE_SHUTDOWN_BUS1_QUIET_S = OFFLINE_SHUTDOWN_CAN_QUIET_S
 OFFLINE_WAKE_CAN_BUSES = (0, 1, 2)
 PANDA_WAKE_DEBUG_MAGIC = 0x57414B48
 PANDA_WAKE_MONITOR_ARMED_STAGE = 0x30
 
 
-class CanShutdownGate:
-  """Allow shutdown only after every armed physical CAN bus is quiet."""
-  def __init__(self, quiet_s: float = OFFLINE_SHUTDOWN_CAN_QUIET_S, now: float | None = None) -> None:
-    self.quiet_s = quiet_s
-    self.last_activity = time.monotonic() if now is None else now
-
-  def update(self, active: bool, now: float | None = None) -> None:
-    if active:
-      self.last_activity = time.monotonic() if now is None else now
-
-  def quiet_duration(self, now: float | None = None) -> float:
+class CanActivityTracker:
+  """Record sleeping-vehicle CAN for diagnostics without blocking shutdown."""
+  def __init__(self, now: float | None = None) -> None:
     current_time = time.monotonic() if now is None else now
-    return max(0.0, current_time - self.last_activity)
+    self.frame_counts: dict[int, int] = dict.fromkeys(OFFLINE_WAKE_CAN_BUSES, 0)
+    self.last_activity: dict[int, float] = dict.fromkeys(OFFLINE_WAKE_CAN_BUSES, current_time)
 
-  def ready(self, force: bool = False, now: float | None = None) -> bool:
+  def update(self, can_messages, now: float | None = None) -> None:
     current_time = time.monotonic() if now is None else now
-    quiet = self.quiet_duration(current_time) >= self.quiet_s
-    return force or quiet
+    for message in can_messages:
+      bus = int(message.src)
+      if bus in self.frame_counts:
+        self.frame_counts[bus] += 1
+        self.last_activity[bus] = current_time
+
+  def snapshot(self, now: float | None = None) -> dict[int, dict[str, float | int]]:
+    current_time = time.monotonic() if now is None else now
+    return {
+      bus: {
+        "frames": self.frame_counts[bus],
+        "last_activity_s": max(0.0, current_time - self.last_activity[bus]),
+      }
+      for bus in OFFLINE_WAKE_CAN_BUSES
+    }
 
 
 def wake_can_activity(can_messages) -> bool:

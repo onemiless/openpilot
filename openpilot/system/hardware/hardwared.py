@@ -24,8 +24,8 @@ from openpilot.sunnypilot.system.statsd import statlog
 from openpilot.system.hardware.power_monitoring import PowerMonitoring
 from openpilot.system.hardware.fan_controller import FanController
 from openpilot.system.hardware.offline_wake import (
-  CanShutdownGate, acknowledge_panda_wake_monitor, offline_wake_debug_log as _offline_wake_debug_log,
-  panda_bootkick_test_pending, panda_wake_monitor_ready, wake_can_activity,
+  CanActivityTracker, acknowledge_panda_wake_monitor, offline_wake_debug_log as _offline_wake_debug_log,
+  panda_bootkick_test_pending, panda_wake_monitor_ready,
 )
 from openpilot.common.version import terms_version, training_version, get_build_metadata, terms_version_sp
 
@@ -259,15 +259,13 @@ def hardware_thread(end_event, hw_queue) -> None:
   thermal_config = HARDWARE.get_thermal_config()
 
   fan_controller = FanController(int(1./DT_HW))
-  can_shutdown_gate = CanShutdownGate()
+  can_activity_tracker = CanActivityTracker()
   shutdown_wait_logged = False
 
   while not end_event.is_set():
     sm.update(PANDA_STATES_TIMEOUT)
-    # Panda STOP arms all physical vehicle CAN RX inputs. Do not power off the
-    # SoM until those same buses have been continuously quiet.
-    can_active = sm.updated["can"] and wake_can_activity(sm["can"])
-    can_shutdown_gate.update(can_active)
+    if sm.updated["can"]:
+      can_activity_tracker.update(sm["can"])
 
     pandaStates = sm['pandaStates']
     peripheralState = sm['peripheralState']
@@ -464,7 +462,7 @@ def hardware_thread(end_event, hw_queue) -> None:
     # Check if we need to shut down
     shutdown_requested = power_monitor.should_shutdown(onroad_conditions["ignition"], in_car, off_ts, started_seen)
     force_power_down = params.get_bool("ForcePowerDown")
-    if shutdown_requested and can_shutdown_gate.ready(force_power_down):
+    if shutdown_requested:
       cloudlog.warning(f"shutting device down, offroad since {off_ts}")
       monitor_ready = request_panda_deepsleep()
       shutdown_fields = [
@@ -472,7 +470,7 @@ def hardware_thread(end_event, hw_queue) -> None:
         f"offroad_since={off_ts}",
         f"in_car={in_car}",
         f"started_seen={started_seen}",
-        f"can_quiet_s={can_shutdown_gate.quiet_duration():.1f}",
+        f"can_activity={can_activity_tracker.snapshot()}",
         f"forced={force_power_down}",
         f"monitor_ready={monitor_ready}",
       ]
@@ -481,10 +479,6 @@ def hardware_thread(end_event, hw_queue) -> None:
         params.put_bool("DoShutdown", True, block=True)
       elif not shutdown_wait_logged:
         offline_wake_debug_log("shutdown deferred because Panda wake monitor setup failed")
-        shutdown_wait_logged = True
-    elif shutdown_requested:
-      if not shutdown_wait_logged:
-        offline_wake_debug_log("shutdown waiting for all physical CAN buses to remain quiet")
         shutdown_wait_logged = True
     else:
       shutdown_wait_logged = False
