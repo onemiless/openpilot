@@ -186,8 +186,8 @@ class TestRemainActiveMode:
     assert mads.state_machine.state == State.enabled
 
 
-class TestMadsOnlyLongitudinalIsolation:
-  def test_enable_event_is_filtered_before_main_state_machine(self, mocker):
+class TestMadsLongitudinalIsolation:
+  def test_enable_event_remains_available_to_main_state_machine(self, mocker):
     mads, sd = make_mads(mocker, MadsSteeringModeOnBrake.REMAIN_ACTIVE)
     mads.unified_engagement_mode = True
     mads.state_machine.state = State.enabled
@@ -195,9 +195,26 @@ class TestMadsOnlyLongitudinalIsolation:
     mads.active = True
     sd.events.add(EventName.pcmEnable)
 
-    mads.prepare_events(make_car_state(v_ego=10.0))
+    # The main longitudinal state machine runs before MADS filtering. This is
+    # what lets the driver re-enable longitudinal while MADS remains active.
+    assert sd.events.has(EventName.pcmEnable)
+    mads.update(make_car_state(v_ego=10.0))
 
     assert not sd.events.has(EventName.pcmEnable)
+
+  def test_brake_can_disable_longitudinal_without_disabling_remain_active_mads(self, mocker):
+    mads, sd = make_mads(mocker, MadsSteeringModeOnBrake.REMAIN_ACTIVE)
+    mads.state_machine.state = State.enabled
+    mads.enabled = True
+    mads.active = True
+    sd.events.add(EventName.pedalPressed)
+
+    # Before MADS runs, longitudinal can consume the brake event.
+    assert sd.events.has(EventName.pedalPressed)
+    mads.update(make_car_state(brake_pressed=True, v_ego=10.0))
+
+    assert not sd.events.has(EventName.pedalPressed)
+    assert mads.state_machine.state == State.enabled
 
 
 # lateral mismatch counter

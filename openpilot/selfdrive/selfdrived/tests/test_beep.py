@@ -30,7 +30,7 @@ def test_mads_enable_and_disable_have_distinct_beeps(beepd):
 
 
 def test_mads_beeps_use_very_short_pulses(monkeypatch):
-  assert BEEP_PULSE_SECONDS == pytest.approx(0.0002)
+  assert BEEP_PULSE_SECONDS == pytest.approx(0.0005)
   beep = Beepd.__new__(Beepd)
   beep._beep = Mock()
   sleep = Mock()
