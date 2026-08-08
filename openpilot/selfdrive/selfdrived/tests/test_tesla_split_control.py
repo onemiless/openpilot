@@ -1,5 +1,5 @@
 from openpilot.cereal import log
-from openpilot.selfdrive.selfdrived.selfdrived import filter_tesla_coop_steering_events, filter_tesla_split_control_events
+from openpilot.selfdrive.selfdrived.selfdrived import filter_tesla_split_control_events
 
 
 EventName = log.OnroadEvent.EventName
@@ -23,20 +23,3 @@ def test_split_control_keeps_accelerator_longitudinal_override():
 
   assert EventName.buttonCancel not in events.names
   assert EventName.gasPressedOverride in events.names
-
-
-def test_coop_steering_override_does_not_exit_session():
-  events = FakeEvents((EventName.steerDisengage, EventName.steerOverride))
-
-  filter_tesla_coop_steering_events(events, coop_steering_enabled=True)
-
-  assert EventName.steerDisengage not in events.names
-  assert EventName.steerOverride in events.names
-
-
-def test_non_coop_steering_override_still_exits_session():
-  events = FakeEvents((EventName.steerDisengage,))
-
-  filter_tesla_coop_steering_events(events, coop_steering_enabled=False)
-
-  assert EventName.steerDisengage in events.names

@@ -47,7 +47,6 @@ PandaType = log.PandaState.PandaType
 LaneChangeState = log.LaneChangeState
 LaneChangeDirection = log.LaneChangeDirection
 EventName = log.OnroadEvent.EventName
-TESLA_COOP_STEERING = 2
 TESLA_STOCK_LONGITUDINAL_ACTIVE = 32
 TESLA_AP_HYBRID_ACTIVE = 512
 TESLA_DYNAMIC_STOCK_ACTIVE = 1024
@@ -98,11 +97,6 @@ def filter_tesla_split_control_events(events: Events, ap_exit_recovery_active: b
   for event in suppressed_events:
     if events.has(event):
       events.remove(event)
-
-
-def filter_tesla_coop_steering_events(events: Events, coop_steering_enabled: bool) -> None:
-  if coop_steering_enabled and events.has(EventName.steerDisengage):
-    events.remove(EventName.steerDisengage)
 
 
 ButtonType = car.CarState.ButtonEvent.Type
@@ -329,9 +323,6 @@ class SelfdriveD(CruiseHelper):
     if CS.canValid:
       car_events = self.car_events.update(CS, self.CS_prev, self.sm['carControl']).to_msg()
       self.events.add_from_msg(car_events)
-
-      if self.CP.brand == 'tesla':
-        filter_tesla_coop_steering_events(self.events, bool(self.CP_SP.flags & TESLA_COOP_STEERING))
 
       # Tesla split-control modes can keep SP lateral active while Tesla AP or
       # ACC changes state. Filter disable events throughout the split-control
@@ -885,8 +876,6 @@ class SelfdriveD(CruiseHelper):
     if not self.CP.passive and self.initialized:
       self.enabled, self.active = self.state_machine.update(self.events)
     if not self.CP.notCar:
-      # Longitudinal consumes enable/disable and pedal events first. MADS then
-      # filters those same events for its independent lateral state machine.
       self.mads.update(CS)
     self._log_tesla_mads_debug(CS, "after_mads_update")
     self.update_alerts(CS)
