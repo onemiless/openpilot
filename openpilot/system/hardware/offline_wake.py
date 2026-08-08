@@ -66,12 +66,28 @@ def _panda_bootkick_test_lock() -> Generator[None, None, None]:
     os.close(fd)
 
 
-def offline_wake_debug_log(process: str, message: str) -> None:
+def offline_wake_debug_log_lines(process: str, messages: list[str]) -> bool:
   try:
     with open(OFFLINE_WAKE_DEBUG_LOG, "a") as f:
-      f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {process} {message}\n")
+      for message in messages:
+        f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {process} {message}\n")
+      f.flush()
+      os.fsync(f.fileno())
+    # The log can be created immediately before vehicle power disappears.
+    # Persist the directory entry before allowing the journal cursor to move.
+    parent = os.path.dirname(OFFLINE_WAKE_DEBUG_LOG) or "."
+    directory_fd = os.open(parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+      os.fsync(directory_fd)
+    finally:
+      os.close(directory_fd)
+    return True
   except Exception:
-    pass
+    return False
+
+
+def offline_wake_debug_log(process: str, message: str) -> None:
+  offline_wake_debug_log_lines(process, [message])
 
 
 def panda_bootkick_test_pending() -> bool:
