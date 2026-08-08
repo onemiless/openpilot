@@ -8,7 +8,7 @@ from openpilot.common.realtime import Ratekeeper
 import threading
 
 AudibleAlert = car.CarControl.HUDControl.AudibleAlert
-BEEP_PULSE_SECONDS = 0.0005
+BEEP_PULSE_SECONDS = 0.010
 BEEP_GAP_SECONDS = 0.02
 GPIO_PIN = 42
 GPIO_VALUE_PATH = f"/sys/class/gpio/gpio{GPIO_PIN}/value"
