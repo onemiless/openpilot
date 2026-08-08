@@ -1,3 +1,10 @@
+sunnypilot Version 2026.002.002 (2026-08-08)
+========================
+* C3XL/Tesla 离线唤醒修复：
+  * 在主机关机稳定 10 秒后，同时监听三路物理 CAN RX 的原始电气边沿，补足短 CAN burst、CAN FD 或首帧无法被 FDCAN 解码时的唤醒盲区。
+  * 捕获首个边沿后立即关闭原始边沿中断并进入现有 BOOTKICK/SoM reset 流程，保持 SAFETY_SILENT，离线期间仍只接收、不发送 CAN。
+  * 锁存触发的 EXTI 线路及 rawCanEdge 唤醒来源，便于下一次启动后区分物理总线无活动和协议解码失败。
+
 sunnypilot Version 2026.002.001 (2026-08-07)
 ========================
 * C3XL/Tesla 稳定性修复：
