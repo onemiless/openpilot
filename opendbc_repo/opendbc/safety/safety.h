@@ -79,6 +79,8 @@ bool brake_pressed = false;
 bool brake_pressed_prev = false;
 bool regen_braking = false;
 bool regen_braking_prev = false;
+bool steering_disengage = false;
+bool steering_disengage_prev = false;
 bool cruise_engaged_prev = false;
 struct sample_t vehicle_speed;
 bool vehicle_moving = false;
@@ -109,6 +111,8 @@ struct sample_t angle_meas;         // last 6 steer angles/curvatures
 
 int alternative_experience = 0;
 
+#include "safety/safety_mads.h"
+
 // time since safety mode has been changed
 uint32_t safety_mode_cnt = 0U;
 
@@ -123,6 +127,7 @@ static bool is_msg_valid(RxCheck addr_list[], int index) {
     if (!addr_list[index].status.valid_checksum || !addr_list[index].status.valid_quality_flag || (addr_list[index].status.wrong_counters >= MAX_WRONG_COUNTERS)) {
       valid = false;
       controls_allowed = false;
+      mads_exit_controls(MADS_DISENGAGE_REASON_RX_INVALID);
       print("controls_allowed(msgvalid) = false\n");
     }
   }
@@ -344,6 +349,7 @@ void safety_tick(const safety_config *cfg) {
       cfg->rx_checks[i].status.lagging = lagging;
       if (lagging) {
         controls_allowed = false;
+        mads_exit_controls(MADS_DISENGAGE_REASON_LAG);
       }
 
       if (lagging || !is_msg_valid(cfg->rx_checks, i)) {
@@ -357,6 +363,8 @@ void safety_tick(const safety_config *cfg) {
 
 static void relay_malfunction_set(void) {
   relay_malfunction = true;
+  controls_allowed = false;
+  mads_exit_controls(MADS_DISENGAGE_REASON_RELAY_MALFUNCTION);
   fault_occurred(FAULT_RELAY_MALFUNCTION);
 }
 
@@ -382,10 +390,17 @@ void generic_rx_checks(bool stock_ecu_detected) {
   }
   regen_braking_prev = regen_braking;
 
+  if (steering_disengage && !steering_disengage_prev) {
+    controls_allowed = false;
+    mads_exit_controls(MADS_DISENGAGE_REASON_STEERING_DISENGAGE);
+  }
+  steering_disengage_prev = steering_disengage;
+
   // check if stock ECU is on bus broken by car harness
   if ((safety_mode_cnt > RELAY_TRNS_TIMEOUT) && stock_ecu_detected && !gm_skip_relay_check) {
     relay_malfunction_set();
   }
+  mads_state_update(acc_main_on, controls_allowed, brake_pressed || regen_braking, steering_disengage);
 }
 
 static void relay_malfunction_reset(void) {
@@ -442,6 +457,8 @@ int set_safety_hooks(uint16_t mode, uint16_t param) {
   brake_pressed_prev = false;
   regen_braking = false;
   regen_braking_prev = false;
+  steering_disengage = false;
+  steering_disengage_prev = false;
   cruise_engaged_prev = false;
   vehicle_moving = false;
   acc_main_on = false;
@@ -462,6 +479,7 @@ int set_safety_hooks(uint16_t mode, uint16_t param) {
   reset_sample(&angle_meas);
 
   controls_allowed = false;
+  mads_state_init();
   relay_malfunction_reset();
   safety_rx_checks_invalid = false;
 
@@ -614,12 +632,12 @@ int ROUND(float val) {
 
 // Safety checks for longitudinal actuation
 bool longitudinal_accel_checks(int desired_accel, const LongitudinalLimits limits) {
-    if(desired_accel != 0) {
+    if ((current_safety_mode != SAFETY_TESLA) && (desired_accel != 0)) {
       if(!controls_allowed) print("@@@@@@@@ longitudinal_accel_checks... auto controls_allowed enabled...\n");
       controls_allowed = true;
     }
-    //bool accel_valid = get_longitudinal_allowed() && !max_limit_check(desired_accel, limits.max_accel, limits.min_accel);
-    bool accel_valid = !max_limit_check(desired_accel, limits.max_accel, limits.min_accel);
+    bool accel_valid = ((current_safety_mode != SAFETY_TESLA) || get_longitudinal_allowed()) &&
+                       !max_limit_check(desired_accel, limits.max_accel, limits.min_accel);
     bool accel_inactive = desired_accel == limits.inactive_accel;
   return !(accel_valid || accel_inactive);
 }
@@ -656,7 +674,7 @@ bool steer_torque_cmd_checks(int desired_torque, int steer_req, const TorqueStee
   bool violation = false;
   uint32_t ts = microsecond_timer_get();
 
-  bool aol_allowed = true;
+  bool aol_allowed = (current_safety_mode == SAFETY_TESLA) ? controls_allowed_lateral : true;
   if (controls_allowed) acc_main_on = controls_allowed;
   
   if (controls_allowed || aol_allowed) {
@@ -744,7 +762,7 @@ bool steer_torque_cmd_checks(int desired_torque, int steer_req, const TorqueStee
 bool steer_angle_cmd_checks(int desired_angle, bool steer_control_enabled, const AngleSteeringLimits limits) {
   bool violation = false;
 
-  bool aol_allowed = true;
+  bool aol_allowed = (current_safety_mode == SAFETY_TESLA) ? controls_allowed_lateral : true;
   if (controls_allowed) acc_main_on = controls_allowed;
   if ((controls_allowed || aol_allowed) && steer_control_enabled) {
     // convert floating point angle rate limits to integers in the scale of the desired angle on CAN,

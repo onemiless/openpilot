@@ -145,6 +145,8 @@ void fill_panda_state(cereal::PandaState::Builder &ps, cereal::PandaState::Panda
   ps.setIgnitionLine(health.ignition_line_pkt);
   ps.setIgnitionCan(health.ignition_can_pkt);
   ps.setControlsAllowed(health.controls_allowed_pkt);
+  ps.setControlsAllowedLateral(health.controls_allowed_lateral_pkt);
+  ps.setControlsAllowedLongitudinal(health.controls_allowed_longitudinal_pkt);
   ps.setTxBufferOverflow(health.tx_buffer_overflow_pkt);
   ps.setRxBufferOverflow(health.rx_buffer_overflow_pkt);
   ps.setPandaType(hw_type);
@@ -327,7 +329,7 @@ void send_peripheral_state(Panda *panda, PubMaster *pm) {
   pm->send("peripheralState", msg);
 }
 
-void process_panda_state(std::vector<Panda *> &pandas, PubMaster *pm, bool engaged, bool spoofing_started) {
+void process_panda_state(std::vector<Panda *> &pandas, PubMaster *pm, bool engaged, bool engaged_mads, bool spoofing_started) {
   std::vector<std::string> connected_serials;
   for (Panda *p : pandas) {
     connected_serials.push_back(p->hw_serial());
@@ -364,7 +366,7 @@ void process_panda_state(std::vector<Panda *> &pandas, PubMaster *pm, bool engag
     }
 
     for (const auto &panda : pandas) {
-      panda->send_heartbeat(engaged);
+      panda->send_heartbeat(engaged, engaged_mads);
     }
   }
 }
@@ -430,11 +432,12 @@ void pandad_run(std::vector<Panda *> &pandas) {
   std::thread send_thread(can_send_thread, pandas, fake_send);
 
   RateKeeper rk("pandad", 100);
-  SubMaster sm({"selfdriveState", "carParams"});
+  SubMaster sm({"selfdriveState", "madsState", "carParams"});
   PubMaster pm({"can", "pandaStates", "peripheralState"});
   PandaSafety panda_safety(pandas);
   Panda *peripheral_panda = pandas[0];
   bool engaged = false;
+  bool engaged_mads = false;
 
   //new
   Params params;
@@ -468,7 +471,8 @@ void pandad_run(std::vector<Panda *> &pandas) {
     if (rk.frame() % 10 == 0) {
       sm.update(0);
       engaged = sm.allAliveAndValid({"selfdriveState"}) && sm["selfdriveState"].getSelfdriveState().getEnabled();
-      process_panda_state(pandas, &pm, engaged, spoofing_started);
+      engaged_mads = sm.allAliveAndValid({"madsState"}) && sm["madsState"].getMadsState().getEnabled();
+      process_panda_state(pandas, &pm, engaged, engaged_mads, spoofing_started);
       panda_safety.configureSafetyMode();
     }
 

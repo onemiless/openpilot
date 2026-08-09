@@ -107,6 +107,7 @@ class TeslaFlags(IntFlag):
 DBC = CAR.create_dbc_map()
 
 STEER_THRESHOLD = 0.5
+STEER_DISENGAGE_THRESHOLD = 5.0
 
 if __name__ == "__main__":
   cars = []
@@ -116,4 +117,3 @@ if __name__ == "__main__":
   cars.sort()
   for c in cars:
     print(c)
-

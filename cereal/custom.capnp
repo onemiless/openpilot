@@ -65,7 +65,19 @@ struct AmapNavi @0xaedffd8f31e7b55d {
 	rightDevice @6 : Int32;
 }
 
-struct CustomReserved2 @0xf35cc4560bbf6ec2 {
+struct MadsState @0xf35cc4560bbf6ec2 {
+	state @0 :State;
+	enabled @1 :Bool;
+	active @2 :Bool;
+	available @3 :Bool;
+
+	enum State {
+		disabled @0;
+		paused @1;
+		enabled @2;
+		softDisabling @3;
+		overriding @4;
+	}
 }
 
 struct CustomReserved3 @0xda96579883444c35 {

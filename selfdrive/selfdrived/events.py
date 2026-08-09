@@ -435,6 +435,7 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
     ET.PERMANENT: NormalPermanentAlert("Invalid LKAS setting",
                                        "Toggle stock LKAS on or off to engage"),
     ET.NO_ENTRY: NoEntryAlert("Invalid LKAS setting"),
+    ET.USER_DISABLE: ImmediateDisableAlert("Invalid LKAS setting"),
   },
 
   EventName.cruiseMismatch: {
@@ -712,6 +713,11 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
       "",
       AlertStatus.normal, AlertSize.none,
       Priority.LOWEST, VisualAlert.none, AudibleAlert.none, .1),
+  },
+
+  EventName.steerDisengage: {
+    ET.USER_DISABLE: EngagementAlert(AudibleAlert.disengage),
+    ET.NO_ENTRY: NoEntryAlert("转向干预已触发"),
   },
 
   EventName.wrongCarMode: {

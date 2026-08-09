@@ -25,6 +25,19 @@ void set_controls_allowed(bool c){
 
 void set_alternative_experience(int mode){
   alternative_experience = mode;
+  mads_set_alternative_experience(&alternative_experience);
+}
+
+bool get_controls_allowed_lateral(void){
+  return controls_allowed_lateral;
+}
+
+void set_heartbeat_engaged_mads(bool engaged){
+  heartbeat_engaged_mads = engaged;
+}
+
+void run_mads_heartbeat_check(void){
+  mads_heartbeat_engaged_check();
 }
 
 void set_relay_malfunction(bool c){
@@ -176,6 +189,7 @@ bool get_honda_fwd_brake(void){
 void init_tests(void){
   safety_mode_cnt = 2U;  // avoid ignoring relay_malfunction logic
   alternative_experience = 0;
+  mads_set_alternative_experience(&alternative_experience);
   set_timer(0);
   ts_steer_req_mismatch_last = 0;
   valid_steer_req_count = 0;

@@ -3,7 +3,7 @@ from opendbc.can import CANDefine, CANParser
 from opendbc.car import Bus, structs
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarStateBase
-from opendbc.car.tesla.values import DBC, CANBUS, GEAR_MAP, STEER_THRESHOLD
+from opendbc.car.tesla.values import DBC, CANBUS, GEAR_MAP, STEER_DISENGAGE_THRESHOLD, STEER_THRESHOLD
 
 ButtonType = structs.CarState.ButtonEvent.Type
 
@@ -48,6 +48,9 @@ class CarState(CarStateBase):
     eac_status = self.can_define.dv["EPAS3S_sysStatus"]["EPAS3S_eacStatus"].get(int(epas_status["EPAS3S_eacStatus"]), None)
     ret.steerFaultPermanent = eac_status == "EAC_FAULT"
     ret.steerFaultTemporary = eac_status == "EAC_INHIBITED"
+    eac_error_code = int(epas_status["EPAS3S_eacErrorCode"])
+    ret.steeringDisengage = self.hands_on_level >= 3 or abs(ret.steeringTorque) > STEER_DISENGAGE_THRESHOLD or \
+                              (eac_status == "EAC_INHIBITED" and eac_error_code == 9)
 
     # Cruise state
     cruise_state = self.can_define.dv["DI_state"]["DI_cruiseState"].get(int(cp_party.vl["DI_state"]["DI_cruiseState"]), None)

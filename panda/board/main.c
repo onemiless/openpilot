@@ -190,7 +190,7 @@ static void tick_handler(void) {
       #endif
 
       // set green LED to be controls allowed
-      led_set(LED_GREEN, controls_allowed | green_led_enabled);
+      led_set(LED_GREEN, controls_allowed | controls_allowed_lateral | green_led_enabled);
 
       // turn off the blue LED, turned on by CAN
       // unless we are in power saving mode
@@ -215,7 +215,7 @@ static void tick_handler(void) {
         siren_countdown -= 1U;
       }
 
-      if (controls_allowed || heartbeat_engaged) {
+      if (controls_allowed || controls_allowed_lateral || heartbeat_engaged || heartbeat_engaged_mads) {
         controls_allowed_countdown = 5U;
       } else if (controls_allowed_countdown > 0U) {
         controls_allowed_countdown -= 1U;
@@ -232,6 +232,8 @@ static void tick_handler(void) {
       } else {
         heartbeat_engaged_mismatches = 0U;
       }
+
+      mads_heartbeat_engaged_check();
 
       if (!heartbeat_disabled) {
         // if the heartbeat has been gone for a while, go to SILENT safety mode and enter power save
@@ -252,6 +254,8 @@ static void tick_handler(void) {
 
           // clear heartbeat engaged state
           heartbeat_engaged = false;
+          heartbeat_engaged_mads = false;
+          mads_exit_controls(MADS_DISENGAGE_REASON_HEARTBEAT_ENGAGED_MISMATCH);
 
           if (current_safety_mode != SAFETY_SILENT) {
             set_safety_mode(SAFETY_SILENT, 0U);

@@ -18,6 +18,7 @@ from openpilot.common.gps import get_gps_location_service
 from openpilot.selfdrive.car.car_specific import CarSpecificEvents
 from openpilot.selfdrive.selfdrived.events import Events, ET
 from openpilot.selfdrive.selfdrived.state import StateMachine
+from openpilot.selfdrive.selfdrived.mads import ModularAssistiveDrivingSystem
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
 from openpilot.selfdrive.controls.lib.latcontrol import MIN_LATERAL_CONTROL_SPEED
 
@@ -59,7 +60,7 @@ class SelfdriveD:
     self.disengage_on_accelerator = not (self.CP.alternativeExperience & ALTERNATIVE_EXPERIENCE.DISABLE_DISENGAGE_ON_GAS)
 
     # Setup sockets
-    self.pm = messaging.PubMaster(['selfdriveState', 'onroadEvents'])
+    self.pm = messaging.PubMaster(['selfdriveState', 'onroadEvents', 'madsState'])
 
     self.gps_location_service = get_gps_location_service(self.params)
     self.gps_packets = [self.gps_location_service]
@@ -121,6 +122,7 @@ class SelfdriveD:
     self.personality = self.read_personality_param()
     self.recalibrating_seen = False
     self.state_machine = StateMachine()
+    self.mads = ModularAssistiveDrivingSystem(self.CP, self.params)
     self.rk = Ratekeeper(100, print_delay_threshold=None)
 
     self.atc_type_last = ""
@@ -493,6 +495,7 @@ class SelfdriveD:
     CS = car_state.carState if car_state else self.CS_prev
 
     self.sm.update(0)
+    self.mads.data_sample(self.sm['pandaStates'], self.enabled)
 
     if not self.initialized:
       all_valid = CS.canValid and self.sm.all_checks()
@@ -572,6 +575,15 @@ class SelfdriveD:
 
     self.pm.send('selfdriveState', ss_msg)
 
+    mads_msg = messaging.new_message('madsState')
+    mads_msg.valid = True
+    mads = mads_msg.madsState
+    mads.state = self.mads.state
+    mads.enabled = self.mads.enabled
+    mads.active = self.mads.active
+    mads.available = self.mads.available
+    self.pm.send('madsState', mads_msg)
+
     # onroadEvents - logged every second or on change
     if (self.sm.frame % int(1. / DT_CTRL) == 0) or (self.events.names != self.events_prev):
       ce_send = messaging.new_message('onroadEvents', len(self.events))
@@ -583,8 +595,11 @@ class SelfdriveD:
   def step(self):
     CS = self.data_sample()
     self.update_events(CS)
+    if self.mads.controls_mismatch:
+      self.events.add(EventName.controlsMismatch)
     if not self.CP.passive and self.initialized:
       self.enabled, self.active = self.state_machine.update(self.events)
+    self.mads.update(CS, self.enabled, self.active, self.events)
     self.update_alerts(CS)
 
     self.publish_selfdriveState(CS)

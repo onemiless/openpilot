@@ -128,9 +128,9 @@ class Panda:
   HW_TYPE_CUATRO = b'\x0a'
 
   CAN_PACKET_VERSION = 4
-  HEALTH_PACKET_VERSION = 16
+  HEALTH_PACKET_VERSION = 17
   CAN_HEALTH_PACKET_VERSION = 5
-  HEALTH_STRUCT = struct.Struct("<IIIIIIIIBBBBBHBBBHfBBHBHHB")
+  HEALTH_STRUCT = struct.Struct("<IIIIIIIIBBBBBHBBBHfBBHBHHBBB")
   CAN_HEALTH_STRUCT = struct.Struct("<BIBBBBBBBBIIIIIIIHHBBBIIII")
 
   F4_DEVICES = [HW_TYPE_WHITE_PANDA, HW_TYPE_GREY_PANDA, HW_TYPE_BLACK_PANDA, HW_TYPE_UNO, HW_TYPE_DOS]
@@ -577,6 +577,8 @@ class Panda:
       "sbu1_voltage_mV": a[23],
       "sbu2_voltage_mV": a[24],
       "som_reset_triggered": a[25],
+      "controls_allowed_lateral": a[26],
+      "controls_allowed_longitudinal": a[27],
     }
 
   @ensure_can_health_packet_version
@@ -826,8 +828,8 @@ class Panda:
     """
     self._handle.controlWrite(Panda.REQUEST_OUT, 0xf2, port_number, 0, b'')
 
-  def send_heartbeat(self, engaged=True):
-    self._handle.controlWrite(Panda.REQUEST_OUT, 0xf3, engaged, 0, b'')
+  def send_heartbeat(self, engaged=True, engaged_mads=False):
+    self._handle.controlWrite(Panda.REQUEST_OUT, 0xf3, engaged, engaged_mads, b'')
 
   # disable heartbeat checks for use outside of openpilot
   # sending a heartbeat will reenable the checks

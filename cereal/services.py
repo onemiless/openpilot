@@ -83,6 +83,7 @@ _services: dict[str, tuple] = {
 
   "carrotMan": (True, 0.),
   "amapNavi": (True, 0.), #新加导航雷达消息
+  "madsState": (True, 100., 10),
   "navInstructionCarrot": (True, 1., 10),
 
   # debug

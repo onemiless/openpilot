@@ -4,6 +4,7 @@
 
 static bool tesla_longitudinal = false;
 static bool tesla_stock_aeb = false;
+static const int TESLA_STEERING_DISENGAGE_TORQUE = 500;  // 5.0 Nm in 0.01 Nm units
 
 static void tesla_rx_hook(const CANPacket_t *to_push) {
   int bus = GET_BUS(to_push);
@@ -15,6 +16,14 @@ static void tesla_rx_hook(const CANPacket_t *to_push) {
       // Store it 1/10 deg to match steering request
       int angle_meas_new = (((GET_BYTE(to_push, 4) & 0x3FU) << 8) | GET_BYTE(to_push, 5)) - 8192U;
       update_sample(&angle_meas, angle_meas_new);
+
+      int hands_on_level = GET_BYTE(to_push, 4) >> 6;
+      int torsion_bar_torque = (((GET_BYTE(to_push, 2) & 0x0FU) << 8) | GET_BYTE(to_push, 3)) - 2050;
+      int eac_status = GET_BYTE(to_push, 6) >> 5;
+      int eac_error_code = GET_BYTE(to_push, 2) >> 4;
+      steering_disengage = (hands_on_level >= 3) ||
+                           (ABS(torsion_bar_torque) > TESLA_STEERING_DISENGAGE_TORQUE) ||
+                           ((eac_status == 0) && (eac_error_code == 9));
     }
 
     // Vehicle speed
@@ -37,6 +46,9 @@ static void tesla_rx_hook(const CANPacket_t *to_push) {
     // Cruise state
     if (addr == 0x286) {
       int cruise_state = (GET_BYTE(to_push, 1) >> 4) & 0x07U;
+      // STANDBY and all engaged states mean the physical cruise main is on.
+      // UNAVAILABLE and FAULT must revoke independent lateral permission.
+      acc_main_on = (cruise_state != 0) && (cruise_state != 5);
       bool cruise_engaged = (cruise_state == 2) ||  // ENABLED
                             (cruise_state == 3) ||  // STANDSTILL
                             (cruise_state == 4) ||  // OVERRIDE
@@ -55,12 +67,9 @@ static void tesla_rx_hook(const CANPacket_t *to_push) {
     }
   }
 
-  generic_rx_checks((addr == 0x488) && (bus == 0));  // DAS_steeringControl
-  generic_rx_checks((addr == 0x27d) && (bus == 0));  // APS_eacMonitor
-
-  if (tesla_longitudinal) {
-    generic_rx_checks((addr == 0x2b9) && (bus == 0));
-  }
+  bool stock_ecu_detected = (bus == 0) && ((addr == 0x488) || (addr == 0x27d) ||
+                            (tesla_longitudinal && (addr == 0x2b9)));
+  generic_rx_checks(stock_ecu_detected);
 }
 
 

@@ -627,6 +627,7 @@ struct PandaState @0xa7649e2575e4591e {
   harnessStatus @21 :HarnessStatus;
   sbu1Voltage @35 :Float32;
   sbu2Voltage @36 :Float32;
+  soundOutputLevel @37 :UInt16;
 
   # can health
   canState0 @29 :PandaCanState;
@@ -641,6 +642,8 @@ struct PandaState @0xa7649e2575e4591e {
   safetyParam @27 :UInt16;
   alternativeExperience @23 :Int16;
   safetyRxChecksInvalid @32 :Bool;
+  controlsAllowedLateral @38 :Bool;
+  controlsAllowedLongitudinal @39 :Bool;
 
   voltage @0 :UInt32;
   current @1 :UInt32;
@@ -2696,7 +2699,7 @@ struct Event {
     carrotMan @107 :Custom.CarrotMan;
     amapNavi @108 :Custom.AmapNavi; #新加的导航和雷达消息
     #customReserved1 @108 :Custom.CustomReserved1;
-    customReserved2 @109 :Custom.CustomReserved2;
+    madsState @109 :Custom.MadsState;
     customReserved3 @110 :Custom.CustomReserved3;
     customReserved4 @111 :Custom.CustomReserved4;
     customReserved5 @112 :Custom.CustomReserved5;

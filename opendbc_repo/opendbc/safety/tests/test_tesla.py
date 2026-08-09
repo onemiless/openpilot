@@ -4,6 +4,7 @@ import unittest
 from opendbc.car.tesla.values import TeslaSafetyFlags
 from opendbc.car.structs import CarParams
 from opendbc.can import CANDefine
+from opendbc.safety import ALTERNATIVE_EXPERIENCE
 from opendbc.safety.tests.libsafety import libsafety_py
 import opendbc.safety.tests.common as common
 from opendbc.safety.tests.common import CANPackerPanda
@@ -56,7 +57,16 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
     return self.packer.make_can_msg_panda("DAS_steeringControl", 0, values)
 
   def _angle_meas_msg(self, angle: float):
-    values = {"EPAS3S_internalSAS": angle}
+    return self._steering_status_msg(angle=angle)
+
+  def _steering_status_msg(self, angle=0.0, torque=0.0, hands_on_level=0, eac_status=2, eac_error_code=0):
+    values = {
+      "EPAS3S_internalSAS": angle,
+      "EPAS3S_torsionBarTorque": torque,
+      "EPAS3S_handsOnLevel": hands_on_level,
+      "EPAS3S_eacStatus": eac_status,
+      "EPAS3S_eacErrorCode": eac_error_code,
+    }
     return self.packer.make_can_msg_panda("EPAS3S_sysStatus", 0, values)
 
   def _user_brake_msg(self, brake):
@@ -78,6 +88,9 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
   def _pcm_status_msg(self, enable):
     values = {"DI_cruiseState": 2 if enable else 0}
     return self.packer.make_can_msg_panda("DI_state", 0, values)
+
+  def _pcm_standby_msg(self):
+    return self.packer.make_can_msg_panda("DI_state", 0, {"DI_cruiseState": 1})
 
   def _long_control_msg(self, set_speed, acc_state=0, jerk_limits=(0, 0), accel_limits=(0, 0), aeb_event=0, bus=0):
     values = {
@@ -113,6 +126,62 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
   def test_ars408_motion_inputs_remain_blocked_on_shared_vehicle_can(self):
     self.assertFalse(self._tx(common.make_msg(1, MSG_ARS408_SPEED, 2)))
     self.assertFalse(self._tx(common.make_msg(1, MSG_ARS408_YAW_RATE, 2)))
+
+  def _engage_mads(self, brake_mode=0):
+    self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.ENABLE_MADS | brake_mode)
+    self.safety.set_controls_allowed(True)
+    self.assertTrue(self._rx(self._speed_msg(10)))
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+
+  def test_mads_retains_lateral_after_longitudinal_disengages(self):
+    self._engage_mads()
+    self.safety.set_controls_allowed(False)
+    self.assertTrue(self._rx(self._speed_msg(10)))
+    self.assertFalse(self.safety.get_controls_allowed())
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+    self.assertTrue(self._tx(self._angle_cmd_msg(0, True)))
+
+  def test_mads_retains_lateral_in_standby_but_exits_when_cruise_main_is_off(self):
+    self._engage_mads()
+    self.assertTrue(self._rx(self._pcm_standby_msg()))
+    self.assertFalse(self.safety.get_controls_allowed())
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+    self.assertTrue(self._rx(self._pcm_status_msg(False)))
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+
+  def test_mads_brake_modes(self):
+    safety_param = self.safety.get_current_safety_param()
+    for mode, resumes in ((ALTERNATIVE_EXPERIENCE.MADS_DISENGAGE_LATERAL_ON_BRAKE, False),
+                          (ALTERNATIVE_EXPERIENCE.MADS_PAUSE_LATERAL_ON_BRAKE, True)):
+      self.safety.set_safety_hooks(CarParams.SafetyModel.tesla, safety_param)
+      self.safety.init_tests()
+      self._engage_mads(mode)
+      self.assertTrue(self._rx(self._user_brake_msg(True)))
+      self.assertFalse(self.safety.get_controls_allowed_lateral())
+      self.assertTrue(self._rx(self._user_brake_msg(False)))
+      self.assertEqual(resumes, self.safety.get_controls_allowed_lateral())
+
+  def test_mads_strong_driver_steering_disengages(self):
+    safety_param = self.safety.get_current_safety_param()
+    for msg in (self._steering_status_msg(torque=5.01),
+                self._steering_status_msg(hands_on_level=3),
+                self._steering_status_msg(eac_status=0, eac_error_code=9)):
+      self.safety.set_safety_hooks(CarParams.SafetyModel.tesla, safety_param)
+      self.safety.init_tests()
+      self._engage_mads()
+      self.assertTrue(self._rx(msg))
+      self.assertFalse(self.safety.get_controls_allowed())
+      self.assertFalse(self.safety.get_controls_allowed_lateral())
+      self.assertFalse(self._tx(self._angle_cmd_msg(0, True)))
+
+  def test_mads_heartbeat_mismatch_disengages(self):
+    self._engage_mads()
+    self.safety.set_heartbeat_engaged_mads(False)
+    for _ in range(2):
+      self.safety.run_mads_heartbeat_check()
+      self.assertTrue(self.safety.get_controls_allowed_lateral())
+    self.safety.run_mads_heartbeat_check()
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
 
 
 class TestTeslaStockSafety(TestTeslaSafetyBase):

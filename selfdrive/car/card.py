@@ -115,6 +115,13 @@ class Car:
     self.CP.alternativeExperience = 0
     if not disengage_on_accelerator:
       self.CP.alternativeExperience |= ALTERNATIVE_EXPERIENCE.DISABLE_DISENGAGE_ON_GAS
+    if self.CP.brand == "tesla" and self.params.get_bool("Mads"):
+      self.CP.alternativeExperience |= ALTERNATIVE_EXPERIENCE.ENABLE_MADS
+      mads_steering_mode = self.params.get_int("MadsSteeringMode")
+      if mads_steering_mode == 2:
+        self.CP.alternativeExperience |= ALTERNATIVE_EXPERIENCE.MADS_DISENGAGE_LATERAL_ON_BRAKE
+      elif mads_steering_mode == 1:
+        self.CP.alternativeExperience |= ALTERNATIVE_EXPERIENCE.MADS_PAUSE_LATERAL_ON_BRAKE
 
     openpilot_enabled_toggle = self.params.get_bool("OpenpilotEnabledToggle")
 
