@@ -178,6 +178,24 @@ def setup_git_options(cwd: str) -> None:
     run(["git", "config", option, value], cwd)
 
 
+def checkout_lfs_objects(cwd: str | Path) -> None:
+  """Hydrate LFS files from objects belonging to the current checkout.
+
+  This repository intentionally disables the automatic LFS smudge filter, so
+  reset/checkout leaves pointer files in the working tree. Never activate an
+  update while any tracked LFS file is still a pointer: model compilation then
+  fails before manager can start.
+  """
+  output = run(["git", "lfs", "checkout"], cwd)
+  lfs_files = run(["git", "lfs", "ls-files"], cwd)
+  missing = [line.split(" - ", 1)[1] for line in lfs_files.splitlines() if re.fullmatch(r"[0-9a-f]+ - .+", line)]
+  if missing:
+    preview = ", ".join(missing[:5])
+    suffix = "" if len(missing) <= 5 else f" (+{len(missing) - 5} more)"
+    raise RuntimeError(f"LFS objects unavailable for finalized update: {preview}{suffix}")
+  cloudlog.info("LFS checkout complete: %s", output.strip())
+
+
 def dismount_overlay() -> None:
   if os.path.ismount(OVERLAY_MERGED):
     cloudlog.info("unmounting existing overlay")
@@ -249,6 +267,7 @@ def finalize_update() -> None:
 
   run(["git", "reset", "--hard"], FINALIZED)
   run(["git", "submodule", "foreach", "--recursive", "git", "reset", "--hard"], FINALIZED)
+  checkout_lfs_objects(FINALIZED)
 
   set_consistent_flag(True)
   cloudlog.info("done finalizing overlay")

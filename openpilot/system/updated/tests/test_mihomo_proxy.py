@@ -1,6 +1,8 @@
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from openpilot.system.updated import updated
 
 
@@ -97,3 +99,42 @@ def test_valid_system_time_allows_check_after_first_run(mocker):
 
   assert updated.update_check_time_ready(params, wait_helper, first_run=False)
   assert wait_helper.sleeps == []
+
+
+def test_checkout_lfs_objects_accepts_fully_hydrated_checkout(mocker, tmp_path: Path):
+  run = mocker.patch.object(updated, "run", side_effect=[
+    "Checking out LFS objects: 100%",
+    "0123456789 * model.onnx\nabcdef0123 * font.ttf\n",
+  ])
+
+  updated.checkout_lfs_objects(tmp_path)
+
+  assert run.call_args_list == [
+    mocker.call(["git", "lfs", "checkout"], tmp_path),
+    mocker.call(["git", "lfs", "ls-files"], tmp_path),
+  ]
+
+
+def test_checkout_lfs_objects_rejects_remaining_pointers(mocker, tmp_path: Path):
+  mocker.patch.object(updated, "run", side_effect=[
+    "Checking out LFS objects: 50%",
+    "0123456789 * ready.onnx\nabcdef0123 - missing.onnx\n",
+  ])
+
+  with pytest.raises(RuntimeError, match="missing.onnx"):
+    updated.checkout_lfs_objects(tmp_path)
+
+
+def test_finalize_hydrates_lfs_after_git_reset(mocker, tmp_path: Path):
+  merged = tmp_path / "merged"
+  finalized = tmp_path / "finalized"
+  merged.mkdir()
+  mocker.patch.object(updated, "OVERLAY_MERGED", str(merged))
+  mocker.patch.object(updated, "FINALIZED", str(finalized))
+  mocker.patch.object(updated, "set_consistent_flag")
+  mocker.patch.object(updated, "run")
+  checkout_lfs = mocker.patch.object(updated, "checkout_lfs_objects")
+
+  updated.finalize_update()
+
+  checkout_lfs.assert_called_once_with(str(finalized))
