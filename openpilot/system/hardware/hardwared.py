@@ -25,7 +25,8 @@ from openpilot.system.hardware.power_monitoring import PowerMonitoring
 from openpilot.system.hardware.fan_controller import FanController
 from openpilot.system.hardware.offline_wake import (
   CanActivityTracker, acknowledge_panda_wake_monitor, offline_wake_debug_log as _offline_wake_debug_log,
-  panda_bootkick_test_pending, panda_wake_monitor_ready,
+  new_wake_monitor_transaction, panda_bootkick_test_pending, panda_wake_monitor_acknowledged,
+  panda_wake_monitor_status_ready, wake_monitor_transaction_string, PANDA_WAKE_MONITOR_PREPARED_STATE,
 )
 from openpilot.common.version import terms_version, training_version, get_build_metadata, terms_version_sp
 
@@ -73,15 +74,18 @@ def request_panda_deepsleep() -> bool:
     return True
 
   offline_wake_debug_log("request_panda_deepsleep start")
+  transaction = new_wake_monitor_transaction()
+  transaction_string = wake_monitor_transaction_string(transaction)
   try:
     params.remove("PandaWakeMonitorAck")
+    params.put("PandaWakeMonitorTxn", transaction_string, block=True)
     params.put_bool("PandaWakeMonitorRequest", True, block=True)
-    offline_wake_debug_log("PandaWakeMonitorRequest set; waiting for pandad ack")
+    offline_wake_debug_log(f"PandaWakeMonitorRequest set transaction={transaction_string}; waiting for pandad ack")
     deadline = time.monotonic() + 2.0
     while time.monotonic() < deadline:
-      if params.get_bool("PandaWakeMonitorAck"):
+      if panda_wake_monitor_acknowledged(params, transaction):
         cloudlog.warning("pandad acknowledged internal panda wake monitor request")
-        offline_wake_debug_log("pandad acked PandaWakeMonitorRequest")
+        offline_wake_debug_log(f"pandad acked PandaWakeMonitorRequest transaction={transaction_string}")
         return True
       time.sleep(0.05)
     cloudlog.warning("timed out waiting for pandad wake monitor acknowledgement")
@@ -99,18 +103,17 @@ def request_panda_deepsleep() -> bool:
         is_internal = panda.is_internal()
         offline_wake_debug_log(f"opened panda serial={serial} internal={is_internal}")
         if is_internal:
-          # Start a fresh heartbeat window so stage 0x30 can be read back
-          # before the firmware transitions from armed monitor to STOP.
-          panda.send_heartbeat(False, False)
-          panda.enable_deepsleep()
-          wake_debug = panda.wake_debug()
-          if not panda_wake_monitor_ready(wake_debug):
-            cloudlog.error(f"internal panda wake monitor did not arm serial={serial} wake_debug={wake_debug}")
-            offline_wake_debug_log(f"direct Panda.enable_deepsleep unconfirmed serial={serial} wake_debug={wake_debug}")
+          status = panda.prepare_wake_monitor(transaction)
+          if not panda_wake_monitor_status_ready(status, transaction, PANDA_WAKE_MONITOR_PREPARED_STATE):
+            cloudlog.error(f"internal panda wake monitor did not prepare serial={serial} status={status}")
+            offline_wake_debug_log(f"direct Panda.prepare_wake_monitor unconfirmed serial={serial} status={status}")
             continue
-          acknowledge_panda_wake_monitor(params)
-          cloudlog.warning(f"requested internal panda wake monitor before shutdown serial={serial}")
-          offline_wake_debug_log(f"direct Panda.enable_deepsleep confirmed serial={serial}; PandaWakeMonitorAck set wake_debug={wake_debug}")
+          acknowledge_panda_wake_monitor(params, transaction)
+          cloudlog.warning(f"prepared internal panda wake monitor before shutdown serial={serial} transaction={transaction_string}")
+          offline_wake_debug_log(
+            f"direct Panda.prepare_wake_monitor confirmed serial={serial} transaction={transaction_string}; " +
+            f"PandaWakeMonitorAck set status={status}"
+          )
           return True
     offline_wake_debug_log("direct fallback found no internal panda")
   except Exception:

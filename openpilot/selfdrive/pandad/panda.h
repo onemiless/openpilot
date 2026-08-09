@@ -77,6 +77,11 @@ public:
   std::optional<std::string> get_serial();
   void set_power_saving(bool power_saving);
   std::optional<wake_debug_t> enable_deepsleep();
+  std::optional<wake_monitor_status_t> prepare_wake_monitor(uint32_t transaction);
+  std::optional<wake_monitor_status_t> commit_wake_monitor(uint32_t transaction);
+  std::optional<wake_monitor_status_t> abort_wake_monitor(uint32_t transaction);
+  std::optional<wake_monitor_status_t> get_wake_monitor_status();
+  void set_host_session(uint32_t host_session);
   void send_heartbeat(bool engaged, bool engaged_mads);
   void set_can_speed_kbps(uint16_t bus, uint16_t speed);
   void set_can_fd_auto(uint16_t bus, bool enabled);

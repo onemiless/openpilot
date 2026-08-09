@@ -13,7 +13,7 @@ from openpilot.common.hardware import HARDWARE
 from openpilot.common.swaglog import cloudlog
 from openpilot.system.hardware.offline_wake import (
   clear_panda_bootkick_test_sentinel, offline_wake_debug_log as _offline_wake_debug_log,
-  offline_wake_debug_log_lines,
+  offline_wake_debug_log_lines, PANDA_WAKE_MONITOR_COMMITTED_STATE, PANDA_WAKE_MONITOR_FAILED_STATE,
 )
 
 from openpilot.sunnypilot.selfdrive.pandad.rivian_long_flasher import flash_rivian_long
@@ -26,6 +26,26 @@ def offline_wake_debug_log(message: str) -> None:
 PANDA_WAKE_JOURNAL_CURSOR = "/data/offline_wake_journal_cursor"
 PANDA_WAKE_JOURNAL_PRE_HEARTBEAT_MAX_RECORDS = 8
 PANDA_WAKE_JOURNAL_TIMEOUT_MS = 250
+
+
+def panda_has_active_wake_transaction() -> bool:
+  """Preserve Panda RAM until native pandad can attribute the new host session."""
+  try:
+    for serial in Panda.list():
+      with Panda(serial, disable_checks=False) as panda:
+        if not panda.is_internal():
+          continue
+        status = panda.wake_monitor_status()
+        active = status.get("magic") == Panda.WAKE_MONITOR_STATUS_MAGIC and status.get("transaction", 0) != 0 \
+          and PANDA_WAKE_MONITOR_COMMITTED_STATE <= status.get("state", 0) <= PANDA_WAKE_MONITOR_FAILED_STATE
+        offline_wake_debug_log(f"pre-reset wake transaction serial={serial} active={active} status={status}")
+        if active:
+          return True
+  except Exception as e:
+    # Old firmware has no transaction status request. Preserve the established
+    # reset/flash path so it can be upgraded normally.
+    offline_wake_debug_log(f"pre-reset wake transaction unavailable: {type(e).__name__}: {e}")
+  return False
 
 
 def _read_wake_journal_cursor(serial: str) -> int:
@@ -189,7 +209,7 @@ def main() -> None:
   while not do_exit:
     try:
       cloudlog.event("pandad.flash_and_connect", count=count)
-      if count == 0:
+      if count == 0 and not panda_has_active_wake_transaction():
         HARDWARE.reset_internal_panda()
       count += 1
 

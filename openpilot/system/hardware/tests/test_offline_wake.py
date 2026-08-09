@@ -10,13 +10,22 @@ from openpilot.system.hardware import hardwared
 class FakeParams:
   def __init__(self) -> None:
     self.removed: list[str] = []
-    self.writes: list[tuple[str, bool, bool]] = []
+    self.writes: list[tuple[str, object, bool]] = []
+    self.values: dict[str, object] = {}
 
   def remove(self, key: str) -> None:
     self.removed.append(key)
 
   def put_bool(self, key: str, value: bool, block: bool = False) -> None:
     self.writes.append((key, value, block))
+    self.values[key] = value
+
+  def put(self, key: str, value, block: bool = False) -> None:
+    self.writes.append((key, value, block))
+    self.values[key] = value
+
+  def get(self, key: str):
+    return self.values.get(key)
 
 
 def test_shutdown_is_not_blocked_by_sleeping_vehicle_can() -> None:
@@ -58,10 +67,18 @@ def test_can_activity_diagnostics_track_each_physical_bus() -> None:
 def test_acknowledge_wake_monitor_replaces_request_with_blocking_ack() -> None:
   params = FakeParams()
 
-  offline_wake.acknowledge_panda_wake_monitor(params)
+  offline_wake.acknowledge_panda_wake_monitor(params, 0x12345678)
 
   assert params.removed == ["PandaWakeMonitorRequest"]
-  assert params.writes == [("PandaWakeMonitorAck", True, True)]
+  assert params.writes == [("PandaWakeMonitorAck", "12345678", True)]
+
+
+def test_wake_monitor_ack_requires_the_current_transaction() -> None:
+  params = FakeParams()
+  params.values["PandaWakeMonitorAck"] = "12345678"
+
+  assert offline_wake.panda_wake_monitor_acknowledged(params, 0x12345678)
+  assert not offline_wake.panda_wake_monitor_acknowledged(params, 0x87654321)
 
 
 def test_wake_monitor_ready_requires_firmware_magic_and_armed_stage() -> None:
@@ -75,6 +92,24 @@ def test_wake_monitor_ready_requires_firmware_magic_and_armed_stage() -> None:
   assert offline_wake.PANDA_WAKE_MONITOR_ARMED_STAGE == Panda.WAKE_MONITOR_ARMED_STAGE
 
 
+def test_transaction_status_requires_exact_transaction_and_state() -> None:
+  status = {
+    "magic": offline_wake.PANDA_WAKE_MONITOR_STATUS_MAGIC,
+    "transaction": 0x12345678,
+    "state": offline_wake.PANDA_WAKE_MONITOR_PREPARED_STATE,
+  }
+
+  assert offline_wake.panda_wake_monitor_status_ready(
+    status, 0x12345678, offline_wake.PANDA_WAKE_MONITOR_PREPARED_STATE
+  )
+  assert not offline_wake.panda_wake_monitor_status_ready(
+    status, 0x87654321, offline_wake.PANDA_WAKE_MONITOR_PREPARED_STATE
+  )
+  assert not offline_wake.panda_wake_monitor_status_ready(
+    status, 0x12345678, offline_wake.PANDA_WAKE_MONITOR_COMMITTED_STATE
+  )
+
+
 def test_debug_log_is_created_automatically(tmp_path, monkeypatch) -> None:
   log_path = tmp_path / "offline_wake_debug.log"
   monkeypatch.setattr(offline_wake, "OFFLINE_WAKE_DEBUG_LOG", str(log_path))
@@ -85,15 +120,13 @@ def test_debug_log_is_created_automatically(tmp_path, monkeypatch) -> None:
   assert "test wake monitor armed" in log_path.read_text()
 
 
-def test_hardwared_fallback_reenables_heartbeat_before_arming(monkeypatch) -> None:
+def test_hardwared_fallback_prepares_without_synthetic_heartbeat(monkeypatch) -> None:
   import panda as panda_module
 
   events = []
 
   class RequestParams(FakeParams):
-    def get_bool(self, key: str) -> bool:
-      assert key == "PandaWakeMonitorAck"
-      return False
+    pass
 
   class InternalPanda:
     @classmethod
@@ -113,27 +146,26 @@ def test_hardwared_fallback_reenables_heartbeat_before_arming(monkeypatch) -> No
     def is_internal(self):
       return True
 
-    def send_heartbeat(self, engaged: bool, engaged_mads: bool):
-      assert not engaged
-      assert not engaged_mads
-      events.append("heartbeat")
-
-    def enable_deepsleep(self):
-      events.append("arm")
-
-    def wake_debug(self):
-      return {"magic": offline_wake.PANDA_WAKE_DEBUG_MAGIC, "stage": offline_wake.PANDA_WAKE_MONITOR_ARMED_STAGE}
+    def prepare_wake_monitor(self, transaction: int):
+      events.append(("prepare", transaction))
+      return {
+        "magic": offline_wake.PANDA_WAKE_MONITOR_STATUS_MAGIC,
+        "transaction": transaction,
+        "state": offline_wake.PANDA_WAKE_MONITOR_PREPARED_STATE,
+      }
 
   params = RequestParams()
   times = iter((0.0, 3.0))
   monkeypatch.setattr(hardwared, "Params", lambda: params)
   monkeypatch.setattr(hardwared, "panda_bootkick_test_pending", lambda: False)
+  monkeypatch.setattr(hardwared, "new_wake_monitor_transaction", lambda: 0x12345678)
   monkeypatch.setattr(hardwared.time, "monotonic", lambda: next(times))
   monkeypatch.setattr(panda_module, "Panda", InternalPanda)
 
   assert hardwared.request_panda_deepsleep()
-  assert events == ["heartbeat", "arm"]
-  assert params.writes[-1] == ("PandaWakeMonitorAck", True, True)
+  assert events == [("prepare", 0x12345678)]
+  assert ("PandaWakeMonitorTxn", "12345678", True) in params.writes
+  assert params.writes[-1] == ("PandaWakeMonitorAck", "12345678", True)
 
 
 def test_recent_bootkick_sentinel_is_pending(tmp_path, monkeypatch) -> None:

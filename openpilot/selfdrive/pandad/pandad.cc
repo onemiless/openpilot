@@ -8,6 +8,7 @@
 #include <ctime>
 #include <fstream>
 #include <memory>
+#include <stdexcept>
 #include <thread>
 #include <utility>
 
@@ -33,6 +34,15 @@ struct HwmonState {
 };
 
 HwmonState hwmon_state;
+
+uint32_t current_host_session() {
+  const std::string boot_id = util::read_file("/proc/sys/kernel/random/boot_id");
+  uint32_t hash = 2166136261U;
+  for (const unsigned char c : boot_id) {
+    hash = (hash ^ c) * 16777619U;
+  }
+  return hash != 0U ? hash : 1U;
+}
 
 void offline_wake_debug_log(const std::string &message) {
   std::ofstream log("/data/offline_wake_debug.log", std::ios::app);
@@ -350,6 +360,18 @@ void process_wake_monitor_request(Panda *panda) {
 
   offline_wake_debug_log("PandaWakeMonitorRequest received");
   params.remove("PandaWakeMonitorRequest");
+  const std::string transaction_string = params.get("PandaWakeMonitorTxn");
+  uint32_t transaction = 0U;
+  try {
+    if (transaction_string.size() != 8U) {
+      throw std::invalid_argument("wake transaction must contain eight hexadecimal digits");
+    }
+    transaction = static_cast<uint32_t>(std::stoul(transaction_string, nullptr, 16));
+  } catch (const std::exception &e) {
+    params.remove("PandaWakeMonitorAck");
+    offline_wake_debug_log(util::string_format("invalid wake transaction: %s", e.what()));
+    return;
+  }
   if (auto health = panda->get_state()) {
     offline_wake_debug_log(util::string_format("pre-enable health harness=%u ignition_line=%u ignition_can=%u sbu1=%u sbu2=%u som_reset=%u",
                                                health->car_harness_status_pkt, health->ignition_line_pkt, health->ignition_can_pkt,
@@ -357,19 +379,20 @@ void process_wake_monitor_request(Panda *panda) {
   } else {
     offline_wake_debug_log("pre-enable health unavailable");
   }
-  auto wake_debug = panda->enable_deepsleep();
-  if (!wake_debug || wake_debug->magic != WAKE_DEBUG_MAGIC || wake_debug->stage != PANDA_WAKE_MONITOR_ARMED_STAGE) {
-    const uint32_t magic = wake_debug ? wake_debug->magic : 0U;
-    const uint32_t stage = wake_debug ? wake_debug->stage : 0U;
+  auto status = panda->prepare_wake_monitor(transaction);
+  if (!status || status->magic != WAKE_MONITOR_STATUS_MAGIC ||
+      status->state != WAKE_MONITOR_STATE_PREPARED || status->transaction != transaction) {
+    const uint32_t magic = status ? status->magic : 0U;
+    const uint32_t state = status ? status->state : 0U;
     params.remove("PandaWakeMonitorAck");
-    offline_wake_debug_log(util::string_format("enable_deepsleep unconfirmed magic=%u stage=%u", magic, stage));
-    LOGE("failed to arm panda wake monitor: magic=0x%08x stage=0x%02x", magic, stage);
+    offline_wake_debug_log(util::string_format("prepare unconfirmed transaction=%08x magic=%u state=%u", transaction, magic, state));
+    LOGE("failed to prepare panda wake monitor: transaction=0x%08x magic=0x%08x state=%u", transaction, magic, state);
     return;
   }
-  params.putBool("PandaWakeMonitorAck", true);
-  offline_wake_debug_log(util::string_format("enable_deepsleep confirmed magic=%u stage=%u; PandaWakeMonitorAck set",
-                                             wake_debug->magic, wake_debug->stage));
-  LOGW("enabled panda wake monitor before shutdown");
+  params.put("PandaWakeMonitorAck", transaction_string);
+  offline_wake_debug_log(util::string_format("prepare confirmed transaction=%08x host_session=%08x; PandaWakeMonitorAck set",
+                                             transaction, status->host_session));
+  LOGW("prepared panda wake monitor transaction=0x%08x before shutdown", transaction);
 }
 
 void process_peripheral_state(Panda *panda, PubMaster *pm, bool no_fan_control, bool is_onroad) {
@@ -457,6 +480,20 @@ void pandad_run(Panda *panda) {
   const bool no_fan_control = getenv("NO_FAN_CONTROL") != nullptr;
   const bool spoofing_started = getenv("STARTED") != nullptr;
   const bool fake_send = getenv("FAKESEND") != nullptr;
+
+  const uint32_t host_session = current_host_session();
+  panda->set_host_session(host_session);
+  if (auto status = panda->get_wake_monitor_status()) {
+    const bool stale_prepared = status->state == WAKE_MONITOR_STATE_PREPARED;
+    const bool unfinished_same_session = (status->committed_host_session == host_session) &&
+                                         (status->state >= WAKE_MONITOR_STATE_COMMITTED) &&
+                                         (status->state <= WAKE_MONITOR_STATE_FAILED);
+    if ((status->transaction != 0U) && (stale_prepared || unfinished_same_session)) {
+      offline_wake_debug_log(util::string_format("aborting stale transaction=%08x state=%u",
+                                                 status->transaction, status->state));
+      panda->abort_wake_monitor(status->transaction);
+    }
+  }
 
   // Start helper threads for event-driven sendcan and slow non-Panda reads.
   std::thread send_thread(can_send_thread, panda, fake_send);

@@ -87,3 +87,36 @@ def test_pre_heartbeat_export_is_bounded_to_recent_records(tmp_path, monkeypatch
   assert panda.read_slots == list(range(92, 100))
   assert cursor.read_text() == "abc 100\n"
   assert any("skipped_slots=92" in message for message in messages)
+
+
+def test_active_wake_transaction_preserves_panda_until_native_heartbeat(monkeypatch):
+  class StatusPanda:
+    WAKE_MONITOR_STATUS_MAGIC = 0x574D4F4E
+    state = pandad.PANDA_WAKE_MONITOR_COMMITTED_STATE
+
+    @classmethod
+    def list(cls):
+      return ["internal"]
+
+    def __init__(self, serial: str, disable_checks: bool):
+      assert serial == "internal"
+      assert not disable_checks
+
+    def __enter__(self):
+      return self
+
+    def __exit__(self, exc_type, exc, traceback):
+      return False
+
+    def is_internal(self):
+      return True
+
+    def wake_monitor_status(self):
+      return {"magic": self.WAKE_MONITOR_STATUS_MAGIC, "transaction": 0x12345678, "state": self.state}
+
+  monkeypatch.setattr(pandad, "Panda", StatusPanda)
+  monkeypatch.setattr(pandad, "offline_wake_debug_log", lambda message: None)
+
+  assert pandad.panda_has_active_wake_transaction()
+  StatusPanda.state = 1  # PREPARED is stale setup, not an attempted wake.
+  assert not pandad.panda_has_active_wake_transaction()

@@ -16,8 +16,9 @@ from openpilot.common.esim.lpa import TiciLPA
 from openpilot.common.hardware.tici.pins import GPIO
 from openpilot.common.hardware.tici.amplifier import Amplifier
 from openpilot.system.hardware.offline_wake import (
-  acknowledge_panda_wake_monitor, offline_wake_debug_log as _offline_wake_debug_log, panda_bootkick_test_pending,
-  panda_wake_monitor_ready,
+  offline_wake_debug_log as _offline_wake_debug_log, panda_bootkick_test_pending,
+  panda_wake_monitor_acknowledged, panda_wake_monitor_status_ready,
+  PANDA_WAKE_MONITOR_COMMITTED_STATE,
 )
 
 MODEM_STATE_PATH = "/dev/shm/modem"
@@ -45,8 +46,6 @@ def request_internal_panda_wake_monitor() -> bool:
     return True
 
   cloudlog = None
-  had_verified_ack = False
-  internal_panda_seen = False
   offline_wake_debug_log("request_internal_panda_wake_monitor start")
   try:
     from openpilot.common.params import Params
@@ -54,10 +53,14 @@ def request_internal_panda_wake_monitor() -> bool:
     from panda import Panda
 
     params = Params()
-    had_verified_ack = params.get_bool("PandaWakeMonitorAck")
-    if had_verified_ack:
-      offline_wake_debug_log("PandaWakeMonitorAck already set; re-arming after manager cleanup")
-      wake_monitor_kmsg("Tici.shutdown re-arming panda wake monitor after manager cleanup")
+    transaction_string = params.get("PandaWakeMonitorTxn")
+    if not isinstance(transaction_string, str) or len(transaction_string) != 8:
+      offline_wake_debug_log(f"missing or invalid PandaWakeMonitorTxn value={transaction_string!r}")
+      return False
+    transaction = int(transaction_string, 16)
+    if transaction == 0 or not panda_wake_monitor_acknowledged(params, transaction):
+      offline_wake_debug_log(f"missing or stale PandaWakeMonitorAck transaction={transaction_string}")
+      return False
 
     serials = Panda.list()
     offline_wake_debug_log(f"Panda.list returned {serials}")
@@ -66,23 +69,16 @@ def request_internal_panda_wake_monitor() -> bool:
         is_internal = panda.is_internal()
         offline_wake_debug_log(f"opened panda serial={serial} internal={is_internal}")
         if is_internal:
-          internal_panda_seen = True
           health = panda.health()
-          wake_debug = panda.wake_debug()
-          offline_wake_debug_log(f"pre-direct-enable health={health} wake_debug={wake_debug}")
-          # manager_cleanup has stopped native pandad. Reset the firmware's
-          # heartbeat counter so it cannot enter STOP before confirmation.
-          panda.send_heartbeat(False, False)
-          panda.enable_deepsleep()
-          wake_debug = panda.wake_debug()
-          if not panda_wake_monitor_ready(wake_debug):
-            offline_wake_debug_log(f"Panda.enable_deepsleep unconfirmed serial={serial} wake_debug={wake_debug}")
-            wake_monitor_kmsg(f"Tici.shutdown failed to confirm panda wake monitor serial={serial}")
+          status = panda.commit_wake_monitor(transaction)
+          offline_wake_debug_log(f"commit health={health} transaction={transaction_string} status={status}")
+          if not panda_wake_monitor_status_ready(status, transaction, PANDA_WAKE_MONITOR_COMMITTED_STATE):
+            offline_wake_debug_log(f"Panda.commit_wake_monitor unconfirmed serial={serial} transaction={transaction_string} status={status}")
+            wake_monitor_kmsg(f"Tici.shutdown failed to confirm panda wake monitor commit serial={serial}")
             continue
-          acknowledge_panda_wake_monitor(params)
-          cloudlog.warning(f"requested internal panda wake monitor before shutdown serial={serial}")
-          offline_wake_debug_log(f"Panda.enable_deepsleep confirmed serial={serial}; PandaWakeMonitorAck set post_wake_debug={wake_debug}")
-          wake_monitor_kmsg(f"Tici.shutdown requested panda wake monitor serial={serial}")
+          cloudlog.warning(f"committed internal panda wake monitor before shutdown serial={serial} transaction={transaction_string}")
+          offline_wake_debug_log(f"Panda.commit_wake_monitor confirmed serial={serial} transaction={transaction_string}")
+          wake_monitor_kmsg(f"Tici.shutdown committed panda wake monitor serial={serial}")
           return True
     offline_wake_debug_log("found no internal panda")
     wake_monitor_kmsg("Tici.shutdown found no internal panda")
@@ -91,13 +87,6 @@ def request_internal_panda_wake_monitor() -> bool:
       cloudlog.exception("failed to request internal panda wake monitor before shutdown")
     offline_wake_debug_log(f"failed to request panda wake monitor: {type(e).__name__}: {e}")
     wake_monitor_kmsg(f"Tici.shutdown failed to request panda wake monitor: {type(e).__name__}: {e}")
-  if had_verified_ack and not internal_panda_seen:
-    # The verified preflight may already have reached STOP while
-    # manager_cleanup was waiting for processes. In that state SPI is
-    # intentionally unavailable and the original acknowledgement is valid.
-    offline_wake_debug_log("using verified preflight ack; panda may already be in STOP")
-    wake_monitor_kmsg("Tici.shutdown using verified preflight panda wake monitor ack")
-    return True
   return False
 
 

@@ -1,5 +1,6 @@
 import fcntl
 import os
+import secrets
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -11,6 +12,10 @@ PANDA_BOOTKICK_TEST_TTL = 10 * 60
 OFFLINE_WAKE_CAN_BUSES = (0, 1, 2)
 PANDA_WAKE_DEBUG_MAGIC = 0x57414B48
 PANDA_WAKE_MONITOR_ARMED_STAGE = 0x30
+PANDA_WAKE_MONITOR_STATUS_MAGIC = 0x574D4F4E
+PANDA_WAKE_MONITOR_PREPARED_STATE = 1
+PANDA_WAKE_MONITOR_COMMITTED_STATE = 2
+PANDA_WAKE_MONITOR_FAILED_STATE = 7
 
 
 class CanActivityTracker:
@@ -44,14 +49,32 @@ def wake_can_activity(can_messages) -> bool:
   return any(int(message.src) in OFFLINE_WAKE_CAN_BUSES for message in can_messages)
 
 
-def acknowledge_panda_wake_monitor(params) -> None:
+def new_wake_monitor_transaction() -> int:
+  transaction = secrets.randbits(32)
+  return transaction if transaction != 0 else 1
+
+
+def wake_monitor_transaction_string(transaction: int) -> str:
+  return f"{transaction & 0xFFFFFFFF:08x}"
+
+
+def acknowledge_panda_wake_monitor(params, transaction: int) -> None:
   params.remove("PandaWakeMonitorRequest")
-  params.put_bool("PandaWakeMonitorAck", True, block=True)
+  params.put("PandaWakeMonitorAck", wake_monitor_transaction_string(transaction), block=True)
+
+
+def panda_wake_monitor_acknowledged(params, transaction: int) -> bool:
+  return params.get("PandaWakeMonitorAck") == wake_monitor_transaction_string(transaction)
 
 
 def panda_wake_monitor_ready(wake_debug: dict | None) -> bool:
   return wake_debug is not None and wake_debug.get("magic") == PANDA_WAKE_DEBUG_MAGIC \
     and wake_debug.get("stage") == PANDA_WAKE_MONITOR_ARMED_STAGE
+
+
+def panda_wake_monitor_status_ready(status: dict | None, transaction: int, state: int) -> bool:
+  return status is not None and status.get("magic") == PANDA_WAKE_MONITOR_STATUS_MAGIC \
+    and status.get("transaction") == transaction and status.get("state") == state
 
 
 @contextmanager

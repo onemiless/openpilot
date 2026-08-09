@@ -283,8 +283,9 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"GpsTimeSyncDone", {CLEAR_ON_MANAGER_START, BOOL}},
     {"PandaSignatures", {CLEAR_ON_MANAGER_START, BYTES}},
     {"PandaSomResetTriggered", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, BOOL}},
-    {"PandaWakeMonitorAck", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, BOOL}},
+    {"PandaWakeMonitorAck", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, STRING}},
     {"PandaWakeMonitorRequest", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, BOOL}},
+    {"PandaWakeMonitorTxn", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, STRING}},
 
     // Web / misc
     {"DisableRouteRecording", {PERSISTENT | BACKUP, BOOL, "0"}},

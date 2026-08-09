@@ -5,12 +5,16 @@ from openpilot.system.hardware import offline_wake
 class FakeParams:
   def __init__(self, acknowledged: bool):
     self.acknowledged = acknowledged
+    self.transaction = "12345678"
     self.removed = []
     self.writes = []
 
-  def get_bool(self, key: str) -> bool:
-    assert key == "PandaWakeMonitorAck"
-    return self.acknowledged
+  def get(self, key: str):
+    if key == "PandaWakeMonitorTxn":
+      return self.transaction
+    if key == "PandaWakeMonitorAck":
+      return self.transaction if self.acknowledged else None
+    raise AssertionError(key)
 
   def remove(self, key: str) -> None:
     self.removed.append(key)
@@ -20,7 +24,7 @@ class FakeParams:
 
 
 class FakePanda:
-  enabled = 0
+  committed = 0
 
   @classmethod
   def list(cls):
@@ -43,17 +47,13 @@ class FakePanda:
   def health(self):
     return {}
 
-  def wake_debug(self):
-    stage = offline_wake.PANDA_WAKE_MONITOR_ARMED_STAGE if self.armed else 0
-    return {"magic": offline_wake.PANDA_WAKE_DEBUG_MAGIC, "stage": stage}
-
-  def send_heartbeat(self, engaged: bool, engaged_mads: bool):
-    assert not engaged
-    assert not engaged_mads
-
-  def enable_deepsleep(self):
-    type(self).enabled += 1
-    self.armed = True
+  def commit_wake_monitor(self, transaction: int):
+    type(self).committed += 1
+    return {
+      "magic": offline_wake.PANDA_WAKE_MONITOR_STATUS_MAGIC,
+      "transaction": transaction,
+      "state": offline_wake.PANDA_WAKE_MONITOR_COMMITTED_STATE,
+    }
 
 
 def install_fakes(monkeypatch, params: FakeParams, panda_cls=FakePanda):
@@ -65,18 +65,18 @@ def install_fakes(monkeypatch, params: FakeParams, panda_cls=FakePanda):
   monkeypatch.setattr(hardware, "panda_bootkick_test_pending", lambda: False)
 
 
-def test_shutdown_rearms_internal_panda_even_with_existing_ack(monkeypatch):
+def test_shutdown_commits_prepared_transaction_exactly_once(monkeypatch):
   params = FakeParams(acknowledged=True)
-  FakePanda.enabled = 0
+  FakePanda.committed = 0
   install_fakes(monkeypatch, params)
 
   assert hardware.request_internal_panda_wake_monitor()
-  assert FakePanda.enabled == 1
-  assert params.removed == ["PandaWakeMonitorRequest"]
-  assert params.writes == [("PandaWakeMonitorAck", True, True)]
+  assert FakePanda.committed == 1
+  assert params.removed == []
+  assert params.writes == []
 
 
-def test_shutdown_accepts_verified_preflight_if_panda_already_entered_stop(monkeypatch):
+def test_shutdown_rejects_old_ack_if_panda_is_unreachable(monkeypatch):
   class SleepingPanda(FakePanda):
     @classmethod
     def list(cls):
@@ -85,7 +85,7 @@ def test_shutdown_accepts_verified_preflight_if_panda_already_entered_stop(monke
   params = FakeParams(acknowledged=True)
   install_fakes(monkeypatch, params, SleepingPanda)
 
-  assert hardware.request_internal_panda_wake_monitor()
+  assert not hardware.request_internal_panda_wake_monitor()
   assert params.writes == []
 
 
@@ -101,10 +101,30 @@ def test_shutdown_without_ack_requires_responsive_internal_panda(monkeypatch):
   assert not hardware.request_internal_panda_wake_monitor()
 
 
+def test_stale_ack_never_reaches_commit(monkeypatch):
+  params = FakeParams(acknowledged=True)
+  params.transaction = "12345678"
+  install_fakes(monkeypatch, params)
+  original_get = params.get
+
+  def stale_ack(key: str):
+    return "87654321" if key == "PandaWakeMonitorAck" else original_get(key)
+
+  params.get = stale_ack
+  FakePanda.committed = 0
+
+  assert not hardware.request_internal_panda_wake_monitor()
+  assert FakePanda.committed == 0
+
+
 def test_existing_ack_does_not_hide_failed_rearm_of_responsive_panda(monkeypatch):
   class UnconfirmedPanda(FakePanda):
-    def wake_debug(self):
-      return {"magic": offline_wake.PANDA_WAKE_DEBUG_MAGIC, "stage": 0}
+    def commit_wake_monitor(self, transaction: int):
+      return {
+        "magic": offline_wake.PANDA_WAKE_MONITOR_STATUS_MAGIC,
+        "transaction": transaction,
+        "state": offline_wake.PANDA_WAKE_MONITOR_PREPARED_STATE,
+      }
 
   params = FakeParams(acknowledged=True)
   install_fakes(monkeypatch, params, UnconfirmedPanda)
