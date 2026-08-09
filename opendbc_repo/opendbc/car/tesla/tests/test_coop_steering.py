@@ -35,3 +35,12 @@ def test_saturation_unwinds_only_in_saturated_direction():
   assert CoopSteeringCarController.unwind_on_saturation(5.0, 2.0) == pytest.approx(3.0)
   assert CoopSteeringCarController.unwind_on_saturation(-5.0, -2.0) == pytest.approx(-3.0)
   assert CoopSteeringCarController.unwind_on_saturation(5.0, -2.0) == pytest.approx(5.0)
+
+
+def test_diagnostic_state_resets_when_cooperative_steering_is_inactive():
+  controller = CoopSteeringCarController()
+  controller.driver_override_active = True
+  controller.angle_saturated = True
+  controller.update(12.0, False, True, None, None)
+  assert not controller.driver_override_active
+  assert not controller.angle_saturated

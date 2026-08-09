@@ -19,6 +19,7 @@ static int get_health_pkt(void *dat) {
   health->controls_allowed_pkt = controls_allowed;
   health->controls_allowed_lateral_pkt = controls_allowed || controls_allowed_lateral;
   health->controls_allowed_longitudinal_pkt = controls_allowed;
+  health->mads_disengage_reason_pkt = (uint8_t)mads_state.disengage_reason;
   health->safety_tx_blocked_pkt = safety_tx_blocked;
   health->safety_rx_invalid_pkt = safety_rx_invalid;
   health->tx_buffer_overflow_pkt = tx_buffer_overflow;

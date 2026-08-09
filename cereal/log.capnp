@@ -644,6 +644,10 @@ struct PandaState @0xa7649e2575e4591e {
   safetyRxChecksInvalid @32 :Bool;
   controlsAllowedLateral @38 :Bool;
   controlsAllowedLongitudinal @39 :Bool;
+  # Panda MADS safety reason: 0 none, 1 brake, 2 lag, 4 RX invalid,
+  # 8 cruise main off, 16 relay malfunction, 32 heartbeat mismatch,
+  # 64 strong steering disengage.
+  madsDisengageReason @40 :UInt8;
 
   voltage @0 :UInt32;
   current @1 :UInt32;

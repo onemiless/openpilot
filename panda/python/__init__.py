@@ -128,9 +128,9 @@ class Panda:
   HW_TYPE_CUATRO = b'\x0a'
 
   CAN_PACKET_VERSION = 4
-  HEALTH_PACKET_VERSION = 17
+  HEALTH_PACKET_VERSION = 18
   CAN_HEALTH_PACKET_VERSION = 5
-  HEALTH_STRUCT = struct.Struct("<IIIIIIIIBBBBBHBBBHfBBHBHHBBB")
+  HEALTH_STRUCT = struct.Struct("<IIIIIIIIBBBBBHBBBHfBBHBHHBBBB")
   CAN_HEALTH_STRUCT = struct.Struct("<BIBBBBBBBBIIIIIIIHHBBBIIII")
 
   F4_DEVICES = [HW_TYPE_WHITE_PANDA, HW_TYPE_GREY_PANDA, HW_TYPE_BLACK_PANDA, HW_TYPE_UNO, HW_TYPE_DOS]
@@ -579,6 +579,7 @@ class Panda:
       "som_reset_triggered": a[25],
       "controls_allowed_lateral": a[26],
       "controls_allowed_longitudinal": a[27],
+      "mads_disengage_reason": a[28],
     }
 
   @ensure_can_health_packet_version

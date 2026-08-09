@@ -147,6 +147,7 @@ void fill_panda_state(cereal::PandaState::Builder &ps, cereal::PandaState::Panda
   ps.setControlsAllowed(health.controls_allowed_pkt);
   ps.setControlsAllowedLateral(health.controls_allowed_lateral_pkt);
   ps.setControlsAllowedLongitudinal(health.controls_allowed_longitudinal_pkt);
+  ps.setMadsDisengageReason(health.mads_disengage_reason_pkt);
   ps.setTxBufferOverflow(health.tx_buffer_overflow_pkt);
   ps.setRxBufferOverflow(health.rx_buffer_overflow_pkt);
   ps.setPandaType(hw_type);
@@ -194,9 +195,29 @@ void fill_panda_can_state(cereal::PandaState::PandaCanState::Builder &cs, const 
   cs.setCanCoreResetCnt(can_health.can_core_reset_cnt);
 }
 
+const char *mads_disengage_reason_name(uint8_t reason) {
+  switch (reason) {
+    case 0U: return "none";
+    case 1U: return "brake";
+    case 2U: return "lag";
+    case 4U: return "rx_invalid";
+    case 8U: return "cruise_main_off";
+    case 16U: return "relay_malfunction";
+    case 32U: return "heartbeat_mismatch";
+    case 64U: return "steering_disengage";
+    default: return "unknown";
+  }
+}
+
 std::optional<bool> send_panda_states(PubMaster *pm, const std::vector<Panda *> &pandas, bool spoofing_started) {
   bool ignition_local = false;
   const uint32_t pandas_cnt = pandas.size();
+  static std::vector<uint8_t> previous_lateral_allowed;
+  static std::vector<uint8_t> previous_mads_reason;
+  if (previous_lateral_allowed.size() != pandas_cnt) {
+    previous_lateral_allowed.assign(pandas_cnt, UINT8_MAX);
+    previous_mads_reason.assign(pandas_cnt, UINT8_MAX);
+  }
 
   // build msg
   MessageBuilder msg;
@@ -250,6 +271,21 @@ std::optional<bool> send_panda_states(PubMaster *pm, const std::vector<Panda *> 
   for (uint32_t i = 0; i < pandas_cnt; i++) {
     auto panda = pandas[i];
     const auto &health = pandaStates[i];
+
+    const bool mads_status_changed = (health.controls_allowed_lateral_pkt != previous_lateral_allowed[i]) ||
+                                     (health.mads_disengage_reason_pkt != previous_mads_reason[i]);
+    const bool tesla_safety = health.safety_mode_pkt == (uint8_t)cereal::CarParams::SafetyModel::TESLA;
+    if (mads_status_changed && (tesla_safety || previous_lateral_allowed[i] == 1U)) {
+        LOGW("Panda %u MADS safety lateral=%u longitudinal=%u reason=%s(%u) rx_invalid=%u heartbeat_lost=%u safety_model=%u alt_exp=%u",
+             i, health.controls_allowed_lateral_pkt, health.controls_allowed_longitudinal_pkt,
+             mads_disengage_reason_name(health.mads_disengage_reason_pkt), health.mads_disengage_reason_pkt,
+             health.safety_rx_invalid_pkt, health.heartbeat_lost_pkt,
+             health.safety_mode_pkt, health.alternative_experience_pkt);
+    }
+    if (mads_status_changed) {
+      previous_lateral_allowed[i] = health.controls_allowed_lateral_pkt;
+      previous_mads_reason[i] = health.mads_disengage_reason_pkt;
+    }
 
     // Make sure CAN buses are live: safety_setter_thread does not work if Panda CAN are silent and there is only one other CAN node
     if (health.safety_mode_pkt == (uint8_t)(cereal::CarParams::SafetyModel::SILENT)) {

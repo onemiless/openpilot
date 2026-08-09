@@ -55,6 +55,8 @@ class Controls:
     self.curvature = 0.0
     self.desired_curvature = 0.0
     self.yStd = 0.0
+    self.mads_configured = self.CP.brand == "tesla" and self.params.get_bool("Mads") and not self.CP.passive
+    self._mads_authority_status_prev = None
 
     # 2026.7.26 add
     self.custom_sr = self.params.get_float("CustomSR") / 10.0
@@ -142,7 +144,22 @@ class Controls:
     gear = car.CarState.GearShifter
     driving_gear = CS.gearShifter not in (gear.neutral, gear.park, gear.reverse, gear.unknown)
     mads = self.sm['madsState']
-    lateral_enabled = bool(mads.active) if mads.available else bool(self.sm['selfdriveState'].active and CS.latEnabled)
+    mads_healthy = self.sm.all_checks(['madsState'])
+    if self.mads_configured:
+      # A configured MADS session must fail lateral off if its owner disappears;
+      # falling back to a stale independent-lateral state would be unsafe.
+      lateral_enabled = bool(mads.active) if mads_healthy and mads.available else False
+      authority_source = "mads" if mads_healthy and mads.available else "mads_fail_safe"
+    else:
+      lateral_enabled = bool(self.sm['selfdriveState'].active and CS.latEnabled)
+      authority_source = "legacy"
+
+    authority_status = (authority_source, lateral_enabled, mads_healthy)
+    if authority_status != self._mads_authority_status_prev:
+      cloudlog.event("mads.controlsd_authority", source=authority_source, lateral_enabled=lateral_enabled,
+                     mads_healthy=mads_healthy, mads_available=bool(mads.available),
+                     mads_state=str(mads.state), error=authority_source == "mads_fail_safe")
+      self._mads_authority_status_prev = authority_status
     #self.soft_hold_active = CS.softHoldActive #car.OnroadEvent.EventName.softHold in [e.name for e in self.sm['onroadEvents']]
 
     # Check which actuators can be enabled

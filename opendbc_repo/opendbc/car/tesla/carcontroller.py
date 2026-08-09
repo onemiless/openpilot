@@ -27,6 +27,10 @@ class CarController(CarControllerBase):
     self.VM = VehicleModel(CP)
     self.coop_steering = CoopSteeringCarController()
     self.coop_steering_enabled = self.params.get_bool("TeslaCoopSteering")
+    self._coop_override_prev = False
+    self._coop_saturated_prev = False
+    self._steering_disengage_prev = False
+    log.info("Tesla cooperative steering configured enabled=%d", int(self.coop_steering_enabled))
 
   def send_radar_motion(self, CS):
     """Return reviewed ARS408 motion frames when the physical CAN path is safe."""
@@ -73,6 +77,10 @@ class CarController(CarControllerBase):
     steering_disengage = CS.out.steeringDisengage
     cruise_cancel = CC.cruiseControl.cancel or steering_disengage
     lat_active = CC.latActive and not steering_disengage
+    if steering_disengage != self._steering_disengage_prev:
+      log.warning("Tesla steering safety disengage=%d torque=%.2f hands_on_level=%d",
+                  int(steering_disengage), CS.out.steeringTorque, CS.out.handsOnLevel)
+      self._steering_disengage_prev = steering_disengage
 
     if self.frame % 2 == 0:
       # Angular rate limit based on speed
@@ -82,6 +90,17 @@ class CarController(CarControllerBase):
       coop_steering = self.coop_steering.update(self.apply_angle_last, lat_active, self.coop_steering_enabled, CS, self.VM)
       self.apply_angle_last = coop_steering.steeringAngleDeg
       lat_active = coop_steering.lat_active
+
+      if self.coop_steering.driver_override_active != self._coop_override_prev:
+        log.info("Tesla cooperative steering driver_override=%d torque=%.2f override_angle=%.2f output_angle=%.2f",
+                 int(self.coop_steering.driver_override_active), CS.out.steeringTorque,
+                 self.coop_steering.angle_override, self.apply_angle_last)
+        self._coop_override_prev = self.coop_steering.driver_override_active
+      if self.coop_steering.angle_saturated != self._coop_saturated_prev:
+        log.info("Tesla cooperative steering saturated=%d torque=%.2f override_angle=%.2f output_angle=%.2f",
+                 int(self.coop_steering.angle_saturated), CS.out.steeringTorque,
+                 self.coop_steering.angle_override, self.apply_angle_last)
+        self._coop_saturated_prev = self.coop_steering.angle_saturated
 
       can_sends.append(self.tesla_can.create_steering_control(self.apply_angle_last, lat_active, (self.frame // 2) % 16))
 

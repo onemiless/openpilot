@@ -25,6 +25,10 @@ STEER_OVERRIDE_MAX_LAT_ACCEL = 2.0
 STEER_OVERRIDE_TARGET_ANGLE_MAX = CarControllerParams.ANGLE_LIMITS.STEER_ANGLE_MAX
 STEER_OVERRIDE_DELTA_GAIN_LIMIT = 125
 STEER_OVERRIDE_DELTA_GAIN_LIMIT_CENTERING = CoopSteeringCarControllerParams.ANGLE_LIMITS.MAX_ANGLE_RATE / DT_LAT_CTRL / STEER_OVERRIDE_TORQUE_RANGE
+STEER_OVERRIDE_LOG_ENTER_TORQUE = STEER_OVERRIDE_MIN_TORQUE + 0.1
+STEER_OVERRIDE_LOG_EXIT_TORQUE = max(0.0, STEER_OVERRIDE_MIN_TORQUE - 0.1)
+STEER_SATURATION_LOG_ENTER_ERROR = 0.02
+STEER_SATURATION_LOG_EXIT_ERROR = 0.005
 
 
 CoopSteeringData = namedtuple("CoopSteeringData", ["steeringAngleDeg", "lat_active"])
@@ -73,6 +77,8 @@ class CoopSteeringCarController:
     self.angle_override = 0.0
     self.resume_rate_limiter_delta = SteerRateLimiter()
     self.resume_rate_limiter = SteerRateLimiter()
+    self.driver_override_active = False
+    self.angle_saturated = False
 
   def reset_override_state(self, apply_angle: float) -> None:
     self.apply_angle_last = apply_angle
@@ -126,12 +132,16 @@ class CoopSteeringCarController:
 
     if not lat_active or not enabled:
       self.reset_override_state(apply_angle)
+      self.driver_override_active = False
+      self.angle_saturated = False
       return CoopSteeringData(apply_angle, lat_active)
 
     apply_angle_step = apply_angle - self.apply_angle_last
     self.apply_angle_last = apply_angle
 
     angle_override_target, override_torque = self.compute_override_targets(CS.out.vEgo, CS.out.steeringTorque, VM)
+    override_log_threshold = STEER_OVERRIDE_LOG_EXIT_TORQUE if self.driver_override_active else STEER_OVERRIDE_LOG_ENTER_TORQUE
+    self.driver_override_active = abs(CS.out.steeringTorque) > override_log_threshold
     slew_step = self.override_slew_step(angle_override_target, override_torque)
     self.angle_override += self.adjust_slew_for_planner(slew_step, apply_angle_step, override_torque)
     apply_angle += self.angle_override
@@ -141,5 +151,7 @@ class CoopSteeringCarController:
       CS.out.steeringAngleDeg, lat_active, CoopSteeringCarControllerParams, VM,
     )
     sat_error = apply_angle - self.coop_apply_angle_sat_last
+    saturation_log_threshold = STEER_SATURATION_LOG_EXIT_ERROR if self.angle_saturated else STEER_SATURATION_LOG_ENTER_ERROR
+    self.angle_saturated = abs(sat_error) > saturation_log_threshold
     self.angle_override = self.unwind_on_saturation(self.angle_override, sat_error)
     return CoopSteeringData(self.coop_apply_angle_sat_last, lat_active)
