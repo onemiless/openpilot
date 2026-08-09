@@ -661,6 +661,10 @@ msgstr "Режим налагодження інтерфейсу"
 msgid "UNINSTALL"
 msgstr "ВИДАЛИТИ"
 
+#: openpilot/selfdrive/ui/layouts/settings/software.py
+msgid "waiting for system time..."
+msgstr ""
+
 #: openpilot/selfdrive/ui/layouts/home.py
 msgid "UPDATE"
 msgstr "ОНОВИТИ"
@@ -875,4 +879,3 @@ msgstr "✓ ПІДПИСАНО"
 #: openpilot/selfdrive/ui/widgets/setup.py
 msgid "🔥 Firehose Mode 🔥"
 msgstr "🌧️ Режим зливи 🌧️"
-

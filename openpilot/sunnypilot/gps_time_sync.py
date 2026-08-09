@@ -9,6 +9,7 @@ import subprocess
 import time
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
+from openpilot.common.time_helpers import system_time_valid
 
 import openpilot.cereal.messaging as messaging
 
@@ -19,6 +20,10 @@ MIN_TIME_DIFF = 1.0  # minimum time difference (seconds) to trigger a clock upda
 
 # Prefer gpsLocationExternal (u-blox), fall back to gpsLocation
 SERVICES = ["gpsLocationExternal", "gpsLocation"]
+
+
+def should_wait_for_initial_fix(params: Params) -> bool:
+  return params.get_bool("IsOffroad") and not system_time_valid() and not params.get_bool("GpsTimeSyncDone")
 
 
 def set_system_time(unix_seconds: int) -> bool:
@@ -69,8 +74,7 @@ def main():
 
   # Wall-clock time is deliberately used here: this process exists to compare
   # and repair that clock. Clock changes must only happen while offroad.
-  system_time = time.time()  # noqa: TID251
-  if params.get_bool("IsOffroad") and system_time < 1740000000 and not params.get_bool("GpsTimeSyncDone"):
+  if should_wait_for_initial_fix(params):
     cloudlog.info("GPS time sync: system clock is stale, waiting for initial GPS fix...")
     ts = get_gps_timestamp(timeout=INITIAL_FIX_TIMEOUT)
     if ts is not None:

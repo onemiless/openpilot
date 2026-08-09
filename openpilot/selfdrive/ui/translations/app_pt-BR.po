@@ -661,6 +661,10 @@ msgstr "Modo de depuração da interface do usuário"
 msgid "UNINSTALL"
 msgstr "DESINSTALAR"
 
+#: openpilot/selfdrive/ui/layouts/settings/software.py
+msgid "waiting for system time..."
+msgstr ""
+
 #: openpilot/selfdrive/ui/layouts/home.py
 msgid "UPDATE"
 msgstr "ATUALIZAR"
@@ -870,4 +874,3 @@ msgstr "✓ ASSINADO"
 #: openpilot/selfdrive/ui/widgets/setup.py
 msgid "🔥 Firehose Mode 🔥"
 msgstr "🔥 Modo Firehose 🔥"
-

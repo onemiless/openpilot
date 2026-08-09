@@ -661,6 +661,10 @@ msgstr "UI 디버그 모드"
 msgid "UNINSTALL"
 msgstr "제거"
 
+#: openpilot/selfdrive/ui/layouts/settings/software.py
+msgid "waiting for system time..."
+msgstr ""
+
 #: openpilot/selfdrive/ui/layouts/home.py
 msgid "UPDATE"
 msgstr "업데이트"
@@ -865,4 +869,3 @@ msgstr "✓ 구독됨"
 #: openpilot/selfdrive/ui/widgets/setup.py
 msgid "🔥 Firehose Mode 🔥"
 msgstr "🔥 파이어호스 모드 🔥"
-

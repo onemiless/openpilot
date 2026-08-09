@@ -661,6 +661,10 @@ msgstr "Arayüz Hata Ayıklama Modu"
 msgid "UNINSTALL"
 msgstr "KALDIR"
 
+#: openpilot/selfdrive/ui/layouts/settings/software.py
+msgid "waiting for system time..."
+msgstr ""
+
 #: openpilot/selfdrive/ui/layouts/home.py
 msgid "UPDATE"
 msgstr "GÜNCELLE"
@@ -870,4 +874,3 @@ msgstr "✓ ABONE"
 #: openpilot/selfdrive/ui/widgets/setup.py
 msgid "🔥 Firehose Mode 🔥"
 msgstr "🔥 Firehose Modu 🔥"
-

@@ -139,3 +139,6 @@ class TestParams:
     now = datetime.datetime.now(datetime.UTC)
     self.params.put("InstallDate", now, block=True)
     assert self.params.get("InstallDate") == now
+
+    self.params.put("LastKnownGoodTime", now, block=True)
+    assert self.params.get("LastKnownGoodTime") == now

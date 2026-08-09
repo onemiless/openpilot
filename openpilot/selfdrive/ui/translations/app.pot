@@ -322,6 +322,10 @@ msgstr ""
 msgid "QR Code Error"
 msgstr ""
 
+#: openpilot/selfdrive/ui/layouts/settings/software.py
+msgid "waiting for system time..."
+msgstr ""
+
 #: openpilot/selfdrive/ui/layouts/home.py
 msgid "UPDATE"
 msgstr ""
@@ -868,4 +872,3 @@ msgstr ""
 #: openpilot/selfdrive/ui/onroad/driver_camera_dialog.py
 msgid "camera starting"
 msgstr ""
-

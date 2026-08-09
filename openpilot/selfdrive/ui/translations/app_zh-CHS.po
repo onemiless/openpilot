@@ -756,6 +756,10 @@ msgstr "界面调试模式"
 msgid "UNINSTALL"
 msgstr "卸载"
 
+#: openpilot/selfdrive/ui/layouts/settings/software.py
+msgid "waiting for system time..."
+msgstr "等待系统时间同步..."
+
 #: openpilot/selfdrive/ui/layouts/home.py
 msgid "UPDATE"
 msgstr "更新"

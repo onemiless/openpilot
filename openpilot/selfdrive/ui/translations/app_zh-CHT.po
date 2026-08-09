@@ -661,6 +661,10 @@ msgstr "介面除錯模式"
 msgid "UNINSTALL"
 msgstr "解除安裝"
 
+#: openpilot/selfdrive/ui/layouts/settings/software.py
+msgid "waiting for system time..."
+msgstr "等待系統時間同步..."
+
 #: openpilot/selfdrive/ui/layouts/home.py
 msgid "UPDATE"
 msgstr "更新"
@@ -870,4 +874,3 @@ msgstr "✓ 已訂閱"
 #: openpilot/selfdrive/ui/widgets/setup.py
 msgid "🔥 Firehose Mode 🔥"
 msgstr "🔥 Firehose 模式 🔥"
-

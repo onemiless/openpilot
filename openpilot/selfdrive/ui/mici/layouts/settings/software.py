@@ -149,7 +149,7 @@ class CheckUpdateButton(BigButton):
         self._hide_value_t = rl.get_time()
       else:
         if self.get_value() != updater_state:
-          self.set_value(updater_state)
+          self.set_value(tr(updater_state))
 
     elif self._state == UpdaterState.IDLE:
       self.set_rotate_icon(False)

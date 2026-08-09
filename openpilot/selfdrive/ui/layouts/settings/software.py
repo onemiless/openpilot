@@ -14,7 +14,7 @@ from openpilot.system.ui.widgets.scroller_tici import Scroller
 if gui_app.sunnypilot_ui():
   from openpilot.system.ui.sunnypilot.widgets.list_view import button_item_sp as button_item
 
-# TODO: remove this. updater fails to respond on startup if time is not correct
+# Maximum time to wait for the updater process to publish a state change.
 UPDATED_TIMEOUT = 10  # seconds to wait for updated to respond
 
 # Mapping updater internal states to translated display strings
@@ -22,6 +22,7 @@ STATE_TO_DISPLAY_TEXT = {
   "checking...": tr("checking..."),
   "downloading...": tr("downloading..."),
   "finalizing update...": tr("finalizing update..."),
+  "waiting for system time...": tr("waiting for system time..."),
 }
 
 

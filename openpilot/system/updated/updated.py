@@ -39,6 +39,7 @@ MIHOMO_CONTROL = Path(BASEDIR) / "scripts" / "mihomo_control.py"
 MIHOMO_PROXY_HOST = "127.0.0.1"
 MIHOMO_PROXY_PORT = 7890
 MIHOMO_PROXY_URL = f"http://{MIHOMO_PROXY_HOST}:{MIHOMO_PROXY_PORT}"
+UPDATER_WAITING_FOR_TIME_STATE = "waiting for system time..."
 
 # do not allow to engage after this many hours onroad and this many routes
 HOURS_NO_CONNECTIVITY_MAX = 27
@@ -76,6 +77,18 @@ class WaitTimeHelper:
 def write_time_to_param(params, param) -> None:
   t = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
   params.put(param, t, block=True)
+
+
+def update_check_time_ready(params: Params, wait_helper: WaitTimeHelper, first_run: bool) -> bool:
+  if not system_time_valid():
+    params.put("UpdaterState", UPDATER_WAITING_FOR_TIME_STATE, block=True)
+    wait_helper.sleep(60)
+    return False
+  if first_run:
+    wait_helper.sleep(60)
+    return False
+  return True
+
 
 def run(cmd: list[str], cwd: str | None = None, env: dict[str, str] | None = None) -> str:
   return subprocess.check_output(cmd, cwd=cwd, env=env, stderr=subprocess.STDOUT, encoding='utf8')
@@ -497,10 +510,10 @@ def main() -> None:
         # ensure we have some params written soon after startup
         updater.set_params(False, update_failed_count, exception)
 
-        if not system_time_valid() or first_run:
+        if not update_check_time_ready(params, wait_helper, first_run):
           first_run = False
-          wait_helper.sleep(60)
           continue
+        first_run = False
 
         update_failed_count += 1
 

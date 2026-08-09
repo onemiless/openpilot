@@ -661,6 +661,10 @@ msgstr "UI-Debug-Modus"
 msgid "UNINSTALL"
 msgstr "DEINSTALLIEREN"
 
+#: openpilot/selfdrive/ui/layouts/settings/software.py
+msgid "waiting for system time..."
+msgstr ""
+
 #: openpilot/selfdrive/ui/layouts/home.py
 msgid "UPDATE"
 msgstr "AKTUALISIEREN"
@@ -870,4 +874,3 @@ msgstr "✓ ABONNIERT"
 #: openpilot/selfdrive/ui/widgets/setup.py
 msgid "🔥 Firehose Mode 🔥"
 msgstr "🔥 Firehose‑Modus 🔥"
-

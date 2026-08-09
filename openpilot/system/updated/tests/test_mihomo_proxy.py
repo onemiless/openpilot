@@ -4,6 +4,22 @@ from pathlib import Path
 from openpilot.system.updated import updated
 
 
+class FakeWaitHelper:
+  def __init__(self):
+    self.sleeps = []
+
+  def sleep(self, seconds):
+    self.sleeps.append(seconds)
+
+
+class FakeParams:
+  def __init__(self):
+    self.values = {}
+
+  def put(self, key, value, **kwargs):
+    self.values[key] = value
+
+
 def test_mihomo_proxy_missing_config_does_not_start(mocker, tmp_path: Path):
   mocker.patch.object(updated, "MIHOMO_CONFIG", tmp_path / "missing-config.yaml")
   mocker.patch.object(updated, "MIHOMO_CONTROL", tmp_path / "mihomo_control.py")
@@ -62,3 +78,22 @@ def test_updater_check_passes_proxy_env_to_remote_git_commands(mocker):
   remote_calls = [call for call in run.call_args_list if "ls-remote" in call.args[0]]
   assert len(remote_calls) == 2
   assert all(call.kwargs["env"] == proxy_env for call in remote_calls)
+
+
+def test_invalid_system_time_publishes_waiting_state(mocker):
+  params = FakeParams()
+  wait_helper = FakeWaitHelper()
+  mocker.patch.object(updated, "system_time_valid", return_value=False)
+
+  assert not updated.update_check_time_ready(params, wait_helper, first_run=False)
+  assert params.values["UpdaterState"] == updated.UPDATER_WAITING_FOR_TIME_STATE
+  assert wait_helper.sleeps == [60]
+
+
+def test_valid_system_time_allows_check_after_first_run(mocker):
+  params = FakeParams()
+  wait_helper = FakeWaitHelper()
+  mocker.patch.object(updated, "system_time_valid", return_value=True)
+
+  assert updated.update_check_time_ready(params, wait_helper, first_run=False)
+  assert wait_helper.sleeps == []
