@@ -104,12 +104,16 @@ class Controls:
     # Update VehicleModel
     lp = self.sm['liveParameters']
     x = max(lp.stiffnessFactor, 0.1)
-    sr = max(lp.steerRatio, 0.1) * self.sr
+    learned_sr = max(lp.steerRatio, 0.1) * self.sr
     custom_sr = self.custom_sr
     custom_sr2 = self.custom_sr2
     custom_sr_speed = self.custom_sr_speed
     custom_sr_speed2 = self.custom_sr_speed2
-    sr = max(custom_sr if custom_sr > 1.0 else sr, 0.1)
+    # sunnypilot/openpilot specifies 12.0 for Model Y. Keep that platform
+    # geometry stable instead of replacing it with a drifting learned ratio;
+    # a non-zero CustomSR remains an explicit user override.
+    platform_sr = self.CP.steerRatio if self.CP.carFingerprint == "TESLA_MODEL_Y" else learned_sr
+    sr = max(custom_sr if custom_sr > 1.0 else platform_sr, 0.1)
     speed = CS.vEgo*3.6
     #根据速度进行插值转向比
     if custom_sr > 1.0 and custom_sr2 > 1.0 and custom_sr_speed != custom_sr_speed2:

@@ -3,11 +3,12 @@ import math
 
 import numpy as np
 from opendbc.can import CANPacker
-from opendbc.car import Bus, apply_std_steer_angle_limits, structs
+from opendbc.car import Bus, apply_steer_angle_limits_vm, structs
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.tesla.ars408_can import ARS408CAN, ARS408_MOTION_INPUT_ENABLED, should_configure_radar
 from opendbc.car.tesla.teslacan import TeslaCAN
 from opendbc.car.tesla.values import CarControllerParams
+from opendbc.car.vehicle_model import VehicleModel
 from openpilot.common.params import Params
 
 
@@ -22,6 +23,7 @@ class CarController(CarControllerBase):
     self.tesla_can = TeslaCAN(self.packer)
     self.ars408_can = None if CP.radarUnavailable else ARS408CAN()
     self.params = Params()
+    self.VM = VehicleModel(CP)
 
   def send_radar_motion(self, CS):
     """Return reviewed ARS408 motion frames when the physical CAN path is safe."""
@@ -46,8 +48,8 @@ class CarController(CarControllerBase):
     actuators = CC.actuators
     can_sends = []
 
-    # Configure only during startup or after the interface detects an ARS408
-    # timeout. The configuration is volatile and is never sent continuously.
+    # Configuration is stored in radar NVM. Never send it automatically;
+    # TeslaRadarReinitialize is an explicit, one-shot request for a new setup.
     radar_reinitialize = self.params.get_bool("TeslaRadarReinitialize")
     if self.ars408_can is not None and should_configure_radar(self.frame, radar_reinitialize):
       can_sends.append(self.ars408_can.create_radar_configuration())
@@ -71,8 +73,8 @@ class CarController(CarControllerBase):
 
     if self.frame % 2 == 0:
       # Angular rate limit based on speed
-      self.apply_angle_last = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgo,
-                                                           CS.out.steeringAngleDeg, CC.latActive, CarControllerParams.ANGLE_LIMITS)
+      self.apply_angle_last = apply_steer_angle_limits_vm(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw,
+                                                          CS.out.steeringAngleDeg, lat_active, CarControllerParams, self.VM)
 
       can_sends.append(self.tesla_can.create_steering_control(self.apply_angle_last, lat_active, (self.frame // 2) % 16))
 

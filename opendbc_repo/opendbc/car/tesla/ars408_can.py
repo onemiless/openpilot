@@ -2,24 +2,21 @@ from opendbc.can import CANPacker
 
 
 ARS408_BUS = 1
-ARS408_SENSOR_ID = 5
-ARS408_MAX_DISTANCE = 300
+ARS408_SENSOR_ID = 0
+ARS408_MAX_DISTANCE = 250
 ARS408_MAX_OBJECTS = 32
-ARS408_SEND_EXTENDED = False
+ARS408_SEND_EXTENDED = True
 ARS408_SPEED_ADDRESS = 0x300
 ARS408_YAW_RATE_ADDRESS = 0x301
 # The radar shares Tesla vehicle CAN. These IDs are intentionally blocked by
 # Panda safety until an isolated bus or a vehicle capture proves no conflict.
 ARS408_MOTION_INPUT_ENABLED = False
 
-# Tesla shares this bus with the radar. Cover slow power-up during the first
-# ten seconds. Runtime retries are event-driven; configuration must not be
-# transmitted forever on a healthy shared vehicle bus.
-ARS408_STARTUP_CONFIG_FRAMES = (10, 50, 100, 200, 500, 1000)
-
-
-def should_configure_radar(frame: int, reinitialize: bool = False) -> bool:
-  return frame in ARS408_STARTUP_CONFIG_FRAMES or reinitialize
+def should_configure_radar(_frame: int, reinitialize: bool = False) -> bool:
+  # Radar configuration is persistent. Never transmit it automatically at
+  # startup or after a transient CAN fault; only an explicit adjustment may
+  # request one configuration write.
+  return reinitialize
 
 
 class ARS408CAN:
@@ -32,8 +29,9 @@ class ARS408CAN:
     values = {
       "RadarCfg_RCS_Threshold_Valid": 1,
       "RadarCfg_RCS_Threshold": 0,       # standard sensitivity
-      "RadarCfg_StoreInNVM_valid": 0,   # configure each boot; do not wear EEPROM
-      "RadarCfg_StoreInNVM": 0,
+      # Manual adjustments are rare and must survive vehicle/CP restarts.
+      "RadarCfg_StoreInNVM_valid": 1,
+      "RadarCfg_StoreInNVM": 1,
       "RadarCfg_SortIndex_valid": 1,
       "RadarCfg_SortIndex": 1,          # nearest objects first
       "RadarCfg_SendExtInfo_valid": 1,

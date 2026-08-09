@@ -54,6 +54,7 @@ class Track:
     self.aLead = self.aLeadK = pt.aLead
     self.jLead = pt.jLead
     self.yvLead = pt.yvRel
+    self.objectClass = pt.objectClass
 
     self.measured = pt.measured   # measured or estimate
     if not self.measured:
@@ -105,7 +106,8 @@ class Track:
       "modelProb": model_prob,
       "radar": True,
       "radarTrackId": self.identifier,
-      "score": self.score  # for debug purposes only
+      "score": self.score,  # for debug purposes only
+      "objectClass": self.objectClass,
     }
 
   def potential_low_speed_lead(self, v_ego: float):

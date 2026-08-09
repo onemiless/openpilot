@@ -853,6 +853,11 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
     ET.NO_ENTRY: NoEntryAlert("Radar Error: Restart the Car"),
   },
 
+  EventName.radarWrongConfig: {
+    ET.SOFT_DISABLE: soft_disable_alert("Radar Configuration Error"),
+    ET.NO_ENTRY: NoEntryAlert("Radar Configuration Error: Check ARS408 Settings"),
+  },
+
   EventName.radarTempUnavailable: {
     ET.SOFT_DISABLE: soft_disable_alert("Radar Temporarily Unavailable"),
     ET.NO_ENTRY: NoEntryAlert("Radar Temporarily Unavailable"),

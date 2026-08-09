@@ -365,6 +365,7 @@ struct RadarData @0x888ad6581cf0aacb {
     vLead @7 :Float32; # m/s
     aLead @8 :Float32; # m/s^2
     jLead @9 :Float32; # m/s^3
+    objectClass @10 :UInt8 = 7; # ARS408: 0 point, 1 car, 2 truck, 3 pedestrian, 4 motorcycle, 5 bicycle, 6 wide, 7 unknown/reserved
   }
 
   enum ErrorDEPRECATED {

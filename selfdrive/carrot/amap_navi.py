@@ -269,25 +269,38 @@ class AmapNaviServ:
   def public_amap_navi(self):
     msg = messaging.new_message('amapNavi')
     msg.valid = True
+    stock_bsd_available = self.stock_bsd_available()
     msg.amapNavi.leftBlind = ((8 if self.shared_data.left_lane_blind else 0) + (4 if self.shared_data.lidar_car_lblind else 0) +
-                              (2 if self.shared_data.left_blind else 0) + (1 if self.shared_data.lidar_lblind else 0) +
+                              (2 if self.shared_data.left_blind else 0) +
+                              (1 if self.shared_data.lidar_lblind or self.shared_data.left_blindspot else 0) +
                               (16 if self.shared_data.lidar_lfblind else 0) + (32 if self.shared_data.lidar_lbblind else 0))
     msg.amapNavi.rightBlind = ((8 if self.shared_data.right_lane_blind else 0) + (4 if self.shared_data.lidar_car_rblind else 0) +
-                               (2 if self.shared_data.right_blind else 0) + (1 if self.shared_data.lidar_rblind else 0) +
+                               (2 if self.shared_data.right_blind else 0) +
+                               (1 if self.shared_data.lidar_rblind or self.shared_data.right_blindspot else 0) +
                                (16 if self.shared_data.lidar_rfblind else 0) + (32 if self.shared_data.lidar_rbblind else 0))
     msg.amapNavi.leftLine = self.shared_data.left_lane
     msg.amapNavi.rightLine = self.shared_data.right_lane
     msg.amapNavi.lineValid = self.lane_online
-    msg.amapNavi.leftDevice = ((2 if self.shared_data.camera_l else 0) + (1 if self.shared_data.lidar_l else 0))
-    msg.amapNavi.rightDevice = ((2 if self.shared_data.camera_r else 0) + (1 if self.shared_data.lidar_r else 0))
+    msg.amapNavi.leftDevice = ((2 if self.shared_data.camera_l else 0) +
+                               (1 if self.shared_data.lidar_l or stock_bsd_available else 0))
+    msg.amapNavi.rightDevice = ((2 if self.shared_data.camera_r else 0) +
+                                (1 if self.shared_data.lidar_r or stock_bsd_available else 0))
     self.pm.send('amapNavi', msg)
 
   def left_blindspot(self):
-    return (self.shared_data.left_blind or self.shared_data.lidar_lblind or self.shared_data.left_lane_blind
+    return (self.shared_data.left_blindspot or self.shared_data.left_blind or
+            self.shared_data.lidar_lblind or self.shared_data.left_lane_blind
             or self.shared_data.lidar_lfblind or self.shared_data.lidar_lbblind)
   def right_blindspot(self):
-    return (self.shared_data.right_blind or self.shared_data.lidar_rblind or self.shared_data.right_lane_blind
+    return (self.shared_data.right_blindspot or self.shared_data.right_blind or
+            self.shared_data.lidar_rblind or self.shared_data.right_lane_blind
             or self.shared_data.lidar_rfblind or self.shared_data.lidar_rbblind)
+
+  def stock_bsd_available(self):
+    # False means the monitored side is clear, while None means carState has
+    # not supplied the channel yet. Both channels arriving proves the Tesla
+    # DAS rear BSD is available as a virtual left/right blind-zone device.
+    return self.shared_data.left_blindspot is not None and self.shared_data.right_blindspot is not None
 
   def _capnp_list_to_list(self, capnp_list, max_items=None):
     """将capnp列表转换为Python列表"""
@@ -1689,8 +1702,9 @@ class AmapNaviServ:
             msg[key] = d[idx]
 
       #雷达或摄像头是否存在标志
-      msg['lidar_l'] = self.shared_data.lidar_l
-      msg['lidar_r'] = self.shared_data.lidar_r
+      stock_bsd_available = self.stock_bsd_available()
+      msg['lidar_l'] = self.shared_data.lidar_l or stock_bsd_available
+      msg['lidar_r'] = self.shared_data.lidar_r or stock_bsd_available
       msg['camera_l'] = self.shared_data.camera_l
       msg['camera_r'] = self.shared_data.camera_r
 
@@ -1716,7 +1730,9 @@ class AmapNaviServ:
         self.shared_data.op_blocked = op_blocked
         self.shared_data.road_blocked = ("隧道" in road_name) or (x_spd_type >= 0 and 0 < x_spd_dist < 500)
 
-      msg['blind_enable'] = (self.shared_data.lidar_l or self.shared_data.camera_l) and (self.shared_data.lidar_r or self.shared_data.camera_r)
+      msg['blind_enable'] = stock_bsd_available or \
+                            ((self.shared_data.lidar_l or self.shared_data.camera_l) and
+                             (self.shared_data.lidar_r or self.shared_data.camera_r))
       msg['op_blocked'] = self.shared_data.op_blocked
       msg['road_blocked'] = self.shared_data.road_blocked
 

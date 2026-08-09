@@ -157,7 +157,7 @@ def test_partial_cycle_keeps_objects_with_both_general_and_quality_frames():
   assert objects[1]["Obj_ProbOfExist"] == 5
 
 
-def test_raw_sensor_id_five_can_cycle_produces_radar_point():
+def test_raw_sensor_zero_extended_cycle_produces_classified_radar_point():
   cp = structs.CarParams()
   cp.radarUnavailable = False
   radar = RadarInterface(cp)
@@ -173,9 +173,10 @@ def test_raw_sensor_id_five_can_cycle_produces_radar_point():
     "Obj_VrelLong": -2.0, "Obj_VrelLat": 0.25, "Obj_DynProp": 0,
   })
   quality = shifted_frame("Obj_2_Quality", {"Obj_ID": 7, "Obj_ProbOfExist": 5, "Obj_MeasState": 2})
+  extended = shifted_frame("Obj_3_Extended", {"Obj_ID": 7, "Obj_ArelLong": -0.5, "Obj_Class": 1})
 
   assert radar.update([(1_000_000_000, [status])]) is None
-  assert radar.update([(1_010_000_000, [general, quality])]) is None
+  assert radar.update([(1_010_000_000, [general, quality, extended])]) is None
   result = radar.update([(1_070_000_000, [status])])
 
   assert result is not None
@@ -184,6 +185,8 @@ def test_raw_sensor_id_five_can_cycle_produces_radar_point():
   assert result.points[0].dRel == 42.0
   assert result.points[0].yRel == pytest.approx(1.5, abs=0.11)
   assert result.points[0].vRel == -2.0
+  assert result.points[0].aRel == pytest.approx(-0.5, abs=0.02)
+  assert result.points[0].objectClass == 1
   assert result.points[0].measured
 
 
@@ -205,4 +208,76 @@ def test_monitor_mode_decodes_objects_without_publishing_fusion_points():
 
   assert result.objectCount == 0
   assert len(radar.pts) == 1
+  assert radar.pts[7].objectClass == 7
   assert len(result.points) == 0
+
+
+def test_radar_state_accepts_250_m_config_and_ignores_missing_motion_inputs():
+  radar = RadarInterface.__new__(RadarInterface)
+  radar.last_radar_state = {
+    "RadarState_Interference": 0,
+    "RadarState_Temperature_Error": 0,
+    "RadarState_Temporary_Error": 0,
+    "RadarState_Voltage_Error": 0,
+    "RadarState_Persistent_Error": 0,
+    "RadarState_SensorID": 0,
+    "RadarState_OutputTypeCfg": 1,
+    "RadarState_SendQualityCfg": 1,
+    "RadarState_SendExtInfoCfg": 1,
+    "RadarState_CtrlRelayCfg": 0,
+    "RadarState_SortIndex": 1,
+    "RadarState_RCS_Threshold": 0,
+    "RadarState_RadarPowerCfg": 0,
+    "RadarState_MaxDistanceCfg": 250,
+    "RadarState_MotionRxState": 3,
+  }
+  radar.radar_state_frames = 10
+  radar.last_fault_signature = None
+  result = structs.RadarData()
+
+  radar._apply_radar_state_errors(result)
+
+  assert not result.errors.wrongConfig
+  assert not result.errors.radarFault
+  assert not result.errors.radarUnavailableTemporary
+
+  radar.last_radar_state["RadarState_MaxDistanceCfg"] = 300
+  radar._apply_radar_state_errors(result)
+  assert result.errors.wrongConfig
+
+
+def test_single_interference_state_does_not_request_takeover():
+  radar = RadarInterface.__new__(RadarInterface)
+  radar.last_radar_state = {
+    "RadarState_Interference": 1,
+    "RadarState_Temperature_Error": 0,
+    "RadarState_Temporary_Error": 0,
+    "RadarState_Voltage_Error": 0,
+    "RadarState_Persistent_Error": 0,
+    "RadarState_SensorID": 0,
+    "RadarState_OutputTypeCfg": 1,
+    "RadarState_SendQualityCfg": 1,
+    "RadarState_SendExtInfoCfg": 1,
+    "RadarState_CtrlRelayCfg": 0,
+    "RadarState_SortIndex": 1,
+    "RadarState_RCS_Threshold": 0,
+    "RadarState_RadarPowerCfg": 0,
+    "RadarState_MaxDistanceCfg": 250,
+    "RadarState_MotionRxState": 3,
+  }
+  radar.radar_state_frames = 10
+  radar.last_fault_signature = None
+  radar.interference_frames = 0
+
+  first = structs.RadarData()
+  radar._apply_radar_state_errors(first)
+  assert not first.errors.radarUnavailableTemporary
+
+  second = structs.RadarData()
+  radar._apply_radar_state_errors(second)
+  assert second.errors.radarUnavailableTemporary
+
+  radar.last_radar_state["RadarState_Interference"] = 0
+  recovered = structs.RadarData()
+  radar._apply_radar_state_errors(recovered)
+  assert not recovered.errors.radarUnavailableTemporary

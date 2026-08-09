@@ -41,6 +41,7 @@ ARS408_STARTUP_GRACE_UPDATES = 1000
 ARS408_STATUS_TIMEOUT_UPDATES = 50
 ARS408_STATE_TIMEOUT_UPDATES = 300
 ARS408_ERROR_PUBLISH_INTERVAL = 5
+ARS408_INTERFERENCE_CONFIRM_FRAMES = 2
 
 log = logging.getLogger(__name__)
 
@@ -121,6 +122,7 @@ class RadarInterface(RadarInterfaceBase):
     self.last_radar_state_update = None
     self.last_missing_can_signature = None
     self.last_rejection_reasons = {}
+    self.interference_frames = 0
 
   def _set_status(self, ret):
     ret.radarOnline = getattr(self, "last_status_update", None) is not None and self._missing_can_signature() is None
@@ -151,7 +153,6 @@ class RadarInterface(RadarInterfaceBase):
       else:
         log.error("ARS408 required CAN messages missing: object_status=%d radar_state=%d update=%d",
                   int(missing_signature[0]), int(missing_signature[1]), self.update_count)
-        self.params.put_bool_nonblocking("TeslaRadarReinitialize", True)
       self.last_missing_can_signature = missing_signature
 
     if missing_signature is not None:
@@ -226,37 +227,53 @@ class RadarInterface(RadarInterfaceBase):
     if state is None:
       return
 
-    temporary_fault = any(int(state[name]) for name in (
-      "RadarState_Interference", "RadarState_Temperature_Error", "RadarState_Temporary_Error"))
+    interference = bool(int(state["RadarState_Interference"]))
+    self.interference_frames = getattr(self, "interference_frames", 0) + 1 if interference else 0
+    interference_fault = self.interference_frames >= ARS408_INTERFERENCE_CONFIRM_FRAMES
+    temporary_fault = interference_fault or any(int(state[name]) for name in (
+      "RadarState_Temperature_Error", "RadarState_Temporary_Error"))
     hard_fault = any(int(state[name]) for name in (
       "RadarState_Voltage_Error", "RadarState_Persistent_Error"))
-    wrong_config = int(state["RadarState_SensorID"]) != ARS408_SENSOR_ID or \
-                   int(state["RadarState_OutputTypeCfg"]) != 1 or \
-                   not int(state["RadarState_SendQualityCfg"]) or \
-                   int(state["RadarState_SendExtInfoCfg"]) != int(ARS408_SEND_EXTENDED) or \
-                   int(state["RadarState_CtrlRelayCfg"]) != 0 or \
-                   int(state["RadarState_SortIndex"]) != 1 or \
-                   int(state["RadarState_RCS_Threshold"]) != 0 or \
-                   int(state["RadarState_RadarPowerCfg"]) != 0 or \
-                   int(state["RadarState_MaxDistanceCfg"]) != ARS408_MAX_DISTANCE
+    config_expectations = (
+      ("sensor_id", "RadarState_SensorID", ARS408_SENSOR_ID),
+      ("output_type", "RadarState_OutputTypeCfg", 1),
+      ("quality", "RadarState_SendQualityCfg", 1),
+      ("extended", "RadarState_SendExtInfoCfg", int(ARS408_SEND_EXTENDED)),
+      ("ctrl_relay", "RadarState_CtrlRelayCfg", 0),
+      ("sort_index", "RadarState_SortIndex", 1),
+      ("rcs_threshold", "RadarState_RCS_Threshold", 0),
+      ("radar_power", "RadarState_RadarPowerCfg", 0),
+      ("max_distance", "RadarState_MaxDistanceCfg", ARS408_MAX_DISTANCE),
+    )
+    config_mismatches = tuple(
+      (label, int(state[field]), expected)
+      for label, field, expected in config_expectations
+      if int(state[field]) != expected
+    )
+    wrong_config = bool(config_mismatches)
 
     ret.errors.radarUnavailableTemporary = temporary_fault
     ret.errors.radarFault = hard_fault
-    # The controller configures the radar throughout its first ten seconds.
-    # Reporting the power-on/default state before those attempts complete
-    # invalidates liveTracks and causes an unnecessary takeover request.
+    # Allow the radar's persisted configuration and state output to settle
+    # after power-up before reporting a configuration fault.
     ret.errors.wrongConfig = wrong_config and self.radar_state_frames >= CONFIG_GRACE_STATE_FRAMES
-    fault_signature = (temporary_fault, hard_fault, wrong_config, self.radar_state_frames < CONFIG_GRACE_STATE_FRAMES,
-                       int(state["RadarState_MotionRxState"]), int(state["RadarState_SendExtInfoCfg"]))
+    fault_signature = (temporary_fault, hard_fault, config_mismatches, self.interference_frames,
+                       self.radar_state_frames < CONFIG_GRACE_STATE_FRAMES,
+                       int(state["RadarState_MotionRxState"]))
     if fault_signature != self.last_fault_signature:
-      log.warning(" ".join(("ARS408 state diagnostic: interference=%d temperature=%d temporary=%d voltage=%d persistent=%d",
-                            "sensor_id=%d output_type=%d quality=%d extended=%d motion_rx=%d config_grace=%d")),
-                  int(state["RadarState_Interference"]), int(state["RadarState_Temperature_Error"]),
+      log.warning(" ".join(("ARS408 state diagnostic: interference=%d interference_frames=%d temperature=%d temporary=%d voltage=%d persistent=%d",
+                            "sensor_id=%d output_type=%d quality=%d extended=%d motion_rx=%d max_distance=%d config_grace=%d")),
+                  int(state["RadarState_Interference"]), self.interference_frames, int(state["RadarState_Temperature_Error"]),
                   int(state["RadarState_Temporary_Error"]), int(state["RadarState_Voltage_Error"]),
                   int(state["RadarState_Persistent_Error"]), int(state["RadarState_SensorID"]),
                   int(state["RadarState_OutputTypeCfg"]), int(state["RadarState_SendQualityCfg"]),
                   int(state["RadarState_SendExtInfoCfg"]), int(state["RadarState_MotionRxState"]),
+                  int(state["RadarState_MaxDistanceCfg"]),
                   int(self.radar_state_frames < CONFIG_GRACE_STATE_FRAMES))
+      if ret.errors.wrongConfig:
+        log.error("ARS408 wrong configuration: %s",
+                  ", ".join(f"{name}=actual:{actual}/expected:{expected}"
+                            for name, actual, expected in config_mismatches))
       self.last_fault_signature = fault_signature
 
   def _decode_cycle(self, timestamp):
@@ -358,6 +375,10 @@ class RadarInterface(RadarInterfaceBase):
       point.aRel = float(obj.get("Obj_ArelLong", 0.0))
       point.yvRel = yv_rel
       point.measured = int(obj["Obj_MeasState"]) in (1, 2, 5)
+      # Preserve the ARS408 classification through liveTracks. Extended
+      # frames may be dropped under bus load, so never turn missing data into
+      # class 0 (Point); 7 is the protocol's reserved/unknown value.
+      point.objectClass = int(obj.get("Obj_Class", 7))
 
     for object_id in list(self.pts):
       if object_id not in current_targets:

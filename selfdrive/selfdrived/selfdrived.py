@@ -387,6 +387,8 @@ class SelfdriveD:
     if not self.sm.valid['radarState']:
       if self.sm['radarState'].radarErrors.canError:
         self.events.add(EventName.canError)
+      elif self.sm['radarState'].radarErrors.wrongConfig:
+        self.events.add(EventName.radarWrongConfig)
       elif self.sm['radarState'].radarErrors.radarUnavailableTemporary:
         self.events.add(EventName.radarTempUnavailable)
       else:

@@ -61,6 +61,7 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     pcmDisable @24;
     radarFault @25;
     radarTempUnavailable @93;
+    radarWrongConfig @128;
     brakeHold @26;
     parkBrake @27;
     manualRestart @28;
@@ -802,6 +803,7 @@ struct RadarState @0x9a185389d6fdd05f {
     aLead @5 :Float32;
     jLead @16 :Float32;
     score @17 :Float32;
+    objectClass @18 :UInt8 = 7; # radar object class; 7 means unavailable/unknown
   }
 
   # deprecated
