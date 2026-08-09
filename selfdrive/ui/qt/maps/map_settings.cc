@@ -8,6 +8,7 @@
 #include "common/util.h"
 #include "selfdrive/ui/qt/request_repeater.h"
 #include "selfdrive/ui/qt/widgets/scrollview.h"
+#include "system/hardware/hw.h"
 
 static void swap(QJsonValueRef v1, QJsonValueRef v2) { std::swap(v1, v2); }
 
@@ -64,7 +65,7 @@ MapSettings::MapSettings(bool closeable, QWidget *parent) : QFrame(parent) {
 
       // NOO without Prime IP extraction
       if (notPrime) {
-          Params params_memory = Params("/dev/shm/params");
+          Params params_memory{Path::shm_path() + "/params"};
           ipAddress = QString::fromStdString(params_memory.get("NetworkAddress"));
           subtitle = new QLabel(tr("Manage at %1").arg(ipAddress), this);
       } else {
@@ -148,7 +149,7 @@ void MapSettings::refresh() {
 
   // NOO without Prime IP update
   if (notPrime) {
-      Params params_memory = Params("/dev/shm/params");
+      Params params_memory{Path::shm_path() + "/params"};
       ipAddress = QString::fromStdString(params_memory.get("NetworkAddress"));
     subtitle->setText(tr("Manage at %1").arg(ipAddress));
   }

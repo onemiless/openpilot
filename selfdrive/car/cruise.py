@@ -3,6 +3,7 @@ import numpy as np
 
 from cereal import car
 from openpilot.common.conversions import Conversions as CV
+from openpilot.system.hardware.hw import Paths
 
 from opendbc.car import structs
 GearShifter = structs.CarState.GearShifter
@@ -150,7 +151,7 @@ class VCruiseCarrot:
   def __init__(self, CP):
     self.CP = CP
     self.frame = 0
-    self.params_memory = Params("/dev/shm/params")
+    self.params_memory = Params(f"{Paths.shm_path()}/params")
     self.params = Params()
     self.v_cruise_kph = 20 #V_CRUISE_UNSET
     self.v_cruise_cluster_kph = 20 #V_CRUISE_UNSET

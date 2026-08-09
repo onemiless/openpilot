@@ -46,4 +46,14 @@ def test_configuration_schedule_covers_slow_boot_and_runtime_reset():
   assert should_configure_radar(10)
   assert should_configure_radar(1000)
   assert not should_configure_radar(1001)
-  assert should_configure_radar(3000)
+  assert not should_configure_radar(3000)
+  assert should_configure_radar(3000, reinitialize=True)
+
+
+def test_motion_input_frames_are_encoded_but_not_implicitly_enabled():
+  packer = ARS408CAN()
+  speed_address, speed_data, speed_bus = packer.create_speed_information(27.5, 1)
+  yaw_address, yaw_data, yaw_bus = packer.create_yaw_rate_information(-12.5)
+
+  assert (speed_address, len(speed_data), speed_bus) == (0x300, 2, ARS408_BUS)
+  assert (yaw_address, len(yaw_data), yaw_bus) == (0x301, 2, ARS408_BUS)

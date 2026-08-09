@@ -18,6 +18,7 @@ from openpilot.common.params import Params
 from openpilot.selfdrive.carrot.config import UnifiedParams
 from openpilot.common.filter_simple import MyMovingAverage
 from openpilot.system.hardware import PC, TICI
+from openpilot.system.hardware.hw import Paths
 from openpilot.selfdrive.navd.helpers import Coordinate
 from opendbc.car.common.conversions import Conversions as CV
 from openpilot.common.realtime import DT_MDL
@@ -91,7 +92,7 @@ import collections
 class CarrotServ:
   def __init__(self):
     self.params = UnifiedParams()
-    self.params_memory = Params("/dev/shm/params")
+    self.params_memory = Params(f"{Paths.shm_path()}/params")
 
     self.nRoadLimitSpeed = 30
     self.nRoadLimitSpeed_last = 30
@@ -1725,4 +1726,3 @@ class CarrotServ:
         self.gps_accuracy_phone = float(json.get("accuracy", 0))
         self.nPosSpeed = float(json.get("gps_speed", 0))
         print(f"phone gps: {self.vpPosPointLatNavi}, {self.vpPosPointLonNavi}, {self.gps_accuracy_phone}, {self.nPosSpeed}")
-

@@ -6,17 +6,20 @@ ARS408_SENSOR_ID = 5
 ARS408_MAX_DISTANCE = 300
 ARS408_MAX_OBJECTS = 32
 ARS408_SEND_EXTENDED = False
+ARS408_SPEED_ADDRESS = 0x300
+ARS408_YAW_RATE_ADDRESS = 0x301
+# The radar shares Tesla vehicle CAN. These IDs are intentionally blocked by
+# Panda safety until an isolated bus or a vehicle capture proves no conflict.
+ARS408_MOTION_INPUT_ENABLED = False
 
 # Tesla shares this bus with the radar. Cover slow power-up during the first
-# ten seconds, then refresh occasionally so a brownout/reset does not leave
-# the radar at its default sensor ID until the next ignition cycle.
+# ten seconds. Runtime retries are event-driven; configuration must not be
+# transmitted forever on a healthy shared vehicle bus.
 ARS408_STARTUP_CONFIG_FRAMES = (10, 50, 100, 200, 500, 1000)
-ARS408_CONFIG_REFRESH_FRAMES = 3000
 
 
-def should_configure_radar(frame: int) -> bool:
-  return frame in ARS408_STARTUP_CONFIG_FRAMES or \
-         (frame > ARS408_STARTUP_CONFIG_FRAMES[-1] and frame % ARS408_CONFIG_REFRESH_FRAMES == 0)
+def should_configure_radar(frame: int, reinitialize: bool = False) -> bool:
+  return frame in ARS408_STARTUP_CONFIG_FRAMES or reinitialize
 
 
 class ARS408CAN:
@@ -63,3 +66,18 @@ class ARS408CAN:
       "FilterCfg_Max_NofObj": ARS408_MAX_OBJECTS,
     }
     return self.packer.make_can_msg("FilterCfg", ARS408_BUS, values)
+
+  def create_speed_information(self, speed_mps, direction):
+    """Build an ARS408 ego-speed frame; Panda safety blocks transmission."""
+    values = {
+      "RadarDevice_SpeedDirection": int(direction),
+      "RadarDevice_Speed": min(max(abs(float(speed_mps)), 0.0), 163.8),
+    }
+    return self.packer.make_can_msg("SpeedInformation", ARS408_BUS, values)
+
+  def create_yaw_rate_information(self, yaw_rate_deg_s):
+    """Build an ARS408 yaw-rate frame; Panda safety blocks transmission."""
+    values = {
+      "RadarDevice_YawRate": min(max(float(yaw_rate_deg_s), -327.68), 327.67),
+    }
+    return self.packer.make_can_msg("YawRateInformation", ARS408_BUS, values)

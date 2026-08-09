@@ -93,6 +93,12 @@ lenv = {
   "TERA_PATH": Dir("#").abspath + f"/third_party/acados/{arch}/t_renderer"
 }
 
+# Keep generated-code builds hermetic while allowing CI/sandbox callers to
+# redirect writable runtime state away from the user home directory.
+for build_path_env in ("PARAMS_ROOT", "CACHEDB"):
+  if build_path_env in os.environ:
+    lenv[build_path_env] = os.environ[build_path_env]
+
 rpath = lenv["LD_LIBRARY_PATH"].copy()
 
 if arch == "larch64":

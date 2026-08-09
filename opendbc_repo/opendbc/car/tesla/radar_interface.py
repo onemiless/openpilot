@@ -7,6 +7,7 @@ from opendbc.car.interfaces import RadarInterfaceBase
 from opendbc.car.tesla.ars408_can import (
   ARS408_BUS, ARS408_MAX_DISTANCE, ARS408_SEND_EXTENDED, ARS408_SENSOR_ID,
 )
+from openpilot.common.params import Params
 
 
 ARS408_DBC = "ARS408"
@@ -33,14 +34,21 @@ ARS408_MIN_TRACKED_PROBABILITY = 2  # >= 50%, Toyota-style hysteresis for an exi
 ARS408_MIN_STATIC_PROBABILITY = 5  # >= 99%
 ARS408_TRACK_GRACE_CYCLES = 2
 LOG_EVERY_CYCLES = 20
-# RadarState is nominally 20 Hz. Cover the full ten-second boot/retry window
-# before turning a transient default configuration into a takeover event.
-CONFIG_GRACE_STATE_FRAMES = 220
+# RadarState is nominally 1 Hz. Cover the ten-second startup configuration
+# window before turning a transient default configuration into a fault.
+CONFIG_GRACE_STATE_FRAMES = 10
+ARS408_STARTUP_GRACE_UPDATES = 1000
+ARS408_STATUS_TIMEOUT_UPDATES = 50
+ARS408_STATE_TIMEOUT_UPDATES = 300
+ARS408_ERROR_PUBLISH_INTERVAL = 5
 
 log = logging.getLogger(__name__)
 
 
-def object_is_usable(obj, previously_tracked=False):
+def object_rejection_reason(obj, previously_tracked=False, timed_out=False):
+  if timed_out:
+    return "timeout"
+
   measurement_state = int(obj["Obj_MeasState"])
   probability = int(obj["Obj_ProbOfExist"])
   d_rel = float(obj["Obj_DistLong"])
@@ -50,22 +58,31 @@ def object_is_usable(obj, previously_tracked=False):
   dynamic_property = int(obj["Obj_DynProp"])
 
   min_probability = ARS408_MIN_TRACKED_PROBABILITY if previously_tracked else ARS408_MIN_PROBABILITY
-  if measurement_state in (0, 4) or probability < min_probability:
-    return False
+  if measurement_state in (0, 4):
+    return "invalid"
+  if probability < min_probability:
+    return "low probability"
   # A predicted-only target must first have been observed by the interface.
   if measurement_state == 3 and not previously_tracked:
-    return False
+    return "invalid"
   if not (0.0 <= d_rel <= ARS408_MAX_DISTANCE and abs(y_rel) <= 100.0 and
           -100.0 <= v_rel <= 100.0 and abs(yv_rel) <= 60.0):
-    return False
+    return "out of range"
 
   # ARS408 reports roadside infrastructure as stationary/candidate/crossing
   # stationary. Keep stopped targets (7), and only keep never-moving static
   # targets when they are high-confidence and within the current/adjacent
   # three-lane corridor.
   if dynamic_property in (1, 3, 5):
-    return probability >= ARS408_MIN_STATIC_PROBABILITY and abs(y_rel) <= ARS408_OBJECT_CORRIDOR
-  return True
+    if probability < ARS408_MIN_STATIC_PROBABILITY:
+      return "low probability"
+    if abs(y_rel) > ARS408_OBJECT_CORRIDOR:
+      return "out of range"
+  return None
+
+
+def object_is_usable(obj, previously_tracked=False):
+  return object_rejection_reason(obj, previously_tracked) is None
 
 
 def get_radar_can_parser(CP):
@@ -82,6 +99,9 @@ def get_radar_can_parser(CP):
 class RadarInterface(RadarInterfaceBase):
   def __init__(self, CP):
     super().__init__(CP)
+    self.params = Params()
+    mode = self.params.get_int("TeslaRadarMode")
+    self.radar_mode = mode if mode in (1, 2, 3) else 0
     self.rcp = None if CP.radarUnavailable else get_radar_can_parser(CP)
     self.trigger_msg = ARS408_STATUS
     self.cycle_started = False
@@ -96,6 +116,48 @@ class RadarInterface(RadarInterfaceBase):
     self.last_fault_signature = None
     self.radar_state_frames = 0
     self.track_miss_counts = {}
+    self.update_count = 0
+    self.last_status_update = None
+    self.last_radar_state_update = None
+    self.last_missing_can_signature = None
+    self.last_rejection_reasons = {}
+
+  def _set_status(self, ret):
+    ret.radarOnline = getattr(self, "last_status_update", None) is not None and self._missing_can_signature() is None
+    ret.canValid = bool(self.rcp.can_valid) and self._missing_can_signature() is None
+    ret.objectCount = max(0, min(self.expected_objects, ARS408_PROTOCOL_MAX_OBJECTS))
+    ret.mode = getattr(self, "radar_mode", 0)
+
+  def _missing_can_signature(self):
+    update_count = getattr(self, "update_count", 0)
+    if update_count <= ARS408_STARTUP_GRACE_UPDATES:
+      return None
+
+    last_status_update = getattr(self, "last_status_update", None)
+    last_radar_state_update = getattr(self, "last_radar_state_update", None)
+    status_missing = last_status_update is None or \
+                     update_count - last_status_update > ARS408_STATUS_TIMEOUT_UPDATES
+    state_missing = last_radar_state_update is None or \
+                    update_count - last_radar_state_update > ARS408_STATE_TIMEOUT_UPDATES
+    return (status_missing, state_missing) if status_missing or state_missing else None
+
+  def _apply_missing_can_error(self, ret):
+    missing_signature = self._missing_can_signature()
+    last_signature = getattr(self, "last_missing_can_signature", None)
+    if missing_signature != last_signature:
+      if missing_signature is None:
+        if last_signature is not None:
+          log.info("ARS408 required CAN messages recovered")
+      else:
+        log.error("ARS408 required CAN messages missing: object_status=%d radar_state=%d update=%d",
+                  int(missing_signature[0]), int(missing_signature[1]), self.update_count)
+        self.params.put_bool_nonblocking("TeslaRadarReinitialize", True)
+      self.last_missing_can_signature = missing_signature
+
+    if missing_signature is not None:
+      ret.errors.canError = True
+    self._set_status(ret)
+    return missing_signature is not None
 
   def _start_cycle(self):
     status = self.rcp.vl["Obj_0_Status"]
@@ -145,14 +207,16 @@ class RadarInterface(RadarInterfaceBase):
     # Publish the last complete set so radard remains alive and diagnoses do
     # not become the generic "check connections" alert.
     ret = structs.RadarData()
-    ret.points = list(self.pts.values())
+    ret.points = [] if self.radar_mode == 1 else list(self.pts.values())
     if not self.rcp.can_valid:
       ret.errors.canError = True
     self._apply_radar_state_errors(ret)
+    self._apply_missing_can_error(ret)
     return ret
 
   def _update_radar_state(self, timestamp, data, src):
     self.rcp.update([(timestamp, [(0x201, data, src)])])
+    self.last_radar_state_update = self.update_count
     state = self.rcp.vl["RadarState"]
     self.last_radar_state = dict(state)
     self.radar_state_frames += 1
@@ -271,11 +335,14 @@ class RadarInterface(RadarInterfaceBase):
       v_rel = float(obj["Obj_VrelLong"])
       yv_rel = float(obj["Obj_VrelLat"])
 
-      if not object_is_usable(obj, object_id in self.pts):
+      rejection_reason = object_rejection_reason(obj, object_id in self.pts)
+      if rejection_reason is not None:
+        self.last_rejection_reasons[object_id] = rejection_reason
         continue
 
       current_targets.add(object_id)
       self.track_miss_counts[object_id] = 0
+      self.last_rejection_reasons.pop(object_id, None)
       if object_id not in self.pts:
         self.pts[object_id] = structs.RadarData.RadarPoint()
         self.pts[object_id].trackId = object_id
@@ -301,16 +368,24 @@ class RadarInterface(RadarInterfaceBase):
           # list-size fluctuation must not destroy and recreate a real track.
           self.pts[object_id].measured = False
         else:
+          self.last_rejection_reasons[object_id] = object_rejection_reason({}, timed_out=True)
           del self.pts[object_id]
           self.track_miss_counts.pop(object_id, None)
 
-    ret.points = list(self.pts.values())
+    # Monitor mode keeps decoding and diagnostics active but never feeds tracks
+    # into radard/lead fusion. Raw object count remains available to the UI.
+    ret.points = [] if self.radar_mode == 1 else list(self.pts.values())
+    self._apply_missing_can_error(ret)
+    if self.radar_mode == 3:
+      log.debug("ARS408 debug: raw=%d accepted=%d tracked=%d rejections=%s",
+                self.expected_objects, len(current_targets), len(self.pts), self.last_rejection_reasons)
     return ret
 
   def update(self, can_packets):
     if self.rcp is None:
       return super().update(None)
 
+    self.update_count += 1
     result = None
     for timestamp, frames in can_packets:
       for address, data, src in frames:
@@ -330,6 +405,7 @@ class RadarInterface(RadarInterfaceBase):
         # the real SensorID 5 address and exact DLC checks reach the decoder.
         frame = (base_address, data, src)
         if address == ARS408_STATUS:
+          self.last_status_update = self.update_count
           if self.cycle_started:
             cycle_result = self._build_result(timestamp)
             if cycle_result is not None:
@@ -343,4 +419,10 @@ class RadarInterface(RadarInterfaceBase):
 
         self._add_detail_frame(address, frame, data[0])
 
-    return result
+    if result is not None:
+      return result
+
+    missing_result = structs.RadarData()
+    if self._apply_missing_can_error(missing_result) and self.update_count % ARS408_ERROR_PUBLISH_INTERVAL == 0:
+      return missing_result
+    return None

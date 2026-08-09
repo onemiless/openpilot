@@ -4,7 +4,7 @@ from opendbc.can import CANPacker
 from opendbc.car import structs
 from opendbc.car.tesla.radar_interface import (
   ARS408_ADDRESS_OFFSET, ARS408_BUS, ARS408_EXTENDED, ARS408_GENERAL, ARS408_QUALITY, ARS408_TRACK_GRACE_CYCLES,
-  RadarInterface, object_is_usable,
+  ARS408_STARTUP_GRACE_UPDATES, RadarInterface, object_is_usable, object_rejection_reason,
 )
 
 
@@ -35,6 +35,13 @@ def test_filters_roadside_static_objects_but_keeps_adjacent_lane_and_stopped_tar
   assert object_is_usable(object_data(Obj_DynProp=7, Obj_DistLat=3.7, Obj_ProbOfExist=3))
 
 
+def test_object_rejection_reason_is_stable_for_diagnostics():
+  assert object_rejection_reason(object_data(Obj_MeasState=0)) == "invalid"
+  assert object_rejection_reason(object_data(Obj_ProbOfExist=1)) == "low probability"
+  assert object_rejection_reason(object_data(Obj_DistLong=301.0)) == "out of range"
+  assert object_rejection_reason({}, timed_out=True) == "timeout"
+
+
 def test_incomplete_object_cycle_is_not_reported_as_can_disconnect():
   radar = RadarInterface.__new__(RadarInterface)
   radar.incomplete_cycles = 0
@@ -44,6 +51,9 @@ def test_incomplete_object_cycle_is_not_reported_as_can_disconnect():
   radar.part_ids = {ARS408_GENERAL: {1}, ARS408_QUALITY: set()}
   radar.pts = {}
   radar.last_radar_state = None
+  radar.radar_mode = 2
+  radar.last_rejection_reasons = {}
+  radar.v_ego = 0.0
   radar.rcp = type("FakeParser", (), {"can_valid": True})()
 
   result = radar._incomplete_result()
@@ -52,8 +62,30 @@ def test_incomplete_object_cycle_is_not_reported_as_can_disconnect():
   assert radar.incomplete_cycles == 1
 
 
+def test_monitor_mode_never_publishes_cached_points_on_incomplete_cycle():
+  point = structs.RadarData.RadarPoint()
+  point.trackId = 7
+  radar = RadarInterface.__new__(RadarInterface)
+  radar.incomplete_cycles = 0
+  radar.last_logged_incomplete = 0
+  radar.expected_objects = 1
+  radar.part_counts = {ARS408_GENERAL: 1, ARS408_QUALITY: 0}
+  radar.part_ids = {ARS408_GENERAL: {7}, ARS408_QUALITY: set()}
+  radar.pts = {7: point}
+  radar.last_radar_state = None
+  radar.radar_mode = 1
+  radar.last_rejection_reasons = {}
+  radar.v_ego = 0.0
+  radar.rcp = type("FakeParser", (), {"can_valid": True})()
+
+  result = radar._incomplete_result()
+
+  assert len(result.points) == 0
+
+
 def make_result_radar(points=None):
   radar = RadarInterface.__new__(RadarInterface)
+  radar.v_ego = 0.0
   radar.expected_objects = 0
   radar.cycle_invalid = False
   radar.part_counts = {ARS408_GENERAL: 0, ARS408_QUALITY: 0}
@@ -63,6 +95,8 @@ def make_result_radar(points=None):
   radar.incomplete_cycles = 0
   radar.last_logged_incomplete = 0
   radar.last_radar_state = None
+  radar.radar_mode = 2
+  radar.last_rejection_reasons = {}
   radar.rcp = type("FakeParser", (), {"can_valid": True})()
   radar._decode_cycle = lambda _timestamp: {}
   return radar
@@ -151,3 +185,24 @@ def test_raw_sensor_id_five_can_cycle_produces_radar_point():
   assert result.points[0].yRel == pytest.approx(1.5, abs=0.11)
   assert result.points[0].vRel == -2.0
   assert result.points[0].measured
+
+
+def test_missing_ars408_status_is_detected_independently_of_shared_can_validity():
+  radar = RadarInterface.__new__(RadarInterface)
+  radar.update_count = ARS408_STARTUP_GRACE_UPDATES + 1
+  radar.last_status_update = None
+  radar.last_radar_state_update = radar.update_count
+
+  assert radar._missing_can_signature() == (True, False)
+
+
+def test_monitor_mode_decodes_objects_without_publishing_fusion_points():
+  radar = make_result_radar()
+  radar.radar_mode = 1
+  radar._decode_cycle = lambda _timestamp: {7: object_data()}
+
+  result = radar._build_result(1_000_000_000)
+
+  assert result.objectCount == 0
+  assert len(radar.pts) == 1
+  assert len(result.points) == 0

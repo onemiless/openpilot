@@ -121,6 +121,7 @@ def get_default_params():
     ("LongActuatorDelay", "20"),
     ("VEgoStopping", "30"),
     ("RadarReactionFactor", "100"),
+    ("TeslaRadarMode", "2"),
     ("EnableRadarTracks", "1"),
     ("EnableEscc", "1"),
     ("RadarLatFactor", "0"),

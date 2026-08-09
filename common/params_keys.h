@@ -228,6 +228,8 @@ inline static std::unordered_map<std::string, uint32_t> keys = {
     {"LongActuatorDelay", PERSISTENT },
     {"VEgoStopping", PERSISTENT },
     {"RadarReactionFactor", PERSISTENT},
+    {"TeslaRadarMode", PERSISTENT},
+    {"TeslaRadarReinitialize", CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION},
     {"EnableRadarTracks", PERSISTENT},
     {"EnableEscc", PERSISTENT},
     {"RadarLatFactor", PERSISTENT},

@@ -11,6 +11,7 @@ from openpilot.common.realtime import config_realtime_process, DT_MDL
 from openpilot.selfdrive.locationd.models.car_kf import CarKalman, ObservationKind, States
 from openpilot.selfdrive.locationd.models.constants import GENERATED_DIR
 from openpilot.common.swaglog import cloudlog
+from openpilot.system.hardware.hw import Paths
 
 
 MAX_ANGLE_OFFSET_DELTA = 20 * DT_MDL  # Max 20 deg/s
@@ -172,7 +173,7 @@ def main():
   avg_offset_valid = True
   total_offset_valid = True
   roll_valid = True
-  params_memory = Params("/dev/shm/params")
+  params_memory = Params(f"{Paths.shm_path()}/params")
   params_memory.remove("LastGPSPosition")
 
   while True:

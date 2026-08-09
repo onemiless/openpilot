@@ -14,6 +14,7 @@ public:
 private:
   void drawSetSpeed(QPainter &p, const QRect &surface_rect);
   void drawCurrentSpeed(QPainter &p, const QRect &surface_rect);
+  void drawRadarStatus(QPainter &p, const QRect &surface_rect);
   void drawText(QPainter &p, int x, int y, const QString &text, int alpha = 255);
 
   float speed = 0;
@@ -23,4 +24,10 @@ private:
   bool is_metric = false;
   bool v_ego_cluster_seen = false;
   int status = STATUS_DISENGAGED;
+  bool radar_online = false;
+  bool radar_can_valid = false;
+  int radar_object_count = 0;
+  int radar_mode = 0;
+  QString radar_lead_source = "NONE";
+  bool show_radar_status = false;
 };

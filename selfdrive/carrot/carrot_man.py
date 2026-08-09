@@ -19,6 +19,7 @@ from openpilot.common.params import Params
 from openpilot.selfdrive.carrot.config import UnifiedParams
 from openpilot.common.filter_simple import MyMovingAverage
 from openpilot.system.hardware import PC, TICI
+from openpilot.system.hardware.hw import Paths
 from openpilot.selfdrive.navd.helpers import Coordinate
 from opendbc.car.common.conversions import Conversions as CV
 
@@ -193,7 +194,7 @@ class CarrotMan:
     print("************************************************CarrotMan init************************************************")
     self.params = UnifiedParams()
     self.sys_params = Params()
-    self.params_memory = Params("/dev/shm/params")
+    self.params_memory = Params(f"{Paths.shm_path()}/params")
     self.sm = messaging.SubMaster(['deviceState', 'carState', 'controlsState', 'longitudinalPlan', 'modelV2', 'selfdriveState', 'carControl', 'navRouteNavd', 'liveLocationKalman', 'navInstruction', 'radarState'])
     self.pm = messaging.PubMaster(['carrotMan', "navRoute", "navInstructionCarrot"])
 
@@ -310,7 +311,7 @@ class CarrotMan:
         return radar_data
 
     except Exception as e:
-        debug_print(f"获取雷达数据错误: {e}")
+        print(f"获取雷达数据错误: {e}")
         return {'points': [], 'tracks': [], 'leads': [], 'timestamp': time.time(), 'error': str(e)}
 
   def get_data_amap_navi(self):

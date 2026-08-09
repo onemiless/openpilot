@@ -45,7 +45,7 @@ a = 6378245.0
 ee = 0.00669342162296594323
 
 params = Params()
-params_memory = Params("/dev/shm/params")
+params_memory = Params(f"{Paths.shm_path()}/params")
 #params_storage = Params("/persist/comma/params")
 
 PRESERVE_ATTR_NAME = 'user.preserve'
@@ -328,12 +328,13 @@ def set_destination(postvars, valid_addr):
   else:
     addr = postvars.get("place_name")
     token = get_public_token()
-    data, lon, lat, valid_addr, token = search_addr(addr, lon, lat, valid_addr, token)
-    postvars["lat"] = lat
-    postvars["lon"] = lon
-    postvars["save_type"] = "recent"
-    nav_confirmed(postvars)
-    valid_addr= True
+    lon, lat = get_last_lon_lat()
+    _addr, lon, lat, valid_addr, _token = search_addr({"addr_val": addr}, lon, lat, valid_addr, token)
+    if valid_addr:
+      postvars["lat"] = lat
+      postvars["lon"] = lon
+      postvars["save_type"] = "recent"
+      nav_confirmed(postvars)
   return postvars, valid_addr
 
 def nav_confirmed(postvars):

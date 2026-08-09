@@ -7,7 +7,7 @@
 #include <thread>
 #include <chrono>
 
-#ifdef WSL2
+#if defined(WSL2) || defined(DISABLE_SCREENRECORDER)
 class ScreenRecoder : public QPushButton {
 public:
     ScreenRecoder(QWidget* parent = nullptr) {}

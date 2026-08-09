@@ -23,6 +23,22 @@ void HudRenderer::updateState(const UIState &s) {
   const auto &controls_state = sm["controlsState"].getControlsState();
   const auto &car_state = sm["carState"].getCarState();
 
+  radar_online = false;
+  radar_can_valid = false;
+  radar_object_count = 0;
+  const auto &car_params = sm["carParams"].getCarParams();
+  show_radar_status = car_params.getBrand() == "tesla";
+  radar_mode = car_params.getRadarUnavailable() ? 0 : 2;
+  if (sm.alive("liveTracks") && sm.rcv_frame("liveTracks") >= s.scene.started_frame) {
+    const auto &radar_data = sm["liveTracks"].getLiveTracks();
+    radar_online = radar_data.getRadarOnline();
+    radar_can_valid = radar_data.getCanValid();
+    radar_object_count = radar_data.getObjectCount();
+    radar_mode = radar_data.getMode();
+  }
+  const auto &lead = sm["radarState"].getRadarState().getLeadOne();
+  radar_lead_source = lead.getStatus() ? (lead.getRadar() ? "RADAR" : "MODEL") : "NONE";
+
   // Handle older routes where vCruiseCluster is not set
   set_speed = car_state.getVCruiseCluster() == 0.0 ? controls_state.getVCruiseDEPRECATED() : car_state.getVCruiseCluster();
   is_cruise_set = set_speed > 0 && set_speed != SET_SPEED_NA;
@@ -52,8 +68,24 @@ void HudRenderer::draw(QPainter &p, const QRect &surface_rect) {
     drawSetSpeed(p, surface_rect);
   }
   drawCurrentSpeed(p, surface_rect);
+  drawRadarStatus(p, surface_rect);
 
   p.restore();
+}
+
+void HudRenderer::drawRadarStatus(QPainter &p, const QRect &surface_rect) {
+  if (!show_radar_status) return;
+
+  const QString mode = radar_mode == 0 ? "OFF" : radar_mode == 1 ? "MON" : radar_mode == 2 ? "FUS" : "DBG";
+  const QString online = radar_online ? "ONLINE" : "OFFLINE";
+  const QString can = radar_can_valid ? "CAN OK" : "CAN ERR";
+  const QString text = QString("RADAR %1  %2  %3 OBJ  LEAD %4  %5")
+                         .arg(mode).arg(online).arg(radar_object_count).arg(radar_lead_source).arg(can);
+
+  p.setFont(InterFont(30, QFont::DemiBold));
+  p.setPen(radar_online && radar_can_valid ? QColor(0x80, 0xd8, 0xa6) : QColor(0xff, 0x66, 0x66));
+  const QRect rect(surface_rect.width() - 760, 42, 700, 54);
+  p.drawText(rect, Qt::AlignRight | Qt::AlignVCenter, text);
 }
 
 void HudRenderer::drawSetSpeed(QPainter &p, const QRect &surface_rect) {

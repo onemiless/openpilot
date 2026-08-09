@@ -13,6 +13,8 @@ MSG_APS_eacMonitor = 0x27d
 MSG_DAS_Control = 0x2b9
 MSG_ARS408_CONFIG = 0x200
 MSG_ARS408_FILTER_CONFIG = 0x202
+MSG_ARS408_SPEED = 0x300
+MSG_ARS408_YAW_RATE = 0x301
 
 
 class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyTest, common.LongitudinalAccelSafetyTest):
@@ -107,6 +109,10 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
     self.assertTrue(self._tx(common.make_msg(1, MSG_ARS408_FILTER_CONFIG, 5)))
     self.assertFalse(self._tx(common.make_msg(0, MSG_ARS408_FILTER_CONFIG, 5)))
     self.assertFalse(self._tx(common.make_msg(1, MSG_ARS408_FILTER_CONFIG, 8)))
+
+  def test_ars408_motion_inputs_remain_blocked_on_shared_vehicle_can(self):
+    self.assertFalse(self._tx(common.make_msg(1, MSG_ARS408_SPEED, 2)))
+    self.assertFalse(self._tx(common.make_msg(1, MSG_ARS408_YAW_RATE, 2)))
 
 
 class TestTeslaStockSafety(TestTeslaSafetyBase):

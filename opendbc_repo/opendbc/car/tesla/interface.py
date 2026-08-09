@@ -4,6 +4,7 @@ from opendbc.car.tesla.carcontroller import CarController
 from opendbc.car.tesla.carstate import CarState
 from opendbc.car.tesla.radar_interface import RadarInterface
 from opendbc.car.tesla.values import TeslaSafetyFlags
+from openpilot.common.params import Params
 
 
 class CarInterface(CarInterfaceBase):
@@ -22,8 +23,9 @@ class CarInterface(CarInterfaceBase):
     ret.steerAtStandstill = True
 
     ret.steerControlType = structs.CarParams.SteerControlType.angle
-    # cpv9-dev-tsl is dedicated to vehicles fitted with an external ARS408 on bus 1.
-    ret.radarUnavailable = False
+    # 0=OFF, 1=Monitor, 2=Fusion, 3=Debug. Unknown values fail safe to OFF.
+    radar_mode = Params().get_int("TeslaRadarMode")
+    ret.radarUnavailable = radar_mode not in (1, 2, 3)
     ret.radarTimeStep = 1.0 / 14.0
 
     ret.alphaLongitudinalAvailable = True

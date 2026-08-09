@@ -9,6 +9,19 @@ RENDER_FRAMES = 15
 DEFAULT_ITERATIONS = RENDER_FRAMES * LLK_DECIMATION
 
 
+def generate_livePose():
+  msg = messaging.new_message('livePose')
+  measurement = {'x': 0., 'y': 0., 'z': 0., 'xStd': 0., 'yStd': 0., 'zStd': 0., 'valid': True}
+  msg.livePose.orientationNED = measurement
+  msg.livePose.velocityDevice = measurement
+  msg.livePose.accelerationDevice = measurement
+  msg.livePose.angularVelocityDevice = measurement
+  msg.livePose.inputsOK = True
+  msg.livePose.posenetOK = True
+  msg.livePose.sensorsOK = True
+  return msg
+
+
 def generate_liveLocationKalman(location=LOCATION1):
   msg = messaging.new_message('liveLocationKalman')
   msg.liveLocationKalman.positionGeodetic = {'value': [*location, 0], 'std': [0., 0., 0.], 'valid': True}

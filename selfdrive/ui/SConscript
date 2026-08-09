@@ -54,13 +54,14 @@ def is_running_on_wsl2():
   except FileNotFoundError:
     return False
 
-if is_running_on_wsl2():
-  qt_env.Append(CXXFLAGS=['-DWSL2'])
+disable_screenrecorder = is_running_on_wsl2() or arch == "Darwin"
+if disable_screenrecorder:
+  qt_env.Append(CXXFLAGS=['-DDISABLE_SCREENRECORDER'])
   base_libs.remove('OmxCore')
   qt_libs.remove('OmxCore')
   qt_src.remove("qt/screenrecorder/screenrecorder.cc")
   qt_src.remove("qt/screenrecorder/omx_encoder.cc")
-  print("Building for WSL2. Removing Screen Recorder")
+  print("Screen Recorder disabled: OpenMAX is unavailable on this build platform")
 
 # build translation files
 with open(File("translations/languages.json").abspath) as f:

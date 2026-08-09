@@ -1,0 +1,1053 @@
+diff --git a/SConstruct b/SConstruct
+index a4d1739fa..08433c601 100644
+--- a/SConstruct
++++ b/SConstruct
+@@ -93,6 +93,12 @@ lenv = {
+   "TERA_PATH": Dir("#").abspath + f"/third_party/acados/{arch}/t_renderer"
+ }
+ 
++# Keep generated-code builds hermetic while allowing CI/sandbox callers to
++# redirect writable runtime state away from the user home directory.
++for build_path_env in ("PARAMS_ROOT", "CACHEDB"):
++  if build_path_env in os.environ:
++    lenv[build_path_env] = os.environ[build_path_env]
++
+ rpath = lenv["LD_LIBRARY_PATH"].copy()
+ 
+ if arch == "larch64":
+diff --git a/common/mock/generators.py b/common/mock/generators.py
+index 40951faf8..f1933a504 100644
+--- a/common/mock/generators.py
++++ b/common/mock/generators.py
+@@ -9,6 +9,19 @@ RENDER_FRAMES = 15
+ DEFAULT_ITERATIONS = RENDER_FRAMES * LLK_DECIMATION
+ 
+ 
++def generate_livePose():
++  msg = messaging.new_message('livePose')
++  measurement = {'x': 0., 'y': 0., 'z': 0., 'xStd': 0., 'yStd': 0., 'zStd': 0., 'valid': True}
++  msg.livePose.orientationNED = measurement
++  msg.livePose.velocityDevice = measurement
++  msg.livePose.accelerationDevice = measurement
++  msg.livePose.angularVelocityDevice = measurement
++  msg.livePose.inputsOK = True
++  msg.livePose.posenetOK = True
++  msg.livePose.sensorsOK = True
++  return msg
++
++
+ def generate_liveLocationKalman(location=LOCATION1):
+   msg = messaging.new_message('liveLocationKalman')
+   msg.liveLocationKalman.positionGeodetic = {'value': [*location, 0], 'std': [0., 0., 0.], 'valid': True}
+diff --git a/common/params_keys.h b/common/params_keys.h
+index 66b68f13d..817e28187 100644
+--- a/common/params_keys.h
++++ b/common/params_keys.h
+@@ -228,6 +228,8 @@ inline static std::unordered_map<std::string, uint32_t> keys = {
+     {"LongActuatorDelay", PERSISTENT },
+     {"VEgoStopping", PERSISTENT },
+     {"RadarReactionFactor", PERSISTENT},
++    {"TeslaRadarMode", PERSISTENT},
++    {"TeslaRadarReinitialize", CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION},
+     {"EnableRadarTracks", PERSISTENT},
+     {"EnableEscc", PERSISTENT},
+     {"RadarLatFactor", PERSISTENT},
+diff --git a/opendbc_repo/SConstruct b/opendbc_repo/SConstruct
+index c43351a6a..3bb785222 100644
+--- a/opendbc_repo/SConstruct
++++ b/opendbc_repo/SConstruct
+@@ -30,6 +30,10 @@ AddOption('--mutation',
+           action='store_true',
+           help='generate mutation-ready code')
+ 
++AddOption('--coverage',
++          action='store_true',
++          help='build safety tests with coverage instrumentation')
++
+ ccflags_asan = ["-fsanitize=address", "-fno-omit-frame-pointer"] if GetOption('asan') else []
+ ldflags_asan = ["-fsanitize=address"] if GetOption('asan') else []
+ 
+diff --git a/opendbc_repo/opendbc/car/car.capnp b/opendbc_repo/opendbc/car/car.capnp
+index 0785aad75..d570361af 100644
+--- a/opendbc_repo/opendbc/car/car.capnp
++++ b/opendbc_repo/opendbc/car/car.capnp
+@@ -333,6 +333,10 @@ struct CarState {
+ struct RadarData @0x888ad6581cf0aacb {
+   errors @3 :Error;
+   points @1 :List(RadarPoint);
++  radarOnline @4 :Bool;
++  canValid @5 :Bool;
++  objectCount @6 :UInt16;
++  mode @7 :UInt8;  # TeslaRadarMode: 0 OFF, 1 Monitor, 2 Fusion, 3 Debug
+ 
+   struct Error {
+     canError @0 :Bool;
+diff --git a/opendbc_repo/opendbc/car/hyundai/carstate.py b/opendbc_repo/opendbc/car/hyundai/carstate.py
+index 24878bdaa..578bdef31 100644
+--- a/opendbc_repo/opendbc/car/hyundai/carstate.py
++++ b/opendbc_repo/opendbc/car/hyundai/carstate.py
+@@ -121,7 +121,8 @@ class CarState(CarStateBase):
+     #self.rf_lateral = 0
+ 
+     fingerprints_str = Params().get("FingerPrints", encoding='utf-8')
+-    fingerprints = ast.literal_eval(fingerprints_str)
++    fingerprints_raw = ast.literal_eval(fingerprints_str) if fingerprints_str else {}
++    fingerprints = {bus: fingerprints_raw.get(bus, {}) for bus in range(8)}
+     #print("fingerprints =", fingerprints)
+     ecu_disabled = False
+     if self.CP.openpilotLongitudinalControl and not (self.CP.flags & HyundaiFlags.CANFD_CAMERA_SCC):
+diff --git a/opendbc_repo/opendbc/car/interfaces.py b/opendbc_repo/opendbc/car/interfaces.py
+index 5846cc8ba..5dfff264b 100644
+--- a/opendbc_repo/opendbc/car/interfaces.py
++++ b/opendbc_repo/opendbc/car/interfaces.py
+@@ -420,7 +420,7 @@ class CarInterfaceBase(ABC):
+ 
+   @classmethod
+   def get_params(cls, candidate: str, fingerprint: dict[int, dict[int, int]], car_fw: list[structs.CarParams.CarFw],
+-                 alpha_long: bool, is_release: bool, docs: bool) -> structs.CarParams:
++                 alpha_long: bool, is_release: bool = False, docs: bool = False) -> structs.CarParams:
+     ret = CarInterfaceBase.get_std_params(candidate)
+ 
+     platform = PLATFORMS[candidate]
+diff --git a/opendbc_repo/opendbc/car/tesla/ars408_can.py b/opendbc_repo/opendbc/car/tesla/ars408_can.py
+index 9a795ddfc..dacbb62df 100644
+--- a/opendbc_repo/opendbc/car/tesla/ars408_can.py
++++ b/opendbc_repo/opendbc/car/tesla/ars408_can.py
+@@ -6,17 +6,20 @@ ARS408_SENSOR_ID = 5
+ ARS408_MAX_DISTANCE = 300
+ ARS408_MAX_OBJECTS = 32
+ ARS408_SEND_EXTENDED = False
++ARS408_SPEED_ADDRESS = 0x300
++ARS408_YAW_RATE_ADDRESS = 0x301
++# The radar shares Tesla vehicle CAN. These IDs are intentionally blocked by
++# Panda safety until an isolated bus or a vehicle capture proves no conflict.
++ARS408_MOTION_INPUT_ENABLED = False
+ 
+ # Tesla shares this bus with the radar. Cover slow power-up during the first
+-# ten seconds, then refresh occasionally so a brownout/reset does not leave
+-# the radar at its default sensor ID until the next ignition cycle.
++# ten seconds. Runtime retries are event-driven; configuration must not be
++# transmitted forever on a healthy shared vehicle bus.
+ ARS408_STARTUP_CONFIG_FRAMES = (10, 50, 100, 200, 500, 1000)
+-ARS408_CONFIG_REFRESH_FRAMES = 3000
+ 
+ 
+-def should_configure_radar(frame: int) -> bool:
+-  return frame in ARS408_STARTUP_CONFIG_FRAMES or \
+-         (frame > ARS408_STARTUP_CONFIG_FRAMES[-1] and frame % ARS408_CONFIG_REFRESH_FRAMES == 0)
++def should_configure_radar(frame: int, reinitialize: bool = False) -> bool:
++  return frame in ARS408_STARTUP_CONFIG_FRAMES or reinitialize
+ 
+ 
+ class ARS408CAN:
+@@ -63,3 +66,18 @@ class ARS408CAN:
+       "FilterCfg_Max_NofObj": ARS408_MAX_OBJECTS,
+     }
+     return self.packer.make_can_msg("FilterCfg", ARS408_BUS, values)
++
++  def create_speed_information(self, speed_mps, direction):
++    """Build an ARS408 ego-speed frame; Panda safety blocks transmission."""
++    values = {
++      "RadarDevice_SpeedDirection": int(direction),
++      "RadarDevice_Speed": min(max(abs(float(speed_mps)), 0.0), 163.8),
++    }
++    return self.packer.make_can_msg("SpeedInformation", ARS408_BUS, values)
++
++  def create_yaw_rate_information(self, yaw_rate_deg_s):
++    """Build an ARS408 yaw-rate frame; Panda safety blocks transmission."""
++    values = {
++      "RadarDevice_YawRate": min(max(float(yaw_rate_deg_s), -327.68), 327.67),
++    }
++    return self.packer.make_can_msg("YawRateInformation", ARS408_BUS, values)
+diff --git a/opendbc_repo/opendbc/car/tesla/carcontroller.py b/opendbc_repo/opendbc/car/tesla/carcontroller.py
+index a1f4b0625..bf55a16a7 100644
+--- a/opendbc_repo/opendbc/car/tesla/carcontroller.py
++++ b/opendbc_repo/opendbc/car/tesla/carcontroller.py
+@@ -1,12 +1,14 @@
+ import logging
++import math
+ 
+ import numpy as np
+ from opendbc.can import CANPacker
+-from opendbc.car import Bus, apply_std_steer_angle_limits
++from opendbc.car import Bus, apply_std_steer_angle_limits, structs
+ from opendbc.car.interfaces import CarControllerBase
+-from opendbc.car.tesla.ars408_can import ARS408CAN, should_configure_radar
++from opendbc.car.tesla.ars408_can import ARS408CAN, ARS408_MOTION_INPUT_ENABLED, should_configure_radar
+ from opendbc.car.tesla.teslacan import TeslaCAN
+ from opendbc.car.tesla.values import CarControllerParams
++from openpilot.common.params import Params
+ 
+ 
+ log = logging.getLogger(__name__)
+@@ -19,19 +21,47 @@ class CarController(CarControllerBase):
+     self.packer = CANPacker(dbc_names[Bus.party])
+     self.tesla_can = TeslaCAN(self.packer)
+     self.ars408_can = None if CP.radarUnavailable else ARS408CAN()
++    self.params = Params()
++
++  def send_radar_motion(self, CS):
++    """Return reviewed ARS408 motion frames when the physical CAN path is safe."""
++    if self.ars408_can is None or not ARS408_MOTION_INPUT_ENABLED:
++      return []
++
++    reverse = CS.out.gearShifter == structs.CarState.GearShifter.reverse
++    standstill = CS.out.standstill or abs(float(CS.out.vEgo)) < 0.05
++    direction = 0 if standstill else (2 if reverse else 1)
++
++    steer_ratio = max(float(self.CP.steerRatio), 1.0)
++    wheelbase = max(float(self.CP.wheelbase), 0.1)
++    road_wheel_angle = math.radians(float(CS.out.steeringAngleDeg) / steer_ratio)
++    signed_speed = -abs(float(CS.out.vEgo)) if reverse else abs(float(CS.out.vEgo))
++    yaw_rate_deg_s = math.degrees(signed_speed * math.tan(road_wheel_angle) / wheelbase)
++    return [
++      self.ars408_can.create_speed_information(CS.out.vEgo, direction),
++      self.ars408_can.create_yaw_rate_information(yaw_rate_deg_s),
++    ]
+ 
+   def update(self, CC, CS, now_nanos):
+     actuators = CC.actuators
+     can_sends = []
+ 
+-    # Configure the shared-bus ARS408 throughout its boot window and refresh
+-    # occasionally to recover from a radar power reset. The configuration is
+-    # volatile, so this does not wear EEPROM. No motion or collision-region
+-    # frames are transmitted on TeslaCAN.
+-    if self.ars408_can is not None and should_configure_radar(self.frame):
++    # Configure only during startup or after the interface detects an ARS408
++    # timeout. The configuration is volatile and is never sent continuously.
++    radar_reinitialize = self.params.get_bool("TeslaRadarReinitialize")
++    if self.ars408_can is not None and should_configure_radar(self.frame, radar_reinitialize):
+       can_sends.append(self.ars408_can.create_radar_configuration())
+       can_sends.append(self.ars408_can.create_object_count_filter())
+-      log.info("ARS408 configuration refreshed on Tesla vehicle bus at frame %d", self.frame)
++      if radar_reinitialize:
++        self.params.remove("TeslaRadarReinitialize")
++      log.info("ARS408 configuration sent on Tesla vehicle bus at frame %d reinitialize=%d",
++               self.frame, int(radar_reinitialize))
++
++    # Motion input support is implemented but remains safety-gated off on the
++    # shared Tesla CAN. Enabling it requires a reviewed physical bus change and
++    # matching Panda allowlist tests.
++    if self.frame % 5 == 0:
++      can_sends.extend(self.send_radar_motion(CS))
+ 
+     # Disengage and allow for user override on high torque inputs
+     # TODO: move this to a generic disengageRequested carState field and set CC.cruiseControl.cancel based on it
+diff --git a/opendbc_repo/opendbc/car/tesla/interface.py b/opendbc_repo/opendbc/car/tesla/interface.py
+index b42a34c26..fa3247348 100644
+--- a/opendbc_repo/opendbc/car/tesla/interface.py
++++ b/opendbc_repo/opendbc/car/tesla/interface.py
+@@ -4,6 +4,7 @@ from opendbc.car.tesla.carcontroller import CarController
+ from opendbc.car.tesla.carstate import CarState
+ from opendbc.car.tesla.radar_interface import RadarInterface
+ from opendbc.car.tesla.values import TeslaSafetyFlags
++from openpilot.common.params import Params
+ 
+ 
+ class CarInterface(CarInterfaceBase):
+@@ -22,8 +23,9 @@ class CarInterface(CarInterfaceBase):
+     ret.steerAtStandstill = True
+ 
+     ret.steerControlType = structs.CarParams.SteerControlType.angle
+-    # cpv9-dev-tsl is dedicated to vehicles fitted with an external ARS408 on bus 1.
+-    ret.radarUnavailable = False
++    # 0=OFF, 1=Monitor, 2=Fusion, 3=Debug. Unknown values fail safe to OFF.
++    radar_mode = Params().get_int("TeslaRadarMode")
++    ret.radarUnavailable = radar_mode not in (1, 2, 3)
+     ret.radarTimeStep = 1.0 / 14.0
+ 
+     ret.alphaLongitudinalAvailable = True
+diff --git a/opendbc_repo/opendbc/car/tesla/radar_interface.py b/opendbc_repo/opendbc/car/tesla/radar_interface.py
+index ffc4d3c62..604ae1c7b 100644
+--- a/opendbc_repo/opendbc/car/tesla/radar_interface.py
++++ b/opendbc_repo/opendbc/car/tesla/radar_interface.py
+@@ -7,6 +7,7 @@ from opendbc.car.interfaces import RadarInterfaceBase
+ from opendbc.car.tesla.ars408_can import (
+   ARS408_BUS, ARS408_MAX_DISTANCE, ARS408_SEND_EXTENDED, ARS408_SENSOR_ID,
+ )
++from openpilot.common.params import Params
+ 
+ 
+ ARS408_DBC = "ARS408"
+@@ -33,14 +34,21 @@ ARS408_MIN_TRACKED_PROBABILITY = 2  # >= 50%, Toyota-style hysteresis for an exi
+ ARS408_MIN_STATIC_PROBABILITY = 5  # >= 99%
+ ARS408_TRACK_GRACE_CYCLES = 2
+ LOG_EVERY_CYCLES = 20
+-# RadarState is nominally 20 Hz. Cover the full ten-second boot/retry window
+-# before turning a transient default configuration into a takeover event.
+-CONFIG_GRACE_STATE_FRAMES = 220
++# RadarState is nominally 1 Hz. Cover the ten-second startup configuration
++# window before turning a transient default configuration into a fault.
++CONFIG_GRACE_STATE_FRAMES = 10
++ARS408_STARTUP_GRACE_UPDATES = 1000
++ARS408_STATUS_TIMEOUT_UPDATES = 50
++ARS408_STATE_TIMEOUT_UPDATES = 300
++ARS408_ERROR_PUBLISH_INTERVAL = 5
+ 
+ log = logging.getLogger(__name__)
+ 
+ 
+-def object_is_usable(obj, previously_tracked=False):
++def object_rejection_reason(obj, previously_tracked=False, timed_out=False):
++  if timed_out:
++    return "timeout"
++
+   measurement_state = int(obj["Obj_MeasState"])
+   probability = int(obj["Obj_ProbOfExist"])
+   d_rel = float(obj["Obj_DistLong"])
+@@ -50,22 +58,31 @@ def object_is_usable(obj, previously_tracked=False):
+   dynamic_property = int(obj["Obj_DynProp"])
+ 
+   min_probability = ARS408_MIN_TRACKED_PROBABILITY if previously_tracked else ARS408_MIN_PROBABILITY
+-  if measurement_state in (0, 4) or probability < min_probability:
+-    return False
++  if measurement_state in (0, 4):
++    return "invalid"
++  if probability < min_probability:
++    return "low probability"
+   # A predicted-only target must first have been observed by the interface.
+   if measurement_state == 3 and not previously_tracked:
+-    return False
++    return "invalid"
+   if not (0.0 <= d_rel <= ARS408_MAX_DISTANCE and abs(y_rel) <= 100.0 and
+           -100.0 <= v_rel <= 100.0 and abs(yv_rel) <= 60.0):
+-    return False
++    return "out of range"
+ 
+   # ARS408 reports roadside infrastructure as stationary/candidate/crossing
+   # stationary. Keep stopped targets (7), and only keep never-moving static
+   # targets when they are high-confidence and within the current/adjacent
+   # three-lane corridor.
+   if dynamic_property in (1, 3, 5):
+-    return probability >= ARS408_MIN_STATIC_PROBABILITY and abs(y_rel) <= ARS408_OBJECT_CORRIDOR
+-  return True
++    if probability < ARS408_MIN_STATIC_PROBABILITY:
++      return "low probability"
++    if abs(y_rel) > ARS408_OBJECT_CORRIDOR:
++      return "out of range"
++  return None
++
++
++def object_is_usable(obj, previously_tracked=False):
++  return object_rejection_reason(obj, previously_tracked) is None
+ 
+ 
+ def get_radar_can_parser(CP):
+@@ -82,6 +99,9 @@ def get_radar_can_parser(CP):
+ class RadarInterface(RadarInterfaceBase):
+   def __init__(self, CP):
+     super().__init__(CP)
++    self.params = Params()
++    mode = self.params.get_int("TeslaRadarMode")
++    self.radar_mode = mode if mode in (1, 2, 3) else 0
+     self.rcp = None if CP.radarUnavailable else get_radar_can_parser(CP)
+     self.trigger_msg = ARS408_STATUS
+     self.cycle_started = False
+@@ -96,6 +116,48 @@ class RadarInterface(RadarInterfaceBase):
+     self.last_fault_signature = None
+     self.radar_state_frames = 0
+     self.track_miss_counts = {}
++    self.update_count = 0
++    self.last_status_update = None
++    self.last_radar_state_update = None
++    self.last_missing_can_signature = None
++    self.last_rejection_reasons = {}
++
++  def _set_status(self, ret):
++    ret.radarOnline = getattr(self, "last_status_update", None) is not None and self._missing_can_signature() is None
++    ret.canValid = bool(self.rcp.can_valid) and self._missing_can_signature() is None
++    ret.objectCount = max(0, min(self.expected_objects, ARS408_PROTOCOL_MAX_OBJECTS))
++    ret.mode = getattr(self, "radar_mode", 0)
++
++  def _missing_can_signature(self):
++    update_count = getattr(self, "update_count", 0)
++    if update_count <= ARS408_STARTUP_GRACE_UPDATES:
++      return None
++
++    last_status_update = getattr(self, "last_status_update", None)
++    last_radar_state_update = getattr(self, "last_radar_state_update", None)
++    status_missing = last_status_update is None or \
++                     update_count - last_status_update > ARS408_STATUS_TIMEOUT_UPDATES
++    state_missing = last_radar_state_update is None or \
++                    update_count - last_radar_state_update > ARS408_STATE_TIMEOUT_UPDATES
++    return (status_missing, state_missing) if status_missing or state_missing else None
++
++  def _apply_missing_can_error(self, ret):
++    missing_signature = self._missing_can_signature()
++    last_signature = getattr(self, "last_missing_can_signature", None)
++    if missing_signature != last_signature:
++      if missing_signature is None:
++        if last_signature is not None:
++          log.info("ARS408 required CAN messages recovered")
++      else:
++        log.error("ARS408 required CAN messages missing: object_status=%d radar_state=%d update=%d",
++                  int(missing_signature[0]), int(missing_signature[1]), self.update_count)
++        self.params.put_bool_nonblocking("TeslaRadarReinitialize", True)
++      self.last_missing_can_signature = missing_signature
++
++    if missing_signature is not None:
++      ret.errors.canError = True
++    self._set_status(ret)
++    return missing_signature is not None
+ 
+   def _start_cycle(self):
+     status = self.rcp.vl["Obj_0_Status"]
+@@ -145,14 +207,16 @@ class RadarInterface(RadarInterfaceBase):
+     # Publish the last complete set so radard remains alive and diagnoses do
+     # not become the generic "check connections" alert.
+     ret = structs.RadarData()
+-    ret.points = list(self.pts.values())
++    ret.points = [] if self.radar_mode == 1 else list(self.pts.values())
+     if not self.rcp.can_valid:
+       ret.errors.canError = True
+     self._apply_radar_state_errors(ret)
++    self._apply_missing_can_error(ret)
+     return ret
+ 
+   def _update_radar_state(self, timestamp, data, src):
+     self.rcp.update([(timestamp, [(0x201, data, src)])])
++    self.last_radar_state_update = self.update_count
+     state = self.rcp.vl["RadarState"]
+     self.last_radar_state = dict(state)
+     self.radar_state_frames += 1
+@@ -271,11 +335,14 @@ class RadarInterface(RadarInterfaceBase):
+       v_rel = float(obj["Obj_VrelLong"])
+       yv_rel = float(obj["Obj_VrelLat"])
+ 
+-      if not object_is_usable(obj, object_id in self.pts):
++      rejection_reason = object_rejection_reason(obj, object_id in self.pts)
++      if rejection_reason is not None:
++        self.last_rejection_reasons[object_id] = rejection_reason
+         continue
+ 
+       current_targets.add(object_id)
+       self.track_miss_counts[object_id] = 0
++      self.last_rejection_reasons.pop(object_id, None)
+       if object_id not in self.pts:
+         self.pts[object_id] = structs.RadarData.RadarPoint()
+         self.pts[object_id].trackId = object_id
+@@ -301,16 +368,24 @@ class RadarInterface(RadarInterfaceBase):
+           # list-size fluctuation must not destroy and recreate a real track.
+           self.pts[object_id].measured = False
+         else:
++          self.last_rejection_reasons[object_id] = object_rejection_reason({}, timed_out=True)
+           del self.pts[object_id]
+           self.track_miss_counts.pop(object_id, None)
+ 
+-    ret.points = list(self.pts.values())
++    # Monitor mode keeps decoding and diagnostics active but never feeds tracks
++    # into radard/lead fusion. Raw object count remains available to the UI.
++    ret.points = [] if self.radar_mode == 1 else list(self.pts.values())
++    self._apply_missing_can_error(ret)
++    if self.radar_mode == 3:
++      log.debug("ARS408 debug: raw=%d accepted=%d tracked=%d rejections=%s",
++                self.expected_objects, len(current_targets), len(self.pts), self.last_rejection_reasons)
+     return ret
+ 
+   def update(self, can_packets):
+     if self.rcp is None:
+       return super().update(None)
+ 
++    self.update_count += 1
+     result = None
+     for timestamp, frames in can_packets:
+       for address, data, src in frames:
+@@ -330,6 +405,7 @@ class RadarInterface(RadarInterfaceBase):
+         # the real SensorID 5 address and exact DLC checks reach the decoder.
+         frame = (base_address, data, src)
+         if address == ARS408_STATUS:
++          self.last_status_update = self.update_count
+           if self.cycle_started:
+             cycle_result = self._build_result(timestamp)
+             if cycle_result is not None:
+@@ -343,4 +419,10 @@ class RadarInterface(RadarInterfaceBase):
+ 
+         self._add_detail_frame(address, frame, data[0])
+ 
+-    return result
++    if result is not None:
++      return result
++
++    missing_result = structs.RadarData()
++    if self._apply_missing_can_error(missing_result) and self.update_count % ARS408_ERROR_PUBLISH_INTERVAL == 0:
++      return missing_result
++    return None
+diff --git a/opendbc_repo/opendbc/car/tesla/tests/test_ars408_can.py b/opendbc_repo/opendbc/car/tesla/tests/test_ars408_can.py
+index c9e730306..7928005ed 100644
+--- a/opendbc_repo/opendbc/car/tesla/tests/test_ars408_can.py
++++ b/opendbc_repo/opendbc/car/tesla/tests/test_ars408_can.py
+@@ -46,4 +46,14 @@ def test_configuration_schedule_covers_slow_boot_and_runtime_reset():
+   assert should_configure_radar(10)
+   assert should_configure_radar(1000)
+   assert not should_configure_radar(1001)
+-  assert should_configure_radar(3000)
++  assert not should_configure_radar(3000)
++  assert should_configure_radar(3000, reinitialize=True)
++
++
++def test_motion_input_frames_are_encoded_but_not_implicitly_enabled():
++  packer = ARS408CAN()
++  speed_address, speed_data, speed_bus = packer.create_speed_information(27.5, 1)
++  yaw_address, yaw_data, yaw_bus = packer.create_yaw_rate_information(-12.5)
++
++  assert (speed_address, len(speed_data), speed_bus) == (0x300, 2, ARS408_BUS)
++  assert (yaw_address, len(yaw_data), yaw_bus) == (0x301, 2, ARS408_BUS)
+diff --git a/opendbc_repo/opendbc/car/tesla/tests/test_radar_interface.py b/opendbc_repo/opendbc/car/tesla/tests/test_radar_interface.py
+index f0284e455..448b0619f 100644
+--- a/opendbc_repo/opendbc/car/tesla/tests/test_radar_interface.py
++++ b/opendbc_repo/opendbc/car/tesla/tests/test_radar_interface.py
+@@ -4,7 +4,7 @@ from opendbc.can import CANPacker
+ from opendbc.car import structs
+ from opendbc.car.tesla.radar_interface import (
+   ARS408_ADDRESS_OFFSET, ARS408_BUS, ARS408_EXTENDED, ARS408_GENERAL, ARS408_QUALITY, ARS408_TRACK_GRACE_CYCLES,
+-  RadarInterface, object_is_usable,
++  ARS408_STARTUP_GRACE_UPDATES, RadarInterface, object_is_usable, object_rejection_reason,
+ )
+ 
+ 
+@@ -35,6 +35,13 @@ def test_filters_roadside_static_objects_but_keeps_adjacent_lane_and_stopped_tar
+   assert object_is_usable(object_data(Obj_DynProp=7, Obj_DistLat=3.7, Obj_ProbOfExist=3))
+ 
+ 
++def test_object_rejection_reason_is_stable_for_diagnostics():
++  assert object_rejection_reason(object_data(Obj_MeasState=0)) == "invalid"
++  assert object_rejection_reason(object_data(Obj_ProbOfExist=1)) == "low probability"
++  assert object_rejection_reason(object_data(Obj_DistLong=301.0)) == "out of range"
++  assert object_rejection_reason({}, timed_out=True) == "timeout"
++
++
+ def test_incomplete_object_cycle_is_not_reported_as_can_disconnect():
+   radar = RadarInterface.__new__(RadarInterface)
+   radar.incomplete_cycles = 0
+@@ -44,6 +51,9 @@ def test_incomplete_object_cycle_is_not_reported_as_can_disconnect():
+   radar.part_ids = {ARS408_GENERAL: {1}, ARS408_QUALITY: set()}
+   radar.pts = {}
+   radar.last_radar_state = None
++  radar.radar_mode = 2
++  radar.last_rejection_reasons = {}
++  radar.v_ego = 0.0
+   radar.rcp = type("FakeParser", (), {"can_valid": True})()
+ 
+   result = radar._incomplete_result()
+@@ -52,8 +62,30 @@ def test_incomplete_object_cycle_is_not_reported_as_can_disconnect():
+   assert radar.incomplete_cycles == 1
+ 
+ 
++def test_monitor_mode_never_publishes_cached_points_on_incomplete_cycle():
++  point = structs.RadarData.RadarPoint()
++  point.trackId = 7
++  radar = RadarInterface.__new__(RadarInterface)
++  radar.incomplete_cycles = 0
++  radar.last_logged_incomplete = 0
++  radar.expected_objects = 1
++  radar.part_counts = {ARS408_GENERAL: 1, ARS408_QUALITY: 0}
++  radar.part_ids = {ARS408_GENERAL: {7}, ARS408_QUALITY: set()}
++  radar.pts = {7: point}
++  radar.last_radar_state = None
++  radar.radar_mode = 1
++  radar.last_rejection_reasons = {}
++  radar.v_ego = 0.0
++  radar.rcp = type("FakeParser", (), {"can_valid": True})()
++
++  result = radar._incomplete_result()
++
++  assert len(result.points) == 0
++
++
+ def make_result_radar(points=None):
+   radar = RadarInterface.__new__(RadarInterface)
++  radar.v_ego = 0.0
+   radar.expected_objects = 0
+   radar.cycle_invalid = False
+   radar.part_counts = {ARS408_GENERAL: 0, ARS408_QUALITY: 0}
+@@ -63,6 +95,8 @@ def make_result_radar(points=None):
+   radar.incomplete_cycles = 0
+   radar.last_logged_incomplete = 0
+   radar.last_radar_state = None
++  radar.radar_mode = 2
++  radar.last_rejection_reasons = {}
+   radar.rcp = type("FakeParser", (), {"can_valid": True})()
+   radar._decode_cycle = lambda _timestamp: {}
+   return radar
+@@ -151,3 +185,24 @@ def test_raw_sensor_id_five_can_cycle_produces_radar_point():
+   assert result.points[0].yRel == pytest.approx(1.5, abs=0.11)
+   assert result.points[0].vRel == -2.0
+   assert result.points[0].measured
++
++
++def test_missing_ars408_status_is_detected_independently_of_shared_can_validity():
++  radar = RadarInterface.__new__(RadarInterface)
++  radar.update_count = ARS408_STARTUP_GRACE_UPDATES + 1
++  radar.last_status_update = None
++  radar.last_radar_state_update = radar.update_count
++
++  assert radar._missing_can_signature() == (True, False)
++
++
++def test_monitor_mode_decodes_objects_without_publishing_fusion_points():
++  radar = make_result_radar()
++  radar.radar_mode = 1
++  radar._decode_cycle = lambda _timestamp: {7: object_data()}
++
++  result = radar._build_result(1_000_000_000)
++
++  assert result.objectCount == 0
++  assert len(radar.pts) == 1
++  assert len(result.points) == 0
+diff --git a/opendbc_repo/opendbc/safety/board/fake_stm.h b/opendbc_repo/opendbc/safety/board/fake_stm.h
+index 8f94e79ed..b9a9f9091 100644
+--- a/opendbc_repo/opendbc/safety/board/fake_stm.h
++++ b/opendbc_repo/opendbc/safety/board/fake_stm.h
+@@ -16,6 +16,10 @@ void puth(unsigned int i) {
+   printf("%u", i);
+ }
+ 
++void putui(uint32_t i) {
++  printf("%u", i);
++}
++
+ typedef struct {
+   uint32_t CNT;
+ } TIM_TypeDef;
+diff --git a/opendbc_repo/opendbc/safety/tests/test_tesla.py b/opendbc_repo/opendbc/safety/tests/test_tesla.py
+index 3f048df8b..8da2ea57f 100755
+--- a/opendbc_repo/opendbc/safety/tests/test_tesla.py
++++ b/opendbc_repo/opendbc/safety/tests/test_tesla.py
+@@ -13,6 +13,8 @@ MSG_APS_eacMonitor = 0x27d
+ MSG_DAS_Control = 0x2b9
+ MSG_ARS408_CONFIG = 0x200
+ MSG_ARS408_FILTER_CONFIG = 0x202
++MSG_ARS408_SPEED = 0x300
++MSG_ARS408_YAW_RATE = 0x301
+ 
+ 
+ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyTest, common.LongitudinalAccelSafetyTest):
+@@ -108,6 +110,10 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
+     self.assertFalse(self._tx(common.make_msg(0, MSG_ARS408_FILTER_CONFIG, 5)))
+     self.assertFalse(self._tx(common.make_msg(1, MSG_ARS408_FILTER_CONFIG, 8)))
+ 
++  def test_ars408_motion_inputs_remain_blocked_on_shared_vehicle_can(self):
++    self.assertFalse(self._tx(common.make_msg(1, MSG_ARS408_SPEED, 2)))
++    self.assertFalse(self._tx(common.make_msg(1, MSG_ARS408_YAW_RATE, 2)))
++
+ 
+ class TestTeslaStockSafety(TestTeslaSafetyBase):
+ 
+diff --git a/panda/SConscript b/panda/SConscript
+index f617410b4..48121bafa 100644
+--- a/panda/SConscript
++++ b/panda/SConscript
+@@ -169,8 +169,9 @@ Export('base_project_f4', 'base_project_h7', 'build_project')
+ # Common autogenerated includes
+ with open("board/obj/gitversion.h", "w") as f:
+   version = get_version(BUILDER, BUILD_TYPE)
+-  f.write(f'extern const uint8_t gitversion[{len(version)}];\n')
+-  f.write(f'const uint8_t gitversion[{len(version)}] = "{version}";\n')
++  version_size = len(version) + 1  # include the C string terminator
++  f.write(f'extern const uint8_t gitversion[{version_size}];\n')
++  f.write(f'const uint8_t gitversion[{version_size}] = "{version}";\n')
+ 
+ with open("board/obj/version", "w") as f:
+   f.write(f'{get_version(BUILDER, BUILD_TYPE)}')
+diff --git a/selfdrive/car/cruise.py b/selfdrive/car/cruise.py
+index 1056ad430..9e41deb99 100644
+--- a/selfdrive/car/cruise.py
++++ b/selfdrive/car/cruise.py
+@@ -3,6 +3,7 @@ import numpy as np
+ 
+ from cereal import car
+ from openpilot.common.conversions import Conversions as CV
++from openpilot.system.hardware.hw import Paths
+ 
+ from opendbc.car import structs
+ GearShifter = structs.CarState.GearShifter
+@@ -150,7 +151,7 @@ class VCruiseCarrot:
+   def __init__(self, CP):
+     self.CP = CP
+     self.frame = 0
+-    self.params_memory = Params("/dev/shm/params")
++    self.params_memory = Params(f"{Paths.shm_path()}/params")
+     self.params = Params()
+     self.v_cruise_kph = 20 #V_CRUISE_UNSET
+     self.v_cruise_cluster_kph = 20 #V_CRUISE_UNSET
+diff --git a/selfdrive/carrot/carrot_man.py b/selfdrive/carrot/carrot_man.py
+index 4255bb3d0..3af021a18 100644
+--- a/selfdrive/carrot/carrot_man.py
++++ b/selfdrive/carrot/carrot_man.py
+@@ -19,6 +19,7 @@ from openpilot.common.params import Params
+ from openpilot.selfdrive.carrot.config import UnifiedParams
+ from openpilot.common.filter_simple import MyMovingAverage
+ from openpilot.system.hardware import PC, TICI
++from openpilot.system.hardware.hw import Paths
+ from openpilot.selfdrive.navd.helpers import Coordinate
+ from opendbc.car.common.conversions import Conversions as CV
+ 
+@@ -193,7 +194,7 @@ class CarrotMan:
+     print("************************************************CarrotMan init************************************************")
+     self.params = UnifiedParams()
+     self.sys_params = Params()
+-    self.params_memory = Params("/dev/shm/params")
++    self.params_memory = Params(f"{Paths.shm_path()}/params")
+     self.sm = messaging.SubMaster(['deviceState', 'carState', 'controlsState', 'longitudinalPlan', 'modelV2', 'selfdriveState', 'carControl', 'navRouteNavd', 'liveLocationKalman', 'navInstruction', 'radarState'])
+     self.pm = messaging.PubMaster(['carrotMan', "navRoute", "navInstructionCarrot"])
+ 
+@@ -310,7 +311,7 @@ class CarrotMan:
+         return radar_data
+ 
+     except Exception as e:
+-        debug_print(f"获取雷达数据错误: {e}")
++        print(f"获取雷达数据错误: {e}")
+         return {'points': [], 'tracks': [], 'leads': [], 'timestamp': time.time(), 'error': str(e)}
+ 
+   def get_data_amap_navi(self):
+diff --git a/selfdrive/carrot/carrot_serv.py b/selfdrive/carrot/carrot_serv.py
+index 447683c9d..f5582f89d 100644
+--- a/selfdrive/carrot/carrot_serv.py
++++ b/selfdrive/carrot/carrot_serv.py
+@@ -18,6 +18,7 @@ from openpilot.common.params import Params
+ from openpilot.selfdrive.carrot.config import UnifiedParams
+ from openpilot.common.filter_simple import MyMovingAverage
+ from openpilot.system.hardware import PC, TICI
++from openpilot.system.hardware.hw import Paths
+ from openpilot.selfdrive.navd.helpers import Coordinate
+ from opendbc.car.common.conversions import Conversions as CV
+ from openpilot.common.realtime import DT_MDL
+@@ -91,7 +92,7 @@ import collections
+ class CarrotServ:
+   def __init__(self):
+     self.params = UnifiedParams()
+-    self.params_memory = Params("/dev/shm/params")
++    self.params_memory = Params(f"{Paths.shm_path()}/params")
+ 
+     self.nRoadLimitSpeed = 30
+     self.nRoadLimitSpeed_last = 30
+@@ -1725,4 +1726,3 @@ class CarrotServ:
+         self.gps_accuracy_phone = float(json.get("accuracy", 0))
+         self.nPosSpeed = float(json.get("gps_speed", 0))
+         print(f"phone gps: {self.vpPosPointLatNavi}, {self.vpPosPointLonNavi}, {self.gps_accuracy_phone}, {self.nPosSpeed}")
+-
+diff --git a/selfdrive/carrot/test_carrot_man.py b/selfdrive/carrot/test_carrot_man.py
+new file mode 100644
+index 000000000..8933e5464
+--- /dev/null
++++ b/selfdrive/carrot/test_carrot_man.py
+@@ -0,0 +1,11 @@
++from openpilot.selfdrive.carrot.carrot_man import CarrotMan
++
++
++def test_get_radar_data_preserves_original_error():
++  carrot = CarrotMan.__new__(CarrotMan)
++  carrot.sm = None
++
++  result = carrot.get_radar_data()
++
++  assert result["points"] == []
++  assert "NoneType" in result["error"]
+diff --git a/selfdrive/controls/lib/tests/test_latcontrol.py b/selfdrive/controls/lib/tests/test_latcontrol.py
+index 564c93be0..a01f013dd 100644
+--- a/selfdrive/controls/lib/tests/test_latcontrol.py
++++ b/selfdrive/controls/lib/tests/test_latcontrol.py
+@@ -17,9 +17,9 @@ class TestLatControl:
+ 
+   @parameterized.expand([(HONDA.HONDA_CIVIC, LatControlPID), (TOYOTA.TOYOTA_RAV4, LatControlTorque),  (NISSAN.NISSAN_LEAF, LatControlAngle)])
+   def test_saturation(self, car_name, controller):
+-    CarInterface, CarController, CarState, RadarInterface = interfaces[car_name]
++    CarInterface = interfaces[car_name]
+     CP = CarInterface.get_non_essential_params(car_name)
+-    CI = CarInterface(CP, CarController, CarState)
++    CI = CarInterface(CP)
+     VM = VehicleModel(CP)
+ 
+     controller = controller(CP.as_reader(), CI)
+diff --git a/selfdrive/frogpilot/fleetmanager/helpers.py b/selfdrive/frogpilot/fleetmanager/helpers.py
+index d54a18d49..929107adb 100644
+--- a/selfdrive/frogpilot/fleetmanager/helpers.py
++++ b/selfdrive/frogpilot/fleetmanager/helpers.py
+@@ -45,7 +45,7 @@ a = 6378245.0
+ ee = 0.00669342162296594323
+ 
+ params = Params()
+-params_memory = Params("/dev/shm/params")
++params_memory = Params(f"{Paths.shm_path()}/params")
+ #params_storage = Params("/persist/comma/params")
+ 
+ PRESERVE_ATTR_NAME = 'user.preserve'
+@@ -328,12 +328,13 @@ def set_destination(postvars, valid_addr):
+   else:
+     addr = postvars.get("place_name")
+     token = get_public_token()
+-    data, lon, lat, valid_addr, token = search_addr(addr, lon, lat, valid_addr, token)
+-    postvars["lat"] = lat
+-    postvars["lon"] = lon
+-    postvars["save_type"] = "recent"
+-    nav_confirmed(postvars)
+-    valid_addr= True
++    lon, lat = get_last_lon_lat()
++    _addr, lon, lat, valid_addr, _token = search_addr({"addr_val": addr}, lon, lat, valid_addr, token)
++    if valid_addr:
++      postvars["lat"] = lat
++      postvars["lon"] = lon
++      postvars["save_type"] = "recent"
++      nav_confirmed(postvars)
+   return postvars, valid_addr
+ 
+ def nav_confirmed(postvars):
+diff --git a/selfdrive/frogpilot/fleetmanager/test_helpers.py b/selfdrive/frogpilot/fleetmanager/test_helpers.py
+new file mode 100644
+index 000000000..5653f68a1
+--- /dev/null
++++ b/selfdrive/frogpilot/fleetmanager/test_helpers.py
+@@ -0,0 +1,33 @@
++from openpilot.selfdrive.frogpilot.fleetmanager import helpers
++
++
++def test_set_destination_geocodes_place_name(monkeypatch):
++  confirmed = []
++  monkeypatch.setattr(helpers, "get_last_lon_lat", lambda: (121.5, 31.2))
++  monkeypatch.setattr(helpers, "get_public_token", lambda: "token")
++  monkeypatch.setattr(helpers, "search_addr", lambda postvars, lon, lat, valid, token:
++                      (postvars["addr_val"], 121.6, 31.3, True, token))
++  monkeypatch.setattr(helpers, "nav_confirmed", lambda postvars: confirmed.append(dict(postvars)))
++
++  postvars, valid = helpers.set_destination({"place_name": "test destination"}, False)
++
++  assert valid
++  assert postvars["lon"] == 121.6
++  assert postvars["lat"] == 31.3
++  assert confirmed == [postvars]
++
++
++def test_set_destination_does_not_confirm_failed_search(monkeypatch):
++  confirmed = []
++  monkeypatch.setattr(helpers, "get_last_lon_lat", lambda: (121.5, 31.2))
++  monkeypatch.setattr(helpers, "get_public_token", lambda: "token")
++  monkeypatch.setattr(helpers, "search_addr", lambda postvars, lon, lat, valid, token:
++                      (postvars["addr_val"], lon, lat, False, token))
++  monkeypatch.setattr(helpers, "nav_confirmed", lambda postvars: confirmed.append(dict(postvars)))
++
++  postvars, valid = helpers.set_destination({"place_name": "missing destination"}, False)
++
++  assert not valid
++  assert confirmed == []
++  assert "lon" not in postvars
++  assert "lat" not in postvars
+diff --git a/selfdrive/locationd/paramsd.py b/selfdrive/locationd/paramsd.py
+index 16bebb0b1..03590c08e 100644
+--- a/selfdrive/locationd/paramsd.py
++++ b/selfdrive/locationd/paramsd.py
+@@ -11,6 +11,7 @@ from openpilot.common.realtime import config_realtime_process, DT_MDL
+ from openpilot.selfdrive.locationd.models.car_kf import CarKalman, ObservationKind, States
+ from openpilot.selfdrive.locationd.models.constants import GENERATED_DIR
+ from openpilot.common.swaglog import cloudlog
++from openpilot.system.hardware.hw import Paths
+ 
+ 
+ MAX_ANGLE_OFFSET_DELTA = 20 * DT_MDL  # Max 20 deg/s
+@@ -172,7 +173,7 @@ def main():
+   avg_offset_valid = True
+   total_offset_valid = True
+   roll_valid = True
+-  params_memory = Params("/dev/shm/params")
++  params_memory = Params(f"{Paths.shm_path()}/params")
+   params_memory.remove("LastGPSPosition")
+ 
+   while True:
+diff --git a/selfdrive/ui/SConscript b/selfdrive/ui/SConscript
+index 69c5beb6d..05ddaee00 100644
+--- a/selfdrive/ui/SConscript
++++ b/selfdrive/ui/SConscript
+@@ -54,13 +54,14 @@ def is_running_on_wsl2():
+   except FileNotFoundError:
+     return False
+ 
+-if is_running_on_wsl2():
+-  qt_env.Append(CXXFLAGS=['-DWSL2'])
++disable_screenrecorder = is_running_on_wsl2() or arch == "Darwin"
++if disable_screenrecorder:
++  qt_env.Append(CXXFLAGS=['-DDISABLE_SCREENRECORDER'])
+   base_libs.remove('OmxCore')
+   qt_libs.remove('OmxCore')
+   qt_src.remove("qt/screenrecorder/screenrecorder.cc")
+   qt_src.remove("qt/screenrecorder/omx_encoder.cc")
+-  print("Building for WSL2. Removing Screen Recorder")
++  print("Screen Recorder disabled: OpenMAX is unavailable on this build platform")
+ 
+ # build translation files
+ with open(File("translations/languages.json").abspath) as f:
+diff --git a/selfdrive/ui/carrot.cc b/selfdrive/ui/carrot.cc
+index 58165a7df..b1aa2a708 100644
+--- a/selfdrive/ui/carrot.cc
++++ b/selfdrive/ui/carrot.cc
+@@ -9,6 +9,8 @@
+ #include <QJsonValue>
+ #include <QJsonArray>
+ 
++#include "system/hardware/hw.h"
++
+ //#define __TEST
+ //#define __UI_TEST
+ 
+@@ -2417,7 +2419,7 @@ class DrawCarrot : public QObject {
+ 
+ protected:
+     Params	params;
+-    Params	params_memory{ "/dev/shm/params" };
++    Params params_memory{Path::shm_path() + "/params"};
+     int     icon_size = 256;
+ public:
+     DrawCarrot() {
+@@ -3494,7 +3496,7 @@ public:
+         sprintf(bottom_left, "%s", gitBranch.toStdString().c_str());
+ 
+         // bottom_right
+-        Params params_memory = Params("/dev/shm/params");
++        Params params_memory{Path::shm_path() + "/params"};
+         if (false && carrot_man_debug[0] != 0 && params.getInt("ShowDebugUI") > 0) {
+             strcpy(bottom_right, carrot_man_debug);
+         }
+diff --git a/selfdrive/ui/qt/maps/map_settings.cc b/selfdrive/ui/qt/maps/map_settings.cc
+index b1df70222..bc945ef1c 100644
+--- a/selfdrive/ui/qt/maps/map_settings.cc
++++ b/selfdrive/ui/qt/maps/map_settings.cc
+@@ -8,6 +8,7 @@
+ #include "common/util.h"
+ #include "selfdrive/ui/qt/request_repeater.h"
+ #include "selfdrive/ui/qt/widgets/scrollview.h"
++#include "system/hardware/hw.h"
+ 
+ static void swap(QJsonValueRef v1, QJsonValueRef v2) { std::swap(v1, v2); }
+ 
+@@ -64,7 +65,7 @@ MapSettings::MapSettings(bool closeable, QWidget *parent) : QFrame(parent) {
+ 
+       // NOO without Prime IP extraction
+       if (notPrime) {
+-          Params params_memory = Params("/dev/shm/params");
++          Params params_memory{Path::shm_path() + "/params"};
+           ipAddress = QString::fromStdString(params_memory.get("NetworkAddress"));
+           subtitle = new QLabel(tr("Manage at %1").arg(ipAddress), this);
+       } else {
+@@ -148,7 +149,7 @@ void MapSettings::refresh() {
+ 
+   // NOO without Prime IP update
+   if (notPrime) {
+-      Params params_memory = Params("/dev/shm/params");
++      Params params_memory{Path::shm_path() + "/params"};
+       ipAddress = QString::fromStdString(params_memory.get("NetworkAddress"));
+     subtitle->setText(tr("Manage at %1").arg(ipAddress));
+   }
+diff --git a/selfdrive/ui/qt/onroad/hud.cc b/selfdrive/ui/qt/onroad/hud.cc
+index 4cfa3d0e3..01ce03962 100644
+--- a/selfdrive/ui/qt/onroad/hud.cc
++++ b/selfdrive/ui/qt/onroad/hud.cc
+@@ -23,6 +23,22 @@ void HudRenderer::updateState(const UIState &s) {
+   const auto &controls_state = sm["controlsState"].getControlsState();
+   const auto &car_state = sm["carState"].getCarState();
+ 
++  radar_online = false;
++  radar_can_valid = false;
++  radar_object_count = 0;
++  const auto &car_params = sm["carParams"].getCarParams();
++  show_radar_status = car_params.getBrand() == "tesla";
++  radar_mode = car_params.getRadarUnavailable() ? 0 : 2;
++  if (sm.alive("liveTracks") && sm.rcv_frame("liveTracks") >= s.scene.started_frame) {
++    const auto &radar_data = sm["liveTracks"].getLiveTracks();
++    radar_online = radar_data.getRadarOnline();
++    radar_can_valid = radar_data.getCanValid();
++    radar_object_count = radar_data.getObjectCount();
++    radar_mode = radar_data.getMode();
++  }
++  const auto &lead = sm["radarState"].getRadarState().getLeadOne();
++  radar_lead_source = lead.getStatus() ? (lead.getRadar() ? "RADAR" : "MODEL") : "NONE";
++
+   // Handle older routes where vCruiseCluster is not set
+   set_speed = car_state.getVCruiseCluster() == 0.0 ? controls_state.getVCruiseDEPRECATED() : car_state.getVCruiseCluster();
+   is_cruise_set = set_speed > 0 && set_speed != SET_SPEED_NA;
+@@ -52,10 +68,26 @@ void HudRenderer::draw(QPainter &p, const QRect &surface_rect) {
+     drawSetSpeed(p, surface_rect);
+   }
+   drawCurrentSpeed(p, surface_rect);
++  drawRadarStatus(p, surface_rect);
+ 
+   p.restore();
+ }
+ 
++void HudRenderer::drawRadarStatus(QPainter &p, const QRect &surface_rect) {
++  if (!show_radar_status) return;
++
++  const QString mode = radar_mode == 0 ? "OFF" : radar_mode == 1 ? "MON" : radar_mode == 2 ? "FUS" : "DBG";
++  const QString online = radar_online ? "ONLINE" : "OFFLINE";
++  const QString can = radar_can_valid ? "CAN OK" : "CAN ERR";
++  const QString text = QString("RADAR %1  %2  %3 OBJ  LEAD %4  %5")
++                         .arg(mode).arg(online).arg(radar_object_count).arg(radar_lead_source).arg(can);
++
++  p.setFont(InterFont(30, QFont::DemiBold));
++  p.setPen(radar_online && radar_can_valid ? QColor(0x80, 0xd8, 0xa6) : QColor(0xff, 0x66, 0x66));
++  const QRect rect(surface_rect.width() - 760, 42, 700, 54);
++  p.drawText(rect, Qt::AlignRight | Qt::AlignVCenter, text);
++}
++
+ void HudRenderer::drawSetSpeed(QPainter &p, const QRect &surface_rect) {
+   // Draw outer box + border to contain set speed
+   const QSize default_size = {172, 204};
+diff --git a/selfdrive/ui/qt/onroad/hud.h b/selfdrive/ui/qt/onroad/hud.h
+index b2ac379db..15a1ee03c 100644
+--- a/selfdrive/ui/qt/onroad/hud.h
++++ b/selfdrive/ui/qt/onroad/hud.h
+@@ -14,6 +14,7 @@ public:
+ private:
+   void drawSetSpeed(QPainter &p, const QRect &surface_rect);
+   void drawCurrentSpeed(QPainter &p, const QRect &surface_rect);
++  void drawRadarStatus(QPainter &p, const QRect &surface_rect);
+   void drawText(QPainter &p, int x, int y, const QString &text, int alpha = 255);
+ 
+   float speed = 0;
+@@ -23,4 +24,10 @@ private:
+   bool is_metric = false;
+   bool v_ego_cluster_seen = false;
+   int status = STATUS_DISENGAGED;
++  bool radar_online = false;
++  bool radar_can_valid = false;
++  int radar_object_count = 0;
++  int radar_mode = 0;
++  QString radar_lead_source = "NONE";
++  bool show_radar_status = false;
+ };
+diff --git a/selfdrive/ui/qt/screenrecorder/screenrecorder.h b/selfdrive/ui/qt/screenrecorder/screenrecorder.h
+index 7206ac30e..930030034 100644
+--- a/selfdrive/ui/qt/screenrecorder/screenrecorder.h
++++ b/selfdrive/ui/qt/screenrecorder/screenrecorder.h
+@@ -7,7 +7,7 @@
+ #include <thread>
+ #include <chrono>
+ 
+-#ifdef WSL2
++#if defined(WSL2) || defined(DISABLE_SCREENRECORDER)
+ class ScreenRecoder : public QPushButton {
+ public:
+     ScreenRecoder(QWidget* parent = nullptr) {}
+diff --git a/selfdrive/ui/ui.cc b/selfdrive/ui/ui.cc
+index dfe5091f3..ee10a155a 100644
+--- a/selfdrive/ui/ui.cc
++++ b/selfdrive/ui/ui.cc
+@@ -99,7 +99,7 @@ void UIState::updateStatus() {
+ 
+ UIState::UIState(QObject *parent) : QObject(parent) {
+   sm = std::make_unique<SubMaster>(std::vector<const char*>{
+-    "modelV2", "controlsState", "liveCalibration", "radarState", "deviceState",
++    "modelV2", "controlsState", "liveCalibration", "radarState", "liveTracks", "deviceState",
+     "pandaStates", "carParams", "driverMonitoringState", "carState", "driverStateV2",
+     "wideRoadCameraState", "managerState", "selfdriveState", "longitudinalPlan",
+     "longitudinalPlan",
+diff --git a/system/manager/manager.py b/system/manager/manager.py
+index e87e47acb..41159b377 100755
+--- a/system/manager/manager.py
++++ b/system/manager/manager.py
+@@ -121,6 +121,7 @@ def get_default_params():
+     ("LongActuatorDelay", "20"),
+     ("VEgoStopping", "30"),
+     ("RadarReactionFactor", "100"),
++    ("TeslaRadarMode", "2"),
+     ("EnableRadarTracks", "1"),
+     ("EnableEscc", "1"),
+     ("RadarLatFactor", "0"),

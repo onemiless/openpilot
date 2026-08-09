@@ -333,6 +333,10 @@ struct CarState {
 struct RadarData @0x888ad6581cf0aacb {
   errors @3 :Error;
   points @1 :List(RadarPoint);
+  radarOnline @4 :Bool;
+  canValid @5 :Bool;
+  objectCount @6 :UInt16;
+  mode @7 :UInt8;  # TeslaRadarMode: 0 OFF, 1 Monitor, 2 Fusion, 3 Debug
 
   struct Error {
     canError @0 :Bool;

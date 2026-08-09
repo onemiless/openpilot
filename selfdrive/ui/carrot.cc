@@ -9,6 +9,8 @@
 #include <QJsonValue>
 #include <QJsonArray>
 
+#include "system/hardware/hw.h"
+
 //#define __TEST
 //#define __UI_TEST
 
@@ -2417,7 +2419,7 @@ class DrawCarrot : public QObject {
 
 protected:
     Params	params;
-    Params	params_memory{ "/dev/shm/params" };
+    Params params_memory{Path::shm_path() + "/params"};
     int     icon_size = 256;
 public:
     DrawCarrot() {
@@ -3494,7 +3496,7 @@ public:
         sprintf(bottom_left, "%s", gitBranch.toStdString().c_str());
 
         // bottom_right
-        Params params_memory = Params("/dev/shm/params");
+        Params params_memory{Path::shm_path() + "/params"};
         if (false && carrot_man_debug[0] != 0 && params.getInt("ShowDebugUI") > 0) {
             strcpy(bottom_right, carrot_man_debug);
         }
