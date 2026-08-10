@@ -141,6 +141,16 @@ def new_wake_monitor_transaction() -> int:
   return transaction if transaction != 0 else 1
 
 
+def current_host_session(boot_id_path: str = "/proc/sys/kernel/random/boot_id") -> int:
+  """Match pandad's non-zero FNV-1a identifier for the current Linux boot."""
+  with open(boot_id_path, "rb") as f:
+    boot_id = f.read()
+  value = 2166136261
+  for byte in boot_id:
+    value = ((value ^ byte) * 16777619) & 0xFFFFFFFF
+  return value if value != 0 else 1
+
+
 def wake_monitor_transaction_string(transaction: int) -> str:
   return f"{transaction & 0xFFFFFFFF:08x}"
 
@@ -168,11 +178,12 @@ def panda_wake_monitor_status_ready(status: dict | None, transaction: int, state
 
 
 def panda_wake_monitor_health_ready(health: dict | None, can_health: list[dict] | None = None) -> bool:
-  if health is None or int(health.get("faults", 0)) != 0:
+  if health is None or int(health.get("faults", 0)) != 0 or int(health.get("rx_buffer_overflow", 0)) != 0:
     return False
   if can_health is None or len(can_health) != len(OFFLINE_WAKE_CAN_BUSES):
     return False
   return all(not bool(state.get("bus_off", False)) and not bool(state.get("error_passive", False))
+             and int(state.get("total_rx_lost_cnt", 0)) == 0
              for state in can_health)
 
 

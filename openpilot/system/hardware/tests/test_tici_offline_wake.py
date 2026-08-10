@@ -44,12 +44,15 @@ class FakePanda:
   def is_internal(self):
     return True
 
+  def set_host_session(self, host_session: int):
+    assert host_session != 0
+
   def health(self):
-    return {"faults": 0, "fault_status": 0}
+    return {"faults": 0, "fault_status": 0, "rx_buffer_overflow": 0}
 
   def can_health(self, can_number: int):
     assert can_number in (0, 1, 2)
-    return {"bus_off": False, "error_passive": False}
+    return {"bus_off": False, "error_passive": False, "total_rx_lost_cnt": 0}
 
   def commit_wake_monitor(self, transaction: int):
     type(self).committed += 1
@@ -69,6 +72,7 @@ def install_fakes(monkeypatch, params: FakeParams, panda_cls=FakePanda):
   monkeypatch.setattr(params_module, "Params", lambda: params)
   monkeypatch.setattr(panda_module, "Panda", panda_cls)
   monkeypatch.setattr(hardware, "panda_bootkick_test_pending", lambda: False)
+  monkeypatch.setattr(hardware, "current_host_session", lambda: 0x87654321)
 
 
 def test_shutdown_commits_prepared_transaction_exactly_once(monkeypatch):
@@ -148,6 +152,21 @@ def test_shutdown_rejects_panda_can_fault_before_commit(monkeypatch):
   params = FakeParams(acknowledged=True)
   FakePanda.committed = 0
   install_fakes(monkeypatch, params, FaultedPanda)
+
+  assert not hardware.request_internal_panda_wake_monitor()
+  assert FakePanda.committed == 0
+
+
+def test_shutdown_rejects_rx_fifo_loss_before_commit(monkeypatch):
+  class LostFramePanda(FakePanda):
+    def can_health(self, can_number: int):
+      health = super().can_health(can_number)
+      health["total_rx_lost_cnt"] = 1 if can_number == 1 else 0
+      return health
+
+  params = FakeParams(acknowledged=True)
+  FakePanda.committed = 0
+  install_fakes(monkeypatch, params, LostFramePanda)
 
   assert not hardware.request_internal_panda_wake_monitor()
   assert FakePanda.committed == 0

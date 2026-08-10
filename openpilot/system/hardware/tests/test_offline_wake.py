@@ -174,6 +174,19 @@ def test_transaction_status_requires_exact_transaction_and_state() -> None:
   )
 
 
+def test_panda_health_rejects_rx_fifo_loss_and_host_overflow() -> None:
+  health = {"faults": 0, "rx_buffer_overflow": 0}
+  can_health = [
+    {"bus_off": False, "error_passive": False, "total_rx_lost_cnt": 0}
+    for _ in offline_wake.OFFLINE_WAKE_CAN_BUSES
+  ]
+  assert offline_wake.panda_wake_monitor_health_ready(health, can_health)
+
+  assert not offline_wake.panda_wake_monitor_health_ready({**health, "rx_buffer_overflow": 1}, can_health)
+  can_health[1]["total_rx_lost_cnt"] = 1
+  assert not offline_wake.panda_wake_monitor_health_ready(health, can_health)
+
+
 def test_debug_log_is_created_automatically(tmp_path, monkeypatch) -> None:
   log_path = tmp_path / "offline_wake_debug.log"
   monkeypatch.setattr(offline_wake, "OFFLINE_WAKE_DEBUG_LOG", str(log_path))
@@ -210,6 +223,9 @@ def test_hardwared_fallback_prepares_single_flight_transaction_without_synthetic
     def is_internal(self):
       return True
 
+    def set_host_session(self, host_session: int):
+      events.append(("session", host_session))
+
     def prepare_wake_monitor(self, transaction: int):
       events.append(("prepare", transaction))
       return {
@@ -225,10 +241,11 @@ def test_hardwared_fallback_prepares_single_flight_transaction_without_synthetic
   monkeypatch.setattr(hardwared, "Params", lambda: params)
   monkeypatch.setattr(hardwared, "panda_bootkick_test_pending", lambda: False)
   monkeypatch.setattr(hardwared.time, "monotonic", lambda: next(times))
+  monkeypatch.setattr(hardwared, "current_host_session", lambda: 0x87654321)
   monkeypatch.setattr(panda_module, "Panda", InternalPanda)
 
   assert hardwared.request_panda_deepsleep(0x12345678)
-  assert events == [("prepare", 0x12345678)]
+  assert events == [("session", 0x87654321), ("prepare", 0x12345678)]
   assert ("PandaWakeMonitorTxn", "12345678", True) in params.writes
   assert params.writes[-1] == ("PandaWakeMonitorAck", "12345678", True)
 

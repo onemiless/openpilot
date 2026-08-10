@@ -24,7 +24,8 @@ from openpilot.sunnypilot.system.statsd import statlog
 from openpilot.system.hardware.power_monitoring import PowerMonitoring
 from openpilot.system.hardware.fan_controller import FanController
 from openpilot.system.hardware.offline_wake import (
-  CanActivityTracker, CanShutdownGate, acknowledge_panda_wake_monitor, offline_wake_debug_log as _offline_wake_debug_log,
+  CanActivityTracker, CanShutdownGate, acknowledge_panda_wake_monitor, current_host_session,
+  offline_wake_debug_log as _offline_wake_debug_log,
   new_wake_monitor_transaction, panda_bootkick_test_pending, panda_wake_monitor_acknowledged,
   panda_wake_monitor_status_ready, wake_monitor_transaction_string, PANDA_WAKE_MONITOR_PREPARED_STATE,
   PANDA_WAKE_MONITOR_STATUS_FLAG_CAN_HEALTHY, PANDA_WAKE_MONITOR_STATUS_FLAG_PREPARE_DIRTY,
@@ -107,6 +108,7 @@ def request_panda_deepsleep(transaction: int) -> bool:
         is_internal = panda.is_internal()
         offline_wake_debug_log(f"opened panda serial={serial} internal={is_internal}")
         if is_internal:
+          panda.set_host_session(current_host_session())
           status = panda.prepare_wake_monitor(transaction)
           if not panda_wake_monitor_status_ready(
             status, transaction, PANDA_WAKE_MONITOR_PREPARED_STATE,
@@ -274,6 +276,7 @@ def hardware_thread(end_event, hw_queue) -> None:
   can_shutdown_gate = CanShutdownGate()
   shutdown_wait_logged = False
   shutdown_gate_wait_logged = False
+  shutdown_log_state: tuple[bool, bool, bool, bool, str] | None = None
   wake_monitor_transaction: int | None = None
   wake_monitor_observe_requested = False
   shutdown_commanded = False
@@ -504,7 +507,10 @@ def hardware_thread(end_event, hw_queue) -> None:
         f"forced={force_power_down}",
         f"monitor_ready={monitor_ready}",
       ]
-      offline_wake_debug_log(" ".join(shutdown_fields))
+      current_shutdown_log_state = (gate_ready, monitor_ready, force_power_down, shutdown_commanded, can_shutdown_gate.reason)
+      if current_shutdown_log_state != shutdown_log_state:
+        offline_wake_debug_log(" ".join(shutdown_fields))
+        shutdown_log_state = current_shutdown_log_state
       if monitor_ready and (force_power_down or can_shutdown_gate.ready()) and not shutdown_commanded:
         params.put_bool("DoShutdown", True, block=True)
         shutdown_commanded = True
@@ -517,6 +523,7 @@ def hardware_thread(end_event, hw_queue) -> None:
     else:
       shutdown_wait_logged = False
       shutdown_gate_wait_logged = False
+      shutdown_log_state = None
       wake_monitor_transaction = None
       shutdown_commanded = False
       can_shutdown_gate.reset("shutdown_not_requested")

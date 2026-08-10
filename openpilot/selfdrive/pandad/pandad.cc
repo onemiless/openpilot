@@ -375,7 +375,7 @@ void process_wake_monitor_request(Panda *panda) {
     return;
   }
   auto health = panda->get_state();
-  if (!health || health->faults_pkt != 0U) {
+  if (!health || health->faults_pkt != 0U || health->rx_buffer_overflow_pkt != 0U) {
     params.remove("PandaWakeMonitorAck");
     const uint32_t faults = health ? health->faults_pkt : UINT32_MAX;
     offline_wake_debug_log(util::string_format("prepare refused unhealthy Panda faults=%08x", faults));
@@ -386,7 +386,8 @@ void process_wake_monitor_request(Panda *panda) {
                                              health->sbu1_voltage_mV, health->sbu2_voltage_mV, health->som_reset_triggered));
   for (uint32_t bus = 0U; bus < PANDA_CAN_CNT; bus++) {
     auto can_health = panda->get_can_state(bus);
-    if (!can_health || can_health->bus_off != 0U || can_health->error_passive != 0U) {
+    if (!can_health || can_health->bus_off != 0U || can_health->error_passive != 0U ||
+        can_health->total_rx_lost_cnt != 0U) {
       params.remove("PandaWakeMonitorAck");
       offline_wake_debug_log(util::string_format("prepare refused unhealthy FDCAN bus=%u", bus));
       return;
