@@ -22,7 +22,8 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
   RELAY_MALFUNCTION_ADDRS = {0: (MSG_DAS_steeringControl, MSG_APS_eacMonitor)}
   FWD_BLACKLISTED_ADDRS = {2: [MSG_DAS_steeringControl, MSG_APS_eacMonitor]}
   TX_MSGS = [[MSG_DAS_steeringControl, 0], [MSG_APS_eacMonitor, 0], [MSG_DAS_Control, 0],
-             [MSG_ARS408_CONFIG, 1], [MSG_ARS408_FILTER_CONFIG, 1]]
+             [MSG_ARS408_CONFIG, 1], [MSG_ARS408_FILTER_CONFIG, 1],
+             [MSG_ARS408_SPEED, 1], [MSG_ARS408_YAW_RATE, 1]]
 
   STANDSTILL_THRESHOLD = 0.1
   GAS_PRESSED_THRESHOLD = 3
@@ -123,9 +124,12 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
     self.assertFalse(self._tx(common.make_msg(0, MSG_ARS408_FILTER_CONFIG, 5)))
     self.assertFalse(self._tx(common.make_msg(1, MSG_ARS408_FILTER_CONFIG, 8)))
 
-  def test_ars408_motion_inputs_remain_blocked_on_shared_vehicle_can(self):
-    self.assertFalse(self._tx(common.make_msg(1, MSG_ARS408_SPEED, 2)))
-    self.assertFalse(self._tx(common.make_msg(1, MSG_ARS408_YAW_RATE, 2)))
+  def test_ars408_motion_inputs_are_limited_to_dedicated_radar_bus_and_two_bytes(self):
+    for address in (MSG_ARS408_SPEED, MSG_ARS408_YAW_RATE):
+      self.assertTrue(self._tx(common.make_msg(1, address, 2)))
+      self.assertFalse(self._tx(common.make_msg(0, address, 2)))
+      self.assertFalse(self._tx(common.make_msg(2, address, 2)))
+      self.assertFalse(self._tx(common.make_msg(1, address, 8)))
 
   def _engage_mads(self, brake_mode=0):
     self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.ENABLE_MADS | brake_mode)

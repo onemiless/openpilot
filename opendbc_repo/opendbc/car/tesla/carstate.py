@@ -1,16 +1,27 @@
 import copy
+import math
 from opendbc.can import CANDefine, CANParser
 from opendbc.car import Bus, structs
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarStateBase
 from opendbc.car.tesla.values import DBC, CANBUS, GEAR_MAP, STEER_DISENGAGE_THRESHOLD, STEER_THRESHOLD
+from opendbc.car.vehicle_model import VehicleModel
 
 ButtonType = structs.CarState.ButtonEvent.Type
+
+
+def calculate_yaw_rate(vehicle_model, speed_mps, steering_angle_deg):
+  """Estimate yaw rate from steering angle using the vehicle model."""
+  if not math.isfinite(speed_mps) or not math.isfinite(steering_angle_deg) or abs(speed_mps) < 0.05:
+    return 0.0
+  curvature = -vehicle_model.calc_curvature(math.radians(steering_angle_deg), abs(speed_mps), 0.0)
+  return float(curvature * abs(speed_mps))
 
 
 class CarState(CarStateBase):
   def __init__(self, CP):
     super().__init__(CP)
+    self.VM = VehicleModel(CP)
     self.can_define = CANDefine(DBC[CP.carFingerprint][Bus.party])
     self.shifter_values = self.can_define.dv["DI_systemStatus"]["DI_gear"]
 
@@ -41,6 +52,7 @@ class CarState(CarStateBase):
     ret.steeringAngleDeg = -epas_status["EPAS3S_internalSAS"]
     ret.steeringRateDeg = -cp_ap_party.vl["SCCM_steeringAngleSensor"]["SCCM_steeringAngleSpeed"]
     ret.steeringTorque = -epas_status["EPAS3S_torsionBarTorque"]
+    ret.yawRate = calculate_yaw_rate(self.VM, ret.vEgoRaw, ret.steeringAngleDeg)
 
     # This matches stock logic, but with halved minimum frames (0.25-0.3s)
     ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > STEER_THRESHOLD, 15)

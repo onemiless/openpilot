@@ -194,6 +194,8 @@ static safety_config tesla_init(uint16_t param) {
     {0x27D, 0, 3},  // APS_eacMonitor
     {0x200, 1, 8},  // ARS408 RadarConfiguration
     {0x202, 1, 5},  // ARS408 object-count FilterCfg
+    {0x300, 1, 2},  // ARS408 SpeedInformation on dedicated radar bus
+    {0x301, 1, 2},  // ARS408 YawRateInformation on dedicated radar bus
   };
 
   UNUSED(param);

@@ -1,6 +1,8 @@
 from opendbc.can import CANPacker
 
 
+# Panda bus 1 is dedicated to the directly connected ARS408 on this hardware.
+# Tesla vehicle traffic remains on buses 0/2 and bus 1 is not forwarded.
 ARS408_BUS = 1
 ARS408_SENSOR_ID = 0
 ARS408_MAX_DISTANCE = 250
@@ -8,9 +10,9 @@ ARS408_MAX_OBJECTS = 32
 ARS408_SEND_EXTENDED = True
 ARS408_SPEED_ADDRESS = 0x300
 ARS408_YAW_RATE_ADDRESS = 0x301
-# The radar shares Tesla vehicle CAN. These IDs are intentionally blocked by
-# Panda safety until an isolated bus or a vehicle capture proves no conflict.
-ARS408_MOTION_INPUT_ENABLED = False
+# Vehicle motion input is safe on the dedicated radar bus. A persistent user
+# setting still provides a runtime rollback without changing Panda firmware.
+ARS408_MOTION_INPUT_ENABLED = True
 
 def should_configure_radar(_frame: int, reinitialize: bool = False) -> bool:
   # Radar configuration is persistent. Never transmit it automatically at
@@ -20,7 +22,7 @@ def should_configure_radar(_frame: int, reinitialize: bool = False) -> bool:
 
 
 class ARS408CAN:
-  """Creates the ARS408 configuration frames allowed on shared Tesla CAN."""
+  """Creates ARS408 configuration and ego-motion frames for its dedicated CAN."""
 
   def __init__(self):
     self.packer = CANPacker("ARS408")
@@ -66,7 +68,7 @@ class ARS408CAN:
     return self.packer.make_can_msg("FilterCfg", ARS408_BUS, values)
 
   def create_speed_information(self, speed_mps, direction):
-    """Build an ARS408 ego-speed frame; Panda safety blocks transmission."""
+    """Build an ARS408 ego-speed frame for the dedicated radar CAN."""
     values = {
       "RadarDevice_SpeedDirection": int(direction),
       "RadarDevice_Speed": min(max(abs(float(speed_mps)), 0.0), 163.8),

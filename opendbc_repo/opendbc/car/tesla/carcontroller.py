@@ -27,27 +27,35 @@ class CarController(CarControllerBase):
     self.VM = VehicleModel(CP)
     self.coop_steering = CoopSteeringCarController()
     self.coop_steering_enabled = self.params.get_bool("TeslaCoopSteering")
+    self.radar_motion_enabled = self.params.get_bool("TeslaRadarMotionInput")
+    self._radar_motion_valid_prev = None
     self._coop_override_prev = False
     self._coop_saturated_prev = False
     self._steering_disengage_prev = False
     log.info("Tesla cooperative steering configured enabled=%d", int(self.coop_steering_enabled))
+    log.info("ARS408 motion input configured enabled=%d bus=1 rate_hz=20", int(self.radar_motion_enabled))
 
   def send_radar_motion(self, CS):
     """Return reviewed ARS408 motion frames when the physical CAN path is safe."""
-    if self.ars408_can is None or not ARS408_MOTION_INPUT_ENABLED:
+    if self.ars408_can is None or not ARS408_MOTION_INPUT_ENABLED or not self.radar_motion_enabled:
+      return []
+
+    speed_mps = float(CS.out.vEgoRaw)
+    yaw_rate_rad_s = float(CS.out.yawRate)
+    motion_valid = bool(CS.out.canValid) and math.isfinite(speed_mps) and math.isfinite(yaw_rate_rad_s)
+    if motion_valid != self._radar_motion_valid_prev:
+      log.info("ARS408 motion source valid=%d speed=%.3f yaw_rate_rad_s=%.4f",
+               int(motion_valid), speed_mps, yaw_rate_rad_s)
+      self._radar_motion_valid_prev = motion_valid
+    if not motion_valid:
       return []
 
     reverse = CS.out.gearShifter == structs.CarState.GearShifter.reverse
-    standstill = CS.out.standstill or abs(float(CS.out.vEgo)) < 0.05
+    standstill = CS.out.standstill or abs(speed_mps) < 0.05
     direction = 0 if standstill else (2 if reverse else 1)
-
-    steer_ratio = max(float(self.CP.steerRatio), 1.0)
-    wheelbase = max(float(self.CP.wheelbase), 0.1)
-    road_wheel_angle = math.radians(float(CS.out.steeringAngleDeg) / steer_ratio)
-    signed_speed = -abs(float(CS.out.vEgo)) if reverse else abs(float(CS.out.vEgo))
-    yaw_rate_deg_s = math.degrees(signed_speed * math.tan(road_wheel_angle) / wheelbase)
+    yaw_rate_deg_s = math.degrees(-yaw_rate_rad_s if reverse else yaw_rate_rad_s)
     return [
-      self.ars408_can.create_speed_information(CS.out.vEgo, direction),
+      self.ars408_can.create_speed_information(speed_mps, direction),
       self.ars408_can.create_yaw_rate_information(yaw_rate_deg_s),
     ]
 
@@ -63,12 +71,10 @@ class CarController(CarControllerBase):
       can_sends.append(self.ars408_can.create_object_count_filter())
       if radar_reinitialize:
         self.params.remove("TeslaRadarReinitialize")
-      log.info("ARS408 configuration sent on Tesla vehicle bus at frame %d reinitialize=%d",
+      log.info("ARS408 configuration sent on dedicated radar bus at frame %d reinitialize=%d",
                self.frame, int(radar_reinitialize))
 
-    # Motion input support is implemented but remains safety-gated off on the
-    # shared Tesla CAN. Enabling it requires a reviewed physical bus change and
-    # matching Panda allowlist tests.
+    # The directly connected ARS408 has a dedicated, non-forwarded bus 1.
     if self.frame % 5 == 0:
       can_sends.extend(self.send_radar_motion(CS))
 
