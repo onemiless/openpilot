@@ -85,7 +85,7 @@ class CarController(CarControllerBase):
     lat_active = CC.latActive and not steering_disengage
     if steering_disengage != self._steering_disengage_prev:
       log.warning("Tesla steering safety disengage=%d torque=%.2f hands_on_level=%d",
-                  int(steering_disengage), CS.out.steeringTorque, CS.out.handsOnLevel)
+                  int(steering_disengage), CS.out.steeringTorque, CS.hands_on_level)
       self._steering_disengage_prev = steering_disengage
 
     if self.frame % 2 == 0:
