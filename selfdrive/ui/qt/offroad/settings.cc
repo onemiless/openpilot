@@ -506,7 +506,7 @@ RadarPanel::RadarPanel(QWidget *parent) : ListWidget(parent) {
   filter_state = new LabelControl(tr("最近回读的对象过滤记录"), tr("尚未收到 0x204"),
                                   tr("ARS408 不提供一次性读取全部过滤器的安全查询；修改后以对应 0x204 回读确认。"));
   result = new LabelControl(tr("最近配置结果"), tr("无"),
-                            tr("applied 表示当前生效；nvm_sent 表示已发送 NVM 保存命令，仍需断电重启复核。日志：/data/log/ars408/ars408_debug.log 和 ars408_error.log"));
+                            tr("applied 表示当前生效；nvm_sent 表示已发送 NVM 保存命令，仍需断电重启复核。日志：/data/log/ars408/ 下 card/radard 各自的 debug 和 error 文件"));
   addItem(state);
   addItem(fixed);
   addItem(filter_state);
@@ -545,6 +545,12 @@ RadarPanel::RadarPanel(QWidget *parent) : ListWidget(parent) {
   refresh();
 }
 
+void RadarPanel::enqueueRequest(const char *key, const QString &request) {
+  QString queued = QString::fromStdString(params.get(key)).trimmed();
+  if (!queued.isEmpty()) queued += "\n";
+  params.put(key, (queued + request).toStdString());
+}
+
 void RadarPanel::requestConfig(const QString &field, const QString &title, const QStringList &labels,
                                const QList<int> &values, bool store) {
   QString selected = MultiOptionDialog::getSelection(tr("选择%1").arg(title), labels, "", this);
@@ -555,8 +561,8 @@ void RadarPanel::requestConfig(const QString &field, const QString &title, const
   if (!ConfirmationDialog::confirm(tr("车辆必须静止且控制未接管。确认%1：%2？").arg(action, selected), action, this)) return;
 
   QString request_id = QString::number(QDateTime::currentMSecsSinceEpoch());
-  params.put("TeslaRadarConfigRequest",
-             QString("%1,%2,%3,%4").arg(request_id, field).arg(values[index]).arg(store ? 1 : 0).toStdString());
+  enqueueRequest("TeslaRadarConfigRequest",
+                 QString("%1,%2,%3,%4").arg(request_id, field).arg(values[index]).arg(store ? 1 : 0));
 }
 
 void RadarPanel::requestFilter() {
@@ -591,9 +597,9 @@ void RadarPanel::requestFilter() {
                                    tr("配置并保存"), this)) return;
 
   QString request_id = QString::number(QDateTime::currentMSecsSinceEpoch());
-  params.put("TeslaRadarFilterRequest",
-             QString("%1,%2,%3,%4,%5").arg(request_id).arg(index).arg(active)
-               .arg(minimum, 0, 'g', 10).arg(maximum, 0, 'g', 10).toStdString());
+  enqueueRequest("TeslaRadarFilterRequest",
+                 QString("%1,%2,%3,%4,%5").arg(request_id).arg(index).arg(active)
+                   .arg(minimum, 0, 'g', 10).arg(maximum, 0, 'g', 10));
 }
 
 void RadarPanel::refresh() {
@@ -608,8 +614,10 @@ void RadarPanel::refresh() {
   state->setText(tr("距离 %1 m | 输出 %2 | Extended %3 | Quality %4 | MotionRx %5")
                    .arg(value("TeslaRadarStateMaxDistance"), output, value("TeslaRadarStateExtended"),
                         value("TeslaRadarStateQuality"), value("TeslaRadarStateMotionRx")));
-  fixed->setText(tr("Sensor ID %1 | NVM读 %2 | NVM写 %3")
-                   .arg(value("TeslaRadarStateSensorID"), value("TeslaRadarStateNVMRead"), value("TeslaRadarStateNVMWrite")));
+  fixed->setText(tr("Sensor ID %1 | Relay %2 | RCS %3 | Power %4 | Sort %5 | NVM读 %6 | NVM写 %7")
+                   .arg(value("TeslaRadarStateSensorID"), value("TeslaRadarStateCtrlRelay"),
+                        value("TeslaRadarStateRCSThreshold"), value("TeslaRadarStatePower"),
+                        value("TeslaRadarStateSort"), value("TeslaRadarStateNVMRead"), value("TeslaRadarStateNVMWrite")));
   filter_state->setText(value("TeslaRadarFilterState", tr("尚未收到 0x204")));
   QString config_result = value("TeslaRadarConfigResult", "");
   QString filter_result = value("TeslaRadarFilterResult", "");

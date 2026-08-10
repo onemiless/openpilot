@@ -6,8 +6,10 @@ from opendbc.car.interfaces import RadarInterfaceBase
 from opendbc.car.tesla.ars408_can import (
   ARS408_BUS, ARS408_MAX_DISTANCE, ARS408_SEND_EXTENDED, ARS408_SENSOR_ID,
 )
-from opendbc.car.tesla.ars408_log import ars408_log as log
+from opendbc.car.tesla.ars408_log import get_ars408_logger
 from openpilot.common.params import Params
+
+log = get_ars408_logger("radard")
 
 
 ARS408_DBC = "ARS408"
@@ -40,6 +42,7 @@ ARS408_STARTUP_GRACE_UPDATES = 1000
 ARS408_STATUS_TIMEOUT_UPDATES = 50
 ARS408_STATE_TIMEOUT_UPDATES = 300
 ARS408_ERROR_PUBLISH_INTERVAL = 5
+ARS408_EMPTY_OUTPUT_INTERVAL = 5  # card runs at 100 Hz; keep liveTracks alive at 20 Hz
 ARS408_INTERFERENCE_CONFIRM_FRAMES = 10
 ARS408_DUPLICATE_DREL = 1.5
 ARS408_DUPLICATE_YREL = 0.6
@@ -159,8 +162,11 @@ class RadarInterface(RadarInterfaceBase):
     self.incomplete_cycles = 0
     self.last_logged_incomplete = 0
     self.last_radar_state = None
+    self.radar_config_ready = False
     self.last_fault_signature = None
     self.radar_state_frames = 0
+    self.radar_state_seq = 0
+    self.filter_state_seq = 0
     self.track_miss_counts = {}
     self.update_count = 0
     self.last_status_update = None
@@ -266,7 +272,7 @@ class RadarInterface(RadarInterfaceBase):
     # Publish the last complete set so radard remains alive and diagnoses do
     # not become the generic "check connections" alert.
     ret = structs.RadarData()
-    ret.points = [] if self.radar_mode == 1 else list(self.pts.values())
+    ret.points = [] if self.radar_mode == 1 or not getattr(self, "radar_config_ready", False) else list(self.pts.values())
     if not self.rcp.can_valid:
       ret.errors.canError = True
     self._apply_radar_state_errors(ret)
@@ -279,8 +285,13 @@ class RadarInterface(RadarInterfaceBase):
     state = self.rcp.vl["RadarState"]
     self.last_radar_state = dict(state)
     self.radar_state_frames += 1
+    self.radar_state_seq += 1
     self._update_interference_counter(state)
     self._apply_runtime_configuration(state)
+    # Queue the sequence after all state values so the controller cannot see
+    # a fresh sequence paired with values from the preceding RadarState frame.
+    self.params.put_nonblocking("TeslaRadarStateSeq", str(self.radar_state_seq))
+    self.radar_config_ready = True
 
   def _apply_runtime_configuration(self, state):
     max_distance = int(state["RadarState_MaxDistanceCfg"])
@@ -314,12 +325,15 @@ class RadarInterface(RadarInterfaceBase):
       max_distance, output_type, int(extended_enabled), int(state["RadarState_SendQualityCfg"]),
       int(state["RadarState_SensorID"]), int(state["RadarState_MotionRxState"]),
       int(state["RadarState_NVMReadStatus"]), int(state["RadarState_NVMwriteStatus"]),
+      int(state.get("RadarState_CtrlRelayCfg", 0)), int(state.get("RadarState_RCS_Threshold", 0)),
+      int(state.get("RadarState_RadarPowerCfg", 0)), int(state.get("RadarState_SortIndex", 0)),
     )
     if snapshot != getattr(self, "last_published_radar_config", None):
       keys = (
         "TeslaRadarStateMaxDistance", "TeslaRadarStateOutputType", "TeslaRadarStateExtended",
         "TeslaRadarStateQuality", "TeslaRadarStateSensorID", "TeslaRadarStateMotionRx",
         "TeslaRadarStateNVMRead", "TeslaRadarStateNVMWrite",
+        "TeslaRadarStateCtrlRelay", "TeslaRadarStateRCSThreshold", "TeslaRadarStatePower", "TeslaRadarStateSort",
       )
       for key, value in zip(keys, snapshot, strict=True):
         self.params.put_nonblocking(key, str(value))
@@ -344,6 +358,8 @@ class RadarInterface(RadarInterfaceBase):
     if record != getattr(self, "last_published_filter_state", None):
       self.params.put_nonblocking("TeslaRadarFilterState", record)
       self.last_published_filter_state = record
+    self.filter_state_seq += 1
+    self.params.put_nonblocking("TeslaRadarFilterStateSeq", str(self.filter_state_seq))
 
   def _update_interference_counter(self, state):
     # Count independent RadarState reports, not the faster object-list results
@@ -641,7 +657,8 @@ class RadarInterface(RadarInterfaceBase):
 
     # Monitor mode keeps decoding and diagnostics active but never feeds tracks
     # into radard/lead fusion. Raw object count remains available to the UI.
-    ret.points = [] if self.radar_mode == 1 or getattr(self, "runtime_output_type", 1) != 1 else list(self.pts.values())
+    ret.points = [] if self.radar_mode == 1 or not getattr(self, "radar_config_ready", False) or \
+      getattr(self, "runtime_output_type", 1) != 1 else list(self.pts.values())
     self._apply_missing_can_error(ret)
     if self.radar_mode == 3:
       log.debug("ARS408 debug: raw=%d accepted=%d tracked=%d handovers=%d duplicates=%d rejections=%s",
@@ -698,6 +715,13 @@ class RadarInterface(RadarInterfaceBase):
         self._add_detail_frame(address, frame, data[0])
 
     if result is not None:
+      return result
+
+    if self.runtime_output_type != 1 and self.update_count % ARS408_EMPTY_OUTPUT_INTERVAL == 0:
+      result = structs.RadarData()
+      result.points = []
+      self._apply_radar_state_errors(result)
+      self._apply_missing_can_error(result)
       return result
 
     missing_result = structs.RadarData()

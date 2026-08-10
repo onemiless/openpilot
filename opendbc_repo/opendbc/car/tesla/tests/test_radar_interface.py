@@ -52,6 +52,7 @@ def test_incomplete_object_cycle_is_not_reported_as_can_disconnect():
   radar.part_ids = {ARS408_GENERAL: {1}, ARS408_QUALITY: set()}
   radar.pts = {}
   radar.last_radar_state = None
+  radar.radar_config_ready = True
   radar.radar_mode = 2
   radar.last_rejection_reasons = {}
   radar.v_ego = 0.0
@@ -96,6 +97,7 @@ def make_result_radar(points=None):
   radar.incomplete_cycles = 0
   radar.last_logged_incomplete = 0
   radar.last_radar_state = None
+  radar.radar_config_ready = True
   radar.radar_mode = 2
   radar.last_rejection_reasons = {}
   radar.rcp = type("FakeParser", (), {"can_valid": True})()
@@ -110,6 +112,18 @@ def test_zero_object_cycles_publish_empty_data_without_can_error():
 
   assert len(result.points) == 0
   assert not result.errors.canError
+
+
+def test_objects_are_not_published_before_first_radar_state():
+  radar = make_result_radar()
+  radar.radar_config_ready = False
+  radar.expected_objects = 1
+  radar._decode_cycle = lambda _timestamp: {7: object_data()}
+
+  result = radar._build_result(1_000_000_000)
+
+  assert len(radar.pts) == 1
+  assert len(result.points) == 0
 
 
 def test_existing_track_survives_brief_empty_cycle_then_expires():
@@ -296,7 +310,13 @@ def test_raw_sensor_zero_extended_cycle_produces_classified_radar_point():
   })
   quality = shifted_frame("Obj_2_Quality", {"Obj_ID": 7, "Obj_ProbOfExist": 5, "Obj_MeasState": 2})
   extended = shifted_frame("Obj_3_Extended", {"Obj_ID": 7, "Obj_ArelLong": -0.5, "Obj_Class": 1})
+  radar_state = shifted_frame("RadarState", {
+    "RadarState_MaxDistanceCfg": 250, "RadarState_OutputTypeCfg": 1,
+    "RadarState_SendQualityCfg": 1, "RadarState_SendExtInfoCfg": 1,
+    "RadarState_SensorID": 0, "RadarState_SortIndex": 1,
+  })
 
+  assert radar.update([(990_000_000, [radar_state])]) is None
   assert radar.update([(1_000_000_000, [status])]) is None
   assert radar.update([(1_010_000_000, [general, quality, extended])]) is None
   result = radar.update([(1_070_000_000, [status])])
@@ -554,3 +574,16 @@ def test_runtime_max_distance_extended_and_output_are_dynamic():
   assert radar.runtime_output_type == 0
   assert radar.pts == {}
   assert radar.expected_objects == 0
+
+
+def test_output_disabled_publishes_empty_live_tracks_at_20hz():
+  cp = structs.CarParams()
+  cp.radarUnavailable = False
+  radar = RadarInterface(cp)
+  radar.runtime_output_type = 0
+  radar.radar_config_ready = True
+
+  assert all(radar.update([]) is None for _ in range(4))
+  result = radar.update([])
+  assert result is not None
+  assert len(result.points) == 0

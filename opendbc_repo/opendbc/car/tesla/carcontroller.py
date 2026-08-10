@@ -1,16 +1,22 @@
+import logging
 import math
+import time
 
 import numpy as np
 from opendbc.can import CANPacker
 from opendbc.car import Bus, apply_steer_angle_limits_vm, structs
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.tesla.ars408_can import ARS408CAN, ARS408_FILTER_SIGNALS, ARS408_MOTION_INPUT_ENABLED
-from opendbc.car.tesla.ars408_log import ars408_log as log
+from opendbc.car.tesla.ars408_log import get_ars408_logger
 from opendbc.car.tesla.coop_steering import CoopSteeringCarController
 from opendbc.car.tesla.teslacan import TeslaCAN
 from opendbc.car.tesla.values import CarControllerParams
 from opendbc.car.vehicle_model import VehicleModel
 from openpilot.common.params import Params
+
+log = logging.getLogger(__name__)
+radar_log = get_ars408_logger("card")
+ARS408_REQUEST_TTL_MS = 30 * 60 * 1000
 
 
 class CarController(CarControllerBase):
@@ -36,7 +42,7 @@ class CarController(CarControllerBase):
     self._radar_config_request = None
     self._radar_filter_request = None
     log.info("Tesla cooperative steering configured enabled=%d", int(self.coop_steering_enabled))
-    log.info("ARS408 motion input configured enabled=%d bus=1 rate_hz=20", int(self.radar_motion_enabled))
+    radar_log.info("ARS408 motion input configured enabled=%d bus=1 rate_hz=20", int(self.radar_motion_enabled))
 
   def send_radar_motion(self, CS):
     """Return reviewed ARS408 motion frames when the physical CAN path is safe."""
@@ -47,8 +53,8 @@ class CarController(CarControllerBase):
     yaw_rate_rad_s = float(CS.out.yawRate)
     motion_valid = bool(CS.out.canValid) and math.isfinite(speed_mps) and math.isfinite(yaw_rate_rad_s)
     if motion_valid != self._radar_motion_valid_prev:
-      log.info("ARS408 motion source valid=%d speed=%.3f yaw_rate_rad_s=%.4f",
-               int(motion_valid), speed_mps, yaw_rate_rad_s)
+      radar_log.info("ARS408 motion source valid=%d speed=%.3f yaw_rate_rad_s=%.4f",
+                     int(motion_valid), speed_mps, yaw_rate_rad_s)
       self._radar_motion_valid_prev = motion_valid
     if not motion_valid:
       return []
@@ -71,7 +77,7 @@ class CarController(CarControllerBase):
     if store not in (0, 1):
       raise ValueError("store must be 0 or 1")
     return {"id": request_id, "field": field, "value": value, "store": bool(store),
-            "sent": False, "store_sent": False, "sent_frame": 0}
+            "sent": False, "confirmed": False, "sent_frame": 0, "state_seq": 0}
 
   @staticmethod
   def _parse_radar_filter_request(raw):
@@ -80,7 +86,31 @@ class CarController(CarControllerBase):
     if active not in (0, 1):
       raise ValueError("active must be 0 or 1")
     return {"id": request_id, "index": int(index), "active": bool(active),
-            "minimum": float(minimum), "maximum": float(maximum), "sent": False, "sent_frame": 0}
+            "minimum": float(minimum), "maximum": float(maximum), "sent": False,
+            "sent_frame": 0, "state_seq": 0}
+
+  @staticmethod
+  def _request_expired(request_id, now_ms=None):
+    created_ms = int(request_id)
+    return (int(time.time() * 1000) if now_ms is None else now_ms) - created_ms > ARS408_REQUEST_TTL_MS
+
+  def _pop_radar_request(self, key):
+    raw = self.params.get(key, encoding="utf8")
+    if not raw:
+      return None
+    requests = [line.strip() for line in raw.splitlines() if line.strip()]
+    if len(requests) <= 1:
+      self.params.remove(key)
+    else:
+      self.params.put_nonblocking(key, "\n".join(requests[1:]))
+    return requests[0]
+
+  def _state_seq(self, key):
+    raw = self.params.get(key)
+    try:
+      return int(raw) if raw is not None else 0
+    except (TypeError, ValueError):
+      return 0
 
   def _configuration_safe(self, CC, CS):
     return bool(CS.out.canValid and CS.out.standstill and not CC.latActive and not CC.longActive)
@@ -107,25 +137,31 @@ class CarController(CarControllerBase):
       return sends
 
     if self._radar_config_request is None and self._radar_filter_request is None:
-      raw_config = self.params.get("TeslaRadarConfigRequest", encoding="utf8")
-      raw_filter = self.params.get("TeslaRadarFilterRequest", encoding="utf8")
+      raw_config = self._pop_radar_request("TeslaRadarConfigRequest")
+      raw_filter = None if raw_config else self._pop_radar_request("TeslaRadarFilterRequest")
       try:
         if raw_config:
           self._radar_config_request = self._parse_radar_config_request(raw_config)
-          self.params.remove("TeslaRadarConfigRequest")
+          if self._request_expired(self._radar_config_request["id"]):
+            self._publish_config_result(self._radar_config_request["id"], "expired", "request older than 30 minutes")
+            self._radar_config_request = None
         elif raw_filter:
           self._radar_filter_request = self._parse_radar_filter_request(raw_filter)
-          self.params.remove("TeslaRadarFilterRequest")
+          if self._request_expired(self._radar_filter_request["id"]):
+            self._publish_filter_result(self._radar_filter_request["id"], "expired", "request older than 30 minutes")
+            self._radar_filter_request = None
       except (TypeError, ValueError) as exc:
         if raw_config:
           self._publish_config_result("invalid", "rejected", str(exc))
-          self.params.remove("TeslaRadarConfigRequest")
         if raw_filter:
           self._publish_filter_result("invalid", "rejected", str(exc))
-          self.params.remove("TeslaRadarFilterRequest")
 
     request = self._radar_config_request
     if request is not None:
+      if self._request_expired(request["id"]):
+        self._publish_config_result(request["id"], "expired", "request older than 30 minutes")
+        self._radar_config_request = None
+        return sends
       if not request["sent"]:
         if not self._configuration_safe(CC, CS):
           self._publish_config_result(request["id"], "waiting", "stop vehicle and disengage controls")
@@ -138,23 +174,32 @@ class CarController(CarControllerBase):
           return sends
         request["sent"] = True
         request["sent_frame"] = self.frame
+        request["state_seq"] = self._state_seq("TeslaRadarStateSeq")
         self._publish_config_result(request["id"], "sent", request["field"])
-      elif self._radar_config_matches(request):
-        if request["store"] and not request["store_sent"]:
-          sends.append(self.ars408_can.create_radar_configuration("store_nvm", 1))
-          request["store_sent"] = True
-          self._publish_config_result(request["id"], "nvm_sent", "power-cycle verification pending")
-          self._radar_config_request = None
-        else:
+      elif not request["confirmed"] and self._state_seq("TeslaRadarStateSeq") > request["state_seq"] and \
+           self._radar_config_matches(request):
+        request["confirmed"] = True
+        if not request["store"]:
           self._publish_config_result(request["id"], "applied", request["field"])
           self._radar_config_request = None
-      elif self.frame - request["sent_frame"] > 300:
+      if request is self._radar_config_request and request["confirmed"] and request["store"]:
+        if not self._configuration_safe(CC, CS):
+          self._publish_config_result(request["id"], "waiting", "NVM write requires stopped vehicle and disengaged controls")
+        else:
+          sends.append(self.ars408_can.create_radar_configuration("store_nvm", 1))
+          self._publish_config_result(request["id"], "nvm_sent", "power-cycle verification pending")
+          self._radar_config_request = None
+      elif request is self._radar_config_request and not request["confirmed"] and self.frame - request["sent_frame"] > 300:
         self._publish_config_result(request["id"], "timeout", "RadarState did not confirm requested value")
         self._radar_config_request = None
       return sends
 
     request = self._radar_filter_request
     if request is not None:
+      if self._request_expired(request["id"]):
+        self._publish_filter_result(request["id"], "expired", "request older than 30 minutes")
+        self._radar_filter_request = None
+        return sends
       if not request["sent"]:
         if not self._configuration_safe(CC, CS):
           self._publish_filter_result(request["id"], "waiting", "stop vehicle and disengage controls")
@@ -168,10 +213,11 @@ class CarController(CarControllerBase):
           return sends
         request["sent"] = True
         request["sent_frame"] = self.frame
+        request["state_seq"] = self._state_seq("TeslaRadarFilterStateSeq")
         self._publish_filter_result(request["id"], "sent", str(request["index"]))
       else:
         raw_state = self.params.get("TeslaRadarFilterState", encoding="utf8")
-        if raw_state:
+        if raw_state and self._state_seq("TeslaRadarFilterStateSeq") > request["state_seq"]:
           try:
             index, active, minimum, maximum = raw_state.split(",", 3)
             resolution = ARS408_FILTER_SIGNALS[request["index"]][3]

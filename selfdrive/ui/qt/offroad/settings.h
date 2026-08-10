@@ -109,6 +109,7 @@ public:
   explicit RadarPanel(QWidget *parent = nullptr);
 
 private:
+  void enqueueRequest(const char *key, const QString &request);
   void requestConfig(const QString &field, const QString &title, const QStringList &labels,
                      const QList<int> &values, bool store);
   void requestFilter();

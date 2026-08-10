@@ -7,8 +7,6 @@ from openpilot.system.hardware.hw import Paths
 
 
 ARS408_LOG_DIRECTORY = "ars408"
-ARS408_DEBUG_LOG_FILENAME = "ars408_debug.log"
-ARS408_ERROR_LOG_FILENAME = "ars408_error.log"
 ARS408_LOG_MAX_BYTES = 2 * 1024 * 1024
 ARS408_LOG_BACKUP_COUNT = 10
 
@@ -18,21 +16,21 @@ class _BelowWarningFilter(logging.Filter):
     return record.levelno < logging.WARNING
 
 
-def ars408_log_paths() -> tuple[Path, Path]:
+def ars408_log_paths(component: str) -> tuple[Path, Path]:
   root = os.environ.get("ARS408_LOG_ROOT", Paths.swaglog_root())
   log_directory = Path(root) / ARS408_LOG_DIRECTORY
-  return log_directory / ARS408_DEBUG_LOG_FILENAME, log_directory / ARS408_ERROR_LOG_FILENAME
+  return log_directory / f"ars408_{component}_debug.log", log_directory / f"ars408_{component}_error.log"
 
 
-def get_ars408_logger() -> logging.Logger:
-  logger = logging.getLogger("ars408")
+def get_ars408_logger(component: str) -> logging.Logger:
+  logger = logging.getLogger(f"ars408.{component}")
   if getattr(logger, "_ars408_configured", False):
     return logger
 
   logger.setLevel(logging.DEBUG)
   logger.propagate = False
 
-  debug_log_path, error_log_path = ars408_log_paths()
+  debug_log_path, error_log_path = ars408_log_paths(component)
   try:
     debug_log_path.parent.mkdir(parents=True, exist_ok=True)
     formatter = logging.Formatter(
@@ -59,6 +57,3 @@ def get_ars408_logger() -> logging.Logger:
 
   logger._ars408_configured = True
   return logger
-
-
-ars408_log = get_ars408_logger()

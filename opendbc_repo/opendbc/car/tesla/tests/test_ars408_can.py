@@ -1,4 +1,5 @@
 import math
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -142,11 +143,19 @@ class FakeParams:
   def put_nonblocking(self, key, value):
     self.values[key] = str(value)
 
+  def put(self, key, value):
+    self.values[key] = str(value)
+
 
 def test_controller_waits_for_readback_before_nvm_store():
+  request_id = str(int(time.time() * 1000))
   controller = CarController.__new__(CarController)
   controller.ars408_can = ARS408CAN()
-  controller.params = FakeParams({"TeslaRadarConfigRequest": "42,max_distance,240,1"})
+  controller.params = FakeParams({
+    "TeslaRadarConfigRequest": f"{request_id},max_distance,240,1",
+    "TeslaRadarStateMaxDistance": "240",
+    "TeslaRadarStateSeq": "7",
+  })
   controller._radar_config_request = None
   controller._radar_filter_request = None
   controller.frame = 100
@@ -160,7 +169,8 @@ def test_controller_waits_for_readback_before_nvm_store():
 
   controller.frame += 1
   assert controller.update_radar_configuration(controls, car_state) == []
-  controller.params.values["TeslaRadarStateMaxDistance"] = "240"
+  assert controller._radar_config_request is not None
+  controller.params.values["TeslaRadarStateSeq"] = "8"
   controller.frame += 1
   sends = controller.update_radar_configuration(controls, car_state)
   assert len(sends) == 1
@@ -170,9 +180,10 @@ def test_controller_waits_for_readback_before_nvm_store():
 
 
 def test_controller_does_not_configure_while_moving_or_engaged():
+  request_id = str(int(time.time() * 1000))
   controller = CarController.__new__(CarController)
   controller.ars408_can = ARS408CAN()
-  controller.params = FakeParams({"TeslaRadarConfigRequest": "43,send_extended,0,0"})
+  controller.params = FakeParams({"TeslaRadarConfigRequest": f"{request_id},send_extended,0,0"})
   controller._radar_config_request = None
   controller._radar_filter_request = None
   controller.frame = 100
@@ -181,3 +192,94 @@ def test_controller_does_not_configure_while_moving_or_engaged():
 
   assert controller.update_radar_configuration(controls, car_state) == []
   assert controller.params.values["TeslaRadarConfigResult"].split(",")[1] == "waiting"
+
+
+def test_controller_rechecks_safety_before_nvm_write():
+  request_id = str(int(time.time() * 1000))
+  controller = CarController.__new__(CarController)
+  controller.ars408_can = ARS408CAN()
+  controller.params = FakeParams({"TeslaRadarConfigRequest": f"{request_id},max_distance,240,1"})
+  controller._radar_config_request = None
+  controller._radar_filter_request = None
+  controller.frame = 100
+  controls = SimpleNamespace(latActive=False, longActive=False)
+  car_state = SimpleNamespace(out=SimpleNamespace(canValid=True, standstill=True))
+
+  assert len(controller.update_radar_configuration(controls, car_state)) == 1
+  controller.params.values.update({"TeslaRadarStateMaxDistance": "240", "TeslaRadarStateSeq": "1"})
+  car_state.out.standstill = False
+  controller.frame += 1
+  assert controller.update_radar_configuration(controls, car_state) == []
+  assert controller.params.values["TeslaRadarConfigResult"].split(",")[1] == "waiting"
+
+  car_state.out.standstill = True
+  controller.frame += 1
+  sends = controller.update_radar_configuration(controls, car_state)
+  assert len(sends) == 1
+  assert decode(sends[0], "RadarConfiguration")["RadarCfg_StoreInNVM_valid"] == 1
+
+
+def test_controller_processes_queued_requests_without_overwriting():
+  now_ms = int(time.time() * 1000)
+  controller = CarController.__new__(CarController)
+  controller.ars408_can = ARS408CAN()
+  controller.params = FakeParams({
+    "TeslaRadarConfigRequest": f"{now_ms},send_extended,0,0\n{now_ms + 1},output_type,0,0",
+  })
+  controller._radar_config_request = None
+  controller._radar_filter_request = None
+  controller.frame = 100
+  controls = SimpleNamespace(latActive=False, longActive=False)
+  car_state = SimpleNamespace(out=SimpleNamespace(canValid=True, standstill=True))
+
+  first = controller.update_radar_configuration(controls, car_state)
+  assert decode(first[0], "RadarConfiguration")["RadarCfg_SendExtInfo_valid"] == 1
+  assert controller.params.values["TeslaRadarConfigRequest"].split(",")[1] == "output_type"
+  controller.params.values.update({"TeslaRadarStateExtended": "0", "TeslaRadarStateSeq": "1"})
+  controller.frame += 1
+  assert controller.update_radar_configuration(controls, car_state) == []
+  controller.frame += 1
+  second = controller.update_radar_configuration(controls, car_state)
+  assert decode(second[0], "RadarConfiguration")["RadarCfg_OutputType_valid"] == 1
+
+
+def test_controller_discards_expired_request():
+  old_ms = int(time.time() * 1000) - 31 * 60 * 1000
+  controller = CarController.__new__(CarController)
+  controller.ars408_can = ARS408CAN()
+  controller.params = FakeParams({"TeslaRadarConfigRequest": f"{old_ms},max_distance,240,0"})
+  controller._radar_config_request = None
+  controller._radar_filter_request = None
+  controller.frame = 100
+  controls = SimpleNamespace(latActive=False, longActive=False)
+  car_state = SimpleNamespace(out=SimpleNamespace(canValid=True, standstill=True))
+
+  assert controller.update_radar_configuration(controls, car_state) == []
+  assert controller.params.values["TeslaRadarConfigResult"].split(",")[1] == "expired"
+
+
+def test_filter_confirmation_requires_new_filter_state_frame():
+  request_id = str(int(time.time() * 1000))
+  controller = CarController.__new__(CarController)
+  controller.ars408_can = ARS408CAN()
+  controller.params = FakeParams({
+    "TeslaRadarFilterRequest": f"{request_id},1,1,10,200",
+    "TeslaRadarFilterState": "1,1,10.0,200.0",
+    "TeslaRadarFilterStateSeq": "4",
+  })
+  controller._radar_config_request = None
+  controller._radar_filter_request = None
+  controller.frame = 100
+  controls = SimpleNamespace(latActive=False, longActive=False)
+  car_state = SimpleNamespace(out=SimpleNamespace(canValid=True, standstill=True))
+
+  assert len(controller.update_radar_configuration(controls, car_state)) == 1
+  controller.frame += 1
+  assert controller.update_radar_configuration(controls, car_state) == []
+  assert controller._radar_filter_request is not None
+
+  controller.params.values["TeslaRadarFilterStateSeq"] = "5"
+  controller.frame += 1
+  assert controller.update_radar_configuration(controls, car_state) == []
+  assert controller._radar_filter_request is None
+  assert controller.params.values["TeslaRadarFilterResult"].split(",")[1] == "applied"
