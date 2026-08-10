@@ -258,6 +258,8 @@ struct CarState {
   steeringDisengage @77 :Bool; # non-recoverable driver/EPS condition that must end lateral control
   steeringOverride @78 :Bool;  # recoverable strong driver override; cooperative control must pause actuation
   handsOnLevel @79 :UInt8;     # native Tesla EPS hands-on classification for safe override release
+  eacStatus @80 :UInt8;        # raw Tesla EPAS3S_eacStatus for MADS fault recovery diagnostics
+  eacErrorCode @81 :UInt8;     # raw Tesla EPAS3S_eacErrorCode for MADS fault recovery diagnostics
 
   struct Tpms {
     fl @0 :Float32;

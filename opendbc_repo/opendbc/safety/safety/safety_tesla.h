@@ -7,8 +7,13 @@ static bool tesla_stock_aeb = false;
 static const int TESLA_STEERING_DISENGAGE_TORQUE = 500;  // 5.0 Nm in 0.01 Nm units
 static const int TESLA_DRIVER_OVERRIDE_RELEASE_TORQUE = 250;  // 2.5 Nm cooperative envelope in 0.01 Nm units
 static const uint16_t TESLA_DRIVER_OVERRIDE_RELEASE_FRAMES = 25U;  // 0.25 s at 100 Hz
+static const uint16_t TESLA_EPS_TEMP_FAULT_RECOVERY_FRAMES = 25U;  // 0.25 s at 100 Hz
+static const uint16_t TESLA_EPS_TEMP_FAULT_TIMEOUT_FRAMES = 100U;  // 1.0 s at 100 Hz
 static bool tesla_driver_override_active = false;
 static uint16_t tesla_driver_override_release_counter = 0U;
+static bool tesla_eps_temp_fault_active = false;
+static uint16_t tesla_eps_temp_fault_counter = 0U;
+static uint16_t tesla_eps_temp_fault_recovery_counter = 0U;
 
 static void tesla_rx_hook(const CANPacket_t *to_push) {
   int bus = GET_BUS(to_push);
@@ -27,10 +32,33 @@ static void tesla_rx_hook(const CANPacket_t *to_push) {
       int eac_error_code = GET_BYTE(to_push, 2) >> 4;
       const bool strong_driver_override = (hands_on_level >= 3) ||
                                           (ABS(torsion_bar_torque) > TESLA_STEERING_DISENGAGE_TORQUE);
+      const bool permanent_eps_fault = eac_status == 3;
       const bool high_angle_rate_fault = (eac_status == 0) && (eac_error_code == 9);
+      const bool temporary_eps_fault = (eac_status == 0) && (eac_error_code == 4);
+      const bool eps_control_available = (eac_status == 1) || (eac_status == 2);
       const bool cooperative_pause_allowed = mads_state.system_enabled && mads_state.cooperative_steering;
 
-      if (high_angle_rate_fault) {
+      if (temporary_eps_fault) {
+        tesla_eps_temp_fault_active = true;
+        tesla_eps_temp_fault_counter = MIN(tesla_eps_temp_fault_counter + 1U, TESLA_EPS_TEMP_FAULT_TIMEOUT_FRAMES);
+        tesla_eps_temp_fault_recovery_counter = 0U;
+      } else if (tesla_eps_temp_fault_active) {
+        tesla_eps_temp_fault_recovery_counter = eps_control_available ?
+          MIN(tesla_eps_temp_fault_recovery_counter + 1U, TESLA_EPS_TEMP_FAULT_RECOVERY_FRAMES) : 0U;
+        if (tesla_eps_temp_fault_recovery_counter >= TESLA_EPS_TEMP_FAULT_RECOVERY_FRAMES) {
+          tesla_eps_temp_fault_active = false;
+          tesla_eps_temp_fault_counter = 0U;
+          tesla_eps_temp_fault_recovery_counter = 0U;
+        }
+      } else {
+        tesla_eps_temp_fault_counter = 0U;
+        tesla_eps_temp_fault_recovery_counter = 0U;
+      }
+
+      if (permanent_eps_fault || high_angle_rate_fault) {
+        tesla_eps_temp_fault_active = false;
+        tesla_eps_temp_fault_counter = 0U;
+        tesla_eps_temp_fault_recovery_counter = 0U;
         tesla_driver_override_active = false;
         tesla_driver_override_release_counter = 0U;
       } else if (cooperative_pause_allowed) {
@@ -52,7 +80,10 @@ static void tesla_rx_hook(const CANPacket_t *to_push) {
         tesla_driver_override_release_counter = 0U;
       }
 
-      steering_disengage = high_angle_rate_fault || (strong_driver_override && !cooperative_pause_allowed);
+      const bool eps_temp_fault_timeout = tesla_eps_temp_fault_active &&
+                                          (tesla_eps_temp_fault_counter >= TESLA_EPS_TEMP_FAULT_TIMEOUT_FRAMES);
+      steering_disengage = permanent_eps_fault || high_angle_rate_fault || eps_temp_fault_timeout ||
+                           (strong_driver_override && !cooperative_pause_allowed);
     }
 
     // Vehicle speed
@@ -135,7 +166,7 @@ static bool tesla_tx_hook(const CANPacket_t *to_send) {
     bool steer_control_enabled = (steer_control_type != 0) &&  // NONE
                                  (steer_control_type != 3);    // DISABLED
 
-    if (tesla_driver_override_active && steer_control_enabled) {
+    if ((tesla_driver_override_active || tesla_eps_temp_fault_active) && steer_control_enabled) {
       violation = true;
     }
     if (steer_angle_cmd_checks(desired_angle, steer_control_enabled, TESLA_STEERING_LIMITS)) {
@@ -239,6 +270,9 @@ static safety_config tesla_init(uint16_t param) {
   tesla_stock_aeb = false;
   tesla_driver_override_active = false;
   tesla_driver_override_release_counter = 0U;
+  tesla_eps_temp_fault_active = false;
+  tesla_eps_temp_fault_counter = 0U;
+  tesla_eps_temp_fault_recovery_counter = 0U;
 
   static RxCheck tesla_model3_y_rx_checks[] = {
     {.msg = {{0x2b9, 2, 8, .ignore_checksum = true, .ignore_counter = true,.frequency = 25U}, { 0 }, { 0 }}},   // DAS_control

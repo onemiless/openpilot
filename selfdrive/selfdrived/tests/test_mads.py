@@ -48,6 +48,8 @@ def make_car_state(**overrides):
     "gearShifter": GearShifter.drive,
     "steerFaultTemporary": False,
     "steerFaultPermanent": False,
+    "eacStatus": 1,
+    "eacErrorCode": 0,
   }
   values.update(overrides)
   return SimpleNamespace(**values)
@@ -102,7 +104,8 @@ def test_mads_safety_exits_are_not_overridable():
              make_car_state(invalidLkasSetting=True),
              make_car_state(cruiseState=SimpleNamespace(available=False)),
              make_car_state(gearShifter=GearShifter.park),
-             make_car_state(steerFaultTemporary=True)):
+             make_car_state(steerFaultPermanent=True),
+             make_car_state(steerFaultTemporary=True, eacStatus=0, eacErrorCode=8)):
     mads = make_mads(steering_mode=0)
     engage(mads)
     mads.update(CS, False, False, FakeEvents())
@@ -116,6 +119,58 @@ def test_mads_safety_exits_are_not_overridable():
   mads = make_mads(steering_mode=0)
   engage(mads)
   mads.update(make_car_state(), False, False, FakeEvents(ET.SOFT_DISABLE))
+  assert mads.state == MadsState.disabled
+
+
+def test_single_frame_eps_error_4_pauses_then_recovers_after_stable_available():
+  mads = make_mads(steering_mode=0)
+  engage(mads)
+
+  transient_fault = make_car_state(steerFaultTemporary=True, eacStatus=0, eacErrorCode=4,
+                                   steeringTorque=4.12, steeringRateDeg=52.0)
+  mads.update(transient_fault, False, False, FakeEvents(ET.OVERRIDE_LATERAL))
+  assert mads.state == MadsState.paused
+  assert mads.enabled
+  assert not mads.active
+
+  recovered = make_car_state(eacStatus=1)
+  for _ in range(24):
+    mads.update(recovered, False, False, FakeEvents())
+    assert mads.state == MadsState.paused
+
+  mads.update(recovered, False, False, FakeEvents())
+  assert mads.state == MadsState.enabled
+  assert mads.active
+
+
+def test_eps_error_4_recovery_timer_resets_if_fault_returns():
+  mads = make_mads(steering_mode=0)
+  engage(mads)
+  transient_fault = make_car_state(steerFaultTemporary=True, eacStatus=0, eacErrorCode=4)
+  recovered = make_car_state(eacStatus=2)
+
+  mads.update(transient_fault, False, False, FakeEvents())
+  for _ in range(24):
+    mads.update(recovered, False, False, FakeEvents())
+  mads.update(transient_fault, False, False, FakeEvents())
+  for _ in range(24):
+    mads.update(recovered, False, False, FakeEvents())
+  assert mads.state == MadsState.paused
+
+  mads.update(recovered, False, False, FakeEvents())
+  assert mads.state == MadsState.enabled
+
+
+def test_persistent_eps_error_4_times_out_and_disables_mads():
+  mads = make_mads(steering_mode=0)
+  engage(mads)
+  transient_fault = make_car_state(steerFaultTemporary=True, eacStatus=0, eacErrorCode=4)
+
+  for _ in range(99):
+    mads.update(transient_fault, False, False, FakeEvents())
+    assert mads.state == MadsState.paused
+
+  mads.update(transient_fault, False, False, FakeEvents())
   assert mads.state == MadsState.disabled
 
 

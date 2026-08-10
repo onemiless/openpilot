@@ -99,7 +99,10 @@ class CarController(CarControllerBase):
     steering_disengage = CS.out.steeringDisengage
     steering_override = CS.out.steeringOverride
     cruise_cancel = CC.cruiseControl.cancel or steering_disengage
-    lat_active = CC.latActive and not steering_disengage and not steering_override
+    # CarState faults are checked again here so a newly received EPS inhibit
+    # cannot leak one stale active request through the asynchronous control path.
+    lat_active = (CC.latActive and not steering_disengage and not steering_override and
+                  not CS.out.steerFaultTemporary and not CS.out.steerFaultPermanent)
     if steering_disengage != self._steering_disengage_prev:
       log.warning("Tesla steering safety disengage=%d torque=%.2f hands_on_level=%d eac_status=%s eac_error_code=%d",
                   int(steering_disengage), CS.out.steeringTorque, CS.hands_on_level,

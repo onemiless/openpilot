@@ -172,6 +172,7 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
     safety_param = self.safety.get_current_safety_param()
     for msg in (self._steering_status_msg(torque=5.01),
                 self._steering_status_msg(hands_on_level=3),
+                self._steering_status_msg(eac_status=3),
                 self._steering_status_msg(eac_status=0, eac_error_code=9)):
       self.safety.set_safety_hooks(CarParams.SafetyModel.tesla, safety_param)
       self.safety.init_tests()
@@ -219,6 +220,32 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
     self._engage_mads(cooperative_steering=True)
     self.assertTrue(self._rx(self._steering_status_msg(eac_status=0, eac_error_code=9)))
     self.assertFalse(self.safety.get_controls_allowed())
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+    self.assertFalse(self._tx(self._angle_cmd_msg(0, True)))
+
+  def test_mads_eps_error_4_pauses_output_then_recovers_after_stable_available(self):
+    self._engage_mads(cooperative_steering=True)
+    self.assertTrue(self._rx(self._steering_status_msg(torque=4.12, eac_status=0, eac_error_code=4)))
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+    self.assertFalse(self._tx(self._angle_cmd_msg(0, True)))
+    self.assertTrue(self._tx(self._angle_cmd_msg(0, False)))
+
+    for _ in range(24):
+      self.assertTrue(self._rx(self._steering_status_msg(eac_status=1)))
+      self.assertFalse(self._tx(self._angle_cmd_msg(0, True)))
+
+    self.assertTrue(self._rx(self._steering_status_msg(eac_status=1)))
+    self.assertTrue(self._tx(self._angle_cmd_msg(0, True)))
+
+  def test_mads_persistent_eps_error_4_disengages_after_timeout(self):
+    self._engage_mads(cooperative_steering=True)
+    temporary_fault = self._steering_status_msg(eac_status=0, eac_error_code=4)
+    for _ in range(99):
+      self.assertTrue(self._rx(temporary_fault))
+      self.assertTrue(self.safety.get_controls_allowed_lateral())
+      self.assertFalse(self._tx(self._angle_cmd_msg(0, True)))
+
+    self.assertTrue(self._rx(temporary_fault))
     self.assertFalse(self.safety.get_controls_allowed_lateral())
     self.assertFalse(self._tx(self._angle_cmd_msg(0, True)))
 

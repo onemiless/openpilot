@@ -71,8 +71,11 @@ class CarState(CarStateBase):
     # promptly, without treating a single noisy torque sample as an override.
     ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > STEER_THRESHOLD, 5)
 
-    self.eac_status = self.can_define.dv["EPAS3S_sysStatus"]["EPAS3S_eacStatus"].get(int(epas_status["EPAS3S_eacStatus"]), None)
+    eac_status_raw = int(epas_status["EPAS3S_eacStatus"])
+    self.eac_status = self.can_define.dv["EPAS3S_sysStatus"]["EPAS3S_eacStatus"].get(eac_status_raw, None)
     self.eac_error_code = int(epas_status["EPAS3S_eacErrorCode"])
+    ret.eacStatus = eac_status_raw
+    ret.eacErrorCode = self.eac_error_code
     ret.steerFaultPermanent = self.eac_status == "EAC_FAULT"
     ret.steerFaultTemporary = self.eac_status == "EAC_INHIBITED"
     cooperative_steering = bool(self.CP.alternativeExperience & ALTERNATIVE_EXPERIENCE.MADS_COOPERATIVE_STEERING)
