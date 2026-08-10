@@ -506,7 +506,7 @@ RadarPanel::RadarPanel(QWidget *parent) : ListWidget(parent) {
   filter_state = new LabelControl(tr("最近回读的对象过滤记录"), tr("尚未收到 0x204"),
                                   tr("ARS408 不提供一次性读取全部过滤器的安全查询；修改后以对应 0x204 回读确认。"));
   result = new LabelControl(tr("最近配置结果"), tr("无"),
-                            tr("applied 表示当前生效；nvm_sent 表示已发送 NVM 保存命令，仍需断电重启复核。"));
+                            tr("applied 表示当前生效；nvm_sent 表示已发送 NVM 保存命令，仍需断电重启复核。日志：/data/log/ars408/ars408_debug.log 和 ars408_error.log"));
   addItem(state);
   addItem(fixed);
   addItem(filter_state);

@@ -1,4 +1,3 @@
-import logging
 import math
 
 import numpy as np
@@ -6,14 +5,12 @@ from opendbc.can import CANPacker
 from opendbc.car import Bus, apply_steer_angle_limits_vm, structs
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.tesla.ars408_can import ARS408CAN, ARS408_FILTER_SIGNALS, ARS408_MOTION_INPUT_ENABLED
+from opendbc.car.tesla.ars408_log import ars408_log as log
 from opendbc.car.tesla.coop_steering import CoopSteeringCarController
 from opendbc.car.tesla.teslacan import TeslaCAN
 from opendbc.car.tesla.values import CarControllerParams
 from opendbc.car.vehicle_model import VehicleModel
 from openpilot.common.params import Params
-
-
-log = logging.getLogger(__name__)
 
 
 class CarController(CarControllerBase):

@@ -100,7 +100,7 @@ BO_ 516 FilterState_Cfg: 5 ARS_ISF
  SG_ FilterState_Max_VrelDepart m4 : 27|12@0+ (0.0315,0) [0|128.9925] "m/s"  ExternalUnit
  SG_ FilterState_Max_Size m7 : 27|12@0+ (0.025,0) [0|102.375] "m2"  ExternalUnit
  SG_ FilterState_Max_RCS m5 : 27|12@0+ (0.025,-50) [-50|52.375] "dB"  ExternalUnit
- SG_ FilterState_Max_ProbExists m8 : 27|12@0+ (1,0) [0|4095] ""  ExternalUnit
+ SG_ FilterState_Max_ProbExists m8 : 27|12@0+ (1,0) [0|7] ""  ExternalUnit
  SG_ FilterState_Max_NofObj m0 : 27|12@0+ (1,0) [0|4095] ""  ExternalUnit
  SG_ FilterState_Max_Lifetime m6 : 27|12@0+ (0.1,0) [0|409.5] "s"  ExternalUnit
  SG_ FilterState_Max_Distance m1 : 27|12@0+ (0.1,0) [0|409.5] "m"  ExternalUnit
@@ -140,7 +140,7 @@ BO_ 514 FilterCfg: 5 ExternalUnit
  SG_ FilterCfg_Min_VrelDepart m4 : 11|12@0+ (0.0315,0) [0|128.9925] "m/s"  ARS_ISF
  SG_ FilterCfg_Min_Size m7 : 11|12@0+ (0.025,0) [0|102.375] "m2"  ARS_ISF
  SG_ FilterCfg_Min_RCS m5 : 11|12@0+ (0.025,-50) [-50|52.375] "dB"  ARS_ISF
- SG_ FilterCfg_Min_ProbExists m8 : 11|12@0+ (1,0) [0|4095] ""  ARS_ISF
+ SG_ FilterCfg_Min_ProbExists m8 : 11|12@0+ (1,0) [0|7] ""  ARS_ISF
  SG_ FilterCfg_Min_Lifetime m6 : 11|12@0+ (0.1,0) [0|409.5] "s"  ARS_ISF
  SG_ FilterCfg_Min_Azimuth m2 : 11|12@0+ (0.025,-50) [-50|52.375] "deg"  ARS_ISF
  SG_ FilterCfg_Min_NofObj m0 : 11|12@0+ (1,0) [0|4095] ""  ARS_ISF
@@ -153,7 +153,7 @@ BO_ 512 RadarConfiguration: 8 ExternalUnit
  SG_ RadarCfg_RCS_Threshold : 51|3@0+ (1,0) [0|7] "" Vector__XXX
  SG_ RadarCfg_StoreInNVM_valid : 7|1@0+ (1,0) [0|1] "" Vector__XXX
  SG_ RadarCfg_SortIndex_valid : 6|1@0+ (1,0) [0|1] "" Vector__XXX
- SG_ RadarCfg_SortIndex : 46|3@0+ (1,0) [0|7] "" Vector__XXX
+ SG_ RadarCfg_SortIndex : 46|3@0+ (1,0) [0|2] "" Vector__XXX
  SG_ RadarCfg_StoreInNVM : 47|1@0+ (1,0) [0|1] ""  ARS_ISF
  SG_ RadarCfg_SendExtInfo_valid : 5|1@0+ (1,0) [0|1] ""  ARS_ISF
  SG_ RadarCfg_SendExtInfo : 43|1@0+ (1,0) [0|1] ""  ARS_ISF

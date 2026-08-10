@@ -368,6 +368,73 @@ def test_radar_state_accepts_250_m_config_and_ignores_missing_motion_inputs():
   assert result.errors.wrongConfig
 
 
+def test_non_critical_radar_configuration_differences_do_not_request_takeover():
+  radar = RadarInterface.__new__(RadarInterface)
+  radar.last_radar_state = {
+    "RadarState_Interference": 0,
+    "RadarState_Temperature_Error": 0,
+    "RadarState_Temporary_Error": 0,
+    "RadarState_Voltage_Error": 0,
+    "RadarState_Persistent_Error": 0,
+    "RadarState_SensorID": 0,
+    "RadarState_OutputTypeCfg": 1,
+    "RadarState_SendQualityCfg": 1,
+    "RadarState_SendExtInfoCfg": 1,
+    "RadarState_CtrlRelayCfg": 1,
+    "RadarState_SortIndex": 2,
+    "RadarState_RCS_Threshold": 1,
+    "RadarState_RadarPowerCfg": 3,
+    "RadarState_MaxDistanceCfg": 250,
+    "RadarState_MotionRxState": 3,
+  }
+  radar.radar_state_frames = 10
+  radar.last_fault_signature = None
+  radar.interference_frames = 0
+  result = structs.RadarData()
+
+  radar._apply_radar_state_errors(result)
+
+  assert not result.errors.wrongConfig
+  assert not result.errors.radarFault
+  assert not result.errors.radarUnavailableTemporary
+
+
+@pytest.mark.parametrize(("field", "value"), (
+  ("RadarState_SensorID", 1),
+  ("RadarState_SendQualityCfg", 0),
+  ("RadarState_OutputTypeCfg", 2),
+  ("RadarState_MaxDistanceCfg", 300),
+))
+def test_critical_radar_configuration_differences_still_request_takeover(field, value):
+  radar = RadarInterface.__new__(RadarInterface)
+  radar.last_radar_state = {
+    "RadarState_Interference": 0,
+    "RadarState_Temperature_Error": 0,
+    "RadarState_Temporary_Error": 0,
+    "RadarState_Voltage_Error": 0,
+    "RadarState_Persistent_Error": 0,
+    "RadarState_SensorID": 0,
+    "RadarState_OutputTypeCfg": 1,
+    "RadarState_SendQualityCfg": 1,
+    "RadarState_SendExtInfoCfg": 1,
+    "RadarState_CtrlRelayCfg": 0,
+    "RadarState_SortIndex": 1,
+    "RadarState_RCS_Threshold": 0,
+    "RadarState_RadarPowerCfg": 0,
+    "RadarState_MaxDistanceCfg": 250,
+    "RadarState_MotionRxState": 3,
+  }
+  radar.last_radar_state[field] = value
+  radar.radar_state_frames = 10
+  radar.last_fault_signature = None
+  radar.interference_frames = 0
+  result = structs.RadarData()
+
+  radar._apply_radar_state_errors(result)
+
+  assert result.errors.wrongConfig
+
+
 def test_interference_requires_confirmation_before_requesting_takeover():
   radar = RadarInterface.__new__(RadarInterface)
   radar.last_radar_state = {

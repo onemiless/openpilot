@@ -1,4 +1,3 @@
-import logging
 import math
 
 from opendbc.can import CANParser
@@ -7,6 +6,7 @@ from opendbc.car.interfaces import RadarInterfaceBase
 from opendbc.car.tesla.ars408_can import (
   ARS408_BUS, ARS408_MAX_DISTANCE, ARS408_SEND_EXTENDED, ARS408_SENSOR_ID,
 )
+from opendbc.car.tesla.ars408_log import ars408_log as log
 from openpilot.common.params import Params
 
 
@@ -49,9 +49,6 @@ ARS408_HANDOVER_DREL = 2.5
 ARS408_HANDOVER_YREL = 1.0
 ARS408_HANDOVER_VREL = 2.5
 ARS408_HANDOVER_YVREL = 1.5
-
-log = logging.getLogger(__name__)
-
 
 def object_rejection_reason(obj, previously_tracked=False, timed_out=False, max_distance=ARS408_MAX_DISTANCE):
   if timed_out:
@@ -367,31 +364,39 @@ class RadarInterface(RadarInterfaceBase):
       "RadarState_Voltage_Error", "RadarState_Persistent_Error"))
     max_distance = int(state["RadarState_MaxDistanceCfg"])
     output_type = int(state["RadarState_OutputTypeCfg"])
-    config_expectations = (
+    critical_config_expectations = (
       ("sensor_id", "RadarState_SensorID", ARS408_SENSOR_ID),
       ("quality", "RadarState_SendQualityCfg", 1 if output_type == 1 else int(state["RadarState_SendQualityCfg"])),
+    )
+    advisory_config_expectations = (
       ("ctrl_relay", "RadarState_CtrlRelayCfg", 0),
       ("sort_index", "RadarState_SortIndex", 1),
       ("rcs_threshold", "RadarState_RCS_Threshold", 0),
       ("radar_power", "RadarState_RadarPowerCfg", 0),
     )
-    config_mismatches = tuple(
+    critical_config_mismatches = tuple(
       (label, int(state[field]), expected)
-      for label, field, expected in config_expectations
+      for label, field, expected in critical_config_expectations
+      if int(state[field]) != expected
+    )
+    advisory_config_mismatches = tuple(
+      (label, int(state[field]), expected)
+      for label, field, expected in advisory_config_expectations
       if int(state[field]) != expected
     )
     if output_type not in (0, 1):
-      config_mismatches += (("output_type", output_type, "0 or 1"),)
+      critical_config_mismatches += (("output_type", output_type, "0 or 1"),)
     if not (200 <= max_distance <= 250 and max_distance % 2 == 0):
-      config_mismatches += (("max_distance", max_distance, "even 200..250"),)
-    wrong_config = bool(config_mismatches)
+      critical_config_mismatches += (("max_distance", max_distance, "even 200..250"),)
+    wrong_config = bool(critical_config_mismatches)
 
     ret.errors.radarUnavailableTemporary = temporary_fault
     ret.errors.radarFault = hard_fault
     # Allow the radar's persisted configuration and state output to settle
     # after power-up before reporting a configuration fault.
     ret.errors.wrongConfig = wrong_config and self.radar_state_frames >= CONFIG_GRACE_STATE_FRAMES
-    fault_signature = (temporary_fault, hard_fault, config_mismatches, interference_frames,
+    fault_signature = (temporary_fault, hard_fault, critical_config_mismatches, advisory_config_mismatches,
+                       interference_frames,
                        self.radar_state_frames < CONFIG_GRACE_STATE_FRAMES,
                        int(state["RadarState_MotionRxState"]))
     if fault_signature != self.last_fault_signature:
@@ -407,7 +412,11 @@ class RadarInterface(RadarInterfaceBase):
       if ret.errors.wrongConfig:
         log.error("ARS408 wrong configuration: %s",
                   ", ".join(f"{name}=actual:{actual}/expected:{expected}"
-                            for name, actual, expected in config_mismatches))
+                            for name, actual, expected in critical_config_mismatches))
+      if advisory_config_mismatches:
+        log.warning("ARS408 non-critical configuration differences (radar remains available): %s",
+                    ", ".join(f"{name}=actual:{actual}/recommended:{expected}"
+                              for name, actual, expected in advisory_config_mismatches))
       self.last_fault_signature = fault_signature
 
   def _decode_cycle(self, timestamp):
