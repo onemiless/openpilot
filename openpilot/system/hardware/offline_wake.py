@@ -19,7 +19,7 @@ PANDA_WAKE_MONITOR_FAILED_STATE = 7
 
 
 class CanActivityTracker:
-  """Record sleeping-vehicle CAN for diagnostics without blocking shutdown."""
+  """Record Panda logical CAN sources for diagnostics without blocking shutdown."""
   def __init__(self, now: float | None = None) -> None:
     current_time = time.monotonic() if now is None else now
     self.frame_counts: dict[int, int] = dict.fromkeys(OFFLINE_WAKE_CAN_BUSES, 0)
@@ -45,7 +45,7 @@ class CanActivityTracker:
 
 
 def wake_can_activity(can_messages) -> bool:
-  """Ignore Panda echo buses and track the three physical vehicle CAN buses."""
+  """Ignore Panda echo buses and track the three logical vehicle CAN sources."""
   return any(int(message.src) in OFFLINE_WAKE_CAN_BUSES for message in can_messages)
 
 
