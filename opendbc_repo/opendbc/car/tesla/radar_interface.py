@@ -13,9 +13,8 @@ from openpilot.common.params import Params
 ARS408_DBC = "ARS408"
 ARS408_ADDRESS_OFFSET = ARS408_SENSOR_ID << 4
 
-# The DBC describes SensorID 0. The radar is configured as SensorID 5 so that
-# its CAN namespace does not collide with Tesla bus 1 traffic. Incoming frames
-# are validated at their shifted addresses, then mapped back for DBC decoding.
+# The DBC describes SensorID 0. Apply the configured sensor-ID address offset
+# to incoming frames, then map them back to the base DBC addresses for decode.
 ARS408_STATUS = 0x60A + ARS408_ADDRESS_OFFSET
 ARS408_GENERAL = 0x60B + ARS408_ADDRESS_OFFSET
 ARS408_QUALITY = 0x60C + ARS408_ADDRESS_OFFSET
@@ -42,6 +41,14 @@ ARS408_STATUS_TIMEOUT_UPDATES = 50
 ARS408_STATE_TIMEOUT_UPDATES = 300
 ARS408_ERROR_PUBLISH_INTERVAL = 5
 ARS408_INTERFERENCE_CONFIRM_FRAMES = 2
+ARS408_DUPLICATE_DREL = 1.5
+ARS408_DUPLICATE_YREL = 0.6
+ARS408_DUPLICATE_VREL = 1.5
+ARS408_DUPLICATE_YVREL = 0.8
+ARS408_HANDOVER_DREL = 2.5
+ARS408_HANDOVER_YREL = 1.0
+ARS408_HANDOVER_VREL = 2.5
+ARS408_HANDOVER_YVREL = 1.5
 
 log = logging.getLogger(__name__)
 
@@ -86,6 +93,36 @@ def object_is_usable(obj, previously_tracked=False):
   return object_rejection_reason(obj, previously_tracked) is None
 
 
+def _object_motion(obj):
+  return (
+    float(obj["Obj_DistLong"]),
+    -float(obj["Obj_DistLat"]),
+    float(obj["Obj_VrelLong"]),
+    float(obj["Obj_VrelLat"]),
+  )
+
+
+def _point_motion(point):
+  return float(point.dRel), float(point.yRel), float(point.vRel), float(point.yvRel)
+
+
+def objects_represent_same_target(first, second, handover=False):
+  """Conservatively identify physically overlapping ARS408 object reports."""
+  first_motion = _object_motion(first) if isinstance(first, dict) else _point_motion(first)
+  second_motion = _object_motion(second) if isinstance(second, dict) else _point_motion(second)
+  d_limit = ARS408_HANDOVER_DREL if handover else ARS408_DUPLICATE_DREL
+  y_limit = ARS408_HANDOVER_YREL if handover else ARS408_DUPLICATE_YREL
+  v_limit = ARS408_HANDOVER_VREL if handover else ARS408_DUPLICATE_VREL
+  yv_limit = ARS408_HANDOVER_YVREL if handover else ARS408_DUPLICATE_YVREL
+
+  first_class = int(first.get("Obj_Class", 7)) if isinstance(first, dict) else int(first.objectClass)
+  second_class = int(second.get("Obj_Class", 7)) if isinstance(second, dict) else int(second.objectClass)
+  class_matches = first_class == 7 or second_class == 7 or first_class == second_class
+  return class_matches and abs(first_motion[0] - second_motion[0]) <= d_limit and \
+    abs(first_motion[1] - second_motion[1]) <= y_limit and abs(first_motion[2] - second_motion[2]) <= v_limit and \
+    abs(first_motion[3] - second_motion[3]) <= yv_limit
+
+
 def get_radar_can_parser(CP):
   messages = [
     ("Obj_0_Status", 14),
@@ -123,6 +160,12 @@ class RadarInterface(RadarInterfaceBase):
     self.last_missing_can_signature = None
     self.last_rejection_reasons = {}
     self.interference_frames = 0
+    self.raw_to_track_id = {}
+    self.used_track_ids = set()
+    self.next_track_id = 256
+    self.track_handover_count = 0
+    self.duplicate_suppression_count = 0
+    self.last_duplicate_signature = None
 
   def _set_status(self, ret):
     ret.radarOnline = getattr(self, "last_status_update", None) is not None and self._missing_can_signature() is None
@@ -322,6 +365,106 @@ class RadarInterface(RadarInterfaceBase):
 
     return objects
 
+  def _ensure_tracking_state(self):
+    if not hasattr(self, "raw_to_track_id"):
+      self.raw_to_track_id = {raw_id: int(point.trackId) for raw_id, point in self.pts.items()}
+    if not hasattr(self, "used_track_ids"):
+      self.used_track_ids = set(self.raw_to_track_id.values())
+    if not hasattr(self, "next_track_id"):
+      self.next_track_id = max(256, max(self.used_track_ids, default=255) + 1)
+    self.track_handover_count = getattr(self, "track_handover_count", 0)
+    self.duplicate_suppression_count = getattr(self, "duplicate_suppression_count", 0)
+    self.last_duplicate_signature = getattr(self, "last_duplicate_signature", None)
+
+  def _allocate_track_id(self, raw_id):
+    self._ensure_tracking_state()
+    if raw_id not in self.used_track_ids:
+      track_id = raw_id
+    else:
+      track_id = self.next_track_id
+      self.next_track_id += 1
+    self.used_track_ids.add(track_id)
+    self.raw_to_track_id[raw_id] = track_id
+    return track_id
+
+  def _handoff_track(self, old_raw_id, new_raw_id, reason, old_obj, new_obj):
+    point = self.pts.pop(old_raw_id)
+    logical_id = self.raw_to_track_id.pop(old_raw_id, int(point.trackId))
+    self.pts[new_raw_id] = point
+    self.raw_to_track_id[new_raw_id] = logical_id
+    self.track_miss_counts[new_raw_id] = self.track_miss_counts.pop(old_raw_id, 0)
+    self.last_rejection_reasons.pop(old_raw_id, None)
+    self.track_handover_count += 1
+    old_motion = _object_motion(old_obj) if isinstance(old_obj, dict) else _point_motion(old_obj)
+    new_motion = _object_motion(new_obj)
+    log.info("ARS408 track handover reason=%s raw_old=%d raw_new=%d logical=%d dd=%.2f dy=%.2f dv=%.2f total=%d",
+             reason, old_raw_id, new_raw_id, logical_id, abs(old_motion[0] - new_motion[0]),
+             abs(old_motion[1] - new_motion[1]), abs(old_motion[2] - new_motion[2]), self.track_handover_count)
+
+  @staticmethod
+  def _object_rank(raw_id, obj, previously_tracked):
+    state_rank = {2: 4, 5: 3, 1: 3, 3: 1}.get(int(obj["Obj_MeasState"]), 0)
+    return previously_tracked, state_rank, int(obj["Obj_ProbOfExist"]), -raw_id
+
+  def _associate_cycle_objects(self, cycle_objects):
+    """Transfer changing raw IDs and suppress physically overlapping reports."""
+    self._ensure_tracking_state()
+
+    # Prefer the radar's explicit deleted-for-merge -> new-from-merge signal.
+    deleted_ids = [raw_id for raw_id, obj in cycle_objects.items()
+                   if int(obj["Obj_MeasState"]) == 4 and raw_id in self.pts]
+    new_merge_ids = [raw_id for raw_id, obj in cycle_objects.items()
+                     if int(obj["Obj_MeasState"]) == 5 and raw_id not in self.pts]
+    for new_raw_id in new_merge_ids:
+      candidates = [old_raw_id for old_raw_id in deleted_ids if old_raw_id in self.pts and
+                    objects_represent_same_target(cycle_objects[old_raw_id], cycle_objects[new_raw_id], handover=True)]
+      if candidates:
+        old_raw_id = min(candidates, key=lambda raw_id: abs(_object_motion(cycle_objects[raw_id])[0] -
+                                                             _object_motion(cycle_objects[new_raw_id])[0]))
+        self._handoff_track(old_raw_id, new_raw_id, "merge", cycle_objects[old_raw_id], cycle_objects[new_raw_id])
+
+    # If the old raw ID disappears without an explicit state-4 frame, reuse
+    # its logical track only when the replacement is tightly colocated.
+    active_cycle_ids = {raw_id for raw_id, obj in cycle_objects.items() if int(obj["Obj_MeasState"]) not in (0, 4)}
+    missing_tracked_ids = [raw_id for raw_id in self.pts if raw_id not in active_cycle_ids]
+    for new_raw_id in [raw_id for raw_id in active_cycle_ids if raw_id not in self.pts]:
+      candidates = [old_raw_id for old_raw_id in missing_tracked_ids if old_raw_id in self.pts and
+                    objects_represent_same_target(self.pts[old_raw_id], cycle_objects[new_raw_id])]
+      if candidates:
+        old_raw_id = min(candidates, key=lambda raw_id: abs(float(self.pts[raw_id].dRel) -
+                                                             float(cycle_objects[new_raw_id]["Obj_DistLong"])))
+        self._handoff_track(old_raw_id, new_raw_id, "kinematic", self.pts[old_raw_id], cycle_objects[new_raw_id])
+
+    # Suppress only overlapping pairs where at least one raw ID is new to the
+    # host. Two established tracks are never merged without radar merge state.
+    suppressed = set()
+    active_ids = sorted(raw_id for raw_id in active_cycle_ids if raw_id in cycle_objects)
+    for index, first_id in enumerate(active_ids):
+      if first_id in suppressed:
+        continue
+      for second_id in active_ids[index + 1:]:
+        if second_id in suppressed or (first_id in self.pts and second_id in self.pts):
+          continue
+        if not objects_represent_same_target(cycle_objects[first_id], cycle_objects[second_id]):
+          continue
+        first_rank = self._object_rank(first_id, cycle_objects[first_id], first_id in self.pts)
+        second_rank = self._object_rank(second_id, cycle_objects[second_id], second_id in self.pts)
+        keep_id, drop_id = (first_id, second_id) if first_rank >= second_rank else (second_id, first_id)
+        suppressed.add(drop_id)
+        signature = (keep_id, drop_id)
+        self.duplicate_suppression_count += 1
+        if signature != self.last_duplicate_signature:
+          keep_motion = _object_motion(cycle_objects[keep_id])
+          drop_motion = _object_motion(cycle_objects[drop_id])
+          log.warning("ARS408 duplicate suppressed keep_raw=%d drop_raw=%d dd=%.2f dy=%.2f dv=%.2f total=%d",
+                      keep_id, drop_id, abs(keep_motion[0] - drop_motion[0]), abs(keep_motion[1] - drop_motion[1]),
+                      abs(keep_motion[2] - drop_motion[2]), self.duplicate_suppression_count)
+        self.last_duplicate_signature = signature
+
+    if not suppressed:
+      self.last_duplicate_signature = None
+    return {raw_id: obj for raw_id, obj in cycle_objects.items() if raw_id not in suppressed}
+
   def _build_result(self, timestamp):
     if self.cycle_invalid:
       return self._incomplete_result()
@@ -329,6 +472,7 @@ class RadarInterface(RadarInterfaceBase):
     cycle_objects = self._decode_cycle(timestamp)
     if cycle_objects is None:
       return self._incomplete_result()
+    cycle_objects = self._associate_cycle_objects(cycle_objects)
 
     if not self._cycle_complete():
       self.incomplete_cycles += 1
@@ -362,7 +506,7 @@ class RadarInterface(RadarInterfaceBase):
       self.last_rejection_reasons.pop(object_id, None)
       if object_id not in self.pts:
         self.pts[object_id] = structs.RadarData.RadarPoint()
-        self.pts[object_id].trackId = object_id
+        self.pts[object_id].trackId = self._allocate_track_id(object_id)
 
       point = self.pts[object_id]
       point.dRel = d_rel
@@ -392,14 +536,16 @@ class RadarInterface(RadarInterfaceBase):
           self.last_rejection_reasons[object_id] = object_rejection_reason({}, timed_out=True)
           del self.pts[object_id]
           self.track_miss_counts.pop(object_id, None)
+          self.raw_to_track_id.pop(object_id, None)
 
     # Monitor mode keeps decoding and diagnostics active but never feeds tracks
     # into radard/lead fusion. Raw object count remains available to the UI.
     ret.points = [] if self.radar_mode == 1 else list(self.pts.values())
     self._apply_missing_can_error(ret)
     if self.radar_mode == 3:
-      log.debug("ARS408 debug: raw=%d accepted=%d tracked=%d rejections=%s",
-                self.expected_objects, len(current_targets), len(self.pts), self.last_rejection_reasons)
+      log.debug("ARS408 debug: raw=%d accepted=%d tracked=%d handovers=%d duplicates=%d rejections=%s",
+                self.expected_objects, len(current_targets), len(self.pts), self.track_handover_count,
+                self.duplicate_suppression_count, self.last_rejection_reasons)
     return ret
 
   def update(self, can_packets):

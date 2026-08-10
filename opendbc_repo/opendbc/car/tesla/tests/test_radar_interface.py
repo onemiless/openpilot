@@ -127,6 +127,127 @@ def test_existing_track_survives_brief_empty_cycle_then_expires():
   assert len(result.points) == 0
 
 
+def test_merge_handover_reuses_logical_track_without_publishing_duplicate():
+  point = structs.RadarData.RadarPoint()
+  point.trackId = 10
+  point.dRel = 40.0
+  point.yRel = 0.2
+  point.vRel = -1.0
+  point.yvRel = 0.0
+  point.measured = True
+  radar = make_result_radar({10: point})
+  radar.expected_objects = 2
+  radar._decode_cycle = lambda _timestamp: {
+    10: object_data(Obj_MeasState=4, Obj_DistLong=40.1, Obj_DistLat=-0.2, Obj_VrelLong=-1.0),
+    11: object_data(Obj_MeasState=5, Obj_DistLong=40.4, Obj_DistLat=-0.22, Obj_VrelLong=-1.1),
+  }
+
+  result = radar._build_result(1_000_000_000)
+
+  assert [(pt.trackId, pt.measured) for pt in result.points] == [(10, True)]
+  assert result.points[0].dRel == pytest.approx(40.4)
+
+
+def test_new_overlapping_raw_target_does_not_create_second_logical_track():
+  point = structs.RadarData.RadarPoint()
+  point.trackId = 10
+  point.dRel = 40.0
+  point.yRel = 0.2
+  point.vRel = -1.0
+  point.yvRel = 0.0
+  point.measured = True
+  radar = make_result_radar({10: point})
+  radar.expected_objects = 2
+  radar._decode_cycle = lambda _timestamp: {
+    10: object_data(Obj_DistLong=40.1, Obj_DistLat=-0.2, Obj_VrelLong=-1.0),
+    11: object_data(Obj_DistLong=40.5, Obj_DistLat=-0.25, Obj_VrelLong=-1.1),
+  }
+
+  result = radar._build_result(1_000_000_000)
+
+  assert [pt.trackId for pt in result.points] == [10]
+
+
+def test_spatially_distinct_raw_targets_remain_separate():
+  radar = make_result_radar()
+  radar.expected_objects = 2
+  radar._decode_cycle = lambda _timestamp: {
+    10: object_data(Obj_DistLong=40.0, Obj_DistLat=0.0, Obj_VrelLong=-1.0),
+    11: object_data(Obj_DistLong=47.0, Obj_DistLat=0.1, Obj_VrelLong=-1.2),
+  }
+
+  result = radar._build_result(1_000_000_000)
+
+  assert sorted(pt.trackId for pt in result.points) == [10, 11]
+
+
+def test_two_established_overlapping_tracks_are_not_merged_without_radar_merge_state():
+  first = structs.RadarData.RadarPoint()
+  first.trackId = 10
+  first.dRel = 40.0
+  first.yRel = 0.2
+  first.vRel = -1.0
+  first.yvRel = 0.0
+  first.measured = True
+  second = structs.RadarData.RadarPoint()
+  second.trackId = 11
+  second.dRel = 40.4
+  second.yRel = 0.22
+  second.vRel = -1.1
+  second.yvRel = 0.0
+  second.measured = True
+  radar = make_result_radar({10: first, 11: second})
+  radar.expected_objects = 2
+  radar._decode_cycle = lambda _timestamp: {
+    10: object_data(Obj_DistLong=40.1, Obj_DistLat=-0.2, Obj_VrelLong=-1.0),
+    11: object_data(Obj_DistLong=40.5, Obj_DistLat=-0.22, Obj_VrelLong=-1.1),
+  }
+
+  result = radar._build_result(1_000_000_000)
+
+  assert sorted(pt.trackId for pt in result.points) == [10, 11]
+
+
+def test_missing_raw_id_hands_over_to_tightly_colocated_replacement():
+  point = structs.RadarData.RadarPoint()
+  point.trackId = 10
+  point.dRel = 40.0
+  point.yRel = 0.2
+  point.vRel = -1.0
+  point.yvRel = 0.0
+  point.measured = True
+  radar = make_result_radar({10: point})
+  radar.expected_objects = 1
+  radar._decode_cycle = lambda _timestamp: {
+    11: object_data(Obj_DistLong=40.4, Obj_DistLat=-0.22, Obj_VrelLong=-1.1),
+  }
+
+  result = radar._build_result(1_000_000_000)
+
+  assert [(pt.trackId, pt.measured) for pt in result.points] == [(10, True)]
+
+
+def test_reused_raw_id_gets_new_logical_track_after_previous_target_expires():
+  point = structs.RadarData.RadarPoint()
+  point.trackId = 7
+  point.dRel = 40.0
+  point.yRel = 0.0
+  point.vRel = 0.0
+  point.yvRel = 0.0
+  point.measured = True
+  radar = make_result_radar({7: point})
+
+  for _ in range(ARS408_TRACK_GRACE_CYCLES + 1):
+    radar._build_result(1_000_000_000)
+  radar.expected_objects = 1
+  radar._decode_cycle = lambda _timestamp: {7: object_data(Obj_DistLong=60.0)}
+
+  result = radar._build_result(1_100_000_000)
+
+  assert len(result.points) == 1
+  assert result.points[0].trackId >= 256
+
+
 def test_partial_cycle_keeps_objects_with_both_general_and_quality_frames():
   radar = RadarInterface.__new__(RadarInterface)
   radar.expected_objects = 2

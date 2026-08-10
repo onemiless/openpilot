@@ -3,7 +3,6 @@ import math
 import numpy as np
 from collections import deque
 from typing import Any
-import heapq
 import copy
 
 import capnp
@@ -13,7 +12,6 @@ from openpilot.common.params import Params
 from openpilot.selfdrive.carrot.config import UnifiedParams
 from openpilot.common.realtime import DT_MDL, Priority, config_realtime_process
 from openpilot.common.swaglog import cloudlog
-from openpilot.common.simple_kalman import KF1D
 
 
 # Default lead acceleration decay set to 50% at 1s
@@ -27,6 +25,23 @@ V_EGO_STATIONARY = 4.   # no stationary object flag below this speed
 
 RADAR_TO_CENTER = 2.7   # (deprecated) RADAR is ~ 2.7m ahead from center of car
 RADAR_TO_CAMERA = 1.52  # RADAR is ~ 1.5m ahead from center of mesh frame
+LEAD_DUPLICATE_DREL = 5.0
+LEAD_DUPLICATE_YREL = 0.6
+LEAD_DUPLICATE_VREL = 1.5
+
+
+def _lead_value(lead, name, default=0.0):
+  return lead.get(name, default) if isinstance(lead, dict) else getattr(lead, name, default)
+
+
+def leads_represent_same_target(first, second):
+  first_id = int(_lead_value(first, "radarTrackId", -1))
+  second_id = int(_lead_value(second, "radarTrackId", -1))
+  if first_id >= 0 and first_id == second_id:
+    return True
+  return abs(float(_lead_value(first, "dRel")) - float(_lead_value(second, "dRel"))) < LEAD_DUPLICATE_DREL and \
+    abs(float(_lead_value(first, "yRel")) - float(_lead_value(second, "yRel"))) < LEAD_DUPLICATE_YREL and \
+    abs(float(_lead_value(first, "vRel")) - float(_lead_value(second, "vRel"))) < LEAD_DUPLICATE_VREL
 
 
 class Track:
@@ -585,8 +600,18 @@ class RadarD:
           default=None
       )
       if self.radar_state.leadOne.status and self.radar_state.leadOne.radar:
+        duplicate_candidates = [ld for ld in center_list if ld['vLead'] > 5 and ld['radar'] and
+                                self.radar_state.leadOne.dRel < ld['dRel'] < 80 and
+                                leads_represent_same_target(self.radar_state.leadOne, ld)]
+        duplicate_signature = tuple(sorted(int(ld.get('radarTrackId', -1)) for ld in duplicate_candidates))
+        if duplicate_signature and duplicate_signature != getattr(self, "last_lead_duplicate_signature", None):
+          cloudlog.warning("ARS408 leadTwo duplicate rejected lead_one=%d candidates=%s d_rel=%.2f",
+                           int(_lead_value(self.radar_state.leadOne, "radarTrackId", -1)),
+                           duplicate_signature, float(self.radar_state.leadOne.dRel))
+        self.last_lead_duplicate_signature = duplicate_signature or None
         self.leadTwo = min(
-            (ld for ld in center_list if ld['vLead'] > 5 and ld['radar'] and self.radar_state.leadOne.dRel < ld['dRel'] < 80),
+            (ld for ld in center_list if ld['vLead'] > 5 and ld['radar'] and self.radar_state.leadOne.dRel < ld['dRel'] < 80 and
+             not leads_represent_same_target(self.radar_state.leadOne, ld)),
             key=lambda d: d['dRel'],
             default=None
         )
@@ -595,7 +620,9 @@ class RadarD:
           #gap = self.leadTwo['dRel'] - self.radar_state.leadOne.dRel
           #offset = 3.0 + min(gap * 0.2, 10)
           #self.leadTwo['dRel'] = self.radar_state.leadOne.dRel + offset
-          self.leadTwo['dRel'] = max(self.radar_state.leadOne.dRel + 3.0, self.leadTwo['dRel'] - 8.0) # lead+1 차를 뒤로 8M후퇴하여, mpc에서  감자하도록함.. 최소 lead보다 3M앞에 위치하도록
+          # Move a verified second vehicle 8 m closer for earlier MPC response,
+          # while retaining at least 3 m separation from leadOne.
+          self.leadTwo['dRel'] = max(self.radar_state.leadOne.dRel + 3.0, self.leadTwo['dRel'] - 8.0)
     else:
       self.leadCenter = None
 
