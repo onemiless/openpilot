@@ -50,6 +50,7 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
 
   def setUp(self):
     self.packer = CANPackerPanda("tesla_model3_party")
+    self.radar_packer = CANPackerPanda("ARS408")
     self.define = CANDefine("tesla_model3_party")
     self.acc_states = {d: v for v, d in self.define.dv["DAS_control"]["DAS_accState"].items()}
 
@@ -115,14 +116,41 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
                                   self.safety.get_vehicle_speed_min, self.safety.get_vehicle_speed_max)
 
   def test_ars408_config_is_limited_to_vehicle_bus_and_eight_bytes(self):
-    self.assertTrue(self._tx(common.make_msg(1, MSG_ARS408_CONFIG, 8)))
-    self.assertFalse(self._tx(common.make_msg(0, MSG_ARS408_CONFIG, 8)))
+    valid = self.radar_packer.make_can_msg_panda("RadarConfiguration", 1, {
+      "RadarCfg_MaxDistance_valid": 1, "RadarCfg_MaxDistance": 250,
+    })
+    self.assertTrue(self._tx(valid))
+    self.assertFalse(self._tx(common.make_msg(0, MSG_ARS408_CONFIG, 8, b"\x01\x1f\x40\x00\x00\x00\x00\x00")))
     self.assertFalse(self._tx(common.make_msg(1, MSG_ARS408_CONFIG, 7)))
 
   def test_ars408_filter_config_is_limited_to_vehicle_bus_and_five_bytes(self):
-    self.assertTrue(self._tx(common.make_msg(1, MSG_ARS408_FILTER_CONFIG, 5)))
-    self.assertFalse(self._tx(common.make_msg(0, MSG_ARS408_FILTER_CONFIG, 5)))
+    valid = self.radar_packer.make_can_msg_panda("FilterCfg", 1, {
+      "FilterCfg_Type": 1, "FilterCfg_Index": 1, "FilterCfg_Active": 1, "FilterCfg_Valid": 1,
+      "FilterCfg_Min_Distance": 0, "FilterCfg_Max_Distance": 250,
+    })
+    self.assertTrue(self._tx(valid))
+    self.assertFalse(self._tx(common.make_msg(0, MSG_ARS408_FILTER_CONFIG, 5, b"\x8e\x00\x00\x09\xc4")))
     self.assertFalse(self._tx(common.make_msg(1, MSG_ARS408_FILTER_CONFIG, 8)))
+
+  def test_ars408_config_rejects_unreviewed_fields_and_cluster_output(self):
+    for values in (
+      {"RadarCfg_SensorID_valid": 1, "RadarCfg_SensorID": 0},
+      {"RadarCfg_SendQuality_valid": 1, "RadarCfg_SendQuality": 1},
+      {"RadarCfg_OutputType_valid": 1, "RadarCfg_OutputType": 2},
+      {"RadarCfg_MaxDistance_valid": 1, "RadarCfg_MaxDistance": 198},
+    ):
+      with self.subTest(values=values):
+        msg = self.radar_packer.make_can_msg_panda("RadarConfiguration", 1, values)
+        self.assertFalse(self._tx(msg))
+
+  def test_ars408_filter_rejects_cluster_and_reserved_index(self):
+    for filter_type, index in ((0, 1), (1, 15)):
+      with self.subTest(filter_type=filter_type, index=index):
+        msg = self.radar_packer.make_can_msg_panda("FilterCfg", 1, {
+          "FilterCfg_Type": filter_type, "FilterCfg_Index": index,
+          "FilterCfg_Active": 1, "FilterCfg_Valid": 1,
+        })
+        self.assertFalse(self._tx(msg))
 
   def test_ars408_motion_inputs_are_limited_to_dedicated_radar_bus_and_two_bytes(self):
     for address in (MSG_ARS408_SPEED, MSG_ARS408_YAW_RATE):

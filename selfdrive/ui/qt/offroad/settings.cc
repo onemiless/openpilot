@@ -6,7 +6,9 @@
 #include <thread> //차선캘리
 
 #include <QDebug>
+#include <QDateTime>
 #include <QProcess>
+#include <QTimer>
 
 #include "common/watchdog.h"
 #include "common/util.h"
@@ -15,6 +17,7 @@
 #include "selfdrive/ui/qt/qt_window.h"
 #include "selfdrive/ui/qt/widgets/prime.h"
 #include "selfdrive/ui/qt/widgets/scrollview.h"
+#include "selfdrive/ui/qt/widgets/input.h"
 #include "selfdrive/ui/qt/offroad/developer_panel.h"
 #include "selfdrive/ui/qt/offroad/firehose.h"
 
@@ -490,6 +493,130 @@ void SettingsWindow::setCurrentPanel(int index, const QString &param) {
   nav_btns->buttons()[index]->setChecked(true);
 }
 
+RadarPanel::RadarPanel(QWidget *parent) : ListWidget(parent) {
+  addItem(new CValueControl("TeslaRadarMode", tr("CP 雷达模式"),
+                            tr("0:关闭(纯视觉)，1:仅监控，2:融合，3:融合调试。修改后需重新启动车辆。"), 0, 3, 1));
+  addItem(new CValueControl("TeslaRadarMotionInput", tr("车辆运动补偿"),
+                            tr("通过独立 bus 1 向 ARS408 发送车速和横摆角速度；运行中生效，不写入雷达 NVM。"), 0, 1, 1));
+
+  state = new LabelControl(tr("雷达当前配置"), tr("等待 0x201 RadarState"),
+                           tr("所有可调项均以雷达实际回读为准。"));
+  fixed = new LabelControl(tr("只读/受保护配置"), tr("Sensor ID / Quality / Relay / RCS / Power / Sort"),
+                           tr("这些字段不会由设置页写入；Sensor ID 固定为 0，Objects 模式要求 Quality 开启。"));
+  filter_state = new LabelControl(tr("最近回读的对象过滤记录"), tr("尚未收到 0x204"),
+                                  tr("ARS408 不提供一次性读取全部过滤器的安全查询；修改后以对应 0x204 回读确认。"));
+  result = new LabelControl(tr("最近配置结果"), tr("无"),
+                            tr("applied 表示当前生效；nvm_sent 表示已发送 NVM 保存命令，仍需断电重启复核。"));
+  addItem(state);
+  addItem(fixed);
+  addItem(filter_state);
+  addItem(result);
+
+  auto add_config = [this](const QString &title, const QString &field, const QStringList &labels,
+                           const QList<int> &values, bool store) {
+    auto *control = new ButtonControl(title, store ? tr("写入 NVM") : tr("保存（当前生效）"),
+                                      store ? tr("先应用并回读确认，再发送 NVM 保存命令。")
+                                            : tr("只修改当前运行配置，不写入 NVM。"));
+    connect(control, &ButtonControl::clicked, this, [=]() { requestConfig(field, title, labels, values, store); });
+    addItem(control);
+  };
+
+  QStringList distances;
+  QList<int> distance_values;
+  for (int distance = 200; distance <= 250; distance += 2) {
+    distances << tr("%1 米").arg(distance);
+    distance_values << distance;
+  }
+  add_config(tr("最大探测距离"), "max_distance", distances, distance_values, false);
+  add_config(tr("最大探测距离"), "max_distance", distances, distance_values, true);
+  add_config(tr("扩展目标信息"), "send_extended", {tr("关闭"), tr("开启")}, {0, 1}, false);
+  add_config(tr("扩展目标信息"), "send_extended", {tr("关闭"), tr("开启")}, {0, 1}, true);
+  add_config(tr("输出类型"), "output_type", {tr("关闭输出"), tr("Objects")}, {0, 1}, false);
+  add_config(tr("输出类型"), "output_type", {tr("关闭输出"), tr("Objects")}, {0, 1}, true);
+
+  auto *filter = new ButtonControl(tr("对象过滤器 0x202"), tr("配置并保存"),
+                                   tr("每次只写一个完整过滤记录；雷达协议会自动保存到 NVM。Cluster 过滤不开放。"));
+  connect(filter, &ButtonControl::clicked, this, &RadarPanel::requestFilter);
+  addItem(filter);
+
+  auto *timer = new QTimer(this);
+  connect(timer, &QTimer::timeout, this, &RadarPanel::refresh);
+  timer->start(1000);
+  refresh();
+}
+
+void RadarPanel::requestConfig(const QString &field, const QString &title, const QStringList &labels,
+                               const QList<int> &values, bool store) {
+  QString selected = MultiOptionDialog::getSelection(tr("选择%1").arg(title), labels, "", this);
+  int index = labels.indexOf(selected);
+  if (index < 0 || index >= values.size()) return;
+
+  QString action = store ? tr("写入 NVM") : tr("保存（当前生效）");
+  if (!ConfirmationDialog::confirm(tr("车辆必须静止且控制未接管。确认%1：%2？").arg(action, selected), action, this)) return;
+
+  QString request_id = QString::number(QDateTime::currentMSecsSinceEpoch());
+  params.put("TeslaRadarConfigRequest",
+             QString("%1,%2,%3,%4").arg(request_id, field).arg(values[index]).arg(store ? 1 : 0).toStdString());
+}
+
+void RadarPanel::requestFilter() {
+  const QStringList names = {
+    "0:目标数量 [0,100]", "1:距离 [0,409.5] m", "2:方位角 [-50,52.375] deg",
+    "3:接近相对速度 [0,128.9925] m/s", "4:远离相对速度 [0,128.9925] m/s", "5:RCS [-50,52.375] dB",
+    "6:生命周期 [0,409.5] s", "7:尺寸 [0,102.375] m²", "8:存在概率 [0,7]",
+    "9:横向 Y [-409.5,409.5] m", "10:纵向 X [-500,1138.2] m", "11:横向左到右速度 [0,128.9925] m/s",
+    "12:纵向接近速度 [0,128.9925] m/s", "13:横向右到左速度 [0,128.9925] m/s",
+    "14:纵向远离速度 [0,128.9925] m/s",
+  };
+  QString selected = MultiOptionDialog::getSelection(tr("选择对象过滤项"), names, "", this);
+  if (selected.isEmpty()) return;
+  int index = selected.section(':', 0, 0).toInt();
+
+  QString active_text = MultiOptionDialog::getSelection(tr("过滤器状态"), {tr("关闭"), tr("开启")}, "", this);
+  if (active_text.isEmpty()) return;
+  int active = active_text == tr("开启") ? 1 : 0;
+
+  QString minimum_text = index == 0 ? "0" : InputDialog::getText(tr("输入最小值"), this);
+  if (minimum_text.isEmpty()) return;
+  QString maximum_text = InputDialog::getText(tr("输入最大值"), this);
+  if (maximum_text.isEmpty()) return;
+  bool min_ok = false, max_ok = false;
+  double minimum = minimum_text.toDouble(&min_ok);
+  double maximum = maximum_text.toDouble(&max_ok);
+  if (!min_ok || !max_ok || minimum > maximum) {
+    ConfirmationDialog::alert(tr("数值无效：必须是数字且最小值不能大于最大值。"), this);
+    return;
+  }
+  if (!ConfirmationDialog::confirm(tr("该过滤记录会由雷达自动写入 NVM。车辆必须静止且控制未接管，确认继续？"),
+                                   tr("配置并保存"), this)) return;
+
+  QString request_id = QString::number(QDateTime::currentMSecsSinceEpoch());
+  params.put("TeslaRadarFilterRequest",
+             QString("%1,%2,%3,%4,%5").arg(request_id).arg(index).arg(active)
+               .arg(minimum, 0, 'g', 10).arg(maximum, 0, 'g', 10).toStdString());
+}
+
+void RadarPanel::refresh() {
+  auto value = [this](const char *key, const QString &fallback = "-") {
+    QString v = QString::fromStdString(params.get(key));
+    return v.isEmpty() ? fallback : v;
+  };
+  QString output = value("TeslaRadarStateOutputType");
+  if (output == "0") output = tr("关闭");
+  else if (output == "1") output = "Objects";
+  else if (output == "2") output = tr("Clusters（CP 不支持）");
+  state->setText(tr("距离 %1 m | 输出 %2 | Extended %3 | Quality %4 | MotionRx %5")
+                   .arg(value("TeslaRadarStateMaxDistance"), output, value("TeslaRadarStateExtended"),
+                        value("TeslaRadarStateQuality"), value("TeslaRadarStateMotionRx")));
+  fixed->setText(tr("Sensor ID %1 | NVM读 %2 | NVM写 %3")
+                   .arg(value("TeslaRadarStateSensorID"), value("TeslaRadarStateNVMRead"), value("TeslaRadarStateNVMWrite")));
+  filter_state->setText(value("TeslaRadarFilterState", tr("尚未收到 0x204")));
+  QString config_result = value("TeslaRadarConfigResult", "");
+  QString filter_result = value("TeslaRadarFilterResult", "");
+  result->setText(config_result.isEmpty() && filter_result.isEmpty() ? tr("无")
+                  : tr("配置: %1 | 过滤: %2").arg(config_result, filter_result));
+}
+
 SettingsWindow::SettingsWindow(QWidget *parent) : QFrame(parent) {
 
   // setup two main layouts
@@ -538,6 +665,7 @@ SettingsWindow::SettingsWindow(QWidget *parent) : QFrame(parent) {
   if(false) {
     panels.append({tr("Firehose"), new FirehosePanel(this)});
   }
+  panels.append({tr("雷达"), new RadarPanel(this)});
   panels.append({ tr("萝卜"), new CarrotPanel(this) });
   panels.append({ tr("开发"), new DeveloperPanel(this) });
 
@@ -885,8 +1013,6 @@ CarrotPanel::CarrotPanel(QWidget* parent) : QWidget(parent) {
 
 
   startToggles->addItem(selectCarBtn);
-  startToggles->addItem(new CValueControl("TeslaRadarMode", "Tesla ARS408 雷达模式(2)", "0:关闭(纯视觉), 1:仅监控, 2:融合, 3:融合调试。改变值后需要重新启动车辆", 0, 3, 1));
-  startToggles->addItem(new CValueControl("TeslaRadarMotionInput", "ARS408 车辆运动补偿(1)", "向独立CAN上的ARS408发送车速和横摆角速度，提高弯道及变道目标追踪稳定性。1:开启，0:关闭，默认开启，改变值后需要重启车辆", 0, 1, 1));
   startToggles->addItem(new CValueControl("modelid", "模型选择(-1)", "-1:默认模型,0:TR16,1:DTR,2:Firehose,3:GWM,4:PP,5:DS,6:DSv2,7:WMI,8:CD210,重启后生效!", -1, 100, 1));
   startToggles->addItem(new CValueControl("HyundaiCameraSCC", "现代: 摄像头SCC(0)", "1:连接SCC的CAN线到摄像头, 2:同步定速状态, 3:原厂长控，不是用摄像头实现SCC的均设置为0", -1, 100, 1));
   startToggles->addItem(new CValueControl("CanfdHDA2", "CANFD: HDA2 模式", "1:HDA2, 2:HDA2+盲点监测, 一般非CanFD车型设置为0", 0, 2, 1));

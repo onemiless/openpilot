@@ -102,6 +102,25 @@ private:
   ParamWatcher *fs_watch;
 };
 
+class RadarPanel : public ListWidget {
+  Q_OBJECT
+
+public:
+  explicit RadarPanel(QWidget *parent = nullptr);
+
+private:
+  void requestConfig(const QString &field, const QString &title, const QStringList &labels,
+                     const QList<int> &values, bool store);
+  void requestFilter();
+  void refresh();
+
+  Params params;
+  LabelControl *state = nullptr;
+  LabelControl *fixed = nullptr;
+  LabelControl *filter_state = nullptr;
+  LabelControl *result = nullptr;
+};
+
 // Forward declaration
 class FirehosePanel;
 

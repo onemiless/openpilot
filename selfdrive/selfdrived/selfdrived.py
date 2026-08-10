@@ -42,6 +42,16 @@ SafetyModel = car.CarParams.SafetyModel
 IGNORED_SAFETY_MODES = (SafetyModel.silent, SafetyModel.noOutput)
 
 
+def radar_error_event(radar_errors):
+  if radar_errors.canError:
+    return EventName.radarFault
+  if radar_errors.wrongConfig:
+    return EventName.radarWrongConfig
+  if radar_errors.radarUnavailableTemporary:
+    return EventName.radarTempUnavailable
+  return EventName.radarFault
+
+
 class SelfdriveD:
   def __init__(self, CP=None):
     self.params = Params()
@@ -387,15 +397,8 @@ class SelfdriveD:
     if not REPLAY and self.rk.lagging:
       self.events.add(EventName.selfdrivedLagging)
     if not self.sm.valid['radarState']:
-      if self.sm['radarState'].radarErrors.canError:
-        # Keep radar CAN failures distinct from vehicle CAN failures so MADS can preserve lateral control.
-        self.events.add(EventName.radarFault)
-      elif self.sm['radarState'].radarErrors.wrongConfig:
-        self.events.add(EventName.radarWrongConfig)
-      elif self.sm['radarState'].radarErrors.radarUnavailableTemporary:
-        self.events.add(EventName.radarTempUnavailable)
-      else:
-        self.events.add(EventName.radarFault)
+      # Keep radar CAN failures distinct from vehicle CAN failures so MADS can preserve lateral control.
+      self.events.add(radar_error_event(self.sm['radarState'].radarErrors))
     if not self.sm.valid['pandaStates']:
       self.events.add(EventName.usbError)
     if CS.canTimeout:

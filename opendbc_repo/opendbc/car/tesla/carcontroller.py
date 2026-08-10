@@ -5,7 +5,7 @@ import numpy as np
 from opendbc.can import CANPacker
 from opendbc.car import Bus, apply_steer_angle_limits_vm, structs
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.tesla.ars408_can import ARS408CAN, ARS408_MOTION_INPUT_ENABLED, should_configure_radar
+from opendbc.car.tesla.ars408_can import ARS408CAN, ARS408_FILTER_SIGNALS, ARS408_MOTION_INPUT_ENABLED
 from opendbc.car.tesla.coop_steering import CoopSteeringCarController
 from opendbc.car.tesla.teslacan import TeslaCAN
 from opendbc.car.tesla.values import CarControllerParams
@@ -36,6 +36,8 @@ class CarController(CarControllerBase):
     self._coop_saturated_prev = False
     self._steering_disengage_prev = False
     self._steering_override_prev = False
+    self._radar_config_request = None
+    self._radar_filter_request = None
     log.info("Tesla cooperative steering configured enabled=%d", int(self.coop_steering_enabled))
     log.info("ARS408 motion input configured enabled=%d bus=1 rate_hz=20", int(self.radar_motion_enabled))
 
@@ -63,6 +65,132 @@ class CarController(CarControllerBase):
       self.ars408_can.create_yaw_rate_information(yaw_rate_deg_s),
     ]
 
+  @staticmethod
+  def _parse_radar_config_request(raw):
+    request_id, field, value, store = raw.split(",", 3)
+    if field not in ("max_distance", "send_extended", "output_type"):
+      raise ValueError(f"unsupported field {field}")
+    value, store = int(value), int(store)
+    if store not in (0, 1):
+      raise ValueError("store must be 0 or 1")
+    return {"id": request_id, "field": field, "value": value, "store": bool(store),
+            "sent": False, "store_sent": False, "sent_frame": 0}
+
+  @staticmethod
+  def _parse_radar_filter_request(raw):
+    request_id, index, active, minimum, maximum = raw.split(",", 4)
+    active = int(active)
+    if active not in (0, 1):
+      raise ValueError("active must be 0 or 1")
+    return {"id": request_id, "index": int(index), "active": bool(active),
+            "minimum": float(minimum), "maximum": float(maximum), "sent": False, "sent_frame": 0}
+
+  def _configuration_safe(self, CC, CS):
+    return bool(CS.out.canValid and CS.out.standstill and not CC.latActive and not CC.longActive)
+
+  def _publish_config_result(self, request_id, status, detail=""):
+    self.params.put_nonblocking("TeslaRadarConfigResult", f"{request_id},{status},{detail}")
+
+  def _publish_filter_result(self, request_id, status, detail=""):
+    self.params.put_nonblocking("TeslaRadarFilterResult", f"{request_id},{status},{detail}")
+
+  def _radar_config_matches(self, request):
+    state_keys = {
+      "max_distance": "TeslaRadarStateMaxDistance",
+      "send_extended": "TeslaRadarStateExtended",
+      "output_type": "TeslaRadarStateOutputType",
+    }
+    raw = self.params.get(state_keys[request["field"]])
+    return raw is not None and int(raw) == request["value"]
+
+  def update_radar_configuration(self, CC, CS):
+    """Process one field-scoped RadarCfg or one atomic Object FilterCfg request."""
+    sends = []
+    if self.ars408_can is None:
+      return sends
+
+    if self._radar_config_request is None and self._radar_filter_request is None:
+      raw_config = self.params.get("TeslaRadarConfigRequest", encoding="utf8")
+      raw_filter = self.params.get("TeslaRadarFilterRequest", encoding="utf8")
+      try:
+        if raw_config:
+          self._radar_config_request = self._parse_radar_config_request(raw_config)
+          self.params.remove("TeslaRadarConfigRequest")
+        elif raw_filter:
+          self._radar_filter_request = self._parse_radar_filter_request(raw_filter)
+          self.params.remove("TeslaRadarFilterRequest")
+      except (TypeError, ValueError) as exc:
+        if raw_config:
+          self._publish_config_result("invalid", "rejected", str(exc))
+          self.params.remove("TeslaRadarConfigRequest")
+        if raw_filter:
+          self._publish_filter_result("invalid", "rejected", str(exc))
+          self.params.remove("TeslaRadarFilterRequest")
+
+    request = self._radar_config_request
+    if request is not None:
+      if not request["sent"]:
+        if not self._configuration_safe(CC, CS):
+          self._publish_config_result(request["id"], "waiting", "stop vehicle and disengage controls")
+          return sends
+        try:
+          sends.append(self.ars408_can.create_radar_configuration(request["field"], request["value"]))
+        except ValueError as exc:
+          self._publish_config_result(request["id"], "rejected", str(exc))
+          self._radar_config_request = None
+          return sends
+        request["sent"] = True
+        request["sent_frame"] = self.frame
+        self._publish_config_result(request["id"], "sent", request["field"])
+      elif self._radar_config_matches(request):
+        if request["store"] and not request["store_sent"]:
+          sends.append(self.ars408_can.create_radar_configuration("store_nvm", 1))
+          request["store_sent"] = True
+          self._publish_config_result(request["id"], "nvm_sent", "power-cycle verification pending")
+          self._radar_config_request = None
+        else:
+          self._publish_config_result(request["id"], "applied", request["field"])
+          self._radar_config_request = None
+      elif self.frame - request["sent_frame"] > 300:
+        self._publish_config_result(request["id"], "timeout", "RadarState did not confirm requested value")
+        self._radar_config_request = None
+      return sends
+
+    request = self._radar_filter_request
+    if request is not None:
+      if not request["sent"]:
+        if not self._configuration_safe(CC, CS):
+          self._publish_filter_result(request["id"], "waiting", "stop vehicle and disengage controls")
+          return sends
+        try:
+          sends.append(self.ars408_can.create_filter_configuration(
+            request["index"], request["active"], request["minimum"], request["maximum"]))
+        except ValueError as exc:
+          self._publish_filter_result(request["id"], "rejected", str(exc))
+          self._radar_filter_request = None
+          return sends
+        request["sent"] = True
+        request["sent_frame"] = self.frame
+        self._publish_filter_result(request["id"], "sent", str(request["index"]))
+      else:
+        raw_state = self.params.get("TeslaRadarFilterState", encoding="utf8")
+        if raw_state:
+          try:
+            index, active, minimum, maximum = raw_state.split(",", 3)
+            resolution = ARS408_FILTER_SIGNALS[request["index"]][3]
+            matches = int(index) == request["index"] and bool(int(active)) == request["active"] and \
+                      math.isclose(float(minimum), request["minimum"], abs_tol=resolution / 2 + 1e-6) and \
+                      math.isclose(float(maximum), request["maximum"], abs_tol=resolution / 2 + 1e-6)
+          except ValueError:
+            matches = False
+          if matches:
+            self._publish_filter_result(request["id"], "applied", str(request["index"]))
+            self._radar_filter_request = None
+        if self._radar_filter_request is not None and self.frame - request["sent_frame"] > 200:
+          self._publish_filter_result(request["id"], "timeout", "FilterState did not confirm requested record")
+          self._radar_filter_request = None
+    return sends
+
   def update_steering_control(self, desired_angle, lat_active, CS):
     self.planner_apply_angle_last = apply_steer_angle_limits_vm(
       desired_angle, self.planner_apply_angle_last, CS.out.vEgoRaw,
@@ -79,20 +207,13 @@ class CarController(CarControllerBase):
     actuators = CC.actuators
     can_sends = []
 
-    # Configuration is stored in radar NVM. Never send it automatically;
-    # TeslaRadarReinitialize is an explicit, one-shot request for a new setup.
-    radar_reinitialize = self.params.get_bool("TeslaRadarReinitialize")
-    if self.ars408_can is not None and should_configure_radar(self.frame, radar_reinitialize):
-      can_sends.append(self.ars408_can.create_radar_configuration())
-      can_sends.append(self.ars408_can.create_object_count_filter())
-      if radar_reinitialize:
-        self.params.remove("TeslaRadarReinitialize")
-      log.info("ARS408 configuration sent on dedicated radar bus at frame %d reinitialize=%d",
-               self.frame, int(radar_reinitialize))
+    can_sends.extend(self.update_radar_configuration(CC, CS))
 
     # The directly connected ARS408 has a dedicated, non-forwarded bus 1.
     if self.frame % 5 == 0:
       can_sends.extend(self.send_radar_motion(CS))
+    if self.frame % 100 == 0:
+      self.radar_motion_enabled = self.params.get_bool("TeslaRadarMotionInput")
 
     # Disengage and allow for user override on high torque inputs
     # TODO: move this to a generic disengageRequested carState field and set CC.cruiseControl.cancel based on it

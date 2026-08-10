@@ -3,8 +3,9 @@ from types import SimpleNamespace
 from cereal import custom
 from opendbc.car import structs
 
-from openpilot.selfdrive.selfdrived.events import ET, EventName
+from openpilot.selfdrive.selfdrived.events import ET, Events, EventName
 from openpilot.selfdrive.selfdrived.mads import ModularAssistiveDrivingSystem
+from openpilot.selfdrive.selfdrived.selfdrived import radar_error_event
 
 
 MadsState = custom.MadsState.State
@@ -138,6 +139,32 @@ def test_mads_keeps_lateral_active_for_all_radar_only_soft_disables():
   mixed_events = FakeEvents(ET.SOFT_DISABLE, names=(EventName.radarTempUnavailable, EventName.overheat))
   mads.update(make_car_state(), False, False, mixed_events)
   assert mads.state == MadsState.disabled
+
+
+def test_radar_error_mapping_pipeline_keeps_mads_lateral_active():
+  error_fields = (
+    ("canError", EventName.radarFault),
+    ("radarFault", EventName.radarFault),
+    ("wrongConfig", EventName.radarWrongConfig),
+    ("radarUnavailableTemporary", EventName.radarTempUnavailable),
+  )
+
+  for error_field, expected_event in error_fields:
+    radar_data = structs.RadarData()
+    setattr(radar_data.errors, error_field, True)
+    events = Events()
+    mapped_event = radar_error_event(radar_data.errors)
+    events.add(mapped_event)
+
+    assert mapped_event == expected_event
+    assert events.contains(ET.SOFT_DISABLE)
+    assert not events.contains(ET.IMMEDIATE_DISABLE)
+
+    mads = make_mads(steering_mode=0)
+    engage(mads)
+    mads.update(make_car_state(), False, False, events)
+    assert mads.state == MadsState.enabled
+    assert mads.active
 
 
 def test_single_frame_eps_error_4_pauses_then_recovers_after_stable_available():

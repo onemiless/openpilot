@@ -392,15 +392,98 @@ def test_interference_requires_confirmation_before_requesting_takeover():
   radar.interference_frames = 0
 
   for _ in range(ARS408_INTERFERENCE_CONFIRM_FRAMES - 1):
+    radar._update_interference_counter(radar.last_radar_state)
     unconfirmed = structs.RadarData()
     radar._apply_radar_state_errors(unconfirmed)
     assert not unconfirmed.errors.radarUnavailableTemporary
 
+  radar._update_interference_counter(radar.last_radar_state)
   confirmed = structs.RadarData()
   radar._apply_radar_state_errors(confirmed)
   assert confirmed.errors.radarUnavailableTemporary
 
   radar.last_radar_state["RadarState_Interference"] = 0
+  radar._update_interference_counter(radar.last_radar_state)
   recovered = structs.RadarData()
   radar._apply_radar_state_errors(recovered)
   assert not recovered.errors.radarUnavailableTemporary
+
+
+def test_repeated_object_results_do_not_confirm_stale_interference_state():
+  radar = RadarInterface.__new__(RadarInterface)
+  radar.last_radar_state = {
+    "RadarState_Interference": 1,
+    "RadarState_Temperature_Error": 0,
+    "RadarState_Temporary_Error": 0,
+    "RadarState_Voltage_Error": 0,
+    "RadarState_Persistent_Error": 0,
+    "RadarState_SensorID": 0,
+    "RadarState_OutputTypeCfg": 1,
+    "RadarState_SendQualityCfg": 1,
+    "RadarState_SendExtInfoCfg": 1,
+    "RadarState_CtrlRelayCfg": 0,
+    "RadarState_SortIndex": 1,
+    "RadarState_RCS_Threshold": 0,
+    "RadarState_RadarPowerCfg": 0,
+    "RadarState_MaxDistanceCfg": 250,
+    "RadarState_MotionRxState": 3,
+  }
+  radar.radar_state_frames = 10
+  radar.last_fault_signature = None
+  radar.interference_frames = 0
+
+  radar._update_interference_counter(radar.last_radar_state)
+  for _ in range(ARS408_INTERFERENCE_CONFIRM_FRAMES * 2):
+    result = structs.RadarData()
+    radar._apply_radar_state_errors(result)
+    assert not result.errors.radarUnavailableTemporary
+
+  assert radar.interference_frames == 1
+
+
+def test_runtime_max_distance_extended_and_output_are_dynamic():
+  point = structs.RadarData.RadarPoint()
+  point.trackId = 7
+  point.dRel = 190.0
+  point.yRel = 0.0
+  point.aRel = 1.5
+  point.objectClass = 1
+  radar = RadarInterface.__new__(RadarInterface)
+  radar.params = type("FakeParams", (), {"put_nonblocking": lambda *_args: None})()
+  far_point = structs.RadarData.RadarPoint()
+  far_point.trackId = 8
+  far_point.dRel = 220.0
+  radar.pts = {7: point, 8: far_point}
+  radar.track_miss_counts = {7: 0, 8: 0}
+  radar.raw_to_track_id = {7: 7, 8: 8}
+  radar.cycle_started = True
+  radar.expected_objects = 1
+  radar.runtime_max_distance = 250
+  radar.runtime_output_type = 1
+  radar.runtime_extended_enabled = True
+  radar.last_published_radar_config = None
+  state = {
+    "RadarState_MaxDistanceCfg": 200,
+    "RadarState_OutputTypeCfg": 1,
+    "RadarState_SendExtInfoCfg": 0,
+    "RadarState_SendQualityCfg": 1,
+    "RadarState_SensorID": 0,
+    "RadarState_MotionRxState": 3,
+    "RadarState_NVMReadStatus": 0,
+    "RadarState_NVMwriteStatus": 0,
+  }
+
+  radar._apply_runtime_configuration(state)
+  assert radar.runtime_max_distance == 200
+  assert radar.runtime_extended_enabled is False
+  assert list(radar.pts) == [7]
+  assert radar.pts[7].aRel == 0.0
+  assert radar.pts[7].objectClass == 7
+
+  radar.pts = {7: point}
+  state["RadarState_MaxDistanceCfg"] = 250
+  state["RadarState_OutputTypeCfg"] = 0
+  radar._apply_runtime_configuration(state)
+  assert radar.runtime_output_type == 0
+  assert radar.pts == {}
+  assert radar.expected_objects == 0

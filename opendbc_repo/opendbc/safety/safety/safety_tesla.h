@@ -214,6 +214,47 @@ static bool tesla_tx_hook(const CANPacket_t *to_send) {
     }
   }
 
+  // ARS408 RadarConfiguration: permit exactly one reviewed field per frame.
+  // This prevents a UI/backend bug from changing SensorID, power, quality,
+  // sort order, relay, or RCS threshold as an unintended side effect.
+  if (addr == 0x200) {
+    const uint8_t valid = GET_BYTE(to_send, 0);
+    bool valid_config = false;
+    if (valid == 0x01U) {  // MaxDistance: 200..250 m in 2 m increments
+      const int raw_distance = (GET_BYTE(to_send, 1) << 2) | (GET_BYTE(to_send, 2) >> 6);
+      valid_config = (raw_distance >= 100) && (raw_distance <= 125) &&
+                     ((GET_BYTE(to_send, 2) & 0x3FU) == 0U) &&
+                     (GET_BYTE(to_send, 3) == 0U) && (GET_BYTE(to_send, 4) == 0U) &&
+                     (GET_BYTE(to_send, 5) == 0U) && (GET_BYTE(to_send, 6) == 0U) &&
+                     (GET_BYTE(to_send, 7) == 0U);
+    } else if (valid == 0x08U) {  // OutputType: disabled or Objects only
+      valid_config = (GET_BYTE(to_send, 1) == 0U) && (GET_BYTE(to_send, 2) == 0U) &&
+                     (GET_BYTE(to_send, 3) == 0U) &&
+                     ((GET_BYTE(to_send, 4) == 0U) || (GET_BYTE(to_send, 4) == 0x08U)) &&
+                     (GET_BYTE(to_send, 5) == 0U) && (GET_BYTE(to_send, 6) == 0U) &&
+                     (GET_BYTE(to_send, 7) == 0U);
+    } else if (valid == 0x20U) {  // Extended information: disabled or enabled
+      valid_config = (GET_BYTE(to_send, 1) == 0U) && (GET_BYTE(to_send, 2) == 0U) &&
+                     (GET_BYTE(to_send, 3) == 0U) && (GET_BYTE(to_send, 4) == 0U) &&
+                     ((GET_BYTE(to_send, 5) == 0U) || (GET_BYTE(to_send, 5) == 0x08U)) &&
+                     (GET_BYTE(to_send, 6) == 0U) && (GET_BYTE(to_send, 7) == 0U);
+    } else if (valid == 0x80U) {  // Store current configuration in NVM
+      valid_config = (GET_BYTE(to_send, 1) == 0U) && (GET_BYTE(to_send, 2) == 0U) &&
+                     (GET_BYTE(to_send, 3) == 0U) && (GET_BYTE(to_send, 4) == 0U) &&
+                     (GET_BYTE(to_send, 5) == 0x80U) && (GET_BYTE(to_send, 6) == 0U) &&
+                     (GET_BYTE(to_send, 7) == 0U);
+    }
+    violation |= !valid_config;
+  }
+
+  // Object FilterCfg only. Require Valid, reject cluster filters and the
+  // reserved index 15. Min/max are still range-checked by the host packer.
+  if (addr == 0x202) {
+    const uint8_t header = GET_BYTE(to_send, 0);
+    const int index = (header >> 3) & 0x0FU;
+    violation |= ((header & 0x83U) != 0x82U) || (index > 14);
+  }
+
   if (violation) {
     tx = false;
   }

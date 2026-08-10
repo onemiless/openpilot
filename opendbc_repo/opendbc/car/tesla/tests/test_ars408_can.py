@@ -6,15 +6,21 @@ import pytest
 from opendbc.can import CANParser
 from opendbc.car import structs
 from opendbc.car.tesla.ars408_can import (
-  ARS408_BUS, ARS408_MAX_DISTANCE, ARS408_MAX_OBJECTS, ARS408_MOTION_INPUT_ENABLED, ARS408_SENSOR_ID,
-  ARS408CAN, should_configure_radar,
+  ARS408_BUS, ARS408_FILTER_SIGNALS, ARS408_MOTION_INPUT_ENABLED, ARS408_SENSOR_ID, ARS408CAN,
 )
 from opendbc.car.tesla.carcontroller import CarController
 from opendbc.car.tesla.carstate import calculate_yaw_rate
 
 
-def test_startup_configuration_targets_dedicated_radar_can():
-  address, data, bus = ARS408CAN().create_radar_configuration()
+def decode(message, name):
+  address, data, bus = message
+  parser = CANParser("ARS408", [(name, math.nan)], bus)
+  parser.update([(1_000_000_000, [(address, data, bus)])])
+  return parser.vl[name]
+
+
+def test_field_scoped_configuration_targets_dedicated_radar_can():
+  address, data, bus = ARS408CAN().create_radar_configuration("max_distance", 250)
 
   assert address == 0x200
   assert bus == ARS408_BUS == 1
@@ -25,39 +31,47 @@ def test_decoder_and_configuration_share_sensor_id():
   assert ARS408_SENSOR_ID == 0
 
 
-def test_configuration_matches_persisted_sensor_zero_extended_output():
-  address, data, bus = ARS408CAN().create_radar_configuration()
-  parser = CANParser("ARS408", [("RadarConfiguration", math.nan)], bus)
-  parser.update([(1_000_000_000, [(address, data, bus)])])
+@pytest.mark.parametrize(("field", "value", "valid_signal", "value_signal"), [
+  ("max_distance", 236, "RadarCfg_MaxDistance_valid", "RadarCfg_MaxDistance"),
+  ("send_extended", 0, "RadarCfg_SendExtInfo_valid", "RadarCfg_SendExtInfo"),
+  ("output_type", 1, "RadarCfg_OutputType_valid", "RadarCfg_OutputType"),
+  ("store_nvm", 1, "RadarCfg_StoreInNVM_valid", "RadarCfg_StoreInNVM"),
+])
+def test_configuration_sets_only_the_requested_valid_bit(field, value, valid_signal, value_signal):
+  state = decode(ARS408CAN().create_radar_configuration(field, value), "RadarConfiguration")
+  valid_signals = [name for name in state if name.endswith("_valid")]
 
-  assert ARS408_MAX_DISTANCE == 250
-  assert parser.vl["RadarConfiguration"]["RadarCfg_MaxDistance"] == 250
-  assert parser.vl["RadarConfiguration"]["RadarCfg_SensorID"] == 0
-  assert parser.vl["RadarConfiguration"]["RadarCfg_SendExtInfo"] == 1
-  assert parser.vl["RadarConfiguration"]["RadarCfg_SendQuality"] == 1
-  assert parser.vl["RadarConfiguration"]["RadarCfg_StoreInNVM_valid"] == 1
-  assert parser.vl["RadarConfiguration"]["RadarCfg_StoreInNVM"] == 1
+  assert state[valid_signal] == 1
+  assert state[value_signal] == value
+  assert all(state[name] == (1 if name == valid_signal else 0) for name in valid_signals)
 
 
-def test_object_count_filter_limits_dedicated_radar_bus_load():
-  address, data, bus = ARS408CAN().create_object_count_filter()
-  parser = CANParser("ARS408", [("FilterCfg", math.nan)], bus)
-  parser.update([(1_000_000_000, [(address, data, bus)])])
+@pytest.mark.parametrize(("field", "value"), [
+  ("max_distance", 199), ("max_distance", 251), ("max_distance", 201), ("output_type", 2),
+])
+def test_unsupported_configuration_is_rejected(field, value):
+  with pytest.raises(ValueError):
+    ARS408CAN().create_radar_configuration(field, value)
+
+
+def test_object_filter_writes_one_complete_record():
+  address, data, bus = ARS408CAN().create_filter_configuration(1, True, 10.0, 200.0)
+  state = decode((address, data, bus), "FilterCfg")
 
   assert address == 0x202
-  assert parser.vl["FilterCfg"]["FilterCfg_Type"] == 1
-  assert parser.vl["FilterCfg"]["FilterCfg_Index"] == 0
-  assert parser.vl["FilterCfg"]["FilterCfg_Active"] == 1
-  assert parser.vl["FilterCfg"]["FilterCfg_Max_NofObj"] == ARS408_MAX_OBJECTS == 32
+  assert state["FilterCfg_Type"] == 1
+  assert state["FilterCfg_Index"] == 1
+  assert state["FilterCfg_Active"] == 1
+  assert state["FilterCfg_Valid"] == 1
+  assert state["FilterCfg_Min_Distance"] == 10.0
+  assert state["FilterCfg_Max_Distance"] == 200.0
 
 
-def test_configuration_is_only_sent_after_explicit_manual_request():
-  assert not should_configure_radar(10)
-  assert not should_configure_radar(500)
-  assert not should_configure_radar(501)
-  assert not should_configure_radar(1000)
-  assert not should_configure_radar(3000)
-  assert should_configure_radar(3000, reinitialize=True)
+def test_all_supported_object_filter_indices_pack():
+  for index, (_suffix, lower, upper, _resolution) in ARS408_FILTER_SIGNALS.items():
+    state = decode(ARS408CAN().create_filter_configuration(index, True, lower, upper), "FilterCfg")
+    assert state["FilterCfg_Index"] == index
+    assert state["FilterCfg_Type"] == 1
 
 
 def test_motion_input_frames_are_encoded_for_dedicated_radar_bus():
@@ -110,3 +124,60 @@ def test_controller_stops_motion_tx_when_car_state_is_invalid():
   car_state = SimpleNamespace(out=SimpleNamespace(vEgoRaw=20.0, yawRate=0.1, canValid=False))
 
   assert controller.send_radar_motion(car_state) == []
+
+
+class FakeParams:
+  def __init__(self, values=None):
+    self.values = dict(values or {})
+
+  def get(self, key, encoding=None):
+    value = self.values.get(key)
+    if value is None:
+      return None
+    return value if encoding else str(value).encode()
+
+  def remove(self, key):
+    self.values.pop(key, None)
+
+  def put_nonblocking(self, key, value):
+    self.values[key] = str(value)
+
+
+def test_controller_waits_for_readback_before_nvm_store():
+  controller = CarController.__new__(CarController)
+  controller.ars408_can = ARS408CAN()
+  controller.params = FakeParams({"TeslaRadarConfigRequest": "42,max_distance,240,1"})
+  controller._radar_config_request = None
+  controller._radar_filter_request = None
+  controller.frame = 100
+  controls = SimpleNamespace(latActive=False, longActive=False)
+  car_state = SimpleNamespace(out=SimpleNamespace(canValid=True, standstill=True))
+
+  sends = controller.update_radar_configuration(controls, car_state)
+  assert len(sends) == 1
+  assert decode(sends[0], "RadarConfiguration")["RadarCfg_MaxDistance_valid"] == 1
+  assert controller.params.values["TeslaRadarConfigResult"].split(",")[1] == "sent"
+
+  controller.frame += 1
+  assert controller.update_radar_configuration(controls, car_state) == []
+  controller.params.values["TeslaRadarStateMaxDistance"] = "240"
+  controller.frame += 1
+  sends = controller.update_radar_configuration(controls, car_state)
+  assert len(sends) == 1
+  assert decode(sends[0], "RadarConfiguration")["RadarCfg_StoreInNVM_valid"] == 1
+  assert controller._radar_config_request is None
+  assert controller.params.values["TeslaRadarConfigResult"].split(",")[1] == "nvm_sent"
+
+
+def test_controller_does_not_configure_while_moving_or_engaged():
+  controller = CarController.__new__(CarController)
+  controller.ars408_can = ARS408CAN()
+  controller.params = FakeParams({"TeslaRadarConfigRequest": "43,send_extended,0,0"})
+  controller._radar_config_request = None
+  controller._radar_filter_request = None
+  controller.frame = 100
+  controls = SimpleNamespace(latActive=True, longActive=False)
+  car_state = SimpleNamespace(out=SimpleNamespace(canValid=True, standstill=True))
+
+  assert controller.update_radar_configuration(controls, car_state) == []
+  assert controller.params.values["TeslaRadarConfigResult"].split(",")[1] == "waiting"

@@ -53,7 +53,7 @@ ARS408_HANDOVER_YVREL = 1.5
 log = logging.getLogger(__name__)
 
 
-def object_rejection_reason(obj, previously_tracked=False, timed_out=False):
+def object_rejection_reason(obj, previously_tracked=False, timed_out=False, max_distance=ARS408_MAX_DISTANCE):
   if timed_out:
     return "timeout"
 
@@ -73,7 +73,7 @@ def object_rejection_reason(obj, previously_tracked=False, timed_out=False):
   # A predicted-only target must first have been observed by the interface.
   if measurement_state == 3 and not previously_tracked:
     return "invalid"
-  if not (0.0 <= d_rel <= ARS408_MAX_DISTANCE and abs(y_rel) <= 100.0 and
+  if not (0.0 <= d_rel and math.hypot(d_rel, y_rel) <= max_distance and abs(y_rel) <= 100.0 and
           -100.0 <= v_rel <= 100.0 and abs(yv_rel) <= 60.0):
     return "out of range"
 
@@ -89,8 +89,8 @@ def object_rejection_reason(obj, previously_tracked=False, timed_out=False):
   return None
 
 
-def object_is_usable(obj, previously_tracked=False):
-  return object_rejection_reason(obj, previously_tracked) is None
+def object_is_usable(obj, previously_tracked=False, max_distance=ARS408_MAX_DISTANCE):
+  return object_rejection_reason(obj, previously_tracked, max_distance=max_distance) is None
 
 
 def _object_motion(obj):
@@ -117,6 +117,13 @@ def objects_represent_same_target(first, second, handover=False):
 
   first_class = int(first.get("Obj_Class", 7)) if isinstance(first, dict) else int(first.objectClass)
   second_class = int(second.get("Obj_Class", 7)) if isinstance(second, dict) else int(second.objectClass)
+  if first_class == 7 or second_class == 7:
+    # Missing Extended data removes the class discriminator. Tighten the
+    # motion envelope instead of treating unknown classification as equivalent.
+    d_limit *= 0.7
+    y_limit *= 0.7
+    v_limit *= 0.7
+    yv_limit *= 0.7
   class_matches = first_class == 7 or second_class == 7 or first_class == second_class
   return class_matches and abs(first_motion[0] - second_motion[0]) <= d_limit and \
     abs(first_motion[1] - second_motion[1]) <= y_limit and abs(first_motion[2] - second_motion[2]) <= v_limit and \
@@ -125,11 +132,15 @@ def objects_represent_same_target(first, second, handover=False):
 
 def get_radar_can_parser(CP):
   messages = [
-    ("Obj_0_Status", 14),
+    # OutputType=disabled intentionally stops this message. The explicit
+    # runtime timeout below provides the object-mode validity check.
+    ("Obj_0_Status", math.nan),
     ("Obj_1_General", math.nan),
     ("Obj_2_Quality", math.nan),
     ("Obj_3_Extended", math.nan),
     ("RadarState", math.nan),
+    ("FilterState_Header", math.nan),
+    ("FilterState_Cfg", math.nan),
   ]
   return CANParser(ARS408_DBC, messages, ARS408_BUS)
 
@@ -166,11 +177,17 @@ class RadarInterface(RadarInterfaceBase):
     self.track_handover_count = 0
     self.duplicate_suppression_count = 0
     self.last_duplicate_signature = None
+    self.runtime_max_distance = ARS408_MAX_DISTANCE
+    self.runtime_output_type = 1
+    self.runtime_extended_enabled = ARS408_SEND_EXTENDED
+    self.last_published_radar_config = None
+    self.last_published_filter_state = None
 
   def _set_status(self, ret):
-    ret.radarOnline = getattr(self, "last_status_update", None) is not None and self._missing_can_signature() is None
+    ret.radarOnline = getattr(self, "last_radar_state_update", None) is not None and self._missing_can_signature() is None
     ret.canValid = bool(self.rcp.can_valid) and self._missing_can_signature() is None
-    ret.objectCount = max(0, min(self.expected_objects, ARS408_PROTOCOL_MAX_OBJECTS))
+    ret.objectCount = max(0, min(self.expected_objects, ARS408_PROTOCOL_MAX_OBJECTS)) \
+      if getattr(self, "runtime_output_type", 1) == 1 else 0
     ret.mode = getattr(self, "radar_mode", 0)
 
   def _missing_can_signature(self):
@@ -180,8 +197,9 @@ class RadarInterface(RadarInterfaceBase):
 
     last_status_update = getattr(self, "last_status_update", None)
     last_radar_state_update = getattr(self, "last_radar_state_update", None)
-    status_missing = last_status_update is None or \
-                     update_count - last_status_update > ARS408_STATUS_TIMEOUT_UPDATES
+    object_output = getattr(self, "runtime_output_type", 1) == 1
+    status_missing = object_output and (last_status_update is None or \
+                     update_count - last_status_update > ARS408_STATUS_TIMEOUT_UPDATES)
     state_missing = last_radar_state_update is None or \
                     update_count - last_radar_state_update > ARS408_STATE_TIMEOUT_UPDATES
     return (status_missing, state_missing) if status_missing or state_missing else None
@@ -264,35 +282,108 @@ class RadarInterface(RadarInterfaceBase):
     state = self.rcp.vl["RadarState"]
     self.last_radar_state = dict(state)
     self.radar_state_frames += 1
+    self._update_interference_counter(state)
+    self._apply_runtime_configuration(state)
+
+  def _apply_runtime_configuration(self, state):
+    max_distance = int(state["RadarState_MaxDistanceCfg"])
+    output_type = int(state["RadarState_OutputTypeCfg"])
+    extended_enabled = bool(int(state["RadarState_SendExtInfoCfg"]))
+
+    if 200 <= max_distance <= 250 and max_distance % 2 == 0:
+      if max_distance < getattr(self, "runtime_max_distance", ARS408_MAX_DISTANCE):
+        for object_id, point in list(self.pts.items()):
+          if math.hypot(float(point.dRel), float(point.yRel)) > max_distance:
+            del self.pts[object_id]
+            self.track_miss_counts.pop(object_id, None)
+            self.raw_to_track_id.pop(object_id, None)
+      self.runtime_max_distance = max_distance
+
+    if output_type != getattr(self, "runtime_output_type", 1):
+      self.pts.clear()
+      self.track_miss_counts.clear()
+      self.raw_to_track_id.clear()
+      self.cycle_started = False
+      self.expected_objects = 0
+    self.runtime_output_type = output_type
+
+    if not extended_enabled and getattr(self, "runtime_extended_enabled", True):
+      for point in self.pts.values():
+        point.aRel = 0.0
+        point.objectClass = 7
+    self.runtime_extended_enabled = extended_enabled
+
+    snapshot = (
+      max_distance, output_type, int(extended_enabled), int(state["RadarState_SendQualityCfg"]),
+      int(state["RadarState_SensorID"]), int(state["RadarState_MotionRxState"]),
+      int(state["RadarState_NVMReadStatus"]), int(state["RadarState_NVMwriteStatus"]),
+    )
+    if snapshot != getattr(self, "last_published_radar_config", None):
+      keys = (
+        "TeslaRadarStateMaxDistance", "TeslaRadarStateOutputType", "TeslaRadarStateExtended",
+        "TeslaRadarStateQuality", "TeslaRadarStateSensorID", "TeslaRadarStateMotionRx",
+        "TeslaRadarStateNVMRead", "TeslaRadarStateNVMWrite",
+      )
+      for key, value in zip(keys, snapshot, strict=True):
+        self.params.put_nonblocking(key, str(value))
+      self.last_published_radar_config = snapshot
+
+  def _update_filter_state(self, timestamp, address, data, src):
+    self.rcp.update([(timestamp, [(address, data, src)])])
+    if address != 0x204:
+      return
+
+    state = self.rcp.vl["FilterState_Cfg"]
+    index = int(state["FilterState_Index"])
+    signal_suffixes = {
+      0: "NofObj", 1: "Distance", 2: "Azimuth", 3: "VrelOncome", 4: "VrelDepart",
+      5: "RCS", 6: "Lifetime", 7: "Size", 8: "ProbExists", 9: "Y", 10: "X",
+      11: "VYLeftRight", 12: "VXOncome", 13: "VYRightLeft", 14: "VXDepart",
+    }
+    if int(state["FilterState_Type"]) != 1 or index not in signal_suffixes:
+      return
+    suffix = signal_suffixes[index]
+    record = f"{index},{int(state['FilterState_Active'])},{float(state[f'FilterState_Min_{suffix}'])},{float(state[f'FilterState_Max_{suffix}'])}"
+    if record != getattr(self, "last_published_filter_state", None):
+      self.params.put_nonblocking("TeslaRadarFilterState", record)
+      self.last_published_filter_state = record
+
+  def _update_interference_counter(self, state):
+    # Count independent RadarState reports, not the faster object-list results
+    # that repeatedly evaluate the most recently received state.
+    interference = bool(int(state["RadarState_Interference"]))
+    self.interference_frames = self.interference_frames + 1 if interference else 0
 
   def _apply_radar_state_errors(self, ret):
     state = self.last_radar_state
     if state is None:
       return
 
-    interference = bool(int(state["RadarState_Interference"]))
-    self.interference_frames = getattr(self, "interference_frames", 0) + 1 if interference else 0
-    interference_fault = self.interference_frames >= ARS408_INTERFERENCE_CONFIRM_FRAMES
+    interference_frames = getattr(self, "interference_frames", 0)
+    interference_fault = interference_frames >= ARS408_INTERFERENCE_CONFIRM_FRAMES
     temporary_fault = interference_fault or any(int(state[name]) for name in (
       "RadarState_Temperature_Error", "RadarState_Temporary_Error"))
     hard_fault = any(int(state[name]) for name in (
       "RadarState_Voltage_Error", "RadarState_Persistent_Error"))
+    max_distance = int(state["RadarState_MaxDistanceCfg"])
+    output_type = int(state["RadarState_OutputTypeCfg"])
     config_expectations = (
       ("sensor_id", "RadarState_SensorID", ARS408_SENSOR_ID),
-      ("output_type", "RadarState_OutputTypeCfg", 1),
-      ("quality", "RadarState_SendQualityCfg", 1),
-      ("extended", "RadarState_SendExtInfoCfg", int(ARS408_SEND_EXTENDED)),
+      ("quality", "RadarState_SendQualityCfg", 1 if output_type == 1 else int(state["RadarState_SendQualityCfg"])),
       ("ctrl_relay", "RadarState_CtrlRelayCfg", 0),
       ("sort_index", "RadarState_SortIndex", 1),
       ("rcs_threshold", "RadarState_RCS_Threshold", 0),
       ("radar_power", "RadarState_RadarPowerCfg", 0),
-      ("max_distance", "RadarState_MaxDistanceCfg", ARS408_MAX_DISTANCE),
     )
     config_mismatches = tuple(
       (label, int(state[field]), expected)
       for label, field, expected in config_expectations
       if int(state[field]) != expected
     )
+    if output_type not in (0, 1):
+      config_mismatches += (("output_type", output_type, "0 or 1"),)
+    if not (200 <= max_distance <= 250 and max_distance % 2 == 0):
+      config_mismatches += (("max_distance", max_distance, "even 200..250"),)
     wrong_config = bool(config_mismatches)
 
     ret.errors.radarUnavailableTemporary = temporary_fault
@@ -300,13 +391,13 @@ class RadarInterface(RadarInterfaceBase):
     # Allow the radar's persisted configuration and state output to settle
     # after power-up before reporting a configuration fault.
     ret.errors.wrongConfig = wrong_config and self.radar_state_frames >= CONFIG_GRACE_STATE_FRAMES
-    fault_signature = (temporary_fault, hard_fault, config_mismatches, self.interference_frames,
+    fault_signature = (temporary_fault, hard_fault, config_mismatches, interference_frames,
                        self.radar_state_frames < CONFIG_GRACE_STATE_FRAMES,
                        int(state["RadarState_MotionRxState"]))
     if fault_signature != self.last_fault_signature:
       log.warning(" ".join(("ARS408 state diagnostic: interference=%d interference_frames=%d temperature=%d temporary=%d voltage=%d persistent=%d",
                             "sensor_id=%d output_type=%d quality=%d extended=%d motion_rx=%d max_distance=%d config_grace=%d")),
-                  int(state["RadarState_Interference"]), self.interference_frames, int(state["RadarState_Temperature_Error"]),
+                  int(state["RadarState_Interference"]), interference_frames, int(state["RadarState_Temperature_Error"]),
                   int(state["RadarState_Temporary_Error"]), int(state["RadarState_Voltage_Error"]),
                   int(state["RadarState_Persistent_Error"]), int(state["RadarState_SensorID"]),
                   int(state["RadarState_OutputTypeCfg"]), int(state["RadarState_SendQualityCfg"]),
@@ -353,7 +444,7 @@ class RadarInterface(RadarInterfaceBase):
     # before every Extended frame is transmitted. General and Quality remain
     # sufficient for safe lead tracking, so only merge Extended data when the
     # complete set belongs to this cycle.
-    if self._extended_complete():
+    if getattr(self, "runtime_extended_enabled", ARS408_SEND_EXTENDED) and self._extended_complete():
       fields = ("Obj_ID", "Obj_ArelLong", "Obj_Class")
       values = self.rcp.vl_all[ARS408_MESSAGES[ARS408_EXTENDED][1]]
       columns = [values[field] for field in fields]
@@ -496,7 +587,8 @@ class RadarInterface(RadarInterfaceBase):
       v_rel = float(obj["Obj_VrelLong"])
       yv_rel = float(obj["Obj_VrelLat"])
 
-      rejection_reason = object_rejection_reason(obj, object_id in self.pts)
+      rejection_reason = object_rejection_reason(obj, object_id in self.pts,
+                                                 max_distance=getattr(self, "runtime_max_distance", ARS408_MAX_DISTANCE))
       if rejection_reason is not None:
         self.last_rejection_reasons[object_id] = rejection_reason
         continue
@@ -540,7 +632,7 @@ class RadarInterface(RadarInterfaceBase):
 
     # Monitor mode keeps decoding and diagnostics active but never feeds tracks
     # into radard/lead fusion. Raw object count remains available to the UI.
-    ret.points = [] if self.radar_mode == 1 else list(self.pts.values())
+    ret.points = [] if self.radar_mode == 1 or getattr(self, "runtime_output_type", 1) != 1 else list(self.pts.values())
     self._apply_missing_can_error(ret)
     if self.radar_mode == 3:
       log.debug("ARS408 debug: raw=%d accepted=%d tracked=%d handovers=%d duplicates=%d rejections=%s",
@@ -558,6 +650,16 @@ class RadarInterface(RadarInterfaceBase):
       for address, data, src in frames:
         if src == ARS408_BUS and address == ARS408_RADAR_STATE and len(data) == 8:
           self._update_radar_state(timestamp, data, src)
+          if self.runtime_output_type != 1:
+            # Disabled output is a valid vision-only state. Unsupported Cluster
+            # output follows the same empty-data fallback but reports wrongConfig.
+            result = structs.RadarData()
+            result.points = []
+            self._apply_radar_state_errors(result)
+            self._set_status(result)
+          continue
+        if src == ARS408_BUS and address in (0x203, 0x204) and len(data) == (2 if address == 0x203 else 5):
+          self._update_filter_state(timestamp, address, data, src)
           continue
         if src != ARS408_BUS or address not in ARS408_MESSAGES:
           continue
@@ -569,7 +671,7 @@ class RadarInterface(RadarInterfaceBase):
           continue
 
         # CANParser uses the unshifted DBC addresses. Only frames that passed
-        # the real SensorID 5 address and exact DLC checks reach the decoder.
+        # the configured SensorID 0 address and exact DLC checks reach the decoder.
         frame = (base_address, data, src)
         if address == ARS408_STATUS:
           self.last_status_update = self.update_count
