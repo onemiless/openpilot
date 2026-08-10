@@ -79,11 +79,13 @@ void UIState::updateStatus() {
   if (scene.started && sm->updated("selfdriveState")) {
     auto ss = (*sm)["selfdriveState"].getSelfdriveState();
     auto state = ss.getState();
-    if (state == cereal::SelfdriveState::OpenpilotState::PRE_ENABLED || state == cereal::SelfdriveState::OpenpilotState::OVERRIDING) {
-      status = STATUS_OVERRIDE;
-    } else {
-      status = ss.getEnabled() ? STATUS_ENGAGED : STATUS_DISENGAGED;
-    }
+    auto mads = (*sm)["madsState"].getMadsState();
+    auto mads_state = mads.getState();
+    const bool overriding = state == cereal::SelfdriveState::OpenpilotState::PRE_ENABLED ||
+                            state == cereal::SelfdriveState::OpenpilotState::OVERRIDING ||
+                            mads_state == decltype(mads_state)::PAUSED ||
+                            mads_state == decltype(mads_state)::OVERRIDING;
+    status = control_status(mads.getEnabled(), ss.getEnabled(), overriding);
   }
 
   // Handle onroad/offroad transition

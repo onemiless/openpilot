@@ -44,15 +44,30 @@ typedef enum UIStatus {
   STATUS_DISENGAGED,
   STATUS_OVERRIDE,
   STATUS_ENGAGED,
-  STATUS_ACTIVE,
+  STATUS_LAT_ONLY,
+  STATUS_LONG_ONLY,
 } UIStatus;
 
 const QColor bg_colors [] = {
-  [STATUS_DISENGAGED] = QColor(0x17, 0x33, 0x49, 0xc8),
-  [STATUS_OVERRIDE] = QColor(0x91, 0x9b, 0x95, 0xf1),
-  [STATUS_ENGAGED] = QColor(0x17, 0x86, 0x44, 0xf1),
-  [STATUS_ACTIVE] = QColor(0x6f, 0xc0, 0xc9, 0xf1),
+  [STATUS_DISENGAGED] = QColor(0x12, 0x28, 0x39, 0xff),
+  [STATUS_OVERRIDE] = QColor(0x89, 0x92, 0x8d, 0xff),
+  [STATUS_ENGAGED] = QColor(0x16, 0x7f, 0x40, 0xff),
+  [STATUS_LAT_ONLY] = QColor(0x00, 0xc8, 0xc8, 0xff),
+  [STATUS_LONG_ONLY] = QColor(0x96, 0x1c, 0xa8, 0xff),
 };
+
+constexpr UIStatus control_status(bool lateral_enabled, bool longitudinal_enabled, bool overriding) {
+  if (overriding) return STATUS_OVERRIDE;
+  if (lateral_enabled && longitudinal_enabled) return STATUS_ENGAGED;
+  if (lateral_enabled) return STATUS_LAT_ONLY;
+  if (longitudinal_enabled) return STATUS_LONG_ONLY;
+  return STATUS_DISENGAGED;
+}
+
+static_assert(control_status(true, false, false) == STATUS_LAT_ONLY);
+static_assert(control_status(false, true, false) == STATUS_LONG_ONLY);
+static_assert(control_status(true, true, false) == STATUS_ENGAGED);
+static_assert(control_status(true, true, true) == STATUS_OVERRIDE);
 
 typedef struct UIScene {
   Eigen::Matrix3f view_from_calib = VIEW_FROM_DEVICE;

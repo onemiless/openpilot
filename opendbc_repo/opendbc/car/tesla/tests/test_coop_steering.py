@@ -1,5 +1,8 @@
+from types import SimpleNamespace
+
 import pytest
 
+from opendbc.car.tesla.carcontroller import CarController
 from opendbc.car.tesla.carstate import classify_steering_input
 from opendbc.car.tesla.coop_steering import (
   STEER_OVERRIDE_DELTA_GAIN_LIMIT,
@@ -8,6 +11,8 @@ from opendbc.car.tesla.coop_steering import (
   apply_deadzone,
   calc_override_angle_delta_limit,
 )
+from opendbc.car.tesla.interface import CarInterface
+from opendbc.car.vehicle_model import VehicleModel
 
 
 def test_strong_driver_input_is_recoverable_only_in_cooperative_mode():
@@ -55,3 +60,25 @@ def test_diagnostic_state_resets_when_cooperative_steering_is_inactive():
   controller.update(12.0, False, True, None, None)
   assert not controller.driver_override_active
   assert not controller.angle_saturated
+
+
+def test_controller_keeps_planner_and_cooperative_output_angle_state_separate():
+  controller = CarController.__new__(CarController)
+  controller.planner_apply_angle_last = 0.0
+  controller.apply_angle_last = 0.0
+  controller.coop_steering = CoopSteeringCarController()
+  controller.coop_steering_enabled = True
+  controller.VM = VehicleModel(CarInterface.get_non_essential_params("TESLA_MODEL_Y"))
+  CS = SimpleNamespace(out=SimpleNamespace(vEgo=10.0, vEgoRaw=10.0, steeringTorque=1.5, steeringAngleDeg=0.0))
+
+  for _ in range(50):
+    output_angle, lat_active = controller.update_steering_control(0.0, True, CS)
+  assert lat_active
+  assert abs(output_angle) < 30.0
+  assert controller.planner_apply_angle_last == pytest.approx(0.0)
+
+  CS.out.steeringTorque = 0.0
+  for _ in range(50):
+    output_angle, lat_active = controller.update_steering_control(0.0, True, CS)
+  assert lat_active
+  assert abs(output_angle) < 1.0

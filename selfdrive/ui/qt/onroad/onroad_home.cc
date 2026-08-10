@@ -93,43 +93,12 @@ void OnroadWindow::updateState(const UIState &s) {
   }
   nvg->updateState(s);
 
-  QColor bgColor = bg_colors[s.status];
-  QColor bgColor_long = bg_colors[s.status];
+  const QColor border_color = bg_colors[s.status];
   const SubMaster& sm = *(s.sm);
-  const auto car_control = sm["carControl"].getCarControl();
-  auto selfdrive_state = sm["selfdriveState"].getSelfdriveState();
-
-  //if (s.status == STATUS_DISENGAGED && car_control.getLatActive()) {
-  //    bgColor = bg_colors[STATUS_LAT_ACTIVE];
-  //}
-  const auto car_state = sm["carState"].getCarState();
-  if (car_state.getSteeringPressed()) {
-      bgColor = bg_colors[STATUS_OVERRIDE];
-  }
-  else if (car_control.getLatActive()) {
-      bgColor = bg_colors[STATUS_ENGAGED];
-  }
-  else if (car_state.getLatEnabled()) {
-      bgColor = bg_colors[STATUS_ACTIVE];
-  }
-  else
-      bgColor = bg_colors[STATUS_DISENGAGED];
-
-  if (car_state.getGasPressed()) {
-      bgColor_long = bg_colors[STATUS_OVERRIDE];
-  }
-  else if (selfdrive_state.getEnabled()) {
-      bgColor_long = bg_colors[STATUS_ENGAGED];
-  }
-  else if (car_state.getCruiseState().getAvailable()) {
-	  bgColor_long = bg_colors[STATUS_ACTIVE];
-  }
-  else
-      bgColor_long = bg_colors[STATUS_DISENGAGED];
-  if (bg != bgColor || bg_long != bgColor_long) {
+  if (bg != border_color || bg_long != border_color) {
     // repaint border
-    bg = bgColor;
-    bg_long = bgColor_long;
+    bg = border_color;
+    bg_long = border_color;
     //update();
   }
   update();

@@ -5,7 +5,7 @@
 static bool tesla_longitudinal = false;
 static bool tesla_stock_aeb = false;
 static const int TESLA_STEERING_DISENGAGE_TORQUE = 500;  // 5.0 Nm in 0.01 Nm units
-static const int TESLA_DRIVER_OVERRIDE_RELEASE_TORQUE = 50;  // 0.5 Nm in 0.01 Nm units
+static const int TESLA_DRIVER_OVERRIDE_RELEASE_TORQUE = 250;  // 2.5 Nm cooperative envelope in 0.01 Nm units
 static const uint16_t TESLA_DRIVER_OVERRIDE_RELEASE_FRAMES = 25U;  // 0.25 s at 100 Hz
 static bool tesla_driver_override_active = false;
 static uint16_t tesla_driver_override_release_counter = 0U;
@@ -38,7 +38,7 @@ static void tesla_rx_hook(const CANPacket_t *to_push) {
           tesla_driver_override_active = true;
           tesla_driver_override_release_counter = 0U;
         } else if (tesla_driver_override_active) {
-          const bool release_ready = (hands_on_level <= 1) &&
+          const bool release_ready = (hands_on_level <= 2) &&
                                      (ABS(torsion_bar_torque) <= TESLA_DRIVER_OVERRIDE_RELEASE_TORQUE);
           tesla_driver_override_release_counter = release_ready ?
             MIN(tesla_driver_override_release_counter + 1U, TESLA_DRIVER_OVERRIDE_RELEASE_FRAMES) : 0U;

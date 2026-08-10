@@ -67,8 +67,9 @@ class CarState(CarStateBase):
     ret.steeringTorque = -epas_status["EPAS3S_torsionBarTorque"]
     ret.yawRate = calculate_yaw_rate(self.VM, ret.vEgoRaw, ret.steeringAngleDeg)
 
-    # This matches stock logic, but with halved minimum frames (0.25-0.3s)
-    ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > STEER_THRESHOLD, 15)
+    # Match SP cooperative steering: recognize sustained light driver input
+    # promptly, without treating a single noisy torque sample as an override.
+    ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > STEER_THRESHOLD, 5)
 
     self.eac_status = self.can_define.dv["EPAS3S_sysStatus"]["EPAS3S_eacStatus"].get(int(epas_status["EPAS3S_eacStatus"]), None)
     self.eac_error_code = int(epas_status["EPAS3S_eacErrorCode"])

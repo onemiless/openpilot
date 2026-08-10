@@ -8,8 +8,11 @@ from openpilot.selfdrive.selfdrived.events import ET
 MadsState = custom.MadsState.State
 GearShifter = structs.CarState.GearShifter
 PARAM_REFRESH_INTERVAL = 5  # 20 Hz at the 100 Hz selfdrived update rate
-DRIVER_OVERRIDE_RELEASE_HANDS_ON_LEVEL = 1
-DRIVER_OVERRIDE_RELEASE_TORQUE = 0.5  # Nm
+# Resume once the driver is back inside the cooperative blending envelope. The
+# steering-rate and dwell checks below still prevent a sudden hand-back while
+# the wheel is moving quickly.
+DRIVER_OVERRIDE_RELEASE_HANDS_ON_LEVEL = 2
+DRIVER_OVERRIDE_RELEASE_TORQUE = 2.5  # Nm
 DRIVER_OVERRIDE_RELEASE_STEERING_RATE = 10.0  # deg/s
 DRIVER_OVERRIDE_RELEASE_FRAMES = round(0.25 / DT_CTRL)
 

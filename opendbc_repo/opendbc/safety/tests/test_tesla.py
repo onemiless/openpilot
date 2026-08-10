@@ -202,6 +202,19 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
       self.assertTrue(self._rx(self._steering_status_msg()))
       self.assertTrue(self._tx(self._angle_cmd_msg(0, True)))
 
+  def test_mads_cooperative_override_releases_in_blending_torque_range(self):
+    self._engage_mads(cooperative_steering=True)
+    self.assertTrue(self._rx(self._steering_status_msg(hands_on_level=3, torque=2.6)))
+    self.assertFalse(self._tx(self._angle_cmd_msg(0, True)))
+
+    cooperative_release = self._steering_status_msg(hands_on_level=2, torque=2.0)
+    for _ in range(24):
+      self.assertTrue(self._rx(cooperative_release))
+      self.assertFalse(self._tx(self._angle_cmd_msg(0, True)))
+
+    self.assertTrue(self._rx(cooperative_release))
+    self.assertTrue(self._tx(self._angle_cmd_msg(0, True)))
+
   def test_mads_cooperative_high_angle_rate_fault_still_disengages(self):
     self._engage_mads(cooperative_steering=True)
     self.assertTrue(self._rx(self._steering_status_msg(eac_status=0, eac_error_code=9)))

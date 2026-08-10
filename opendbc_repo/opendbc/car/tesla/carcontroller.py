@@ -19,7 +19,10 @@ log = logging.getLogger(__name__)
 class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP):
     super().__init__(dbc_names, CP)
-    self.apply_angle_last = 0
+    self.apply_angle_last = 0.0
+    # Keep the planner-limited base separate from the final cooperative output.
+    # Feeding the driver offset back into the base accumulates a permanent angle.
+    self.planner_apply_angle_last = 0.0
     self.packer = CANPacker(dbc_names[Bus.party])
     self.tesla_can = TeslaCAN(self.packer)
     self.ars408_can = None if CP.radarUnavailable else ARS408CAN()
@@ -60,6 +63,18 @@ class CarController(CarControllerBase):
       self.ars408_can.create_yaw_rate_information(yaw_rate_deg_s),
     ]
 
+  def update_steering_control(self, desired_angle, lat_active, CS):
+    self.planner_apply_angle_last = apply_steer_angle_limits_vm(
+      desired_angle, self.planner_apply_angle_last, CS.out.vEgoRaw,
+      CS.out.steeringAngleDeg, lat_active, CarControllerParams, self.VM,
+    )
+
+    coop_steering = self.coop_steering.update(
+      self.planner_apply_angle_last, lat_active, self.coop_steering_enabled, CS, self.VM,
+    )
+    self.apply_angle_last = coop_steering.steeringAngleDeg
+    return self.apply_angle_last, coop_steering.lat_active
+
   def update(self, CC, CS, now_nanos):
     actuators = CC.actuators
     can_sends = []
@@ -96,23 +111,17 @@ class CarController(CarControllerBase):
       self._steering_override_prev = steering_override
 
     if self.frame % 2 == 0:
-      # Angular rate limit based on speed
-      self.apply_angle_last = apply_steer_angle_limits_vm(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw,
-                                                          CS.out.steeringAngleDeg, lat_active, CarControllerParams, self.VM)
-
-      coop_steering = self.coop_steering.update(self.apply_angle_last, lat_active, self.coop_steering_enabled, CS, self.VM)
-      self.apply_angle_last = coop_steering.steeringAngleDeg
-      lat_active = coop_steering.lat_active
+      self.apply_angle_last, lat_active = self.update_steering_control(actuators.steeringAngleDeg, lat_active, CS)
 
       if self.coop_steering.driver_override_active != self._coop_override_prev:
-        log.info("Tesla cooperative steering driver_override=%d torque=%.2f override_angle=%.2f output_angle=%.2f",
+        log.info("Tesla cooperative steering driver_override=%d torque=%.2f planner_angle=%.2f override_angle=%.2f output_angle=%.2f",
                  int(self.coop_steering.driver_override_active), CS.out.steeringTorque,
-                 self.coop_steering.angle_override, self.apply_angle_last)
+                 self.planner_apply_angle_last, self.coop_steering.angle_override, self.apply_angle_last)
         self._coop_override_prev = self.coop_steering.driver_override_active
       if self.coop_steering.angle_saturated != self._coop_saturated_prev:
-        log.info("Tesla cooperative steering saturated=%d torque=%.2f override_angle=%.2f output_angle=%.2f",
+        log.info("Tesla cooperative steering saturated=%d torque=%.2f planner_angle=%.2f override_angle=%.2f output_angle=%.2f",
                  int(self.coop_steering.angle_saturated), CS.out.steeringTorque,
-                 self.coop_steering.angle_override, self.apply_angle_last)
+                 self.planner_apply_angle_last, self.coop_steering.angle_override, self.apply_angle_last)
         self._coop_saturated_prev = self.coop_steering.angle_saturated
 
       can_sends.append(self.tesla_can.create_steering_control(self.apply_angle_last, lat_active, (self.frame // 2) % 16))
