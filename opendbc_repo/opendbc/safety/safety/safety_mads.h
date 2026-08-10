@@ -44,6 +44,7 @@ void mads_set_alternative_experience(const int *mode) {
   mads_state.system_enabled = (*mode & ALT_EXP_ENABLE_MADS) != 0;
   mads_state.disengage_lateral_on_brake = (*mode & ALT_EXP_MADS_DISENGAGE_LATERAL_ON_BRAKE) != 0;
   mads_state.pause_lateral_on_brake = (*mode & ALT_EXP_MADS_PAUSE_LATERAL_ON_BRAKE) != 0;
+  mads_state.cooperative_steering = (*mode & ALT_EXP_MADS_COOPERATIVE_STEERING) != 0;
 }
 
 void mads_state_update(const bool op_acc_main, const bool op_allowed, const bool is_braking, const bool steering_disengage_now) {

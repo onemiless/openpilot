@@ -6,8 +6,18 @@ from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarStateBase
 from opendbc.car.tesla.values import DBC, CANBUS, GEAR_MAP, STEER_DISENGAGE_THRESHOLD, STEER_THRESHOLD
 from opendbc.car.vehicle_model import VehicleModel
+from opendbc.safety import ALTERNATIVE_EXPERIENCE
 
 ButtonType = structs.CarState.ButtonEvent.Type
+
+
+def classify_steering_input(hands_on_level: int, steering_torque: float, eac_status: str | None,
+                            eac_error_code: int, cooperative_steering: bool) -> tuple[bool, bool]:
+  strong_driver_override = hands_on_level >= 3 or abs(steering_torque) > STEER_DISENGAGE_THRESHOLD
+  high_angle_rate_fault = eac_status == "EAC_INHIBITED" and eac_error_code == 9
+  recoverable_override = cooperative_steering and strong_driver_override and not high_angle_rate_fault
+  steering_disengage = high_angle_rate_fault or (strong_driver_override and not cooperative_steering)
+  return recoverable_override, steering_disengage
 
 
 def calculate_yaw_rate(vehicle_model, speed_mps, steering_angle_deg):
@@ -26,6 +36,8 @@ class CarState(CarStateBase):
     self.shifter_values = self.can_define.dv["DI_systemStatus"]["DI_gear"]
 
     self.hands_on_level = 0
+    self.eac_status = None
+    self.eac_error_code = 0
     self.das_control = None
 
   def update(self, can_parsers) -> structs.CarState:
@@ -49,6 +61,7 @@ class CarState(CarStateBase):
     # Steering wheel
     epas_status = cp_party.vl["EPAS3S_sysStatus"]
     self.hands_on_level = epas_status["EPAS3S_handsOnLevel"]
+    ret.handsOnLevel = self.hands_on_level
     ret.steeringAngleDeg = -epas_status["EPAS3S_internalSAS"]
     ret.steeringRateDeg = -cp_ap_party.vl["SCCM_steeringAngleSensor"]["SCCM_steeringAngleSpeed"]
     ret.steeringTorque = -epas_status["EPAS3S_torsionBarTorque"]
@@ -57,12 +70,14 @@ class CarState(CarStateBase):
     # This matches stock logic, but with halved minimum frames (0.25-0.3s)
     ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > STEER_THRESHOLD, 15)
 
-    eac_status = self.can_define.dv["EPAS3S_sysStatus"]["EPAS3S_eacStatus"].get(int(epas_status["EPAS3S_eacStatus"]), None)
-    ret.steerFaultPermanent = eac_status == "EAC_FAULT"
-    ret.steerFaultTemporary = eac_status == "EAC_INHIBITED"
-    eac_error_code = int(epas_status["EPAS3S_eacErrorCode"])
-    ret.steeringDisengage = self.hands_on_level >= 3 or abs(ret.steeringTorque) > STEER_DISENGAGE_THRESHOLD or \
-                              (eac_status == "EAC_INHIBITED" and eac_error_code == 9)
+    self.eac_status = self.can_define.dv["EPAS3S_sysStatus"]["EPAS3S_eacStatus"].get(int(epas_status["EPAS3S_eacStatus"]), None)
+    self.eac_error_code = int(epas_status["EPAS3S_eacErrorCode"])
+    ret.steerFaultPermanent = self.eac_status == "EAC_FAULT"
+    ret.steerFaultTemporary = self.eac_status == "EAC_INHIBITED"
+    cooperative_steering = bool(self.CP.alternativeExperience & ALTERNATIVE_EXPERIENCE.MADS_COOPERATIVE_STEERING)
+    ret.steeringOverride, ret.steeringDisengage = classify_steering_input(
+      self.hands_on_level, ret.steeringTorque, self.eac_status, self.eac_error_code, cooperative_steering,
+    )
 
     # Cruise state
     cruise_state = self.can_define.dv["DI_state"]["DI_cruiseState"].get(int(cp_party.vl["DI_state"]["DI_cruiseState"]), None)

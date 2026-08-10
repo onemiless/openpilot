@@ -32,6 +32,7 @@ class CarController(CarControllerBase):
     self._coop_override_prev = False
     self._coop_saturated_prev = False
     self._steering_disengage_prev = False
+    self._steering_override_prev = False
     log.info("Tesla cooperative steering configured enabled=%d", int(self.coop_steering_enabled))
     log.info("ARS408 motion input configured enabled=%d bus=1 rate_hz=20", int(self.radar_motion_enabled))
 
@@ -81,12 +82,18 @@ class CarController(CarControllerBase):
     # Disengage and allow for user override on high torque inputs
     # TODO: move this to a generic disengageRequested carState field and set CC.cruiseControl.cancel based on it
     steering_disengage = CS.out.steeringDisengage
+    steering_override = CS.out.steeringOverride
     cruise_cancel = CC.cruiseControl.cancel or steering_disengage
-    lat_active = CC.latActive and not steering_disengage
+    lat_active = CC.latActive and not steering_disengage and not steering_override
     if steering_disengage != self._steering_disengage_prev:
-      log.warning("Tesla steering safety disengage=%d torque=%.2f hands_on_level=%d",
-                  int(steering_disengage), CS.out.steeringTorque, CS.hands_on_level)
+      log.warning("Tesla steering safety disengage=%d torque=%.2f hands_on_level=%d eac_status=%s eac_error_code=%d",
+                  int(steering_disengage), CS.out.steeringTorque, CS.hands_on_level,
+                  CS.eac_status, CS.eac_error_code)
       self._steering_disengage_prev = steering_disengage
+    if steering_override != self._steering_override_prev:
+      log.warning("Tesla cooperative steering pause=%d torque=%.2f hands_on_level=%d steering_rate=%.2f",
+                  int(steering_override), CS.out.steeringTorque, CS.hands_on_level, CS.out.steeringRateDeg)
+      self._steering_override_prev = steering_override
 
     if self.frame % 2 == 0:
       # Angular rate limit based on speed

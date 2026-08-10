@@ -5,6 +5,10 @@
 static bool tesla_longitudinal = false;
 static bool tesla_stock_aeb = false;
 static const int TESLA_STEERING_DISENGAGE_TORQUE = 500;  // 5.0 Nm in 0.01 Nm units
+static const int TESLA_DRIVER_OVERRIDE_RELEASE_TORQUE = 50;  // 0.5 Nm in 0.01 Nm units
+static const uint16_t TESLA_DRIVER_OVERRIDE_RELEASE_FRAMES = 25U;  // 0.25 s at 100 Hz
+static bool tesla_driver_override_active = false;
+static uint16_t tesla_driver_override_release_counter = 0U;
 
 static void tesla_rx_hook(const CANPacket_t *to_push) {
   int bus = GET_BUS(to_push);
@@ -21,9 +25,34 @@ static void tesla_rx_hook(const CANPacket_t *to_push) {
       int torsion_bar_torque = (((GET_BYTE(to_push, 2) & 0x0FU) << 8) | GET_BYTE(to_push, 3)) - 2050;
       int eac_status = GET_BYTE(to_push, 6) >> 5;
       int eac_error_code = GET_BYTE(to_push, 2) >> 4;
-      steering_disengage = (hands_on_level >= 3) ||
-                           (ABS(torsion_bar_torque) > TESLA_STEERING_DISENGAGE_TORQUE) ||
-                           ((eac_status == 0) && (eac_error_code == 9));
+      const bool strong_driver_override = (hands_on_level >= 3) ||
+                                          (ABS(torsion_bar_torque) > TESLA_STEERING_DISENGAGE_TORQUE);
+      const bool high_angle_rate_fault = (eac_status == 0) && (eac_error_code == 9);
+      const bool cooperative_pause_allowed = mads_state.system_enabled && mads_state.cooperative_steering;
+
+      if (high_angle_rate_fault) {
+        tesla_driver_override_active = false;
+        tesla_driver_override_release_counter = 0U;
+      } else if (cooperative_pause_allowed) {
+        if (strong_driver_override) {
+          tesla_driver_override_active = true;
+          tesla_driver_override_release_counter = 0U;
+        } else if (tesla_driver_override_active) {
+          const bool release_ready = (hands_on_level <= 1) &&
+                                     (ABS(torsion_bar_torque) <= TESLA_DRIVER_OVERRIDE_RELEASE_TORQUE);
+          tesla_driver_override_release_counter = release_ready ?
+            MIN(tesla_driver_override_release_counter + 1U, TESLA_DRIVER_OVERRIDE_RELEASE_FRAMES) : 0U;
+          if (tesla_driver_override_release_counter >= TESLA_DRIVER_OVERRIDE_RELEASE_FRAMES) {
+            tesla_driver_override_active = false;
+            tesla_driver_override_release_counter = 0U;
+          }
+        }
+      } else {
+        tesla_driver_override_active = false;
+        tesla_driver_override_release_counter = 0U;
+      }
+
+      steering_disengage = high_angle_rate_fault || (strong_driver_override && !cooperative_pause_allowed);
     }
 
     // Vehicle speed
@@ -106,6 +135,9 @@ static bool tesla_tx_hook(const CANPacket_t *to_send) {
     bool steer_control_enabled = (steer_control_type != 0) &&  // NONE
                                  (steer_control_type != 3);    // DISABLED
 
+    if (tesla_driver_override_active && steer_control_enabled) {
+      violation = true;
+    }
     if (steer_angle_cmd_checks(desired_angle, steer_control_enabled, TESLA_STEERING_LIMITS)) {
       violation = true;
     }
@@ -205,6 +237,8 @@ static safety_config tesla_init(uint16_t param) {
 #endif
 
   tesla_stock_aeb = false;
+  tesla_driver_override_active = false;
+  tesla_driver_override_release_counter = 0U;
 
   static RxCheck tesla_model3_y_rx_checks[] = {
     {.msg = {{0x2b9, 2, 8, .ignore_checksum = true, .ignore_counter = true,.frequency = 25U}, { 0 }, { 0 }}},   // DAS_control

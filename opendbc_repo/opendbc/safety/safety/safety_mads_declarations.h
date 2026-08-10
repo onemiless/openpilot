@@ -20,6 +20,7 @@ typedef enum __attribute__((packed)) {
 #define ALT_EXP_ENABLE_MADS 1024
 #define ALT_EXP_MADS_DISENGAGE_LATERAL_ON_BRAKE 2048
 #define ALT_EXP_MADS_PAUSE_LATERAL_ON_BRAKE 4096
+#define ALT_EXP_MADS_COOPERATIVE_STEERING 8192
 
 typedef struct {
   MadsEdgeTransition transition;
@@ -36,6 +37,7 @@ typedef struct {
   bool system_enabled;
   bool disengage_lateral_on_brake;
   bool pause_lateral_on_brake;
+  bool cooperative_steering;
   bool controls_requested_lateral;
 } MadsSafetyState;
 

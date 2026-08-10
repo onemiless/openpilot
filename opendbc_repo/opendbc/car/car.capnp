@@ -255,7 +255,9 @@ struct CarState {
   leftLaneLine @74 : Int16; # -1: no lane, 0: dashed, 1: solid, +10: white, +20: yellow, ex) 21: solid yellow
   rightLaneLine @75 : Int16; # -1: no lane, 0: dashed, 1: solid, +10: white, +20: yellow, ex) 21: solid yellow
   datetime @76 :UInt64; # timestamp in milliseconds since epoch
-  steeringDisengage @77 :Bool; # strong driver/EPS override that must end lateral control
+  steeringDisengage @77 :Bool; # non-recoverable driver/EPS condition that must end lateral control
+  steeringOverride @78 :Bool;  # recoverable strong driver override; cooperative control must pause actuation
+  handsOnLevel @79 :UInt8;     # native Tesla EPS hands-on classification for safe override release
 
   struct Tpms {
     fl @0 :Float32;

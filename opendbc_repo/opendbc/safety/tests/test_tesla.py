@@ -131,8 +131,11 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
       self.assertFalse(self._tx(common.make_msg(2, address, 2)))
       self.assertFalse(self._tx(common.make_msg(1, address, 8)))
 
-  def _engage_mads(self, brake_mode=0):
-    self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.ENABLE_MADS | brake_mode)
+  def _engage_mads(self, brake_mode=0, cooperative_steering=False):
+    alternative_experience = ALTERNATIVE_EXPERIENCE.ENABLE_MADS | brake_mode
+    if cooperative_steering:
+      alternative_experience |= ALTERNATIVE_EXPERIENCE.MADS_COOPERATIVE_STEERING
+    self.safety.set_alternative_experience(alternative_experience)
     self.safety.set_controls_allowed(True)
     self.assertTrue(self._rx(self._speed_msg(10)))
     self.assertTrue(self.safety.get_controls_allowed_lateral())
@@ -177,6 +180,34 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
       self.assertFalse(self.safety.get_controls_allowed())
       self.assertFalse(self.safety.get_controls_allowed_lateral())
       self.assertFalse(self._tx(self._angle_cmd_msg(0, True)))
+
+  def test_mads_cooperative_driver_override_pauses_and_recovers(self):
+    safety_param = self.safety.get_current_safety_param()
+    for msg in (self._steering_status_msg(torque=5.01),
+                self._steering_status_msg(hands_on_level=3)):
+      self.safety.set_safety_hooks(CarParams.SafetyModel.tesla, safety_param)
+      self.safety.init_tests()
+      self._engage_mads(cooperative_steering=True)
+
+      self.assertTrue(self._rx(msg))
+      self.assertTrue(self.safety.get_controls_allowed())
+      self.assertTrue(self.safety.get_controls_allowed_lateral())
+      self.assertFalse(self._tx(self._angle_cmd_msg(0, True)))
+      self.assertTrue(self._tx(self._angle_cmd_msg(0, False)))
+
+      for _ in range(24):
+        self.assertTrue(self._rx(self._steering_status_msg()))
+        self.assertFalse(self._tx(self._angle_cmd_msg(0, True)))
+
+      self.assertTrue(self._rx(self._steering_status_msg()))
+      self.assertTrue(self._tx(self._angle_cmd_msg(0, True)))
+
+  def test_mads_cooperative_high_angle_rate_fault_still_disengages(self):
+    self._engage_mads(cooperative_steering=True)
+    self.assertTrue(self._rx(self._steering_status_msg(eac_status=0, eac_error_code=9)))
+    self.assertFalse(self.safety.get_controls_allowed())
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+    self.assertFalse(self._tx(self._angle_cmd_msg(0, True)))
 
   def test_mads_heartbeat_mismatch_disengages(self):
     self._engage_mads()

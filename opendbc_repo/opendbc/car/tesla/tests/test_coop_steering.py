@@ -1,5 +1,6 @@
 import pytest
 
+from opendbc.car.tesla.carstate import classify_steering_input
 from opendbc.car.tesla.coop_steering import (
   STEER_OVERRIDE_DELTA_GAIN_LIMIT,
   STEER_OVERRIDE_MIN_TORQUE,
@@ -7,6 +8,16 @@ from opendbc.car.tesla.coop_steering import (
   apply_deadzone,
   calc_override_angle_delta_limit,
 )
+
+
+def test_strong_driver_input_is_recoverable_only_in_cooperative_mode():
+  assert classify_steering_input(3, 2.5, "EAC_ACTIVE", 0, False) == (False, True)
+  assert classify_steering_input(3, 2.5, "EAC_ACTIVE", 0, True) == (True, False)
+  assert classify_steering_input(0, 5.01, "EAC_ACTIVE", 0, True) == (True, False)
+
+
+def test_high_angle_rate_fault_is_never_recoverable():
+  assert classify_steering_input(3, 5.01, "EAC_INHIBITED", 9, True) == (False, True)
 
 
 def test_driver_torque_deadzone_is_symmetric():

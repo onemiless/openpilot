@@ -117,6 +117,8 @@ class Car:
       self.CP.alternativeExperience |= ALTERNATIVE_EXPERIENCE.DISABLE_DISENGAGE_ON_GAS
     if self.CP.brand == "tesla" and self.params.get_bool("Mads"):
       self.CP.alternativeExperience |= ALTERNATIVE_EXPERIENCE.ENABLE_MADS
+      if self.params.get_bool("TeslaCoopSteering"):
+        self.CP.alternativeExperience |= ALTERNATIVE_EXPERIENCE.MADS_COOPERATIVE_STEERING
       mads_steering_mode = self.params.get_int("MadsSteeringMode")
       if mads_steering_mode == 2:
         self.CP.alternativeExperience |= ALTERNATIVE_EXPERIENCE.MADS_DISENGAGE_LATERAL_ON_BRAKE

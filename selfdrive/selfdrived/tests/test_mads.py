@@ -39,6 +39,10 @@ def make_car_state(**overrides):
     "brakePressed": False,
     "gasPressed": False,
     "steeringDisengage": False,
+    "steeringOverride": False,
+    "handsOnLevel": 0,
+    "steeringTorque": 0.0,
+    "steeringRateDeg": 0.0,
     "invalidLkasSetting": False,
     "cruiseState": SimpleNamespace(available=True),
     "gearShifter": GearShifter.drive,
@@ -113,6 +117,45 @@ def test_mads_safety_exits_are_not_overridable():
   engage(mads)
   mads.update(make_car_state(), False, False, FakeEvents(ET.SOFT_DISABLE))
   assert mads.state == MadsState.disabled
+
+
+def test_strong_driver_override_pauses_then_resumes_after_stable_release():
+  mads = make_mads(steering_mode=0)
+  engage(mads)
+
+  mads.update(make_car_state(steeringOverride=True, handsOnLevel=3, steeringTorque=2.6,
+                             steeringRateDeg=18.0), False, False, FakeEvents())
+  assert mads.state == MadsState.paused
+  assert mads.enabled
+  assert not mads.active
+
+  release = make_car_state(handsOnLevel=1, steeringTorque=0.2, steeringRateDeg=5.0)
+  for _ in range(24):
+    mads.update(release, False, False, FakeEvents())
+    assert mads.state == MadsState.paused
+
+  mads.update(release, False, False, FakeEvents())
+  assert mads.state == MadsState.enabled
+  assert mads.active
+
+
+def test_driver_override_release_hysteresis_resets_when_wheel_moves():
+  mads = make_mads(steering_mode=0)
+  engage(mads)
+  mads.update(make_car_state(steeringOverride=True, handsOnLevel=3, steeringTorque=2.6),
+              False, False, FakeEvents())
+
+  release = make_car_state(handsOnLevel=1, steeringTorque=0.2, steeringRateDeg=5.0)
+  for _ in range(20):
+    mads.update(release, False, False, FakeEvents())
+  mads.update(make_car_state(handsOnLevel=1, steeringTorque=0.2, steeringRateDeg=15.0),
+              False, False, FakeEvents())
+  for _ in range(24):
+    mads.update(release, False, False, FakeEvents())
+  assert mads.state == MadsState.paused
+
+  mads.update(release, False, False, FakeEvents())
+  assert mads.state == MadsState.enabled
 
 
 def test_mads_disengages_on_panda_lateral_permission_mismatch():

@@ -1,5 +1,5 @@
 from cereal import custom
-from opendbc.car import structs
+from opendbc.car import DT_CTRL, structs
 
 from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.selfdrived.events import ET
@@ -8,6 +8,10 @@ from openpilot.selfdrive.selfdrived.events import ET
 MadsState = custom.MadsState.State
 GearShifter = structs.CarState.GearShifter
 PARAM_REFRESH_INTERVAL = 5  # 20 Hz at the 100 Hz selfdrived update rate
+DRIVER_OVERRIDE_RELEASE_HANDS_ON_LEVEL = 1
+DRIVER_OVERRIDE_RELEASE_TORQUE = 0.5  # Nm
+DRIVER_OVERRIDE_RELEASE_STEERING_RATE = 10.0  # deg/s
+DRIVER_OVERRIDE_RELEASE_FRAMES = round(0.25 / DT_CTRL)
 
 
 class MadsSteeringMode:
@@ -43,6 +47,8 @@ class ModularAssistiveDrivingSystem:
     self._brake_pressed_prev = False
     self._param_refresh_counter = 0
     self._pending_exit_reason = ""
+    self._driver_override_latched = False
+    self._driver_override_release_counter = 0
 
     cloudlog.event("mads.config", available=self.available, steering_mode=self.steering_mode,
                    feature_enabled=self.feature_enabled, user_enabled=self.user_enabled,
@@ -99,11 +105,40 @@ class ModularAssistiveDrivingSystem:
       cloudlog.event("mads.panda_lateral_mismatch", mismatch_cycles=self.lateral_mismatch_counter, error=True)
     self.controls_mismatch = controls_mismatch
 
+  def _update_driver_override(self, CS) -> bool:
+    driver_override = bool(getattr(CS, "steeringOverride", False))
+    if driver_override:
+      if not self._driver_override_latched:
+        cloudlog.event("mads.driver_override", active=True, hands_on_level=int(getattr(CS, "handsOnLevel", 0)),
+                       steering_torque=float(CS.steeringTorque), steering_rate=float(CS.steeringRateDeg))
+      self._driver_override_latched = True
+      self._driver_override_release_counter = 0
+      return False
+
+    if not self._driver_override_latched:
+      return False
+
+    release_ready = (int(getattr(CS, "handsOnLevel", 0)) <= DRIVER_OVERRIDE_RELEASE_HANDS_ON_LEVEL and
+                     abs(float(CS.steeringTorque)) <= DRIVER_OVERRIDE_RELEASE_TORQUE and
+                     abs(float(CS.steeringRateDeg)) <= DRIVER_OVERRIDE_RELEASE_STEERING_RATE)
+    self._driver_override_release_counter = self._driver_override_release_counter + 1 if release_ready else 0
+    if self._driver_override_release_counter < DRIVER_OVERRIDE_RELEASE_FRAMES:
+      return False
+
+    self._driver_override_latched = False
+    self._driver_override_release_counter = 0
+    cloudlog.event("mads.driver_override", active=False, hands_on_level=int(getattr(CS, "handsOnLevel", 0)),
+                   steering_torque=float(CS.steeringTorque), steering_rate=float(CS.steeringRateDeg),
+                   stable_release_ms=round(DRIVER_OVERRIDE_RELEASE_FRAMES * DT_CTRL * 1000))
+    return True
+
   def update(self, CS, selfdrive_enabled: bool, selfdrive_active: bool, events) -> None:
     self._refresh_params()
 
     if not self.available:
       self._requested = False
+      self._driver_override_latched = False
+      self._driver_override_release_counter = 0
       self._set_state(MadsState.disabled, self._pending_exit_reason or "not_available")
       self._pending_exit_reason = ""
       self._selfdrive_enabled_prev = selfdrive_enabled
@@ -113,6 +148,7 @@ class ModularAssistiveDrivingSystem:
     selfdrive_rising = selfdrive_enabled and not self._selfdrive_enabled_prev
     brake_rising = CS.brakePressed and not self._brake_pressed_prev
     both_pedals = CS.brakePressed and CS.gasPressed
+    driver_override_released = self._update_driver_override(CS)
 
     if selfdrive_rising and self.user_enabled:
       self._requested = True
@@ -147,18 +183,24 @@ class ModularAssistiveDrivingSystem:
     safety_exit = bool(exit_reasons)
     if safety_exit or (brake_rising and self.steering_mode == MadsSteeringMode.DISENGAGE):
       self._requested = False
+      self._driver_override_latched = False
+      self._driver_override_release_counter = 0
       if not safety_exit:
         exit_reasons.append("brake_disengage")
 
     if not self._requested:
       reason = ",".join(exit_reasons) if exit_reasons else self._pending_exit_reason or "not_requested"
       self._set_state(MadsState.disabled, reason)
+    elif self._driver_override_latched:
+      self._set_state(MadsState.paused, "driver_override")
     elif pause_for_brake:
       self._set_state(MadsState.paused, "brake_pause")
     elif events.contains(ET.OVERRIDE_LATERAL):
       self._set_state(MadsState.overriding, "driver_override")
     else:
-      reason = "selfdrive_engaged" if selfdrive_rising else "brake_released" if self.state == MadsState.paused else "requested"
+      reason = ("selfdrive_engaged" if selfdrive_rising else
+                "driver_override_released" if driver_override_released else
+                "brake_released" if self.state == MadsState.paused else "requested")
       self._set_state(MadsState.enabled, reason)
 
     self._selfdrive_enabled_prev = selfdrive_enabled
