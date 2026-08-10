@@ -10,12 +10,17 @@ OFFLINE_WAKE_DEBUG_LOG = "/data/offline_wake_debug.log"
 PANDA_BOOTKICK_TEST_SENTINEL = "/data/panda_bootkick_test_pending"
 PANDA_BOOTKICK_TEST_TTL = 10 * 60
 OFFLINE_WAKE_CAN_BUSES = (0, 1, 2)
+OFFLINE_SHUTDOWN_CAN_QUIET_S = 300.0
+OFFLINE_SHUTDOWN_PANDA_MAX_SAMPLE_AGE_S = 2.0
 PANDA_WAKE_DEBUG_MAGIC = 0x57414B48
 PANDA_WAKE_MONITOR_ARMED_STAGE = 0x30
 PANDA_WAKE_MONITOR_STATUS_MAGIC = 0x574D4F4E
 PANDA_WAKE_MONITOR_PREPARED_STATE = 1
 PANDA_WAKE_MONITOR_COMMITTED_STATE = 2
 PANDA_WAKE_MONITOR_FAILED_STATE = 7
+PANDA_WAKE_MONITOR_STATUS_FLAG_RX_ARMED = 1 << 0
+PANDA_WAKE_MONITOR_STATUS_FLAG_PREPARE_DIRTY = 1 << 1
+PANDA_WAKE_MONITOR_STATUS_FLAG_CAN_HEALTHY = 1 << 2
 
 
 class CanActivityTracker:
@@ -41,6 +46,88 @@ class CanActivityTracker:
         "last_activity_s": max(0.0, current_time - self.last_activity[bus]),
       }
       for bus in OFFLINE_WAKE_CAN_BUSES
+    }
+
+
+class CanShutdownGate:
+  """Require fresh, fault-free Panda counters to remain unchanged before shutdown."""
+  def __init__(self, quiet_s: float = OFFLINE_SHUTDOWN_CAN_QUIET_S,
+               max_sample_age_s: float = OFFLINE_SHUTDOWN_PANDA_MAX_SAMPLE_AGE_S) -> None:
+    self.quiet_s = quiet_s
+    self.max_sample_age_s = max_sample_age_s
+    self.last_counts: tuple[int, int, int] | None = None
+    self.last_lost_counts: tuple[int, int, int] | None = None
+    self.last_uptime: int | None = None
+    self.last_sample_time: float | None = None
+    self.quiet_since: float | None = None
+    self.healthy = False
+    self.reason = "no_panda_state"
+
+  def reset(self, reason: str = "reset") -> None:
+    self.last_counts = None
+    self.last_lost_counts = None
+    self.last_uptime = None
+    self.last_sample_time = None
+    self.quiet_since = None
+    self.healthy = False
+    self.reason = reason
+
+  @staticmethod
+  def _can_states(panda_state):
+    return (panda_state.canState0, panda_state.canState1, panda_state.canState2)
+
+  def update(self, panda_states, now: float | None = None, valid: bool = True) -> None:
+    current_time = time.monotonic() if now is None else now
+    if not valid or len(panda_states) != 1:
+      self.reset("panda_state_invalid")
+      return
+
+    panda_state = panda_states[0]
+    can_states = self._can_states(panda_state)
+    faults = tuple(panda_state.faults)
+    unhealthy_bus = any(bool(can_state.busOff) or bool(can_state.errorPassive) for can_state in can_states)
+    if bool(panda_state.powerSaveEnabled):
+      self.reset("panda_rx_power_save")
+      return
+    if faults:
+      self.reset("panda_fault:" + ",".join(str(fault) for fault in faults))
+      return
+    if unhealthy_bus:
+      self.reset("can_controller_unhealthy")
+      return
+
+    uptime = int(panda_state.uptime)
+    counts = tuple(int(can_state.totalRxCnt) for can_state in can_states)
+    lost_counts = tuple(int(getattr(can_state, "totalRxLostCnt", 0)) for can_state in can_states)
+    stale_gap = self.last_sample_time is not None and (current_time - self.last_sample_time) > self.max_sample_age_s
+    panda_reset = self.last_uptime is not None and uptime < self.last_uptime
+    counter_reset = self.last_counts is not None and any(current < previous for current, previous in zip(counts, self.last_counts, strict=True))
+    rx_lost = self.last_lost_counts is not None and any(current > previous for current, previous in zip(lost_counts, self.last_lost_counts, strict=True))
+    activity = self.last_counts is not None and counts != self.last_counts
+
+    if self.last_counts is None or stale_gap or panda_reset or counter_reset or rx_lost or activity:
+      self.quiet_since = current_time
+
+    self.last_counts = counts
+    self.last_lost_counts = lost_counts
+    self.last_uptime = uptime
+    self.last_sample_time = current_time
+    self.healthy = True
+    self.reason = "quiet" if not activity else "can_activity"
+
+  def ready(self, now: float | None = None) -> bool:
+    current_time = time.monotonic() if now is None else now
+    fresh = self.last_sample_time is not None and (current_time - self.last_sample_time) <= self.max_sample_age_s
+    return self.healthy and fresh and self.quiet_since is not None and (current_time - self.quiet_since) >= self.quiet_s
+
+  def snapshot(self, now: float | None = None) -> dict[str, object]:
+    current_time = time.monotonic() if now is None else now
+    return {
+      "ready": self.ready(current_time),
+      "reason": self.reason,
+      "quiet_s": 0.0 if self.quiet_since is None else max(0.0, current_time - self.quiet_since),
+      "last_counts": self.last_counts,
+      "last_sample_age_s": None if self.last_sample_time is None else max(0.0, current_time - self.last_sample_time),
     }
 
 
@@ -72,9 +159,21 @@ def panda_wake_monitor_ready(wake_debug: dict | None) -> bool:
     and wake_debug.get("stage") == PANDA_WAKE_MONITOR_ARMED_STAGE
 
 
-def panda_wake_monitor_status_ready(status: dict | None, transaction: int, state: int) -> bool:
+def panda_wake_monitor_status_ready(status: dict | None, transaction: int, state: int,
+                                    required_flags: int = 0, forbidden_flags: int = 0) -> bool:
+  flags = 0 if status is None else int(status.get("flags", status.get("reserved", 0)))
   return status is not None and status.get("magic") == PANDA_WAKE_MONITOR_STATUS_MAGIC \
-    and status.get("transaction") == transaction and status.get("state") == state
+    and status.get("transaction") == transaction and status.get("state") == state \
+    and (flags & required_flags) == required_flags and (flags & forbidden_flags) == 0
+
+
+def panda_wake_monitor_health_ready(health: dict | None, can_health: list[dict] | None = None) -> bool:
+  if health is None or int(health.get("faults", 0)) != 0:
+    return False
+  if can_health is None or len(can_health) != len(OFFLINE_WAKE_CAN_BUSES):
+    return False
+  return all(not bool(state.get("bus_off", False)) and not bool(state.get("error_passive", False))
+             for state in can_health)
 
 
 @contextmanager

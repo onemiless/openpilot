@@ -45,7 +45,11 @@ class FakePanda:
     return True
 
   def health(self):
-    return {}
+    return {"faults": 0, "fault_status": 0}
+
+  def can_health(self, can_number: int):
+    assert can_number in (0, 1, 2)
+    return {"bus_off": False, "error_passive": False}
 
   def commit_wake_monitor(self, transaction: int):
     type(self).committed += 1
@@ -53,6 +57,8 @@ class FakePanda:
       "magic": offline_wake.PANDA_WAKE_MONITOR_STATUS_MAGIC,
       "transaction": transaction,
       "state": offline_wake.PANDA_WAKE_MONITOR_COMMITTED_STATE,
+      "flags": offline_wake.PANDA_WAKE_MONITOR_STATUS_FLAG_RX_ARMED |
+               offline_wake.PANDA_WAKE_MONITOR_STATUS_FLAG_CAN_HEALTHY,
     }
 
 
@@ -124,12 +130,27 @@ def test_existing_ack_does_not_hide_failed_rearm_of_responsive_panda(monkeypatch
         "magic": offline_wake.PANDA_WAKE_MONITOR_STATUS_MAGIC,
         "transaction": transaction,
         "state": offline_wake.PANDA_WAKE_MONITOR_PREPARED_STATE,
+        "flags": offline_wake.PANDA_WAKE_MONITOR_STATUS_FLAG_RX_ARMED |
+                 offline_wake.PANDA_WAKE_MONITOR_STATUS_FLAG_CAN_HEALTHY,
       }
 
   params = FakeParams(acknowledged=True)
   install_fakes(monkeypatch, params, UnconfirmedPanda)
 
   assert not hardware.request_internal_panda_wake_monitor()
+
+
+def test_shutdown_rejects_panda_can_fault_before_commit(monkeypatch):
+  class FaultedPanda(FakePanda):
+    def health(self):
+      return {"faults": 1 << 3, "fault_status": 1}
+
+  params = FakeParams(acknowledged=True)
+  FakePanda.committed = 0
+  install_fakes(monkeypatch, params, FaultedPanda)
+
+  assert not hardware.request_internal_panda_wake_monitor()
+  assert FakePanda.committed == 0
 
 
 def test_shutdown_skips_rearm_for_bootkick_test(monkeypatch):

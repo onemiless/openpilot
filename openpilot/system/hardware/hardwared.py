@@ -24,9 +24,11 @@ from openpilot.sunnypilot.system.statsd import statlog
 from openpilot.system.hardware.power_monitoring import PowerMonitoring
 from openpilot.system.hardware.fan_controller import FanController
 from openpilot.system.hardware.offline_wake import (
-  CanActivityTracker, acknowledge_panda_wake_monitor, offline_wake_debug_log as _offline_wake_debug_log,
+  CanActivityTracker, CanShutdownGate, acknowledge_panda_wake_monitor, offline_wake_debug_log as _offline_wake_debug_log,
   new_wake_monitor_transaction, panda_bootkick_test_pending, panda_wake_monitor_acknowledged,
   panda_wake_monitor_status_ready, wake_monitor_transaction_string, PANDA_WAKE_MONITOR_PREPARED_STATE,
+  PANDA_WAKE_MONITOR_STATUS_FLAG_CAN_HEALTHY, PANDA_WAKE_MONITOR_STATUS_FLAG_PREPARE_DIRTY,
+  PANDA_WAKE_MONITOR_STATUS_FLAG_RX_ARMED,
 )
 from openpilot.common.version import terms_version, training_version, get_build_metadata, terms_version_sp
 
@@ -67,16 +69,18 @@ def offline_wake_debug_log(message: str) -> None:
   _offline_wake_debug_log("hardwared", message)
 
 
-def request_panda_deepsleep() -> bool:
+def request_panda_deepsleep(transaction: int) -> bool:
   params = Params()
   if panda_bootkick_test_pending():
     offline_wake_debug_log("bootkick test pending; skipping PandaWakeMonitorRequest before shutdown")
     return True
 
   offline_wake_debug_log("request_panda_deepsleep start")
-  transaction = new_wake_monitor_transaction()
   transaction_string = wake_monitor_transaction_string(transaction)
   try:
+    if panda_wake_monitor_acknowledged(params, transaction):
+      offline_wake_debug_log(f"reusing acknowledged PandaWakeMonitorRequest transaction={transaction_string}")
+      return True
     params.remove("PandaWakeMonitorAck")
     params.put("PandaWakeMonitorTxn", transaction_string, block=True)
     params.put_bool("PandaWakeMonitorRequest", True, block=True)
@@ -104,7 +108,11 @@ def request_panda_deepsleep() -> bool:
         offline_wake_debug_log(f"opened panda serial={serial} internal={is_internal}")
         if is_internal:
           status = panda.prepare_wake_monitor(transaction)
-          if not panda_wake_monitor_status_ready(status, transaction, PANDA_WAKE_MONITOR_PREPARED_STATE):
+          if not panda_wake_monitor_status_ready(
+            status, transaction, PANDA_WAKE_MONITOR_PREPARED_STATE,
+            required_flags=PANDA_WAKE_MONITOR_STATUS_FLAG_RX_ARMED | PANDA_WAKE_MONITOR_STATUS_FLAG_CAN_HEALTHY,
+            forbidden_flags=PANDA_WAKE_MONITOR_STATUS_FLAG_PREPARE_DIRTY,
+          ):
             cloudlog.error(f"internal panda wake monitor did not prepare serial={serial} status={status}")
             offline_wake_debug_log(f"direct Panda.prepare_wake_monitor unconfirmed serial={serial} status={status}")
             continue
@@ -263,7 +271,12 @@ def hardware_thread(end_event, hw_queue) -> None:
 
   fan_controller = FanController(int(1./DT_HW))
   can_activity_tracker = CanActivityTracker()
+  can_shutdown_gate = CanShutdownGate()
   shutdown_wait_logged = False
+  shutdown_gate_wait_logged = False
+  wake_monitor_transaction: int | None = None
+  wake_monitor_observe_requested = False
+  shutdown_commanded = False
 
   while not end_event.is_set():
     sm.update(PANDA_STATES_TIMEOUT)
@@ -272,6 +285,8 @@ def hardware_thread(end_event, hw_queue) -> None:
 
     pandaStates = sm['pandaStates']
     peripheralState = sm['peripheralState']
+    if sm.updated['pandaStates']:
+      can_shutdown_gate.update(pandaStates, valid=sm.valid['pandaStates'])
 
     # handle requests to cycle system started state
     if params.get_bool("OnroadCycleRequested"):
@@ -467,24 +482,47 @@ def hardware_thread(end_event, hw_queue) -> None:
     force_power_down = params.get_bool("ForcePowerDown")
     if shutdown_requested:
       cloudlog.warning(f"shutting device down, offroad since {off_ts}")
-      monitor_ready = request_panda_deepsleep()
+      if not force_power_down and not wake_monitor_observe_requested:
+        params.put_bool("PandaWakeMonitorObserve", True, block=True)
+        wake_monitor_observe_requested = True
+
+      gate_ready = can_shutdown_gate.ready()
+      monitor_ready = False
+      if force_power_down:
+        monitor_ready = True
+      elif gate_ready:
+        if wake_monitor_transaction is None:
+          wake_monitor_transaction = new_wake_monitor_transaction()
+        monitor_ready = request_panda_deepsleep(wake_monitor_transaction)
       shutdown_fields = [
         "power_monitor shutdown ready",
         f"offroad_since={off_ts}",
         f"in_car={in_car}",
         f"started_seen={started_seen}",
         f"can_activity={can_activity_tracker.snapshot()}",
+        f"can_shutdown_gate={can_shutdown_gate.snapshot()}",
         f"forced={force_power_down}",
         f"monitor_ready={monitor_ready}",
       ]
       offline_wake_debug_log(" ".join(shutdown_fields))
-      if monitor_ready or force_power_down:
+      if monitor_ready and (force_power_down or can_shutdown_gate.ready()) and not shutdown_commanded:
         params.put_bool("DoShutdown", True, block=True)
-      elif not shutdown_wait_logged:
+        shutdown_commanded = True
+      elif not gate_ready and not force_power_down and not shutdown_gate_wait_logged:
+        offline_wake_debug_log("shutdown deferred until all physical CAN RX counters are quiet and healthy for 300 seconds")
+        shutdown_gate_wait_logged = True
+      elif gate_ready and not monitor_ready and not shutdown_wait_logged:
         offline_wake_debug_log("shutdown deferred because Panda wake monitor setup failed")
         shutdown_wait_logged = True
     else:
       shutdown_wait_logged = False
+      shutdown_gate_wait_logged = False
+      wake_monitor_transaction = None
+      shutdown_commanded = False
+      can_shutdown_gate.reset("shutdown_not_requested")
+      if wake_monitor_observe_requested:
+        params.put_bool("PandaWakeMonitorObserve", False, block=True)
+        wake_monitor_observe_requested = False
 
     msg.deviceState.started = started_ts is not None and not offroad_mode
     msg.deviceState.startedMonoTime = int(1e9*(started_ts or 0))

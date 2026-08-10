@@ -17,8 +17,10 @@ from openpilot.common.hardware.tici.pins import GPIO
 from openpilot.common.hardware.tici.amplifier import Amplifier
 from openpilot.system.hardware.offline_wake import (
   offline_wake_debug_log as _offline_wake_debug_log, panda_bootkick_test_pending,
-  panda_wake_monitor_acknowledged, panda_wake_monitor_status_ready,
+  panda_wake_monitor_acknowledged, panda_wake_monitor_health_ready, panda_wake_monitor_status_ready,
   PANDA_WAKE_MONITOR_COMMITTED_STATE,
+  PANDA_WAKE_MONITOR_STATUS_FLAG_CAN_HEALTHY, PANDA_WAKE_MONITOR_STATUS_FLAG_PREPARE_DIRTY,
+  PANDA_WAKE_MONITOR_STATUS_FLAG_RX_ARMED,
 )
 
 MODEM_STATE_PATH = "/dev/shm/modem"
@@ -70,9 +72,18 @@ def request_internal_panda_wake_monitor() -> bool:
         offline_wake_debug_log(f"opened panda serial={serial} internal={is_internal}")
         if is_internal:
           health = panda.health()
+          can_health = [panda.can_health(bus) for bus in (0, 1, 2)]
+          if not panda_wake_monitor_health_ready(health, can_health):
+            offline_wake_debug_log(f"refusing wake monitor commit with unhealthy Panda health={health} can_health={can_health}")
+            wake_monitor_kmsg(f"Tici.shutdown refused unhealthy panda wake monitor serial={serial}")
+            continue
           status = panda.commit_wake_monitor(transaction)
           offline_wake_debug_log(f"commit health={health} transaction={transaction_string} status={status}")
-          if not panda_wake_monitor_status_ready(status, transaction, PANDA_WAKE_MONITOR_COMMITTED_STATE):
+          if not panda_wake_monitor_status_ready(
+            status, transaction, PANDA_WAKE_MONITOR_COMMITTED_STATE,
+            required_flags=PANDA_WAKE_MONITOR_STATUS_FLAG_RX_ARMED | PANDA_WAKE_MONITOR_STATUS_FLAG_CAN_HEALTHY,
+            forbidden_flags=PANDA_WAKE_MONITOR_STATUS_FLAG_PREPARE_DIRTY,
+          ):
             offline_wake_debug_log(f"Panda.commit_wake_monitor unconfirmed serial={serial} transaction={transaction_string} status={status}")
             wake_monitor_kmsg(f"Tici.shutdown failed to confirm panda wake monitor commit serial={serial}")
             continue
