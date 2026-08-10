@@ -731,6 +731,7 @@ CarrotPanel::CarrotPanel(QWidget* parent) : QWidget(parent) {
 
   latLongToggles = new ListWidget(this);
   latLongToggles->addItem(new CValueControl("Mads", "Tesla MADS 独立横向控制(1)", "0:关闭并保持原有控制逻辑, 1:开启。修改后需重启车辆", 0, 1, 1));
+  latLongToggles->addItem(new CValueControl("MadsUserEnabled", "Tesla MADS 手动允许(1)", "0:保持MADS关闭, 1:允许下次正常启用横向。行驶中可使用屏幕MADS按钮切换", 0, 1, 1));
   latLongToggles->addItem(new CValueControl("MadsSteeringMode", "Tesla MADS 制动策略(2)", "0:制动时保持横向, 1:制动时暂停并在释放后恢复, 2:制动时退出横向。修改后需重启车辆", 0, 2, 1));
   latLongToggles->addItem(new CValueControl("TeslaCoopSteering", "Tesla 协作转向(1)", "0:关闭并保持原有方向盘角度控制, 1:允许驾驶员与模型共同转向。修改后需重启车辆", 0, 1, 1));
   latLongToggles->addItem(new CValueControl("UseLaneLineSpeed", "车道线模式速度(0)", "车道线模式，使用 lat_mpc 控制", 0, 200, 5));

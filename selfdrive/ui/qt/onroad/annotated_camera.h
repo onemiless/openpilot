@@ -19,6 +19,7 @@ public:
 private:
   QVBoxLayout *main_layout;
   ExperimentalButton *experimental_btn;
+  MadsButton *mads_btn;
   DriverMonitorRenderer dmon;
   HudRenderer hud;
   ModelRenderer model;

@@ -70,6 +70,8 @@ struct MadsState @0xf35cc4560bbf6ec2 {
 	enabled @1 :Bool;
 	active @2 :Bool;
 	available @3 :Bool;
+	configured @4 :Bool;
+	userEnabled @5 :Bool;
 
 	enum State {
 		disabled @0;

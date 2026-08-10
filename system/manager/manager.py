@@ -65,6 +65,7 @@ def get_default_params():
     ("AutoGasSyncSpeed", "1"),
     ("AutoEngage", "0"),
     ("Mads", "1"),
+    ("MadsUserEnabled", "1"),
     ("MadsSteeringMode", "2"),
     ("TeslaCoopSteering", "1"),
     ("DisableMinSteerSpeed", "0"),

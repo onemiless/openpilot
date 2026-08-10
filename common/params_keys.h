@@ -173,6 +173,7 @@ inline static std::unordered_map<std::string, uint32_t> keys = {
     {"AutoGasSyncSpeed", PERSISTENT},
     {"AutoEngage", PERSISTENT},
     {"Mads", PERSISTENT},
+    {"MadsUserEnabled", PERSISTENT},
     {"MadsSteeringMode", PERSISTENT},
     {"TeslaCoopSteering", PERSISTENT},
     {"DisableMinSteerSpeed", PERSISTENT},

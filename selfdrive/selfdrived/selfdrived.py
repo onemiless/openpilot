@@ -582,6 +582,8 @@ class SelfdriveD:
     mads.enabled = self.mads.enabled
     mads.active = self.mads.active
     mads.available = self.mads.available
+    mads.configured = self.mads.feature_enabled
+    mads.userEnabled = self.mads.user_enabled
     self.pm.send('madsState', mads_msg)
 
     # onroadEvents - logged every second or on change

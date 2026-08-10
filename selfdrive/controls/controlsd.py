@@ -154,10 +154,12 @@ class Controls:
       lateral_enabled = bool(self.sm['selfdriveState'].active and CS.latEnabled)
       authority_source = "legacy"
 
-    authority_status = (authority_source, lateral_enabled, mads_healthy)
+    authority_status = (authority_source, lateral_enabled, mads_healthy,
+                        bool(mads.configured), bool(mads.userEnabled))
     if authority_status != self._mads_authority_status_prev:
       cloudlog.event("mads.controlsd_authority", source=authority_source, lateral_enabled=lateral_enabled,
                      mads_healthy=mads_healthy, mads_available=bool(mads.available),
+                     mads_configured=bool(mads.configured), mads_user_enabled=bool(mads.userEnabled),
                      mads_state=str(mads.state), error=authority_source == "mads_fail_safe")
       self._mads_authority_status_prev = authority_status
     #self.soft_hold_active = CS.softHoldActive #car.OnroadEvent.EventName.softHold in [e.name for e in self.sm['onroadEvents']]

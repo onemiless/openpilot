@@ -2,6 +2,7 @@
 #include "selfdrive/ui/qt/onroad/annotated_camera.h"
 
 #include <QPainter>
+#include <QHBoxLayout>
 #include <algorithm>
 #include <cmath>
 #include <unistd.h>
@@ -22,8 +23,14 @@ AnnotatedCameraWidget::AnnotatedCameraWidget(VisionStreamType type, QWidget *par
   main_layout->setMargin(UI_BORDER_SIZE);
   main_layout->setSpacing(0);
 
+  auto top_buttons = new QHBoxLayout;
+  top_buttons->setSpacing(16);
+  top_buttons->addStretch();
+  mads_btn = new MadsButton(this);
+  top_buttons->addWidget(mads_btn);
   experimental_btn = new ExperimentalButton(this);
-  main_layout->addWidget(experimental_btn, 0, Qt::AlignTop | Qt::AlignRight);
+  top_buttons->addWidget(experimental_btn);
+  main_layout->addLayout(top_buttons);
 
   record_timer = std::make_shared<QTimer>();
 	QObject::connect(record_timer.get(), &QTimer::timeout, [=]() {
@@ -40,6 +47,7 @@ AnnotatedCameraWidget::AnnotatedCameraWidget(VisionStreamType type, QWidget *par
 
 void AnnotatedCameraWidget::updateState(const UIState &s) {
   // update engageability/experimental mode button
+  mads_btn->updateState(s);
   experimental_btn->updateState(s);
   dmon.updateState(s);
 

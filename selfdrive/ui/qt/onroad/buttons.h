@@ -25,4 +25,26 @@ private:
   bool engageable;
 };
 
+class MadsButton : public QPushButton {
+  Q_OBJECT
+
+public:
+  explicit MadsButton(QWidget *parent = 0);
+  void updateState(const UIState &s);
+
+private:
+  void paintEvent(QPaintEvent *event) override;
+  void changeMode();
+
+  Params params;
+  bool configured = false;
+  bool available = false;
+  bool user_enabled = false;
+  bool enabled = false;
+  bool active = false;
+  bool request_pending = false;
+  bool requested_enabled = false;
+  double request_time = 0.0;
+};
+
 void drawIcon(QPainter &p, const QPoint &center, const QPixmap &img, const QBrush &bg, float opacity);
