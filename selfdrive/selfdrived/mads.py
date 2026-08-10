@@ -2,7 +2,7 @@ from cereal import custom
 from opendbc.car import DT_CTRL, structs
 
 from openpilot.common.swaglog import cloudlog
-from openpilot.selfdrive.selfdrived.events import ET
+from openpilot.selfdrive.selfdrived.events import ET, EVENTS, EventName
 
 
 MadsState = custom.MadsState.State
@@ -21,6 +21,11 @@ EAC_STATUS_INHIBITED = 0
 EAC_STATUS_AVAILABLE = 1
 EAC_STATUS_ACTIVE = 2
 EAC_ERROR_TMP_FAULT = 4
+RADAR_SOFT_DISABLE_EVENTS = frozenset((
+  EventName.radarFault,
+  EventName.radarWrongConfig,
+  EventName.radarTempUnavailable,
+))
 
 EAC_STATUS_NAMES = {
   EAC_STATUS_INHIBITED: "EAC_INHIBITED",
@@ -72,6 +77,8 @@ class ModularAssistiveDrivingSystem:
     self._eps_fault_consecutive_frames = 0
     self._eac_status = EAC_STATUS_AVAILABLE
     self._eac_error_code = 0
+    self.last_transition_reason = ""
+    self._radar_temp_degraded = False
 
     cloudlog.event("mads.config", available=self.available, steering_mode=self.steering_mode,
                    feature_enabled=self.feature_enabled, user_enabled=self.user_enabled,
@@ -230,6 +237,14 @@ class ModularAssistiveDrivingSystem:
                                       self._eac_status == EAC_STATUS_INHIBITED and
                                       self._eac_error_code == EAC_ERROR_TMP_FAULT)
     immediate_steering_fault = CS.steerFaultPermanent or (CS.steerFaultTemporary and not recoverable_eps_temp_fault_now)
+    soft_disable_events = [event for event in events.names if ET.SOFT_DISABLE in EVENTS.get(event, {})]
+    radar_only_soft_disable = (bool(soft_disable_events) and
+                               all(event in RADAR_SOFT_DISABLE_EVENTS for event in soft_disable_events))
+
+    if radar_only_soft_disable != self._radar_temp_degraded:
+      self._radar_temp_degraded = radar_only_soft_disable
+      cloudlog.event("mads.radar_degraded", active=radar_only_soft_disable,
+                     action="keep_lateral_active", error=radar_only_soft_disable)
 
     exit_reasons = []
     if steering_disengage:
@@ -250,7 +265,7 @@ class ModularAssistiveDrivingSystem:
       exit_reasons.append("eps_temporary_fault_timeout")
     if events.contains(ET.IMMEDIATE_DISABLE):
       exit_reasons.append("immediate_disable_event")
-    if events.contains(ET.SOFT_DISABLE):
+    if events.contains(ET.SOFT_DISABLE) and not radar_only_soft_disable:
       exit_reasons.append("soft_disable_event")
 
     safety_exit = bool(exit_reasons)
@@ -288,6 +303,7 @@ class ModularAssistiveDrivingSystem:
     self.enabled = state != MadsState.disabled
     self.active = state in (MadsState.enabled, MadsState.softDisabling, MadsState.overriding)
     if state != previous_state:
+      self.last_transition_reason = reason
       cloudlog.event("mads.transition", previous_state=str(previous_state), state=str(state), reason=reason,
                      enabled=self.enabled, active=self.active, steering_mode=self.steering_mode,
                      eac_status=EAC_STATUS_NAMES.get(self._eac_status, "EAC_UNKNOWN"),

@@ -3,8 +3,9 @@ import pytest
 from opendbc.can import CANPacker
 from opendbc.car import structs
 from opendbc.car.tesla.radar_interface import (
-  ARS408_ADDRESS_OFFSET, ARS408_BUS, ARS408_EXTENDED, ARS408_GENERAL, ARS408_QUALITY, ARS408_TRACK_GRACE_CYCLES,
-  ARS408_STARTUP_GRACE_UPDATES, RadarInterface, object_is_usable, object_rejection_reason,
+  ARS408_ADDRESS_OFFSET, ARS408_BUS, ARS408_EXTENDED, ARS408_GENERAL, ARS408_INTERFERENCE_CONFIRM_FRAMES,
+  ARS408_QUALITY, ARS408_TRACK_GRACE_CYCLES, ARS408_STARTUP_GRACE_UPDATES, RadarInterface, object_is_usable,
+  object_rejection_reason,
 )
 
 
@@ -367,7 +368,7 @@ def test_radar_state_accepts_250_m_config_and_ignores_missing_motion_inputs():
   assert result.errors.wrongConfig
 
 
-def test_single_interference_state_does_not_request_takeover():
+def test_interference_requires_confirmation_before_requesting_takeover():
   radar = RadarInterface.__new__(RadarInterface)
   radar.last_radar_state = {
     "RadarState_Interference": 1,
@@ -390,13 +391,14 @@ def test_single_interference_state_does_not_request_takeover():
   radar.last_fault_signature = None
   radar.interference_frames = 0
 
-  first = structs.RadarData()
-  radar._apply_radar_state_errors(first)
-  assert not first.errors.radarUnavailableTemporary
+  for _ in range(ARS408_INTERFERENCE_CONFIRM_FRAMES - 1):
+    unconfirmed = structs.RadarData()
+    radar._apply_radar_state_errors(unconfirmed)
+    assert not unconfirmed.errors.radarUnavailableTemporary
 
-  second = structs.RadarData()
-  radar._apply_radar_state_errors(second)
-  assert second.errors.radarUnavailableTemporary
+  confirmed = structs.RadarData()
+  radar._apply_radar_state_errors(confirmed)
+  assert confirmed.errors.radarUnavailableTemporary
 
   radar.last_radar_state["RadarState_Interference"] = 0
   recovered = structs.RadarData()

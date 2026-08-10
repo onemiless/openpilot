@@ -16,7 +16,7 @@ from openpilot.common.swaglog import cloudlog
 from openpilot.common.gps import get_gps_location_service
 
 from openpilot.selfdrive.car.car_specific import CarSpecificEvents
-from openpilot.selfdrive.selfdrived.events import Events, ET
+from openpilot.selfdrive.selfdrived.events import Events, ET, EVENT_NAME, EVENTS
 from openpilot.selfdrive.selfdrived.state import StateMachine
 from openpilot.selfdrive.selfdrived.mads import ModularAssistiveDrivingSystem
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
@@ -388,7 +388,8 @@ class SelfdriveD:
       self.events.add(EventName.selfdrivedLagging)
     if not self.sm.valid['radarState']:
       if self.sm['radarState'].radarErrors.canError:
-        self.events.add(EventName.canError)
+        # Keep radar CAN failures distinct from vehicle CAN failures so MADS can preserve lateral control.
+        self.events.add(EventName.radarFault)
       elif self.sm['radarState'].radarErrors.wrongConfig:
         self.events.add(EventName.radarWrongConfig)
       elif self.sm['radarState'].radarErrors.radarUnavailableTemporary:
@@ -601,12 +602,78 @@ class SelfdriveD:
       self.events.add(EventName.controlsMismatch)
     if not self.CP.passive and self.initialized:
       self.enabled, self.active = self.state_machine.update(self.events)
+    mads_enabled_before = self.mads.enabled
+    mads_state_before = self.mads.state
     self.mads.update(CS, self.enabled, self.active, self.events)
+    if mads_enabled_before and not self.mads.enabled:
+      self.log_mads_exit_diagnostic(CS, mads_state_before)
     self.update_alerts(CS)
 
     self.publish_selfdriveState(CS)
 
     self.CS_prev = CS
+
+  def log_mads_exit_diagnostic(self, CS, previous_state) -> None:
+    try:
+      self._log_mads_exit_diagnostic(CS, previous_state)
+    except Exception:
+      # Diagnostics must never interfere with the control process, especially during a disengagement.
+      cloudlog.exception("mads.exit_diagnostic collection failed")
+
+  def _log_mads_exit_diagnostic(self, CS, previous_state) -> None:
+    event_details = []
+    for event in self.events.names:
+      event_details.append({
+        "name": EVENT_NAME.get(event, str(event)),
+        "types": list(EVENTS.get(event, {}).keys()),
+        "frames": self.events.event_counters.get(event, 0) + 1,
+        "duration_ms": round((self.events.event_counters.get(event, 0) + 1) * DT_CTRL * 1000),
+      })
+
+    radar_errors = self.sm['radarState'].radarErrors
+    panda_diagnostics = [{
+      "index": i,
+      "controls_allowed": bool(ps.controlsAllowed),
+      "lateral_allowed": bool(ps.controlsAllowedLateral),
+      "longitudinal_allowed": bool(ps.controlsAllowedLongitudinal),
+      "mads_disengage_reason": int(ps.madsDisengageReason),
+      "safety_rx_invalid": int(ps.safetyRxInvalid),
+      "heartbeat_lost": bool(ps.heartbeatLost),
+      "safety_model": int(ps.safetyModel.raw),
+    } for i, ps in enumerate(self.sm['pandaStates'])]
+
+    cloudlog.event(
+      "mads.exit_diagnostic",
+      reason=self.mads.last_transition_reason,
+      previous_state=str(previous_state),
+      selfdrive_enabled=bool(self.enabled), selfdrive_active=bool(self.active),
+      events=event_details,
+      gear=str(CS.gearShifter), v_ego=round(float(CS.vEgo), 3),
+      cruise_available=bool(CS.cruiseState.available), cruise_enabled=bool(CS.cruiseState.enabled),
+      brake_pressed=bool(CS.brakePressed), gas_pressed=bool(CS.gasPressed),
+      can_valid=bool(CS.canValid), can_timeout=bool(CS.canTimeout),
+      steering_angle=round(float(CS.steeringAngleDeg), 2),
+      steering_rate=round(float(CS.steeringRateDeg), 2),
+      steering_torque=round(float(CS.steeringTorque), 2),
+      hands_on_level=int(getattr(CS, "handsOnLevel", 0)),
+      steering_override=bool(getattr(CS, "steeringOverride", False)),
+      steering_disengage=bool(getattr(CS, "steeringDisengage", False)),
+      steer_fault_temporary=bool(CS.steerFaultTemporary),
+      steer_fault_permanent=bool(CS.steerFaultPermanent),
+      eac_status=int(getattr(CS, "eacStatus", -1)),
+      eac_error_code=int(getattr(CS, "eacErrorCode", -1)),
+      eps_fault_frames=self.mads._eps_fault_consecutive_frames,
+      eps_temp_fault_frames=self.mads._eps_temp_fault_frames,
+      radar_state_valid=bool(self.sm.valid['radarState']),
+      radar_state_alive=bool(self.sm.alive['radarState']),
+      radar_state_freq_ok=bool(self.sm.freq_ok['radarState']),
+      radar_can_error=bool(radar_errors.canError),
+      radar_wrong_config=bool(radar_errors.wrongConfig),
+      radar_unavailable_temporary=bool(radar_errors.radarUnavailableTemporary),
+      radar_fault=bool(radar_errors.radarFault),
+      panda_states=panda_diagnostics,
+      error=True,
+    )
 
   def read_personality_param(self):
     try:

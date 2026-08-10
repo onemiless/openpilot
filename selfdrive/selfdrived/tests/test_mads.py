@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from cereal import custom
 from opendbc.car import structs
 
-from openpilot.selfdrive.selfdrived.events import ET
+from openpilot.selfdrive.selfdrived.events import ET, EventName
 from openpilot.selfdrive.selfdrived.mads import ModularAssistiveDrivingSystem
 
 
@@ -27,8 +27,9 @@ class FakeParams:
 
 
 class FakeEvents:
-  def __init__(self, *event_types):
+  def __init__(self, *event_types, names=()):
     self.event_types = set(event_types)
+    self.names = list(names)
 
   def contains(self, event_type):
     return event_type in self.event_types
@@ -119,6 +120,23 @@ def test_mads_safety_exits_are_not_overridable():
   mads = make_mads(steering_mode=0)
   engage(mads)
   mads.update(make_car_state(), False, False, FakeEvents(ET.SOFT_DISABLE))
+  assert mads.state == MadsState.disabled
+
+
+def test_mads_keeps_lateral_active_for_all_radar_only_soft_disables():
+  for radar_event in (EventName.radarFault, EventName.radarWrongConfig, EventName.radarTempUnavailable):
+    mads = make_mads(steering_mode=0)
+    engage(mads)
+
+    radar_events = FakeEvents(ET.SOFT_DISABLE, names=(radar_event,))
+    mads.update(make_car_state(), False, False, radar_events)
+    assert mads.state == MadsState.enabled
+    assert mads.active
+
+  mads = make_mads(steering_mode=0)
+  engage(mads)
+  mixed_events = FakeEvents(ET.SOFT_DISABLE, names=(EventName.radarTempUnavailable, EventName.overheat))
+  mads.update(make_car_state(), False, False, mixed_events)
   assert mads.state == MadsState.disabled
 
 
