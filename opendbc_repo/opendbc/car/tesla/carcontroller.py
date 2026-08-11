@@ -9,8 +9,10 @@ from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.tesla.ars408_can import ARS408CAN, ARS408_FILTER_SIGNALS, ARS408_MOTION_INPUT_ENABLED
 from opendbc.car.tesla.ars408_log import get_ars408_logger
 from opendbc.car.tesla.coop_steering import CoopSteeringCarController
+from opendbc.car.tesla.speed_sync_controller import SpeedSyncController
 from opendbc.car.tesla.teslacan import TeslaCAN
-from opendbc.car.tesla.values import CarControllerParams
+from opendbc.car.tesla.turn_signal_controller import TurnSignalController
+from opendbc.car.tesla.values import CarControllerParams, TeslaFlags
 from opendbc.car.vehicle_model import VehicleModel
 from openpilot.common.params import Params
 
@@ -41,8 +43,26 @@ class CarController(CarControllerBase):
     self._steering_override_prev = False
     self._radar_config_request = None
     self._radar_filter_request = None
+    self.turn_signal_controller = TurnSignalController(bool(CP.flags & TeslaFlags.TURN_SIGNAL_TEST))
+    self.speed_sync_controller = SpeedSyncController(bool(CP.flags & TeslaFlags.SPEED_SYNC))
+    self.speed_sync_target_mps = 0.0
+    self.speed_sync_target_valid = False
     log.info("Tesla cooperative steering configured enabled=%d", int(self.coop_steering_enabled))
     radar_log.info("ARS408 motion input configured enabled=%d bus=1 rate_hz=20", int(self.radar_motion_enabled))
+
+  def observe_aux_can(self, monotonic_nanos, address, data, source):
+    self.turn_signal_controller.observe(monotonic_nanos, address, data, source)
+    self.speed_sync_controller.observe(monotonic_nanos, address, data, source)
+
+  def set_speed_sync_target(self, speed_mps, valid):
+    self.speed_sync_target_mps = float(speed_mps) if valid else 0.0
+    self.speed_sync_target_valid = bool(valid)
+
+  def update_turn_signal_context(self, now_nanos, **context):
+    self.turn_signal_controller.update_lane_change_context(now_nanos, **context)
+
+  def take_turn_signal_cancel_sends(self, now_nanos):
+    return self.turn_signal_controller.take_can_sends(now_nanos, cancel_only=True)
 
   def send_radar_motion(self, CS):
     """Return reviewed ARS408 motion frames when the physical CAN path is safe."""
@@ -353,6 +373,11 @@ class CarController(CarControllerBase):
       if cruise_cancel:
         cntr = (CS.das_control["DAS_controlCounter"] + 1) % 8
         can_sends.append(self.tesla_can.create_longitudinal_command(13, 0, cntr, CS.out.vEgo, False))
+
+    can_sends.extend(self.speed_sync_controller.update(
+      CC, CS, self.speed_sync_target_mps, self.speed_sync_target_valid, now_nanos,
+    ))
+    can_sends.extend(self.turn_signal_controller.take_can_sends(now_nanos))
 
     # TODO: HUD control
     new_actuators = actuators.as_builder()

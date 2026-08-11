@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import json
 import os
 import time
 import threading
@@ -21,10 +22,13 @@ from opendbc.safety import ALTERNATIVE_EXPERIENCE
 from openpilot.selfdrive.pandad import can_capnp_to_list, can_list_to_can_capnp
 from openpilot.selfdrive.car.cruise import VCruiseCarrot
 from openpilot.selfdrive.car.car_specific import MockCarState
+from openpilot.selfdrive.car.tesla_speed_target_provider import TeslaSpeedTargetProvider
 
 REPLAY = "REPLAY" in os.environ
 
 EventName = log.OnroadEvent.EventName
+TESLA_LANE_CHANGE_CONTEXT_STALE_S = 0.5
+TESLA_TOOL_REQUEST_TTL_MS = 5_000
 
 # forward
 carlog.addHandler(ForwardingHandler(cloudlog))
@@ -173,6 +177,14 @@ class Car:
     self.is_metric = self.params.get_bool("IsMetric")
     self.experimental_mode = self.params.get_bool("ExperimentalMode")
 
+    self.tesla_controller = self.CI.CC if self.CP.brand == "tesla" else None
+    self.tesla_speed_target_provider = TeslaSpeedTargetProvider(self.params) if self.CP.brand == "tesla" else None
+    self._tesla_tools_last_service_nanos = 0
+    if self.tesla_controller is not None:
+      for key in ("TeslaTurnSignalRequest", "TeslaTurnSignalCancel", "TeslaTurnSignalStatus",
+                  "TeslaTurnSignalResult", "TeslaSpeedSyncStatus"):
+        self.params.remove(key)
+
     #self.t1 = time.monotonic()
     #self.t2 = self.t1
     #self.t3 = self.t2
@@ -185,6 +197,16 @@ class Car:
     can_strs = messaging.drain_sock_raw(self.can_sock, wait_for_one=True)
     can_list = can_capnp_to_list(can_strs)
 
+    if self.tesla_controller is not None:
+      for mono_time, frames in can_list:
+        for address, data, source in frames:
+          self.tesla_controller.observe_aux_can(mono_time, address, data, source)
+      now_nanos = time.monotonic_ns()
+      self.tesla_controller.turn_signal_controller.advance_time(now_nanos)
+      cancel_sends = self.tesla_controller.take_turn_signal_cancel_sends(now_nanos)
+      if cancel_sends:
+        self.can_callbacks[1](cancel_sends)
+
     rcv_time = time.time()
 
     # Update carState from CAN
@@ -196,6 +218,14 @@ class Car:
     #RD: structs.RadarDataT | None = self.RI.update_carrot(CS.vEgo, can_list)
 
     self.sm.update(0)
+    if self.tesla_controller is not None:
+      now_nanos = time.monotonic_ns()
+      self._service_tesla_tools(now_nanos)
+      carrot_valid = (self.sm.seen['carrotMan'] and self.sm.valid['carrotMan'] and self.sm.alive['carrotMan'])
+      target = self.tesla_speed_target_provider.update(
+        self.sm['carrotMan'], CS, int(self.sm.logMonoTime['carrotMan']), carrot_valid, now_nanos,
+      )
+      self.tesla_controller.set_speed_sync_target(target.speed_mps, target.valid)
     #self.t1 = time.monotonic()
 
     can_rcv_valid = len(can_strs) > 0
@@ -279,10 +309,74 @@ class Car:
     if self.sm.all_alive(['carControl']):
       # send car controls over can
       now_nanos = self.can_log_mono_time if REPLAY else int(time.monotonic() * 1e9)
+      if self.tesla_controller is not None:
+        context_now = time.monotonic()
+        model_valid = (self.sm.seen['modelV2'] and self.sm.valid['modelV2'] and
+                       context_now - self.sm.recv_time['modelV2'] <= TESLA_LANE_CHANGE_CONTEXT_STALE_S)
+        lane_change_meta = self.sm['modelV2'].meta
+        self.tesla_controller.update_turn_signal_context(
+          now_nanos,
+          valid=model_valid,
+          state=int(getattr(lane_change_meta.laneChangeState, "raw", lane_change_meta.laneChangeState)),
+          direction=int(getattr(lane_change_meta.laneChangeDirection, "raw", lane_change_meta.laneChangeDirection)),
+          lateral_active=bool(CC.latActive),
+          brake_pressed=bool(CS.brakePressed),
+        )
       self.last_actuators_output, can_sends = self.CI.apply(CC, now_nanos)
       self.pm.send('sendcan', can_list_to_can_capnp(can_sends, msgtype='sendcan', valid=CS.canValid))
 
       self.CC_prev = CC
+
+  @staticmethod
+  def _decode_tool_request(raw):
+    if not raw:
+      return None
+    decoded = json.loads(raw)
+    if not isinstance(decoded, dict):
+      raise ValueError("request must be a JSON object")
+    return decoded
+
+  @staticmethod
+  def _request_is_fresh(request):
+    created_ms = int(request.get("created_ms", 0))
+    age_ms = int(time.time() * 1000) - created_ms
+    return 0 <= age_ms <= TESLA_TOOL_REQUEST_TTL_MS
+
+  def _publish_tool_json(self, key, payload):
+    self.params.put_nonblocking(key, json.dumps(payload, separators=(",", ":"), sort_keys=True))
+
+  def _service_tesla_tools(self, now_nanos):
+    if self._tesla_tools_last_service_nanos and now_nanos - self._tesla_tools_last_service_nanos < 100_000_000:
+      return
+    self._tesla_tools_last_service_nanos = int(now_nanos)
+    turn = self.tesla_controller.turn_signal_controller
+    for key, is_cancel in (("TeslaTurnSignalRequest", False), ("TeslaTurnSignalCancel", True)):
+      raw = self.params.get(key, encoding="utf8")
+      if not raw:
+        continue
+      self.params.remove(key)
+      try:
+        request = self._decode_tool_request(raw)
+        if not self._request_is_fresh(request):
+          raise ValueError("request expired")
+        test_id = str(request.get("id", ""))
+        if not test_id or len(test_id) > 64:
+          raise ValueError("invalid request id")
+        if is_cancel:
+          accepted = turn.cancel(test_id, now_nanos)
+          if not accepted:
+            self._publish_tool_json("TeslaTurnSignalResult", {"test_id": test_id, "result": "NOT_ACTIVE"})
+        else:
+          direction = str(request.get("direction", ""))
+          turn.submit(test_id, direction, now_nanos)
+      except (TypeError, ValueError, json.JSONDecodeError) as error:
+        self._publish_tool_json("TeslaTurnSignalResult", {"result": "INVALID_REQUEST", "error": str(error)})
+
+    for result in turn.drain_completed():
+      self._publish_tool_json("TeslaTurnSignalResult", result)
+    status = turn.status() or {"state": "idle"}
+    self._publish_tool_json("TeslaTurnSignalStatus", status)
+    self._publish_tool_json("TeslaSpeedSyncStatus", self.tesla_controller.speed_sync_controller.status())
 
   def step(self):
     CS, RD = self.state_update()
@@ -301,6 +395,8 @@ class Car:
     while not evt.is_set():
       self.is_metric = self.params.get_bool("IsMetric")
       self.experimental_mode = self.params.get_bool("ExperimentalMode") and self.CP.openpilotLongitudinalControl
+      if self.tesla_speed_target_provider is not None:
+        self.tesla_speed_target_provider.refresh_params()
       time.sleep(0.1)
 
   def card_thread(self):

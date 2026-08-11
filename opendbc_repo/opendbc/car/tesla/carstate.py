@@ -39,6 +39,8 @@ class CarState(CarStateBase):
     self.eac_status = None
     self.eac_error_code = 0
     self.das_control = None
+    self.tesla_speed_units = "KPH"
+    self.tesla_autopilot_active = False
 
   def update(self, can_parsers) -> structs.CarState:
     cp_party = can_parsers[Bus.party]
@@ -86,6 +88,8 @@ class CarState(CarStateBase):
     # Cruise state
     cruise_state = self.can_define.dv["DI_state"]["DI_cruiseState"].get(int(cp_party.vl["DI_state"]["DI_cruiseState"]), None)
     speed_units = self.can_define.dv["DI_state"]["DI_speedUnits"].get(int(cp_party.vl["DI_state"]["DI_speedUnits"]), None)
+    if speed_units in ("KPH", "MPH"):
+      self.tesla_speed_units = speed_units
 
     ret.cruiseState.enabled = cruise_state in ("ENABLED", "STANDSTILL", "OVERRIDE", "PRE_FAULT", "PRE_CANCEL")
     if speed_units == "KPH":
@@ -119,6 +123,8 @@ class CarState(CarStateBase):
 
     # Stock Autosteer should be off (includes FSD)
     ret.invalidLkasSetting = cp_ap_party.vl["DAS_settings"]["DAS_autosteerEnabled"] != 0
+    autopilot_state = int(cp_ap_party.vl["DAS_status"]["DAS_autopilotState"])
+    self.tesla_autopilot_active = autopilot_state not in (0, 1, 2)
 
     # Buttons # ToDo: add Gap adjust button
 
