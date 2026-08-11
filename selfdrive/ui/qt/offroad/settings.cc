@@ -901,6 +901,7 @@ CarrotPanel::CarrotPanel(QWidget* parent) : QWidget(parent) {
   latLongToggles->addItem(new CValueControl("MadsUserEnabled", "Tesla MADS 手动允许(1)", "0:保持MADS关闭, 1:允许下次正常启用横向。行驶中可使用屏幕MADS按钮切换", 0, 1, 1));
   latLongToggles->addItem(new CValueControl("MadsSteeringMode", "Tesla MADS 制动策略(2)", "0:制动时保持横向, 1:制动时暂停并在释放后恢复, 2:制动时退出横向。修改后需重启车辆", 0, 2, 1));
   latLongToggles->addItem(new CValueControl("TeslaCoopSteering", "Tesla 协作转向(1)", "0:关闭并保持原有方向盘角度控制, 1:允许驾驶员与模型共同转向。修改后需重启车辆", 0, 1, 1));
+  latLongToggles->addItem(new CValueControl("EnableTeslaTools", "Tesla 网页转向灯测试(0)", "0:关闭, 1:启动8090测试网页。测试动作仍要求横向激活并处于变道流程。当前网页无认证，仅限受控网络测试，修改后需重启车辆", 0, 1, 1));
   latLongToggles->addItem(new CValueControl("UseLaneLineSpeed", "车道线模式速度(0)", "车道线模式，使用 lat_mpc 控制", 0, 200, 5));
   latLongToggles->addItem(new CValueControl("UseLaneLineCurveSpeed", "车道线模式弯道速度(0)", "车道线模式，仅在高速时生效", 0, 200, 5));
   latLongToggles->addItem(new CValueControl("AdjustLaneOffset", "车道偏移调整(0)cm", "", 0, 500, 5));
@@ -1090,6 +1091,7 @@ CarrotPanel::CarrotPanel(QWidget* parent) : QWidget(parent) {
   speedToggles->addItem(new CValueControl("AutoCurveSpeedFactorH", "高速: 降速弯道曲率系数(100%)", "模型预测横摆角速度*此系数，系数越大降速越多", 50, 300, 1));
   speedToggles->addItem(new CValueControl("AutoCurveSpeedAggressivenessH", "高速: 降速横向加速度系数(100%)", "目标横向加速度*此系数，系数越小降速越多", 50, 300, 1));
   speedToggles->addItem(new CValueControl("AutoRoadSpeedLimitOffset", "道路限速偏移(0)", "-1:不启用(如果不想道路限速生效,设置为-1), 其他值:限速=道路限速+此偏移值", -1, 100, 1));
+  speedToggles->addItem(new CValueControl("TeslaSpeedSyncEnabled", "Tesla 原车巡航速度同步(0)", "将道路限速+偏移同步到Tesla巡航设定。仅SpeedFromPCM=1且纵向激活时工作；手动拨轮暂停，上下或下上在1秒内连续拨动可恢复。修改后需重启车辆", 0, 1, 1));
   speedToggles->addItem(new CValueControl("AutoRoadSpeedAdjust", "自动调整道路限速(-1)", "当道路限速发生变化时，按此比例平滑调整到新限速,<0时，则用限速*测速点安全系数或限速+偏移", -1, 100, 5));
   speedToggles->addItem(new CValueControl("AutoNaviSpeedCtrlEnd", "测速点减速结束点(6秒)", "设置减速完成点, 数值越大减速越提前完成", 3, 20, 1));
   speedToggles->addItem(new CValueControl("AutoNaviSpeedCtrlMode", "导航限速控制模式(3)", "0:关闭, 1:测速摄像头, 2:+减速带, 3:+移动测速", 0, 3, 1));
