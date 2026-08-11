@@ -2,6 +2,7 @@
 import os
 import time
 import threading
+from collections import deque
 
 import cereal.messaging as messaging
 
@@ -137,6 +138,8 @@ class SelfdriveD:
 
     self.atc_type_last = ""
     self.model_event_type = 0
+    self._tesla_safety_tx_blocked_prev = []
+    self._tesla_safety_tx_block_history = deque(maxlen=50)
 
     # some comma three with NVMe experience NVMe dropouts mid-drive that
     # cause loggerd to crash on write, so ignore it only on that platform
@@ -601,6 +604,7 @@ class SelfdriveD:
   def step(self):
     CS = self.data_sample()
     self.update_events(CS)
+    self.log_tesla_cruise_system_diagnostic(CS)
     if self.mads.controls_mismatch:
       self.events.add(EventName.controlsMismatch)
     if not self.CP.passive and self.initialized:
@@ -615,6 +619,115 @@ class SelfdriveD:
     self.publish_selfdriveState(CS)
 
     self.CS_prev = CS
+
+  def log_tesla_cruise_system_diagnostic(self, CS) -> None:
+    try:
+      self._log_tesla_cruise_system_diagnostic(CS)
+    except Exception:
+      # Diagnostics must never interfere with engagement or fault handling.
+      cloudlog.exception("tesla cruise system diagnostic collection failed")
+
+  def _log_tesla_cruise_system_diagnostic(self, CS) -> None:
+    if self.CP.brand != "tesla":
+      return
+
+    current_tx_blocked = [int(ps.safetyTxBlocked) for ps in self.sm['pandaStates']]
+    if len(self._tesla_safety_tx_blocked_prev) == len(current_tx_blocked):
+      tx_blocked_delta = [max(0, current - previous) for current, previous in
+                          zip(current_tx_blocked, self._tesla_safety_tx_blocked_prev, strict=True)]
+    else:
+      tx_blocked_delta = [0] * len(current_tx_blocked)
+    self._tesla_safety_tx_blocked_prev = current_tx_blocked
+    if any(tx_blocked_delta):
+      self._tesla_safety_tx_block_history.append({
+        "frame": self.sm.frame,
+        "counters": current_tx_blocked,
+        "deltas": tx_blocked_delta,
+      })
+
+    previous_available = bool(self.CS_prev.cruiseState.available)
+    previous_enabled = bool(self.CS_prev.cruiseState.enabled)
+    became_unavailable = (previous_available or previous_enabled) and not CS.cruiseState.available
+    acc_fault_rising = not self.CS_prev.accFaulted and CS.accFaulted
+    if not became_unavailable and not acc_fault_rising:
+      return
+
+    event_details = [{
+      "name": EVENT_NAME.get(event, str(event)),
+      "types": list(EVENTS.get(event, {}).keys()),
+      "frames": self.events.event_counters.get(event, 0) + 1,
+    } for event in self.events.names]
+
+    panda_diagnostics = [{
+      "index": i,
+      "controls_allowed": bool(ps.controlsAllowed),
+      "lateral_allowed": bool(ps.controlsAllowedLateral),
+      "longitudinal_allowed": bool(ps.controlsAllowedLongitudinal),
+      "safety_rx_checks_invalid": bool(ps.safetyRxChecksInvalid),
+      "safety_rx_invalid": int(ps.safetyRxInvalid),
+      "safety_tx_blocked": int(ps.safetyTxBlocked),
+      "safety_tx_blocked_delta": tx_blocked_delta[i],
+      "heartbeat_lost": bool(ps.heartbeatLost),
+      "fault_status": int(ps.faultStatus.raw),
+      "faults": [int(fault.raw) for fault in ps.faults],
+      "uptime_s": int(ps.uptime),
+      "rx_buffer_overflow": int(ps.rxBufferOverflow),
+      "tx_buffer_overflow": int(ps.txBufferOverflow),
+      "safety_model": int(ps.safetyModel.raw),
+      "safety_param": int(ps.safetyParam),
+      "can_buses": [{
+        "bus": bus,
+        "bus_off": bool(can_state.busOff),
+        "bus_off_count": int(can_state.busOffCnt),
+        "error_warning": bool(can_state.errorWarning),
+        "error_passive": bool(can_state.errorPassive),
+        "last_error": int(can_state.lastError.raw),
+        "rx_error_count": int(can_state.receiveErrorCnt),
+        "tx_error_count": int(can_state.transmitErrorCnt),
+        "total_error_count": int(can_state.totalErrorCnt),
+        "total_tx_lost": int(can_state.totalTxLostCnt),
+        "total_rx_lost": int(can_state.totalRxLostCnt),
+      } for bus, can_state in enumerate((ps.canState0, ps.canState1, ps.canState2))],
+    } for i, ps in enumerate(self.sm['pandaStates'])]
+
+    radar_errors = self.sm['radarState'].radarErrors
+    car_control = self.sm['carControl']
+    cloudlog.event(
+      "tesla.cruise_system_diagnostic",
+      trigger="acc_fault_rising" if acc_fault_rising else "cruise_became_unavailable",
+      previous_available=previous_available,
+      previous_enabled=previous_enabled,
+      cruise_available=bool(CS.cruiseState.available),
+      cruise_enabled=bool(CS.cruiseState.enabled),
+      acc_faulted=bool(CS.accFaulted),
+      selfdrive_enabled=bool(self.enabled),
+      selfdrive_active=bool(self.active),
+      selfdrive_state=str(self.state_machine.state),
+      openpilot_longitudinal=bool(self.CP.openpilotLongitudinalControl),
+      car_control_valid=bool(self.sm.valid['carControl']),
+      car_control_alive=bool(self.sm.alive['carControl']),
+      cc_enabled=bool(car_control.enabled),
+      cc_long_active=bool(car_control.longActive),
+      cc_lat_active=bool(car_control.latActive),
+      cc_cancel=bool(car_control.cruiseControl.cancel),
+      brake_pressed=bool(CS.brakePressed),
+      gas_pressed=bool(CS.gasPressed),
+      v_ego=round(float(CS.vEgo), 3),
+      can_valid=bool(CS.canValid),
+      can_timeout=bool(CS.canTimeout),
+      events=event_details,
+      radar_state_valid=bool(self.sm.valid['radarState']),
+      radar_state_alive=bool(self.sm.alive['radarState']),
+      radar_can_error=bool(radar_errors.canError),
+      radar_wrong_config=bool(radar_errors.wrongConfig),
+      radar_unavailable_temporary=bool(radar_errors.radarUnavailableTemporary),
+      radar_fault=bool(radar_errors.radarFault),
+      recent_safety_tx_blocks=[entry for entry in self._tesla_safety_tx_block_history
+                               if self.sm.frame - entry["frame"] <= int(1.0 / DT_CTRL)],
+      panda_states=panda_diagnostics,
+      evidence_note="system fields are time-correlated observations; use Tesla-reported PMM fields for vehicle fault attribution",
+      error=True,
+    )
 
   def log_mads_exit_diagnostic(self, CS, previous_state) -> None:
     try:

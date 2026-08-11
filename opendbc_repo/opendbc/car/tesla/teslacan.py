@@ -1,6 +1,8 @@
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.tesla.values import CANBUS, CarControllerParams
 
+TESLA_LONGITUDINAL_HANDOFF_AEB_EVENT = 3
+
 
 class TeslaCAN:
   def __init__(self, packer):
@@ -40,6 +42,23 @@ class TeslaCAN:
       "DAS_accelMin": accel,
       "DAS_accelMax": max(accel, 0),
       "DAS_controlCounter": cntr,
+      "DAS_controlChecksum": 0,
+    }
+    data = self.packer.make_can_msg("DAS_control", CANBUS.party, values)[1]
+    values["DAS_controlChecksum"] = self.checksum(0x2b9, data[:7])
+    return self.packer.make_can_msg("DAS_control", CANBUS.party, values)
+
+  def create_stock_longitudinal_handoff(self, das_control, counter):
+    """Create a Panda-consumed ownership marker that must never reach the vehicle."""
+    values = {
+      "DAS_setSpeed": das_control["DAS_setSpeed"],
+      "DAS_accState": das_control["DAS_accState"],
+      "DAS_aebEvent": TESLA_LONGITUDINAL_HANDOFF_AEB_EVENT,
+      "DAS_jerkMin": das_control["DAS_jerkMin"],
+      "DAS_jerkMax": das_control["DAS_jerkMax"],
+      "DAS_accelMin": das_control["DAS_accelMin"],
+      "DAS_accelMax": das_control["DAS_accelMax"],
+      "DAS_controlCounter": counter,
       "DAS_controlChecksum": 0,
     }
     data = self.packer.make_can_msg("DAS_control", CANBUS.party, values)[1]
