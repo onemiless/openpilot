@@ -20,7 +20,7 @@ def decode(message, name):
   return parser.vl[name]
 
 
-def test_field_scoped_configuration_targets_dedicated_radar_can():
+def test_field_scoped_configuration_targets_gateway_managed_radar_can():
   address, data, bus = ARS408CAN().create_radar_configuration("max_distance", 250)
 
   assert address == 0x200
@@ -88,7 +88,7 @@ def test_all_supported_object_filter_indices_pack():
     assert state["FilterCfg_Type"] == 1
 
 
-def test_motion_input_frames_are_encoded_for_dedicated_radar_bus():
+def test_motion_input_frames_are_encoded_for_gateway_managed_radar_bus():
   packer = ARS408CAN()
   speed_address, speed_data, speed_bus = packer.create_speed_information(27.5, 1)
   yaw_address, yaw_data, yaw_bus = packer.create_yaw_rate_information(-12.5)

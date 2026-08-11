@@ -265,7 +265,7 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
         })
         self.assertFalse(self._tx(msg))
 
-  def test_ars408_motion_inputs_are_limited_to_dedicated_radar_bus_and_two_bytes(self):
+  def test_ars408_motion_inputs_are_limited_to_gateway_bus_and_two_bytes(self):
     for address in (MSG_ARS408_SPEED, MSG_ARS408_YAW_RATE):
       self.assertTrue(self._tx(common.make_msg(1, address, 2)))
       self.assertFalse(self._tx(common.make_msg(0, address, 2)))
