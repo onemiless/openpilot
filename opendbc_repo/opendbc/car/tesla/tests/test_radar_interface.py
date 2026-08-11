@@ -32,7 +32,9 @@ def test_rejects_low_probability_and_new_predicted_targets():
 
 def test_filters_roadside_static_objects_but_keeps_adjacent_lane_and_stopped_targets():
   assert not object_is_usable(object_data(Obj_DynProp=1, Obj_DistLat=8.0, Obj_ProbOfExist=7))
-  assert object_is_usable(object_data(Obj_DynProp=1, Obj_DistLat=3.7, Obj_ProbOfExist=5))
+  assert object_is_usable(object_data(Obj_DynProp=1, Obj_DistLong=90.0, Obj_DistLat=0.2, Obj_ProbOfExist=3))
+  assert object_is_usable(object_data(Obj_DynProp=1, Obj_DistLat=3.7, Obj_ProbOfExist=2), previously_tracked=True)
+  assert not object_is_usable(object_data(Obj_DynProp=1, Obj_DistLat=3.7, Obj_ProbOfExist=2))
   assert object_is_usable(object_data(Obj_DynProp=7, Obj_DistLat=3.7, Obj_ProbOfExist=3))
 
 
@@ -124,6 +126,21 @@ def test_objects_are_not_published_before_first_radar_state():
 
   assert len(radar.pts) == 1
   assert len(result.points) == 0
+
+
+def test_far_static_candidate_with_standard_probability_is_published():
+  radar = make_result_radar()
+  radar.expected_objects = 1
+  radar._decode_cycle = lambda _timestamp: {
+    7: object_data(Obj_DistLong=90.0, Obj_DistLat=0.2, Obj_ProbOfExist=3, Obj_DynProp=1),
+  }
+
+  result = radar._build_result(1_000_000_000)
+
+  assert len(result.points) == 1
+  assert result.points[0].dRel == pytest.approx(90.0)
+  assert result.points[0].yRel == pytest.approx(-0.2)
+  assert result.points[0].measured
 
 
 def test_existing_track_survives_brief_empty_cycle_then_expires():
