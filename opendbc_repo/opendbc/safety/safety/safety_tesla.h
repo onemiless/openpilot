@@ -6,6 +6,7 @@ static bool tesla_longitudinal = false;
 static bool tesla_stock_aeb = false;
 static bool tesla_turn_signal_test = false;
 static bool tesla_speed_sync = false;
+static bool tesla_mads_touch_pressed = false;
 static uint8_t tesla_turn_signal_template[8];
 static uint8_t tesla_speed_sync_template[8];
 static bool tesla_turn_signal_template_valid = false;
@@ -154,6 +155,14 @@ static void tesla_rx_hook(const CANPacket_t *to_push) {
   }
 
   if ((bus == 1) && (GET_LEN(to_push) == 8U)) {
+    if (addr == 0x3DF) {
+      const bool touch_pressed = GET_BYTE(to_push, 3) == 3U;
+      if (touch_pressed && !tesla_mads_touch_pressed && acc_main_on && !brake_pressed && mads_state.system_enabled) {
+        mads_state.controls_requested_lateral = true;
+      }
+      tesla_mads_touch_pressed = touch_pressed;
+    }
+
     if (addr == 0x3E9) {
       const bool idle = (GET_BYTE(to_push, 1) & 0x03U) == 0U;
       const bool checksum_valid = tesla_body_controls_checksum(to_push) == GET_BYTE(to_push, 7);
@@ -443,6 +452,7 @@ static safety_config tesla_init(uint16_t param) {
 #endif
 
   tesla_stock_aeb = false;
+  tesla_mads_touch_pressed = false;
   tesla_driver_override_active = false;
   tesla_driver_override_release_counter = 0U;
   tesla_eps_temp_fault_active = false;

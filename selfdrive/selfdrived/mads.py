@@ -7,6 +7,7 @@ from openpilot.selfdrive.selfdrived.events import ET, EVENTS, EventName
 
 MadsState = custom.MadsState.State
 GearShifter = structs.CarState.GearShifter
+ButtonType = structs.CarState.ButtonEvent.Type
 PARAM_REFRESH_INTERVAL = 5  # 20 Hz at the 100 Hz selfdrived update rate
 # Resume once the driver is back inside the cooperative blending envelope. The
 # steering-rate and dwell checks below still prevent a sudden hand-back while
@@ -208,6 +209,7 @@ class ModularAssistiveDrivingSystem:
 
   def update(self, CS, selfdrive_enabled: bool, selfdrive_active: bool, events) -> None:
     self._refresh_params()
+    screen_toggle = any(be.type == ButtonType.lkas and be.pressed for be in CS.buttonEvents)
 
     if not self.available:
       self._requested = False
@@ -276,6 +278,24 @@ class ModularAssistiveDrivingSystem:
       if not safety_exit:
         exit_reasons.append("brake_disengage")
 
+    screen_enabled = False
+    if screen_toggle:
+      if self._requested:
+        self._requested = False
+        self.user_enabled = False
+        self.params.put_bool("MadsUserEnabled", False)
+        self._pending_exit_reason = "screen_toggle_off"
+        cloudlog.event("mads.screen_toggle", enabled=False, active=self.active)
+      elif not exit_reasons and not CS.brakePressed:
+        self._requested = True
+        self.user_enabled = True
+        self.params.put_bool("MadsUserEnabled", True)
+        screen_enabled = True
+        cloudlog.event("mads.screen_toggle", enabled=True, active=self.active)
+      else:
+        reasons = [*exit_reasons, *(["brake_pressed"] if CS.brakePressed else [])]
+        cloudlog.event("mads.screen_toggle_blocked", reasons=",".join(reasons))
+
     if not self._requested:
       reason = ",".join(exit_reasons) if exit_reasons else self._pending_exit_reason or "not_requested"
       self._set_state(MadsState.disabled, reason)
@@ -289,6 +309,7 @@ class ModularAssistiveDrivingSystem:
       self._set_state(MadsState.overriding, "driver_override")
     else:
       reason = ("selfdrive_engaged" if selfdrive_rising else
+                "screen_toggle" if screen_enabled else
                 "driver_override_released" if driver_override_released else
                 "brake_released" if self.state == MadsState.paused else "requested")
       self._set_state(MadsState.enabled, reason)

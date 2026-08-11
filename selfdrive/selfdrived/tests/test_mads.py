@@ -11,6 +11,7 @@ from openpilot.selfdrive.selfdrived.selfdrived import radar_error_event
 MadsState = custom.MadsState.State
 GearShifter = structs.CarState.GearShifter
 SafetyModel = structs.CarParams.SafetyModel
+ButtonType = structs.CarState.ButtonEvent.Type
 
 
 class FakeParams:
@@ -52,6 +53,7 @@ def make_car_state(**overrides):
     "steerFaultPermanent": False,
     "eacStatus": 1,
     "eacErrorCode": 0,
+    "buttonEvents": [],
   }
   values.update(overrides)
   return SimpleNamespace(**values)
@@ -352,3 +354,43 @@ def test_manual_rearm_waits_for_normal_engagement_edge():
   mads.update(make_car_state(), True, True, FakeEvents())
   assert mads.enabled
   assert mads.active
+
+
+def test_three_finger_button_toggles_mads_without_longitudinal_engagement():
+  params = FakeParams(user_enabled=False)
+  CP = SimpleNamespace(brand="tesla", passive=False)
+  mads = ModularAssistiveDrivingSystem(CP, params)
+  button = structs.CarState.ButtonEvent(type=ButtonType.lkas, pressed=True)
+
+  mads.update(make_car_state(buttonEvents=[button]), False, False, FakeEvents())
+  assert mads.enabled
+  assert mads.active
+  assert params.values["MadsUserEnabled"]
+
+  mads.update(make_car_state(buttonEvents=[button]), False, False, FakeEvents())
+  assert not mads.enabled
+  assert not mads.active
+  assert not params.values["MadsUserEnabled"]
+
+
+def test_three_finger_button_cannot_enable_mads_when_cruise_main_is_unavailable():
+  params = FakeParams(user_enabled=False)
+  CP = SimpleNamespace(brand="tesla", passive=False)
+  mads = ModularAssistiveDrivingSystem(CP, params)
+  button = structs.CarState.ButtonEvent(type=ButtonType.lkas, pressed=True)
+
+  mads.update(make_car_state(buttonEvents=[button], cruiseState=SimpleNamespace(available=False)),
+              False, False, FakeEvents())
+  assert not mads.enabled
+  assert not params.values["MadsUserEnabled"]
+
+
+def test_three_finger_button_cannot_enable_mads_while_braking():
+  params = FakeParams(user_enabled=False)
+  CP = SimpleNamespace(brand="tesla", passive=False)
+  mads = ModularAssistiveDrivingSystem(CP, params)
+  button = structs.CarState.ButtonEvent(type=ButtonType.lkas, pressed=True)
+
+  mads.update(make_car_state(buttonEvents=[button], brakePressed=True), False, False, FakeEvents())
+  assert not mads.enabled
+  assert not params.values["MadsUserEnabled"]

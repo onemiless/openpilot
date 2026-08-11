@@ -200,6 +200,7 @@ class Car:
     if self.tesla_controller is not None:
       for mono_time, frames in can_list:
         for address, data, source in frames:
+          self.CI.CS.observe_aux_can(address, data, source)
           self.tesla_controller.observe_aux_can(mono_time, address, data, source)
       now_nanos = time.monotonic_ns()
       self.tesla_controller.turn_signal_controller.advance_time(now_nanos)
