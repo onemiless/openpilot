@@ -318,7 +318,7 @@ class CarController(CarControllerBase):
 
     can_sends.extend(self.update_radar_configuration(CC, CS))
 
-    # The directly connected ARS408 has a dedicated, non-forwarded bus 1.
+    # Bus 1 is gateway-managed; ARS408 frames remain constrained by Panda safety.
     if self.frame % 5 == 0:
       can_sends.extend(self.send_radar_motion(CS))
 

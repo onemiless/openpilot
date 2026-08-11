@@ -27,7 +27,7 @@ class TeslaSpeedTargetProvider:
   def refresh_params(self) -> None:
     self.offset_kph = self.params.get_int("AutoRoadSpeedLimitOffset")
 
-  def update(self, carrot_man, car_state, message_nanos: int, message_valid: bool,
+  def update(self, carrot_man, _car_state, message_nanos: int, message_valid: bool,
              now_nanos: int) -> TeslaSpeedTarget:
     offset_kph = self.offset_kph
     if offset_kph < 0 or not message_valid or message_nanos <= 0:
@@ -35,18 +35,13 @@ class TeslaSpeedTargetProvider:
     if int(now_nanos) - int(message_nanos) > TARGET_MAX_AGE_NS:
       return TeslaSpeedTarget(0.0, 0.0, "stale", False, int(message_nanos))
 
-    vehicle_limit = float(getattr(car_state, "speedLimit", 0.0))
     carrot_active = int(getattr(carrot_man, "activeCarrot", 0)) > 0
     carrot_limit = float(getattr(carrot_man, "nRoadLimitSpeed", 0.0))
-    if vehicle_limit > 0.0:
-      road_limit_kph, source = vehicle_limit, "vehicle"
-    elif carrot_active and carrot_limit > 0.0:
-      road_limit_kph, source = carrot_limit, "carrot"
-    else:
+    if not carrot_active or carrot_limit <= 0.0:
       return TeslaSpeedTarget(0.0, 0.0, "none", False, int(message_nanos))
 
-    target_kph = road_limit_kph + offset_kph
+    target_kph = carrot_limit + offset_kph
     valid = 0.0 < target_kph <= MAX_ROAD_LIMIT_KPH
     return TeslaSpeedTarget(target_kph * CV.KPH_TO_MS if valid else 0.0,
-                            target_kph if valid else 0.0, source if valid else "invalid",
+                            target_kph if valid else 0.0, "carrot" if valid else "invalid",
                             valid, int(message_nanos))
