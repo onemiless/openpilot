@@ -3,7 +3,7 @@ from opendbc.car.interfaces import CarInterfaceBase
 from opendbc.car.tesla.carcontroller import CarController
 from opendbc.car.tesla.carstate import CarState
 from opendbc.car.tesla.radar_interface import RadarInterface
-from opendbc.car.tesla.values import TeslaSafetyFlags
+from opendbc.car.tesla.values import TeslaFlags, TeslaSafetyFlags
 from openpilot.common.params import Params
 
 
@@ -36,5 +36,15 @@ class CarInterface(CarInterfaceBase):
       ret.vEgoStopping = 0.1
       ret.vEgoStarting = 0.1
       ret.stoppingDecelRate = 0.3
+
+    params = Params()
+    if params.get_bool("EnableTeslaTools"):
+      ret.flags |= TeslaFlags.TURN_SIGNAL_TEST.value
+      ret.safetyConfigs[0].safetyParam |= TeslaSafetyFlags.TURN_SIGNAL_TEST.value
+
+    if (ret.openpilotLongitudinalControl and params.get_bool("TeslaSpeedSyncEnabled") and
+        params.get_int("SpeedFromPCM") == 1):
+      ret.flags |= TeslaFlags.SPEED_SYNC.value
+      ret.safetyConfigs[0].safetyParam |= TeslaSafetyFlags.SPEED_SYNC.value
 
     return ret

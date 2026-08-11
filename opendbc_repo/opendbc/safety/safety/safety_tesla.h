@@ -4,6 +4,24 @@
 
 static bool tesla_longitudinal = false;
 static bool tesla_stock_aeb = false;
+static bool tesla_turn_signal_test = false;
+static bool tesla_speed_sync = false;
+static uint8_t tesla_turn_signal_template[8];
+static uint8_t tesla_speed_sync_template[8];
+static bool tesla_turn_signal_template_valid = false;
+static bool tesla_speed_sync_template_valid = false;
+static uint32_t tesla_turn_signal_template_ts = 0U;
+static uint32_t tesla_speed_sync_template_ts = 0U;
+static uint32_t tesla_speed_sync_last_tx_ts = 0U;
+static bool tesla_speed_sync_last_tx_valid = false;
+static uint8_t tesla_turn_signal_active_request = 0U;
+static uint8_t tesla_turn_signal_frame_count = 0U;
+static uint32_t tesla_turn_signal_session_ts = 0U;
+static bool tesla_turn_signal_session_timed_out = false;
+static const uint32_t TESLA_AUX_TEMPLATE_TIMEOUT_US = 1500000U;
+static const uint32_t TESLA_SPEED_SYNC_MIN_TX_INTERVAL_US = 250000U;
+static const uint32_t TESLA_TURN_SIGNAL_SESSION_TIMEOUT_US = 12000000U;
+static const uint8_t TESLA_TURN_SIGNAL_MAX_FRAMES = 64U;
 static const int TESLA_STEERING_DISENGAGE_TORQUE = 500;  // 5.0 Nm in 0.01 Nm units
 static const int TESLA_DRIVER_OVERRIDE_RELEASE_TORQUE = 250;  // 2.5 Nm cooperative envelope in 0.01 Nm units
 static const uint16_t TESLA_DRIVER_OVERRIDE_RELEASE_FRAMES = 25U;  // 0.25 s at 100 Hz
@@ -14,6 +32,14 @@ static uint16_t tesla_driver_override_release_counter = 0U;
 static bool tesla_eps_temp_fault_active = false;
 static uint16_t tesla_eps_temp_fault_counter = 0U;
 static uint16_t tesla_eps_temp_fault_recovery_counter = 0U;
+
+static uint8_t tesla_body_controls_checksum(const CANPacket_t *msg) {
+  uint16_t checksum = 0xE9U + 0x03U;
+  for (uint8_t i = 0U; i < 7U; i++) {
+    checksum += GET_BYTE(msg, i);
+  }
+  return checksum & 0xFFU;
+}
 
 static void tesla_rx_hook(const CANPacket_t *to_push) {
   int bus = GET_BUS(to_push);
@@ -127,6 +153,32 @@ static void tesla_rx_hook(const CANPacket_t *to_push) {
     }
   }
 
+  if ((bus == 1) && (GET_LEN(to_push) == 8U)) {
+    if (addr == 0x3E9) {
+      const bool idle = (GET_BYTE(to_push, 1) & 0x03U) == 0U;
+      const bool checksum_valid = tesla_body_controls_checksum(to_push) == GET_BYTE(to_push, 7);
+      if (idle && checksum_valid) {
+        for (uint8_t i = 0U; i < 8U; i++) {
+          tesla_turn_signal_template[i] = GET_BYTE(to_push, i);
+        }
+        tesla_turn_signal_template_ts = microsecond_timer_get();
+        tesla_turn_signal_template_valid = true;
+      }
+    }
+
+    if (addr == 0x3C2) {
+      const bool mux_valid = (GET_BYTE(to_push, 0) & 0x03U) == 1U;
+      const bool wheel_idle = (GET_BYTE(to_push, 3) & 0x3FU) == 0U;
+      if (mux_valid && wheel_idle) {
+        for (uint8_t i = 0U; i < 8U; i++) {
+          tesla_speed_sync_template[i] = GET_BYTE(to_push, i);
+        }
+        tesla_speed_sync_template_ts = microsecond_timer_get();
+        tesla_speed_sync_template_valid = true;
+      }
+    }
+  }
+
   bool stock_ecu_detected = (bus == 0) && ((addr == 0x488) || (addr == 0x27d) ||
                             (tesla_longitudinal && (addr == 0x2b9)));
   generic_rx_checks(stock_ecu_detected);
@@ -211,6 +263,78 @@ static bool tesla_tx_hook(const CANPacket_t *to_send) {
       if ((raw_accel_max != TESLA_LONG_LIMITS.inactive_accel) || (raw_accel_min != TESLA_LONG_LIMITS.inactive_accel)) {
         violation = true;
       }
+    }
+  }
+
+  if (addr == 0x3C2) {
+    const uint32_t now = microsecond_timer_get();
+    const uint8_t tick = GET_BYTE(to_send, 3) & 0x3FU;
+    bool template_matches = (GET_BYTE(to_send, 3) & 0xC0U) == (tesla_speed_sync_template[3] & 0xC0U);
+    for (uint8_t i = 0U; i < 8U; i++) {
+      if (i != 3U) {
+        template_matches &= GET_BYTE(to_send, i) == tesla_speed_sync_template[i];
+      }
+    }
+    const bool tick_valid = (tick == 1U) || (tick == 0x3FU);
+    const bool template_fresh = tesla_speed_sync_template_valid &&
+                                (get_ts_elapsed(now, tesla_speed_sync_template_ts) <= TESLA_AUX_TEMPLATE_TIMEOUT_US);
+    const bool rate_valid = !tesla_speed_sync_last_tx_valid ||
+                            (get_ts_elapsed(now, tesla_speed_sync_last_tx_ts) >= TESLA_SPEED_SYNC_MIN_TX_INTERVAL_US);
+    const bool valid = tesla_speed_sync && controls_allowed && tick_valid && template_matches && template_fresh && rate_valid;
+    violation |= !valid;
+    if (valid) {
+      tesla_speed_sync_last_tx_ts = now;
+      tesla_speed_sync_last_tx_valid = true;
+    }
+  }
+
+  if (addr == 0x3E9) {
+    const uint32_t now = microsecond_timer_get();
+    const uint8_t request = GET_BYTE(to_send, 1) & 0x03U;
+    const uint8_t reason = (GET_BYTE(to_send, 2) >> 1) & 0x0FU;
+    const bool active_request = (request == 1U) || (request == 2U);
+    const bool request_valid = (active_request && (reason == 8U)) || ((request == 3U) && (reason == 4U));
+
+    bool template_matches = (GET_BYTE(to_send, 0) == tesla_turn_signal_template[0]) &&
+                            ((GET_BYTE(to_send, 1) & 0xFCU) == (tesla_turn_signal_template[1] & 0xFCU)) &&
+                            ((GET_BYTE(to_send, 2) & 0xE1U) == (tesla_turn_signal_template[2] & 0xE1U)) &&
+                            (GET_BYTE(to_send, 3) == tesla_turn_signal_template[3]) &&
+                            (GET_BYTE(to_send, 4) == tesla_turn_signal_template[4]) &&
+                            (GET_BYTE(to_send, 5) == tesla_turn_signal_template[5]) &&
+                            ((GET_BYTE(to_send, 6) & 0x0FU) == (tesla_turn_signal_template[6] & 0x0FU));
+    const uint8_t expected_counter = ((tesla_turn_signal_template[6] >> 4) + 1U) & 0x0FU;
+    template_matches &= (GET_BYTE(to_send, 6) >> 4) == expected_counter;
+
+    const bool template_fresh = tesla_turn_signal_template_valid &&
+                                (get_ts_elapsed(now, tesla_turn_signal_template_ts) <= TESLA_AUX_TEMPLATE_TIMEOUT_US);
+    if ((tesla_turn_signal_active_request != 0U) &&
+        (get_ts_elapsed(now, tesla_turn_signal_session_ts) > TESLA_TURN_SIGNAL_SESSION_TIMEOUT_US)) {
+      tesla_turn_signal_session_timed_out = true;
+    }
+    const bool transition_valid = active_request ?
+      (((tesla_turn_signal_active_request == 0U) && !tesla_turn_signal_session_timed_out) ||
+       ((tesla_turn_signal_active_request == request) && !tesla_turn_signal_session_timed_out &&
+        (tesla_turn_signal_frame_count < TESLA_TURN_SIGNAL_MAX_FRAMES))) :
+      (tesla_turn_signal_active_request != 0U);
+    const bool checksum_valid = tesla_body_controls_checksum(to_send) == GET_BYTE(to_send, 7);
+    const bool valid = tesla_turn_signal_test && request_valid && template_matches && template_fresh &&
+                       transition_valid && checksum_valid;
+    violation |= !valid;
+
+    if (valid && active_request) {
+      if (tesla_turn_signal_active_request == 0U) {
+        tesla_turn_signal_session_ts = now;
+      }
+      tesla_turn_signal_active_request = request;
+      tesla_turn_signal_frame_count++;
+    } else if (valid) {
+      tesla_turn_signal_active_request = 0U;
+      tesla_turn_signal_frame_count = 0U;
+      tesla_turn_signal_session_ts = 0U;
+      tesla_turn_signal_session_timed_out = false;
+    }
+    if (valid) {
+      tesla_turn_signal_template_valid = false;
     }
   }
 
@@ -304,12 +428,18 @@ static safety_config tesla_init(uint16_t param) {
     {0x202, 1, 5},  // ARS408 object-count FilterCfg
     {0x300, 1, 2},  // ARS408 SpeedInformation on dedicated radar bus
     {0x301, 1, 2},  // ARS408 YawRateInformation on dedicated radar bus
+    {0x3C2, 1, 8},  // VCLEFT_switchStatus right scroll wheel
+    {0x3E9, 1, 8},  // DAS_bodyControls turn request
   };
 
   UNUSED(param);
 #ifdef ALLOW_DEBUG
   const int TESLA_FLAG_LONGITUDINAL_CONTROL = 1;
+  const int TESLA_FLAG_TURN_SIGNAL_TEST = 2;
+  const int TESLA_FLAG_SPEED_SYNC = 4;
   tesla_longitudinal = GET_FLAG(param, TESLA_FLAG_LONGITUDINAL_CONTROL);
+  tesla_turn_signal_test = GET_FLAG(param, TESLA_FLAG_TURN_SIGNAL_TEST);
+  tesla_speed_sync = GET_FLAG(param, TESLA_FLAG_SPEED_SYNC);
 #endif
 
   tesla_stock_aeb = false;
@@ -318,6 +448,16 @@ static safety_config tesla_init(uint16_t param) {
   tesla_eps_temp_fault_active = false;
   tesla_eps_temp_fault_counter = 0U;
   tesla_eps_temp_fault_recovery_counter = 0U;
+  tesla_turn_signal_template_valid = false;
+  tesla_speed_sync_template_valid = false;
+  tesla_turn_signal_template_ts = 0U;
+  tesla_speed_sync_template_ts = 0U;
+  tesla_speed_sync_last_tx_ts = 0U;
+  tesla_speed_sync_last_tx_valid = false;
+  tesla_turn_signal_active_request = 0U;
+  tesla_turn_signal_frame_count = 0U;
+  tesla_turn_signal_session_ts = 0U;
+  tesla_turn_signal_session_timed_out = false;
 
   static RxCheck tesla_model3_y_rx_checks[] = {
     {.msg = {{0x2b9, 2, 8, .ignore_checksum = true, .ignore_counter = true,.frequency = 25U}, { 0 }, { 0 }}},   // DAS_control

@@ -68,6 +68,8 @@ def get_default_params():
     ("MadsUserEnabled", "1"),
     ("MadsSteeringMode", "2"),
     ("TeslaCoopSteering", "1"),
+    ("EnableTeslaTools", "0"),
+    ("TeslaSpeedSyncEnabled", "0"),
     ("DisableMinSteerSpeed", "0"),
     ("SoftHoldMode", "0"),
 

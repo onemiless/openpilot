@@ -98,10 +98,14 @@ class CarControllerParams:
 
 class TeslaSafetyFlags(IntFlag):
   LONG_CONTROL = 1
+  TURN_SIGNAL_TEST = 2
+  SPEED_SYNC = 4
 
 
 class TeslaFlags(IntFlag):
   LONG_CONTROL = 1
+  TURN_SIGNAL_TEST = 2
+  SPEED_SYNC = 4
 
 
 DBC = CAR.create_dbc_map()

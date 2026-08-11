@@ -16,6 +16,8 @@ MSG_ARS408_CONFIG = 0x200
 MSG_ARS408_FILTER_CONFIG = 0x202
 MSG_ARS408_SPEED = 0x300
 MSG_ARS408_YAW_RATE = 0x301
+MSG_SPEED_SYNC = 0x3C2
+MSG_TURN_SIGNAL = 0x3E9
 
 
 class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyTest, common.LongitudinalAccelSafetyTest):
@@ -23,7 +25,8 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
   FWD_BLACKLISTED_ADDRS = {2: [MSG_DAS_steeringControl, MSG_APS_eacMonitor]}
   TX_MSGS = [[MSG_DAS_steeringControl, 0], [MSG_APS_eacMonitor, 0], [MSG_DAS_Control, 0],
              [MSG_ARS408_CONFIG, 1], [MSG_ARS408_FILTER_CONFIG, 1],
-             [MSG_ARS408_SPEED, 1], [MSG_ARS408_YAW_RATE, 1]]
+             [MSG_ARS408_SPEED, 1], [MSG_ARS408_YAW_RATE, 1],
+             [MSG_SPEED_SYNC, 1], [MSG_TURN_SIGNAL, 1]]
 
   STANDSTILL_THRESHOLD = 0.1
   GAS_PRESSED_THRESHOLD = 3
@@ -105,6 +108,104 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
       "DAS_accelMax": accel_limits[1],
     }
     return self.packer.make_can_msg_panda("DAS_control", bus, values)
+
+  def _speed_sync_msg(self, tick, bus=1, template=None):
+    msg = common.make_msg(bus, MSG_SPEED_SYNC, 8)
+    if template is not None:
+      for i in range(8):
+        msg[0].data[i] = template[0].data[i]
+    msg[0].data[0] = (msg[0].data[0] & 0xFC) | 1
+    msg[0].data[3] = (msg[0].data[3] & 0xC0) | (tick & 0x3F)
+    return msg
+
+  def _turn_signal_msg(self, request, reason, counter, bus=1, template=None):
+    msg = common.make_msg(bus, MSG_TURN_SIGNAL, 8)
+    if template is not None:
+      for i in range(8):
+        msg[0].data[i] = template[0].data[i]
+    msg[0].data[1] = (msg[0].data[1] & 0xFC) | request
+    msg[0].data[2] = (msg[0].data[2] & 0xE1) | ((reason & 0xF) << 1)
+    msg[0].data[6] = (msg[0].data[6] & 0x0F) | ((counter & 0xF) << 4)
+    msg[0].data[7] = (0xE9 + 0x03 + sum(msg[0].data[i] for i in range(7))) & 0xFF
+    return msg
+
+  def test_turn_signal_requires_flag_and_fresh_idle_template(self):
+    template = self._turn_signal_msg(0, 0, 3)
+    action = self._turn_signal_msg(1, 8, 4, template=template)
+    self.assertTrue(self._rx(template))
+    self.assertFalse(self._tx(action))
+
+    self.safety.set_safety_hooks(CarParams.SafetyModel.tesla, TeslaSafetyFlags.TURN_SIGNAL_TEST)
+    self.safety.init_tests()
+    self.assertFalse(self._tx(action))
+    self.assertTrue(self._rx(template))
+    self.assertTrue(self._tx(action))
+    self.assertFalse(self._tx(action))
+
+  def test_turn_signal_rejects_direction_change_mutation_and_stale_template(self):
+    self.safety.set_safety_hooks(CarParams.SafetyModel.tesla, TeslaSafetyFlags.TURN_SIGNAL_TEST)
+    self.safety.init_tests()
+    template = self._turn_signal_msg(0, 0, 7)
+    self.assertTrue(self._rx(template))
+    self.assertTrue(self._tx(self._turn_signal_msg(1, 8, 8, template=template)))
+
+    next_template = self._turn_signal_msg(0, 0, 8)
+    self.assertTrue(self._rx(next_template))
+    self.assertFalse(self._tx(self._turn_signal_msg(2, 8, 9, template=next_template)))
+
+    mutated = self._turn_signal_msg(1, 8, 9, template=next_template)
+    mutated[0].data[4] ^= 1
+    mutated[0].data[7] = (0xE9 + 0x03 + sum(mutated[0].data[i] for i in range(7))) & 0xFF
+    self.assertFalse(self._tx(mutated))
+
+    self.safety.set_timer(1_500_001)
+    self.assertFalse(self._tx(self._turn_signal_msg(1, 8, 9, template=next_template)))
+
+  def test_turn_signal_cancel_and_controls_allowed_are_supported(self):
+    self.safety.set_safety_hooks(CarParams.SafetyModel.tesla, TeslaSafetyFlags.TURN_SIGNAL_TEST)
+    self.safety.init_tests()
+    template = self._turn_signal_msg(0, 0, 1)
+    self.assertTrue(self._rx(template))
+    self.safety.set_controls_allowed(True)
+    self.assertTrue(self._tx(self._turn_signal_msg(2, 8, 2, template=template)))
+    cancel_template = self._turn_signal_msg(0, 0, 2)
+    self.assertTrue(self._rx(cancel_template))
+    self.assertTrue(self._tx(self._turn_signal_msg(3, 4, 3, template=cancel_template)))
+
+  def test_speed_sync_requires_flag_controls_and_valid_ticks(self):
+    template = self._speed_sync_msg(0)
+    self.assertTrue(self._rx(template))
+    self.assertFalse(self._tx(self._speed_sync_msg(1, template=template)))
+
+    self.safety.set_safety_hooks(CarParams.SafetyModel.tesla, TeslaSafetyFlags.SPEED_SYNC)
+    self.safety.init_tests()
+    self.assertTrue(self._rx(template))
+    self.assertFalse(self._tx(self._speed_sync_msg(1, template=template)))
+    self.safety.set_controls_allowed(True)
+    self.assertTrue(self._tx(self._speed_sync_msg(1, template=template)))
+
+    self.safety.set_timer(250_001)
+    self.assertTrue(self._tx(self._speed_sync_msg(-1, template=template)))
+    self.safety.set_timer(500_002)
+    self.assertFalse(self._tx(self._speed_sync_msg(2, template=template)))
+
+  def test_speed_sync_rejects_rate_mutation_and_stale_template(self):
+    self.safety.set_safety_hooks(CarParams.SafetyModel.tesla, TeslaSafetyFlags.SPEED_SYNC)
+    self.safety.init_tests()
+    self.safety.set_controls_allowed(True)
+    template = self._speed_sync_msg(0)
+    template[0].data[4] = 0x55
+    self.assertTrue(self._rx(template))
+    self.assertTrue(self._tx(self._speed_sync_msg(1, template=template)))
+    self.assertFalse(self._tx(self._speed_sync_msg(-1, template=template)))
+
+    self.safety.set_timer(250_001)
+    mutated = self._speed_sync_msg(-1, template=template)
+    mutated[0].data[4] ^= 1
+    self.assertFalse(self._tx(mutated))
+
+    self.safety.set_timer(1_500_001)
+    self.assertFalse(self._tx(self._speed_sync_msg(-1, template=template)))
 
   def _accel_msg(self, accel: float):
     # For common.LongitudinalAccelSafetyTest
