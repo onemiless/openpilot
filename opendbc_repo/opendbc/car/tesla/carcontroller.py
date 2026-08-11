@@ -43,7 +43,10 @@ class CarController(CarControllerBase):
     self._steering_override_prev = False
     self._radar_config_request = None
     self._radar_filter_request = None
-    self.turn_signal_controller = TurnSignalController(bool(CP.flags & TeslaFlags.TURN_SIGNAL_TEST))
+    self.turn_signal_controller = TurnSignalController(
+      bool(CP.flags & TeslaFlags.TURN_SIGNAL_TEST),
+      auto_configured=bool(CP.flags & TeslaFlags.AUTO_TURN_SIGNAL),
+    )
     self.speed_sync_controller = SpeedSyncController(bool(CP.flags & TeslaFlags.SPEED_SYNC))
     self.speed_sync_target_mps = 0.0
     self.speed_sync_target_valid = False

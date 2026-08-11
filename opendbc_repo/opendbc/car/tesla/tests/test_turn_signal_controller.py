@@ -1,3 +1,5 @@
+import pytest
+
 from cereal import log
 
 from opendbc.car.tesla.turn_signal_controller import (
@@ -86,3 +88,66 @@ def test_turn_controller_is_disabled_by_default():
   controller = TurnSignalController(configured=False)
   assert not controller.submit("blocked", "right", 0)
   assert controller.drain_completed()[0]["result"] == "BLOCKED"
+
+
+def test_automatic_lane_change_starts_without_web_request_and_cancels_only_after_completion():
+  controller = TurnSignalController(configured=False, auto_configured=True)
+  template = idle_body_controls(4)
+  controller.observe(10, TURN_SIGNAL_ADDRESS, template, 1)
+  controller.update_lane_change_context(
+    20, valid=True, state=log.LaneChangeState.preLaneChange,
+    direction=log.LaneChangeDirection.left, lateral_active=True, brake_pressed=False,
+    vehicle_left_blinker=False, vehicle_right_blinker=False,
+    automatic_direction="left",
+  )
+
+  action = controller.take_can_sends(30)
+  assert len(action) == 1
+  assert decode_body_controls(action[0].dat)["request"] == 1
+  assert controller.status()["origin"] == "automatic_lane_change"
+
+  controller.observe(40, TURN_SIGNAL_ADDRESS, action[0].dat, 0x81)
+  controller.update_lane_change_context(
+    50, valid=True, state=log.LaneChangeState.laneChangeStarting,
+    direction=log.LaneChangeDirection.left, lateral_active=True, brake_pressed=False,
+    vehicle_left_blinker=True, vehicle_right_blinker=False,
+  )
+  controller.update_lane_change_context(
+    60, valid=True, state=log.LaneChangeState.laneChangeFinishing,
+    direction=log.LaneChangeDirection.left, lateral_active=True, brake_pressed=False,
+    vehicle_left_blinker=True, vehicle_right_blinker=False,
+  )
+  assert not controller.status()["cancel_requested"]
+
+  controller.update_lane_change_context(
+    70, valid=True, state=log.LaneChangeState.off,
+    direction=log.LaneChangeDirection.none, lateral_active=True, brake_pressed=False,
+    vehicle_left_blinker=True, vehicle_right_blinker=False,
+  )
+  assert controller.status()["cancel_reason"] == "lane_change_complete"
+
+
+@pytest.mark.parametrize("vehicle_left_blinker,vehicle_right_blinker", [(False, True), (True, False)])
+def test_automatic_lane_change_does_not_override_any_driver_blinker(vehicle_left_blinker, vehicle_right_blinker):
+  controller = TurnSignalController(configured=False, auto_configured=True)
+  controller.observe(10, TURN_SIGNAL_ADDRESS, idle_body_controls(4), 1)
+  controller.update_lane_change_context(
+    20, valid=True, state=log.LaneChangeState.preLaneChange,
+    direction=log.LaneChangeDirection.right, lateral_active=True, brake_pressed=False,
+    vehicle_left_blinker=vehicle_left_blinker, vehicle_right_blinker=vehicle_right_blinker,
+    automatic_direction="right",
+  )
+  assert controller.status() is None
+  assert controller.take_can_sends(30) == []
+
+
+def test_lane_change_state_without_automatic_intent_does_not_start_turn_signal():
+  controller = TurnSignalController(configured=False, auto_configured=True)
+  controller.observe(10, TURN_SIGNAL_ADDRESS, idle_body_controls(4), 1)
+  controller.update_lane_change_context(
+    20, valid=True, state=log.LaneChangeState.preLaneChange,
+    direction=log.LaneChangeDirection.left, lateral_active=True, brake_pressed=False,
+    vehicle_left_blinker=False, vehicle_right_blinker=False, automatic_direction="none",
+  )
+  assert controller.status() is None
+  assert controller.take_can_sends(30) == []

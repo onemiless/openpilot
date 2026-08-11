@@ -26,13 +26,15 @@ def get_tesla_params(monkeypatch, *, alpha_long, tools=False, speed_sync=False, 
   return tesla_interface.CarInterface._get_params(ret, CAR.TESLA_MODEL_3, {}, [], alpha_long, False, False)
 
 
-def test_turn_signal_flag_is_independent_and_default_off(monkeypatch):
+def test_automatic_turn_signal_is_default_on_and_web_test_is_independent(monkeypatch):
   disabled = get_tesla_params(monkeypatch, alpha_long=True)
   assert not disabled.flags & TeslaFlags.TURN_SIGNAL_TEST
-  assert not disabled.safetyConfigs[0].safetyParam & TeslaSafetyFlags.TURN_SIGNAL_TEST
+  assert disabled.flags & TeslaFlags.AUTO_TURN_SIGNAL
+  assert disabled.safetyConfigs[0].safetyParam & TeslaSafetyFlags.TURN_SIGNAL_TEST
 
   enabled = get_tesla_params(monkeypatch, alpha_long=False, tools=True)
   assert enabled.flags & TeslaFlags.TURN_SIGNAL_TEST
+  assert enabled.flags & TeslaFlags.AUTO_TURN_SIGNAL
   assert enabled.safetyConfigs[0].safetyParam & TeslaSafetyFlags.TURN_SIGNAL_TEST
 
 

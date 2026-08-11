@@ -87,6 +87,7 @@ class TurnSignalSession:
   test_id: str
   direction: str
   started_nanos: int
+  origin: str = "web_test"
   phase: str = "waiting_vehicle_feedback"
   last_context_nanos: int = 0
   lane_change_started: bool = False
@@ -109,13 +110,15 @@ class TurnSignalSession:
 
 
 class TurnSignalController:
-  def __init__(self, configured: bool):
-    self.configured = configured
+  def __init__(self, configured: bool, *, auto_configured: bool = False):
+    self.test_configured = configured
+    self.auto_configured = auto_configured
     self.session: TurnSignalSession | None = None
     self.template: bytes | None = None
     self.template_nanos = 0
     self.template_generation = 0
     self._completed: list[dict] = []
+    self._auto_session_counter = 0
 
   def _finish(self, result: str, now_nanos: int, **extra) -> None:
     if self.session is None:
@@ -123,6 +126,7 @@ class TurnSignalController:
     session = self.session
     self._completed.append({
       "test_id": session.test_id,
+      "origin": session.origin,
       "direction": session.direction,
       "result": result,
       "feedback": session.feedback,
@@ -141,7 +145,7 @@ class TurnSignalController:
   def submit(self, test_id: str, direction: str, now_nanos: int) -> bool:
     if direction not in ("left", "right"):
       raise ValueError(f"invalid turn direction: {direction}")
-    if not self.configured:
+    if not self.test_configured:
       self._completed.append({"test_id": test_id, "direction": direction, "result": "BLOCKED",
                               "error": "EnableTeslaTools was disabled when card initialized"})
       return False
@@ -150,6 +154,15 @@ class TurnSignalController:
       return False
     self.session = TurnSignalSession(test_id=test_id, direction=direction, started_nanos=int(now_nanos))
     return True
+
+  def _start_automatic(self, direction: str, now_nanos: int) -> None:
+    self._auto_session_counter += 1
+    self.session = TurnSignalSession(
+      test_id=f"auto-lane-change-{self._auto_session_counter}",
+      direction=direction,
+      started_nanos=int(now_nanos),
+      origin="automatic_lane_change",
+    )
 
   def _request_cancel(self, reason: str, now_nanos: int) -> None:
     if self.session is None or self.session.cancel_requested:
@@ -169,10 +182,21 @@ class TurnSignalController:
     return True
 
   def update_lane_change_context(self, now_nanos: int, *, valid: bool, state: int, direction: int,
-                                 lateral_active: bool, brake_pressed: bool) -> None:
+                                 lateral_active: bool, brake_pressed: bool,
+                                 vehicle_left_blinker: bool = False,
+                                 vehicle_right_blinker: bool = False,
+                                 automatic_direction: str = "none") -> None:
+    now_nanos = int(now_nanos)
+    vehicle_blinker_active = vehicle_left_blinker or vehicle_right_blinker
+    if (self.session is None and self.auto_configured and valid and lateral_active and not brake_pressed and
+        state == log.LaneChangeState.preLaneChange and not vehicle_blinker_active):
+      if direction == log.LaneChangeDirection.left and automatic_direction == "left":
+        self._start_automatic("left", now_nanos)
+      elif direction == log.LaneChangeDirection.right and automatic_direction == "right":
+        self._start_automatic("right", now_nanos)
+
     if self.session is None or self.session.cancel_requested:
       return
-    now_nanos = int(now_nanos)
     if brake_pressed:
       self._request_cancel("brake_pressed", now_nanos)
       return
@@ -201,6 +225,8 @@ class TurnSignalController:
       self.session.phase = "lane_change_finishing"
     elif state == log.LaneChangeState.off and self.session.lane_change_started:
       self._request_cancel("lane_change_complete", now_nanos)
+    elif (state == log.LaneChangeState.off and self.session.origin == "automatic_lane_change"):
+      self._request_cancel("lane_change_aborted", now_nanos)
 
   def observe(self, monotonic_nanos: int, address: int, data: bytes, source: int) -> None:
     data = bytes(data)
@@ -309,6 +335,7 @@ class TurnSignalController:
       return None
     return {
       "test_id": self.session.test_id,
+      "origin": self.session.origin,
       "direction": self.session.direction,
       "phase": self.session.phase,
       "feedback": self.session.feedback,

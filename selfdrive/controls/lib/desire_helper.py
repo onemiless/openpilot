@@ -988,6 +988,10 @@ class DesireHelper:
         self.lane_change_state = LaneChangeState.preLaneChange
         self.lane_change_ll_prob = 1.0
         self.lane_change_delay = self.laneChangeDelay
+        # Publish the automatic blinker intent while preparing the lane change,
+        # rather than waiting until lateral movement has already started.
+        if atc_desire_enabled and not driver_desire_enabled:
+          self.blinker_val = atc_blinker_state
 
         # 如果不是最后车道(如果侧面有车道)，ATC就不会自动启动。
         #self.auto_lane_change_enable = False if lane_exist_counter > 0 else True

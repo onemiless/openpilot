@@ -106,6 +106,7 @@ class TeslaFlags(IntFlag):
   LONG_CONTROL = 1
   TURN_SIGNAL_TEST = 2
   SPEED_SYNC = 4
+  AUTO_TURN_SIGNAL = 8
 
 
 DBC = CAR.create_dbc_map()
