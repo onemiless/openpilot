@@ -497,7 +497,7 @@ RadarPanel::RadarPanel(QWidget *parent) : ListWidget(parent) {
   addItem(new CValueControl("TeslaRadarMode", tr("CP 雷达模式"),
                             tr("0:关闭(纯视觉)，1:仅监控，2:融合，3:融合调试。修改后需重新启动车辆。"), 0, 3, 1));
   addItem(new CValueControl("TeslaRadarMotionInput", tr("车辆运动补偿"),
-                            tr("通过独立 bus 1 向 ARS408 发送车速和横摆角速度；运行中生效，不写入雷达 NVM。"), 0, 1, 1));
+                            tr("通过独立 bus 1 向 ARS408 发送车速和横摆角速度；行驶及接管中可随时开关，最迟在下一个 20 Hz 发送周期生效，不写入雷达 NVM。关闭不会关闭雷达，但 MotionRx 将报告输入缺失。"), 0, 1, 1));
 
   state = new LabelControl(tr("雷达当前配置"), tr("等待 0x201 RadarState"),
                            tr("所有可调项均以雷达实际回读为准。"));

@@ -112,6 +112,7 @@ def test_controller_sends_valid_motion_inputs_and_reverses_yaw_sign():
   controller = CarController.__new__(CarController)
   controller.ars408_can = ARS408CAN()
   controller.radar_motion_enabled = True
+  controller.params = FakeParams({"TeslaRadarMotionInput": "1"})
   controller._radar_motion_valid_prev = None
   car_state = SimpleNamespace(out=SimpleNamespace(
     vEgoRaw=20.0,
@@ -134,6 +135,7 @@ def test_controller_stops_motion_tx_when_car_state_is_invalid():
   controller = CarController.__new__(CarController)
   controller.ars408_can = ARS408CAN()
   controller.radar_motion_enabled = True
+  controller.params = FakeParams({"TeslaRadarMotionInput": "1"})
   controller._radar_motion_valid_prev = None
   car_state = SimpleNamespace(out=SimpleNamespace(vEgoRaw=20.0, yawRate=0.1, canValid=False))
 
@@ -150,6 +152,9 @@ class FakeParams:
       return None
     return value if encoding else str(value).encode()
 
+  def get_bool(self, key):
+    return self.values.get(key) == "1"
+
   def remove(self, key):
     self.values.pop(key, None)
 
@@ -158,6 +163,29 @@ class FakeParams:
 
   def put(self, key, value):
     self.values[key] = str(value)
+
+
+def test_controller_applies_runtime_motion_input_toggle_on_next_send():
+  controller = CarController.__new__(CarController)
+  controller.ars408_can = ARS408CAN()
+  controller.radar_motion_enabled = True
+  controller.params = FakeParams({"TeslaRadarMotionInput": "1"})
+  controller._radar_motion_valid_prev = None
+  car_state = SimpleNamespace(out=SimpleNamespace(
+    vEgoRaw=20.0,
+    yawRate=0.1,
+    canValid=True,
+    standstill=False,
+    gearShifter=structs.CarState.GearShifter.drive,
+  ))
+
+  assert len(controller.send_radar_motion(car_state)) == 2
+
+  controller.params.values["TeslaRadarMotionInput"] = "0"
+  assert controller.send_radar_motion(car_state) == []
+
+  controller.params.values["TeslaRadarMotionInput"] = "1"
+  assert len(controller.send_radar_motion(car_state)) == 2
 
 
 def test_controller_waits_for_readback_before_nvm_store():

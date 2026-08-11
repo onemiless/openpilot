@@ -46,7 +46,15 @@ class CarController(CarControllerBase):
 
   def send_radar_motion(self, CS):
     """Return reviewed ARS408 motion frames when the physical CAN path is safe."""
-    if self.ars408_can is None or not ARS408_MOTION_INPUT_ENABLED or not self.radar_motion_enabled:
+    if self.ars408_can is None or not ARS408_MOTION_INPUT_ENABLED:
+      return []
+
+    enabled = self.params.get_bool("TeslaRadarMotionInput")
+    if enabled != self.radar_motion_enabled:
+      radar_log.info("ARS408 motion input runtime enabled=%d", int(enabled))
+      self.radar_motion_enabled = enabled
+      self._radar_motion_valid_prev = None
+    if not enabled:
       return []
 
     speed_mps = float(CS.out.vEgoRaw)
@@ -293,8 +301,6 @@ class CarController(CarControllerBase):
     # The directly connected ARS408 has a dedicated, non-forwarded bus 1.
     if self.frame % 5 == 0:
       can_sends.extend(self.send_radar_motion(CS))
-    if self.frame % 100 == 0:
-      self.radar_motion_enabled = self.params.get_bool("TeslaRadarMotionInput")
 
     # Disengage and allow for user override on high torque inputs
     # TODO: move this to a generic disengageRequested carState field and set CC.cruiseControl.cancel based on it
