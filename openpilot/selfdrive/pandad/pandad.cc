@@ -393,6 +393,11 @@ void process_wake_monitor_request(Panda *panda) {
       return;
     }
   }
+  // Panda may have rebooted while this pandad process stayed alive. Restore
+  // the current boot session before every PREPARE so COMMIT cannot compare a
+  // freshly-set session against a zero session captured after an MCU reset.
+  const uint32_t host_session = current_host_session();
+  panda->set_host_session(host_session);
   auto status = panda->prepare_wake_monitor(transaction);
   const uint8_t required_flags = WAKE_MONITOR_STATUS_FLAG_RX_ARMED | WAKE_MONITOR_STATUS_FLAG_CAN_HEALTHY;
   if (!status || status->magic != WAKE_MONITOR_STATUS_MAGIC ||
@@ -408,7 +413,7 @@ void process_wake_monitor_request(Panda *panda) {
   }
   params.put("PandaWakeMonitorAck", transaction_string);
   offline_wake_debug_log(util::string_format("prepare confirmed transaction=%08x host_session=%08x; PandaWakeMonitorAck set",
-                                             transaction, status->host_session));
+                                             transaction, host_session));
   LOGW("prepared panda wake monitor transaction=0x%08x before shutdown", transaction);
 }
 

@@ -250,6 +250,18 @@ def test_hardwared_fallback_prepares_single_flight_transaction_without_synthetic
   assert params.writes[-1] == ("PandaWakeMonitorAck", "12345678", True)
 
 
+def test_pandad_resynchronizes_host_session_before_each_prepare() -> None:
+  repo_root = Path(__file__).resolve().parents[4]
+  source = (repo_root / "openpilot/selfdrive/pandad/pandad.cc").read_text()
+  request_handler = source.split("void process_wake_monitor_request(Panda *panda)", 1)[1].split(
+    "void process_peripheral_state", 1
+  )[0]
+
+  set_session = request_handler.index("panda->set_host_session(")
+  prepare = request_handler.index("panda->prepare_wake_monitor(transaction)")
+  assert set_session < prepare
+
+
 def test_recent_bootkick_sentinel_is_pending(tmp_path, monkeypatch) -> None:
   sentinel = tmp_path / "panda_bootkick_test_pending"
   sentinel.touch()
