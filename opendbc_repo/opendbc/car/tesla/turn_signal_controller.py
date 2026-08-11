@@ -189,7 +189,8 @@ class TurnSignalController:
     now_nanos = int(now_nanos)
     vehicle_blinker_active = vehicle_left_blinker or vehicle_right_blinker
     if (self.session is None and self.auto_configured and valid and lateral_active and not brake_pressed and
-        state == log.LaneChangeState.preLaneChange and not vehicle_blinker_active):
+        state in (log.LaneChangeState.preLaneChange, log.LaneChangeState.laneChangeStarting) and
+        not vehicle_blinker_active):
       if direction == log.LaneChangeDirection.left and automatic_direction == "left":
         self._start_automatic("left", now_nanos)
       elif direction == log.LaneChangeDirection.right and automatic_direction == "right":
