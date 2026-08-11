@@ -179,6 +179,8 @@ class Car:
 
     self.tesla_controller = self.CI.CC if self.CP.brand == "tesla" else None
     self.tesla_speed_target_provider = TeslaSpeedTargetProvider(self.params) if self.CP.brand == "tesla" else None
+    self.tesla_speed_target = None
+    self._tesla_speed_target_log_signature = None
     self._tesla_tools_last_service_nanos = 0
     if self.tesla_controller is not None:
       for key in ("TeslaTurnSignalRequest", "TeslaTurnSignalCancel", "TeslaTurnSignalStatus",
@@ -221,12 +223,25 @@ class Car:
     self.sm.update(0)
     if self.tesla_controller is not None:
       now_nanos = time.monotonic_ns()
-      self._service_tesla_tools(now_nanos)
       carrot_valid = (self.sm.seen['carrotMan'] and self.sm.valid['carrotMan'] and self.sm.alive['carrotMan'])
       target = self.tesla_speed_target_provider.update(
         self.sm['carrotMan'], CS, int(self.sm.logMonoTime['carrotMan']), carrot_valid, now_nanos,
+        vehicle_limit_kph=self.CI.CS.tesla_fused_speed_limit_kph,
+        vehicle_limit_valid=self.CI.CS.tesla_fused_speed_limit_valid,
+        vehicle_limit_nanos=self.CI.CS.tesla_fused_speed_limit_nanos,
       )
+      self.tesla_speed_target = target
       self.tesla_controller.set_speed_sync_target(target.speed_mps, target.valid)
+      target_signature = (target.source, target.valid, round(target.speed_kph, 1),
+                          self.CI.CS.tesla_fused_speed_limit_valid,
+                          round(self.CI.CS.tesla_fused_speed_limit_kph, 1))
+      if target_signature != self._tesla_speed_target_log_signature:
+        cloudlog.event("tesla.speed_sync_target", source=target.source, valid=target.valid,
+                       target_kph=round(target.speed_kph, 1), offset_kph=self.tesla_speed_target_provider.offset_kph,
+                       vehicle_limit_kph=round(self.CI.CS.tesla_fused_speed_limit_kph, 1),
+                       vehicle_limit_valid=self.CI.CS.tesla_fused_speed_limit_valid)
+        self._tesla_speed_target_log_signature = target_signature
+      self._service_tesla_tools(now_nanos)
     #self.t1 = time.monotonic()
 
     can_rcv_valid = len(can_strs) > 0
@@ -377,7 +392,16 @@ class Car:
       self._publish_tool_json("TeslaTurnSignalResult", result)
     status = turn.status() or {"state": "idle"}
     self._publish_tool_json("TeslaTurnSignalStatus", status)
-    self._publish_tool_json("TeslaSpeedSyncStatus", self.tesla_controller.speed_sync_controller.status())
+    speed_status = self.tesla_controller.speed_sync_controller.status()
+    if self.tesla_speed_target is not None:
+      speed_status["target_source"] = self.tesla_speed_target.source
+      speed_status["target_source_valid"] = self.tesla_speed_target.valid
+      speed_status["target_kph"] = round(self.tesla_speed_target.speed_kph, 1)
+    speed_status["vehicle_limit"] = round(self.CI.CS.tesla_fused_speed_limit_kph, 1)
+    speed_status["vehicle_limit_valid"] = self.CI.CS.tesla_fused_speed_limit_valid
+    limit_nanos = self.CI.CS.tesla_fused_speed_limit_nanos
+    speed_status["vehicle_limit_age_ms"] = max(0, int((now_nanos - limit_nanos) / 1_000_000)) if limit_nanos else None
+    self._publish_tool_json("TeslaSpeedSyncStatus", speed_status)
 
   def step(self):
     CS, RD = self.state_update()

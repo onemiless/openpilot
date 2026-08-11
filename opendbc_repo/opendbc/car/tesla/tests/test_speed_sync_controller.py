@@ -56,6 +56,34 @@ def test_speed_sync_stabilizes_waits_for_feedback_and_steps_again():
   assert signed_wheel_tick(sends[0].dat) == 1
 
 
+def test_carrot_target_is_synced_into_tesla_host_until_feedback_reaches_target():
+  controller = SpeedSyncController(configured=True)
+  cc, cs = make_context(40)
+  target_mps = 90 / 3.6
+  controller.observe(0, SPEED_BUTTON_ADDRESS, idle_speed_button(), 1)
+
+  assert controller.update(cc, cs, target_mps, True, 0) == []
+  sends = controller.update(cc, cs, target_mps, True, 500_000_000)
+  assert len(sends) == 1
+  assert signed_wheel_tick(sends[0].dat) == 1
+
+  # Each Tesla host feedback step unlocks the next +1 tick. The controller must
+  # keep synchronizing the physical set speed instead of stopping at CP's target.
+  for speed_kph in range(41, 90):
+    now_nanos = (speed_kph - 39) * 500_000_000
+    cs.out.cruiseState.speed = speed_kph / 3.6
+    controller.observe(now_nanos, SPEED_BUTTON_ADDRESS, idle_speed_button(), 1)
+    sends = controller.update(cc, cs, target_mps, True, now_nanos)
+    assert len(sends) == 1
+    assert signed_wheel_tick(sends[0].dat) == 1
+
+  now_nanos = 25_500_000_000
+  cs.out.cruiseState.speed = 90 / 3.6
+  controller.observe(now_nanos, SPEED_BUTTON_ADDRESS, idle_speed_button(), 1)
+  assert controller.update(cc, cs, target_mps, True, now_nanos) == []
+  assert controller.status()["state"] == "synced"
+
+
 def test_manual_adjustment_pauses_and_opposite_gesture_resumes_within_one_second():
   controller = SpeedSyncController(configured=True)
   cc, cs = make_context(70)
