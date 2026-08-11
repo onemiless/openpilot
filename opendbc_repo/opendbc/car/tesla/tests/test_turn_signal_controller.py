@@ -127,6 +127,30 @@ def test_automatic_lane_change_starts_without_web_request_and_cancels_only_after
   assert controller.status()["cancel_reason"] == "lane_change_complete"
 
 
+def test_fast_overtake_starts_when_direction_arrives_in_lane_change_starting():
+  controller = TurnSignalController(configured=False, auto_configured=True)
+  controller.observe(10, TURN_SIGNAL_ADDRESS, idle_body_controls(4), 1)
+
+  # Overtake can publish preLaneChange before DesireHelper has assigned the
+  # direction, then advance directly to laneChangeStarting on the next model frame.
+  controller.update_lane_change_context(
+    20, valid=True, state=log.LaneChangeState.preLaneChange,
+    direction=log.LaneChangeDirection.none, lateral_active=True, brake_pressed=False,
+    automatic_direction="left",
+  )
+  assert controller.status() is None
+
+  controller.update_lane_change_context(
+    30, valid=True, state=log.LaneChangeState.laneChangeStarting,
+    direction=log.LaneChangeDirection.left, lateral_active=True, brake_pressed=False,
+    automatic_direction="left",
+  )
+  action = controller.take_can_sends(40)
+  assert len(action) == 1
+  assert decode_body_controls(action[0].dat)["request"] == 1
+  assert controller.status()["phase"] == "lane_changing"
+
+
 @pytest.mark.parametrize("vehicle_left_blinker,vehicle_right_blinker", [(False, True), (True, False)])
 def test_automatic_lane_change_does_not_override_any_driver_blinker(vehicle_left_blinker, vehicle_right_blinker):
   controller = TurnSignalController(configured=False, auto_configured=True)

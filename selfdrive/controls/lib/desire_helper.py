@@ -1003,6 +1003,8 @@ class DesireHelper:
            and (not self.prev_desire_enabled or (driver_blinker_changed and driver_desire_enabled)) #从打灯变成未打灯状态，可以不受prev_desire_enabled的影响
            and not below_lane_change_speed)):
         self.lane_change_state = LaneChangeState.preLaneChange
+        self.lane_change_direction = (LaneChangeDirection.left if blinker_state == BLINKER_LEFT else
+                                      LaneChangeDirection.right)
         self.lane_change_ll_prob = 1.0
         self.lane_change_delay = self.laneChangeDelay
         # Publish the automatic blinker intent while preparing the lane change,
