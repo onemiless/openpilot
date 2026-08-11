@@ -34,6 +34,12 @@ LaneChangeDirection = log.LaneChangeDirection
 ACTUATOR_FIELDS = tuple(car.CarControl.Actuators.schema.fields.keys())
 
 
+def lateral_control_active(lateral_enabled, CP, CS) -> bool:
+  standstill = abs(CS.vEgo) <= max(CP.minSteerSpeed, MIN_LATERAL_CONTROL_SPEED) or CS.standstill
+  return (lateral_enabled and not CS.steerFaultTemporary and not CS.steerFaultPermanent and
+          (not standstill or CP.steerAtStandstill))
+
+
 class Controls:
   def __init__(self) -> None:
     self.params = Params()
@@ -165,9 +171,7 @@ class Controls:
     #self.soft_hold_active = CS.softHoldActive #car.OnroadEvent.EventName.softHold in [e.name for e in self.sm['onroadEvents']]
 
     # Check which actuators can be enabled
-    standstill = abs(CS.vEgo) <= max(self.CP.minSteerSpeed, MIN_LATERAL_CONTROL_SPEED) or CS.standstill
-    CC.latActive = (lateral_enabled and
-                    not CS.steerFaultTemporary and not CS.steerFaultPermanent and not standstill)
+    CC.latActive = lateral_control_active(lateral_enabled, self.CP, CS)
     CC.longActive = CC.enabled and not any(e.overrideLongitudinal for e in self.sm['onroadEvents']) and self.CP.openpilotLongitudinalControl
 
     actuators = CC.actuators

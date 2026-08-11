@@ -11,6 +11,7 @@
 | Tesla interface | 2 passed | Model 3/Y 实例化和 apply 冒烟 |
 | Manager process config | 3 passed, 1 skipped | 包含新进程 prepare/import 检查 |
 | MADS | 19 passed | 独立状态机与 radar/driver override 回归 |
+| controlsd 原地横向能力 | 2 passed | `steerAtStandstill=True` 原地允许；无能力、无权限或转向故障继续阻断 |
 | Tesla Safety 定向回归 | 42 passed, 21 skipped | `turn_signal or speed_sync or ars408 or mads` |
 | UI 编译 | passed | `selfdrive/ui/ui` 完整链接成功 |
 | Panda 固件编译 | passed | F4 `panda.bin` 与 H7 `panda_h7.bin` |
