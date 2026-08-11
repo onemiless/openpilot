@@ -112,6 +112,8 @@ private:
   void enqueueRequest(const char *key, const QString &request);
   void requestConfig(const QString &field, const QString &title, const QStringList &labels,
                      const QList<int> &values, bool store);
+  void requestFilterQuery();
+  void requestObjectLimit();
   void requestFilter();
   void refresh();
 

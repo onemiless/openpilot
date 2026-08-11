@@ -81,13 +81,22 @@ class CarController(CarControllerBase):
 
   @staticmethod
   def _parse_radar_filter_request(raw):
-    request_id, index, active, minimum, maximum = raw.split(",", 4)
+    parts = raw.split(",")
+    if len(parts) == 3:
+      request_id, action, index = parts
+      if action != "query":
+        raise ValueError(f"unsupported filter action {action}")
+      return {"id": request_id, "index": int(index), "query_only": True, "phase": "query",
+              "sent": False, "sent_frame": 0, "state_seq": 0}
+    if len(parts) != 5:
+      raise ValueError("filter request must be query or one complete record")
+    request_id, index, active, minimum, maximum = parts
     active = int(active)
     if active not in (0, 1):
       raise ValueError("active must be 0 or 1")
     return {"id": request_id, "index": int(index), "active": bool(active),
-            "minimum": float(minimum), "maximum": float(maximum), "sent": False,
-            "sent_frame": 0, "state_seq": 0}
+            "minimum": float(minimum), "maximum": float(maximum), "query_only": False,
+            "phase": "query", "sent": False, "sent_frame": 0, "state_seq": 0}
 
   @staticmethod
   def _request_expired(request_id, now_ms=None):
@@ -129,6 +138,19 @@ class CarController(CarControllerBase):
     }
     raw = self.params.get(state_keys[request["field"]])
     return raw is not None and int(raw) == request["value"]
+
+  @staticmethod
+  def _parse_filter_state(raw_state):
+    index, active, minimum, maximum = raw_state.split(",", 3)
+    return int(index), bool(int(active)), float(minimum), float(maximum)
+
+  @staticmethod
+  def _filter_state_matches(request, state):
+    index, active, minimum, maximum = state
+    resolution = ARS408_FILTER_SIGNALS[request["index"]][3]
+    return index == request["index"] and active == request["active"] and \
+      math.isclose(minimum, request["minimum"], abs_tol=resolution / 2 + 1e-6) and \
+      math.isclose(maximum, request["maximum"], abs_tol=resolution / 2 + 1e-6)
 
   def update_radar_configuration(self, CC, CS):
     """Process one field-scoped RadarCfg or one atomic Object FilterCfg request."""
@@ -205,8 +227,11 @@ class CarController(CarControllerBase):
           self._publish_filter_result(request["id"], "waiting", "stop vehicle and disengage controls")
           return sends
         try:
-          sends.append(self.ars408_can.create_filter_configuration(
-            request["index"], request["active"], request["minimum"], request["maximum"]))
+          if request["phase"] == "query":
+            sends.append(self.ars408_can.create_filter_query(request["index"]))
+          else:
+            sends.append(self.ars408_can.create_filter_configuration(
+              request["index"], request["active"], request["minimum"], request["maximum"]))
         except ValueError as exc:
           self._publish_filter_result(request["id"], "rejected", str(exc))
           self._radar_filter_request = None
@@ -214,23 +239,35 @@ class CarController(CarControllerBase):
         request["sent"] = True
         request["sent_frame"] = self.frame
         request["state_seq"] = self._state_seq("TeslaRadarFilterStateSeq")
-        self._publish_filter_result(request["id"], "sent", str(request["index"]))
+        status = "query_sent" if request["phase"] == "query" else "sent"
+        self._publish_filter_result(request["id"], status, str(request["index"]))
       else:
         raw_state = self.params.get("TeslaRadarFilterState", encoding="utf8")
         if raw_state and self._state_seq("TeslaRadarFilterStateSeq") > request["state_seq"]:
           try:
-            index, active, minimum, maximum = raw_state.split(",", 3)
-            resolution = ARS408_FILTER_SIGNALS[request["index"]][3]
-            matches = int(index) == request["index"] and bool(int(active)) == request["active"] and \
-                      math.isclose(float(minimum), request["minimum"], abs_tol=resolution / 2 + 1e-6) and \
-                      math.isclose(float(maximum), request["maximum"], abs_tol=resolution / 2 + 1e-6)
+            state = self._parse_filter_state(raw_state)
           except ValueError:
-            matches = False
-          if matches:
-            self._publish_filter_result(request["id"], "applied", str(request["index"]))
-            self._radar_filter_request = None
+            state = None
+          if state is not None and state[0] == request["index"]:
+            detail = f"{state[0]}:{int(state[1])}:{state[2]}:{state[3]}"
+            if request["phase"] == "query":
+              if request["query_only"]:
+                self._publish_filter_result(request["id"], "queried", detail)
+                self._radar_filter_request = None
+              elif self._filter_state_matches(request, state):
+                self._publish_filter_result(request["id"], "applied", f"already:{detail}")
+                self._radar_filter_request = None
+              else:
+                request["phase"] = "write"
+                request["sent"] = False
+                request["sent_frame"] = self.frame
+                self._publish_filter_result(request["id"], "queried", detail)
+            elif self._filter_state_matches(request, state):
+              self._publish_filter_result(request["id"], "applied", str(request["index"]))
+              self._radar_filter_request = None
         if self._radar_filter_request is not None and self.frame - request["sent_frame"] > 200:
-          self._publish_filter_result(request["id"], "timeout", "FilterState did not confirm requested record")
+          detail = "query" if request["phase"] == "query" else "write"
+          self._publish_filter_result(request["id"], "timeout", f"FilterState did not confirm {detail}")
           self._radar_filter_request = None
     return sends
 

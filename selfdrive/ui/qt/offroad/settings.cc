@@ -504,9 +504,9 @@ RadarPanel::RadarPanel(QWidget *parent) : ListWidget(parent) {
   fixed = new LabelControl(tr("只读/受保护配置"), tr("Sensor ID / Quality / Relay / RCS / Power / Sort"),
                            tr("这些字段不会由设置页写入；Sensor ID 固定为 0，Objects 模式要求 Quality 开启。"));
   filter_state = new LabelControl(tr("最近回读的对象过滤记录"), tr("尚未收到 0x204"),
-                                  tr("ARS408 不提供一次性读取全部过滤器的安全查询；修改后以对应 0x204 回读确认。"));
+                                  tr("先用 Valid=0 安全查询指定过滤器；写入后再以新的 0x204 回读确认。"));
   result = new LabelControl(tr("最近配置结果"), tr("无"),
-                            tr("applied 表示当前生效；nvm_sent 表示已发送 NVM 保存命令，仍需断电重启复核。日志：/data/log/ars408/ 下 card/radard 各自的 debug 和 error 文件"));
+                            tr("queried 表示只读回读；applied 表示写入后已确认。过滤器会自动保存到 NVM。复测时监控 /data/log/ars408/ 中 partial cycle 和 CAN error。"));
   addItem(state);
   addItem(fixed);
   addItem(filter_state);
@@ -533,6 +533,16 @@ RadarPanel::RadarPanel(QWidget *parent) : ListWidget(parent) {
   add_config(tr("扩展目标信息"), "send_extended", {tr("关闭"), tr("开启")}, {0, 1}, true);
   add_config(tr("输出类型"), "output_type", {tr("关闭输出"), tr("Objects")}, {0, 1}, false);
   add_config(tr("输出类型"), "output_type", {tr("关闭输出"), tr("Objects")}, {0, 1}, true);
+
+  auto *filter_query = new ButtonControl(tr("读取目标数量过滤器"), tr("读取 Index 0"),
+                                         tr("发送 Valid=0，只读取当前 NofObj 状态，不修改雷达 NVM。"));
+  connect(filter_query, &ButtonControl::clicked, this, &RadarPanel::requestFilterQuery);
+  addItem(filter_query);
+
+  auto *object_limit = new ButtonControl(tr("目标数量上限"), tr("分阶段设置"),
+                                         tr("先设置 48 并复测 60–100 米；只有 48 仍不足且 CAN 周期完整时再设置 64。"));
+  connect(object_limit, &ButtonControl::clicked, this, &RadarPanel::requestObjectLimit);
+  addItem(object_limit);
 
   auto *filter = new ButtonControl(tr("对象过滤器 0x202"), tr("配置并保存"),
                                    tr("每次只写一个完整过滤记录；雷达协议会自动保存到 NVM。Cluster 过滤不开放。"));
@@ -563,6 +573,25 @@ void RadarPanel::requestConfig(const QString &field, const QString &title, const
   QString request_id = QString::number(QDateTime::currentMSecsSinceEpoch());
   enqueueRequest("TeslaRadarConfigRequest",
                  QString("%1,%2,%3,%4").arg(request_id, field).arg(values[index]).arg(store ? 1 : 0));
+}
+
+void RadarPanel::requestFilterQuery() {
+  if (!ConfirmationDialog::confirm(tr("车辆必须静止且控制未接管。确认读取目标数量过滤器 Index 0？"),
+                                   tr("读取 Index 0"), this)) return;
+  QString request_id = QString::number(QDateTime::currentMSecsSinceEpoch());
+  enqueueRequest("TeslaRadarFilterRequest", QString("%1,query,0").arg(request_id));
+}
+
+void RadarPanel::requestObjectLimit() {
+  QString selected = MultiOptionDialog::getSelection(
+    tr("选择目标数量上限"), {tr("48（首轮推荐）"), tr("64（48 复测不足后）")}, "", this);
+  if (selected.isEmpty()) return;
+  int maximum = selected.startsWith("48") ? 48 : 64;
+  if (!ConfirmationDialog::confirm(
+        tr("将先读取 Index 0，再把目标数量上限从当前值写为 %1。过滤器会自动保存到 NVM；车辆必须静止且控制未接管。确认继续？").arg(maximum),
+        tr("查询并设置"), this)) return;
+  QString request_id = QString::number(QDateTime::currentMSecsSinceEpoch());
+  enqueueRequest("TeslaRadarFilterRequest", QString("%1,0,1,0,%2").arg(request_id).arg(maximum));
 }
 
 void RadarPanel::requestFilter() {

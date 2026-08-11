@@ -23,9 +23,8 @@ def object_data(**overrides):
   return obj
 
 
-def test_accepts_medium_probability_new_targets_but_rejects_new_predictions():
-  assert object_is_usable(object_data(Obj_DistLong=150.0, Obj_ProbOfExist=2))
-  assert not object_is_usable(object_data(Obj_ProbOfExist=1))
+def test_rejects_low_probability_and_new_predicted_targets():
+  assert not object_is_usable(object_data(Obj_ProbOfExist=2))
   assert object_is_usable(object_data(Obj_ProbOfExist=2), previously_tracked=True)
   assert not object_is_usable(object_data(Obj_MeasState=3), previously_tracked=False)
   assert object_is_usable(object_data(Obj_MeasState=3), previously_tracked=True)
@@ -33,7 +32,7 @@ def test_accepts_medium_probability_new_targets_but_rejects_new_predictions():
 
 def test_filters_roadside_static_objects_but_keeps_adjacent_lane_and_stopped_targets():
   assert not object_is_usable(object_data(Obj_DynProp=1, Obj_DistLat=8.0, Obj_ProbOfExist=7))
-  assert object_is_usable(object_data(Obj_DynProp=1, Obj_DistLat=3.7, Obj_ProbOfExist=2))
+  assert object_is_usable(object_data(Obj_DynProp=1, Obj_DistLat=3.7, Obj_ProbOfExist=5))
   assert object_is_usable(object_data(Obj_DynProp=7, Obj_DistLat=3.7, Obj_ProbOfExist=3))
 
 
@@ -125,20 +124,6 @@ def test_objects_are_not_published_before_first_radar_state():
 
   assert len(radar.pts) == 1
   assert len(result.points) == 0
-
-
-def test_far_medium_probability_object_is_published():
-  radar = make_result_radar()
-  radar.expected_objects = 1
-  radar._decode_cycle = lambda _timestamp: {
-    7: object_data(Obj_DistLong=150.0, Obj_ProbOfExist=2, Obj_DynProp=3),
-  }
-
-  result = radar._build_result(1_000_000_000)
-
-  assert len(result.points) == 1
-  assert result.points[0].dRel == pytest.approx(150.0)
-  assert result.points[0].measured
 
 
 def test_existing_track_survives_brief_empty_cycle_then_expires():

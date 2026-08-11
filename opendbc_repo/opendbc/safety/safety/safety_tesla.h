@@ -247,12 +247,16 @@ static bool tesla_tx_hook(const CANPacket_t *to_send) {
     violation |= !valid_config;
   }
 
-  // Object FilterCfg only. Require Valid, reject cluster filters and the
-  // reserved index 15. Min/max are still range-checked by the host packer.
+  // Object FilterCfg only. Valid=0 is a read-only query and must carry no
+  // payload; Valid=1 writes one complete record. Reject the reserved index 15.
   if (addr == 0x202) {
     const uint8_t header = GET_BYTE(to_send, 0);
     const int index = (header >> 3) & 0x0FU;
-    violation |= ((header & 0x83U) != 0x82U) || (index > 14);
+    const bool write = (header & 0x83U) == 0x82U;
+    const bool query = ((header & 0x87U) == 0x80U) && (GET_BYTE(to_send, 1) == 0U) &&
+                       (GET_BYTE(to_send, 2) == 0U) && (GET_BYTE(to_send, 3) == 0U) &&
+                       (GET_BYTE(to_send, 4) == 0U);
+    violation |= (!write && !query) || (index > 14);
   }
 
   if (violation) {

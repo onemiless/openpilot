@@ -68,6 +68,19 @@ def test_object_filter_writes_one_complete_record():
   assert state["FilterCfg_Max_Distance"] == 200.0
 
 
+def test_object_filter_query_cannot_modify_the_selected_record():
+  address, data, bus = ARS408CAN().create_filter_query(0)
+  state = decode((address, data, bus), "FilterCfg")
+
+  assert address == 0x202
+  assert state["FilterCfg_Type"] == 1
+  assert state["FilterCfg_Index"] == 0
+  assert state["FilterCfg_Active"] == 0
+  assert state["FilterCfg_Valid"] == 0
+  assert state["FilterCfg_Min_NofObj"] == 0
+  assert state["FilterCfg_Max_NofObj"] == 0
+
+
 def test_all_supported_object_filter_indices_pack():
   for index, (_suffix, lower, upper, _resolution) in ARS408_FILTER_SIGNALS.items():
     state = decode(ARS408CAN().create_filter_configuration(index, True, lower, upper), "FilterCfg")
@@ -258,13 +271,13 @@ def test_controller_discards_expired_request():
   assert controller.params.values["TeslaRadarConfigResult"].split(",")[1] == "expired"
 
 
-def test_filter_confirmation_requires_new_filter_state_frame():
+def test_filter_write_queries_current_record_before_changing_to_48():
   request_id = str(int(time.time() * 1000))
   controller = CarController.__new__(CarController)
   controller.ars408_can = ARS408CAN()
   controller.params = FakeParams({
-    "TeslaRadarFilterRequest": f"{request_id},1,1,10,200",
-    "TeslaRadarFilterState": "1,1,10.0,200.0",
+    "TeslaRadarFilterRequest": f"{request_id},0,1,0,48",
+    "TeslaRadarFilterState": "0,1,0.0,32.0",
     "TeslaRadarFilterStateSeq": "4",
   })
   controller._radar_config_request = None
@@ -273,12 +286,105 @@ def test_filter_confirmation_requires_new_filter_state_frame():
   controls = SimpleNamespace(latActive=False, longActive=False)
   car_state = SimpleNamespace(out=SimpleNamespace(canValid=True, standstill=True))
 
-  assert len(controller.update_radar_configuration(controls, car_state)) == 1
+  query = controller.update_radar_configuration(controls, car_state)
+  assert len(query) == 1
+  assert decode(query[0], "FilterCfg")["FilterCfg_Valid"] == 0
   controller.frame += 1
   assert controller.update_radar_configuration(controls, car_state) == []
   assert controller._radar_filter_request is not None
 
   controller.params.values["TeslaRadarFilterStateSeq"] = "5"
+  controller.frame += 1
+  assert controller.update_radar_configuration(controls, car_state) == []
+  assert controller.params.values["TeslaRadarFilterResult"].split(",")[1] == "queried"
+
+  controller.frame += 1
+  write = controller.update_radar_configuration(controls, car_state)
+  assert len(write) == 1
+  written = decode(write[0], "FilterCfg")
+  assert written["FilterCfg_Valid"] == 1
+  assert written["FilterCfg_Index"] == 0
+  assert written["FilterCfg_Max_NofObj"] == 48
+
+  controller.params.values.update({"TeslaRadarFilterState": "0,1,0.0,48.0", "TeslaRadarFilterStateSeq": "6"})
+  controller.frame += 1
+  assert controller.update_radar_configuration(controls, car_state) == []
+  assert controller._radar_filter_request is None
+  assert controller.params.values["TeslaRadarFilterResult"].split(",")[1] == "applied"
+
+
+def test_filter_query_only_reports_index_zero_without_writing():
+  request_id = str(int(time.time() * 1000))
+  controller = CarController.__new__(CarController)
+  controller.ars408_can = ARS408CAN()
+  controller.params = FakeParams({
+    "TeslaRadarFilterRequest": f"{request_id},query,0",
+    "TeslaRadarFilterStateSeq": "0",
+  })
+  controller._radar_config_request = None
+  controller._radar_filter_request = None
+  controller.frame = 100
+  controls = SimpleNamespace(latActive=False, longActive=False)
+  car_state = SimpleNamespace(out=SimpleNamespace(canValid=True, standstill=True))
+
+  sends = controller.update_radar_configuration(controls, car_state)
+  assert len(sends) == 1
+  assert decode(sends[0], "FilterCfg")["FilterCfg_Valid"] == 0
+
+  controller.params.values.update({"TeslaRadarFilterState": "0,1,0.0,32.0", "TeslaRadarFilterStateSeq": "1"})
+  controller.frame += 1
+  assert controller.update_radar_configuration(controls, car_state) == []
+  assert controller._radar_filter_request is None
+  assert controller.params.values["TeslaRadarFilterResult"].split(",")[1:] == ["queried", "0:1:0.0:32.0"]
+
+
+def test_filter_write_rechecks_standstill_after_query():
+  request_id = str(int(time.time() * 1000))
+  controller = CarController.__new__(CarController)
+  controller.ars408_can = ARS408CAN()
+  controller.params = FakeParams({
+    "TeslaRadarFilterRequest": f"{request_id},0,1,0,48",
+    "TeslaRadarFilterStateSeq": "0",
+  })
+  controller._radar_config_request = None
+  controller._radar_filter_request = None
+  controller.frame = 100
+  controls = SimpleNamespace(latActive=False, longActive=False)
+  car_state = SimpleNamespace(out=SimpleNamespace(canValid=True, standstill=True))
+
+  assert len(controller.update_radar_configuration(controls, car_state)) == 1
+  controller.params.values.update({"TeslaRadarFilterState": "0,1,0.0,32.0", "TeslaRadarFilterStateSeq": "1"})
+  controller.frame += 1
+  assert controller.update_radar_configuration(controls, car_state) == []
+
+  car_state.out.standstill = False
+  controller.frame += 1
+  assert controller.update_radar_configuration(controls, car_state) == []
+  assert controller.params.values["TeslaRadarFilterResult"].split(",")[1] == "waiting"
+
+  car_state.out.standstill = True
+  controller.frame += 1
+  sends = controller.update_radar_configuration(controls, car_state)
+  assert len(sends) == 1
+  assert decode(sends[0], "FilterCfg")["FilterCfg_Max_NofObj"] == 48
+
+
+def test_filter_write_stops_after_query_when_limit_is_already_48():
+  request_id = str(int(time.time() * 1000))
+  controller = CarController.__new__(CarController)
+  controller.ars408_can = ARS408CAN()
+  controller.params = FakeParams({
+    "TeslaRadarFilterRequest": f"{request_id},0,1,0,48",
+    "TeslaRadarFilterStateSeq": "0",
+  })
+  controller._radar_config_request = None
+  controller._radar_filter_request = None
+  controller.frame = 100
+  controls = SimpleNamespace(latActive=False, longActive=False)
+  car_state = SimpleNamespace(out=SimpleNamespace(canValid=True, standstill=True))
+
+  assert len(controller.update_radar_configuration(controls, car_state)) == 1
+  controller.params.values.update({"TeslaRadarFilterState": "0,1,0.0,48.0", "TeslaRadarFilterStateSeq": "1"})
   controller.frame += 1
   assert controller.update_radar_configuration(controls, car_state) == []
   assert controller._radar_filter_request is None

@@ -132,6 +132,18 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
     self.assertFalse(self._tx(common.make_msg(0, MSG_ARS408_FILTER_CONFIG, 5, b"\x8e\x00\x00\x09\xc4")))
     self.assertFalse(self._tx(common.make_msg(1, MSG_ARS408_FILTER_CONFIG, 8)))
 
+  def test_ars408_filter_query_is_read_only(self):
+    query = self.radar_packer.make_can_msg_panda("FilterCfg", 1, {
+      "FilterCfg_Type": 1, "FilterCfg_Index": 0, "FilterCfg_Active": 0, "FilterCfg_Valid": 0,
+    })
+    self.assertTrue(self._tx(query))
+
+    query_with_payload = self.radar_packer.make_can_msg_panda("FilterCfg", 1, {
+      "FilterCfg_Type": 1, "FilterCfg_Index": 0, "FilterCfg_Active": 0, "FilterCfg_Valid": 0,
+      "FilterCfg_Max_NofObj": 48,
+    })
+    self.assertFalse(self._tx(query_with_payload))
+
   def test_ars408_config_rejects_unreviewed_fields_and_cluster_output(self):
     for values in (
       {"RadarCfg_SensorID_valid": 1, "RadarCfg_SensorID": 0},

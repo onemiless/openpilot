@@ -89,6 +89,19 @@ class ARS408CAN:
     }
     return self.packer.make_can_msg("FilterCfg", ARS408_BUS, values)
 
+  def create_filter_query(self, index):
+    """Read one Object FilterCfg record without modifying its NVM value."""
+    index = int(index)
+    if index not in ARS408_FILTER_SIGNALS:
+      raise ValueError(f"unsupported ARS408 filter index: {index}")
+    values = {
+      "FilterCfg_Type": 1,
+      "FilterCfg_Index": index,
+      "FilterCfg_Active": 0,
+      "FilterCfg_Valid": 0,
+    }
+    return self.packer.make_can_msg("FilterCfg", ARS408_BUS, values)
+
   def create_speed_information(self, speed_mps, direction):
     """Build an ARS408 ego-speed frame for the dedicated radar CAN."""
     values = {

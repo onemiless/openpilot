@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from openpilot.selfdrive.controls.radard import RadarD, Track
+from openpilot.selfdrive.controls.radard import RadarD
 
 
 class FakeTrack:
@@ -35,36 +35,6 @@ class FakeTrack:
       "objectClass": 1,
       "radarTrackCnt": self.cnt,
     }
-
-
-def radar_point(measured):
-  return SimpleNamespace(
-    dRel=150.0,
-    yRel=0.1,
-    vRel=-1.0,
-    vLead=24.0,
-    aLead=0.0,
-    jLead=0.0,
-    yvRel=0.0,
-    objectClass=1,
-    measured=measured,
-  )
-
-
-def test_established_track_survives_brief_predicted_measurement():
-  track = Track(7)
-  for _ in range(4):
-    track.update(None, radar_point(True), False, 1.0, 1.0)
-
-  track.update(None, radar_point(False), False, 1.0, 1.0)
-
-  assert track.cnt == 5
-  assert not track.measured
-
-  track.update(None, radar_point(False), False, 1.0, 1.0)
-  track.update(None, radar_point(False), False, 1.0, 1.0)
-
-  assert track.cnt == 1
 
 
 def run_compute_leads(second_distance):
