@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Tesla Tools</title>
+  <style>
+    body { font: 16px system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; background: #111; color: #eee; }
+    section { border: 1px solid #444; border-radius: 12px; padding: 1rem; margin: 1rem 0; }
+    button { font-size: 1rem; padding: .8rem 1.2rem; margin: .25rem; border: 0; border-radius: 8px; }
+    .left { background: #53b175; } .right { background: #4d8fea; } .cancel { background: #d65b5b; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #222; padding: .75rem; border-radius: 8px; }
+    .warning { color: #ffcf67; }
+  </style>
+</head>
+<body>
+  <h1>Tesla Tools</h1>
+  <p class="warning">临时测试服务：当前没有认证。测试完成后请关闭 EnableTeslaTools 并重启。</p>
+  <section>
+    <h2>转向灯验证</h2>
+    <p>测试遵循实时变道状态、横向激活、刹车与自动取消条件。</p>
+    <button class="left" onclick="startTurn('left')">左转测试</button>
+    <button class="right" onclick="startTurn('right')">右转测试</button>
+    <button class="cancel" onclick="cancelTurn()">取消</button>
+    <pre id="turn">等待状态</pre>
+  </section>
+  <section>
+    <h2>Tesla 原车巡航速度同步</h2>
+    <pre id="speed">等待状态</pre>
+  </section>
+  <script>
+    let testId = null;
+    async function request(path, body) {
+      const response = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || response.statusText);
+      return data;
+    }
+    async function startTurn(direction) {
+      try { const data = await request('/api/v1/turn/start', {direction}); testId = data.id; } catch (e) { alert(e.message); }
+    }
+    async function cancelTurn() {
+      if (!testId) return;
+      try { await request('/api/v1/turn/cancel', {id: testId}); } catch (e) { alert(e.message); }
+    }
+    async function refresh() {
+      try {
+        const [turn, speed] = await Promise.all([
+          fetch('/api/v1/turn/status', {cache: 'no-store'}).then(r => r.json()),
+          fetch('/api/v1/speed/status', {cache: 'no-store'}).then(r => r.json()),
+        ]);
+        document.getElementById('turn').textContent = JSON.stringify(turn, null, 2);
+        document.getElementById('speed').textContent = JSON.stringify(speed, null, 2);
+      } catch (e) { document.getElementById('turn').textContent = e.message; }
+    }
+    setInterval(refresh, 500); refresh();
+  </script>
+</body>
+</html>

@@ -79,6 +79,9 @@ def enable_dm(started, params, CP: car.CarParams) -> bool:
 def enable_connect(started, params, CP: car.CarParams) -> bool:
   return params.get_int("EnableConnect") > 0
 
+def enable_tesla_tools(started, params, CP: car.CarParams) -> bool:
+  return params.get_bool("EnableTeslaTools")
+
 procs = [
   DaemonProcess("manage_athenad", "system.athena.manage_athenad", "AthenadPid"),
 
@@ -140,6 +143,7 @@ procs = [
   #PythonProcess("fleet_manager", "selfdrive.frogpilot.fleetmanager.fleet_manager", check_fleet, enabled=not PC),
   PythonProcess("fleet_manager", "selfdrive.frogpilot.fleetmanager.fleet_manager", check_fleet),
   PythonProcess("carrot_man", "selfdrive.carrot.carrot_man", always_run),#, enabled=not PC),
+  PythonProcess("tesla_web", "selfdrive.tesla_web.server", enable_tesla_tools),
   #PythonProcess("auto_overtake", "selfdrive.carrot.auto_overtake", always_run),#, enabled=not PC),
   #PythonProcess("amap_navi", "selfdrive.carrot.amap_navi", always_run),
   #PythonProcess("lane", "selfdrive.carrot.lane", check_lane and only_onroad),
