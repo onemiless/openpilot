@@ -221,58 +221,22 @@ def test_persistent_eps_error_4_times_out_and_disables_mads():
   assert mads.state == MadsState.disabled
 
 
-def test_strong_driver_override_pauses_then_resumes_after_stable_release():
+def test_strong_driver_input_disengages_and_requires_fresh_engagement():
   mads = make_mads(steering_mode=0)
   engage(mads)
 
-  mads.update(make_car_state(steeringOverride=True, handsOnLevel=3, steeringTorque=2.6,
-                             steeringRateDeg=18.0), False, False, FakeEvents())
-  assert mads.state == MadsState.paused
-  assert mads.enabled
+  mads.update(make_car_state(steeringDisengage=True, handsOnLevel=3, steeringTorque=5.01),
+              False, False, FakeEvents())
+  assert mads.state == MadsState.disabled
+  assert not mads.enabled
   assert not mads.active
 
   release = make_car_state(handsOnLevel=1, steeringTorque=0.2, steeringRateDeg=5.0)
-  for _ in range(24):
+  for _ in range(30):
     mads.update(release, False, False, FakeEvents())
-    assert mads.state == MadsState.paused
+    assert mads.state == MadsState.disabled
 
-  mads.update(release, False, False, FakeEvents())
-  assert mads.state == MadsState.enabled
-  assert mads.active
-
-
-def test_driver_override_recovers_into_cooperative_range_without_waiting_for_hands_level_one():
-  mads = make_mads(steering_mode=0)
-  engage(mads)
-  mads.update(make_car_state(steeringOverride=True, handsOnLevel=3, steeringTorque=2.6),
-              False, False, FakeEvents())
-
-  cooperative_release = make_car_state(handsOnLevel=2, steeringTorque=2.0, steeringRateDeg=5.0)
-  for _ in range(24):
-    mads.update(cooperative_release, False, False, FakeEvents())
-    assert mads.state == MadsState.paused
-
-  mads.update(cooperative_release, False, False, FakeEvents())
-  assert mads.state == MadsState.enabled
-  assert mads.active
-
-
-def test_driver_override_release_hysteresis_resets_when_wheel_moves():
-  mads = make_mads(steering_mode=0)
-  engage(mads)
-  mads.update(make_car_state(steeringOverride=True, handsOnLevel=3, steeringTorque=2.6),
-              False, False, FakeEvents())
-
-  release = make_car_state(handsOnLevel=1, steeringTorque=0.2, steeringRateDeg=5.0)
-  for _ in range(20):
-    mads.update(release, False, False, FakeEvents())
-  mads.update(make_car_state(handsOnLevel=1, steeringTorque=0.2, steeringRateDeg=15.0),
-              False, False, FakeEvents())
-  for _ in range(24):
-    mads.update(release, False, False, FakeEvents())
-  assert mads.state == MadsState.paused
-
-  mads.update(release, False, False, FakeEvents())
+  mads.update(release, True, True, FakeEvents())
   assert mads.state == MadsState.enabled
 
 

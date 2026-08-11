@@ -111,7 +111,10 @@ class TeslaFlags(IntFlag):
 
 DBC = CAR.create_dbc_map()
 
-STEER_THRESHOLD = 0.5
+# Temporarily keep automatic 0x3C2 cruise-speed adjustment disabled until a
+# vehicle capture explains the observed Tesla cruise fault.
+TESLA_SPEED_SYNC_BUILD_ENABLED = False
+STEER_THRESHOLD = 1.0
 STEER_DISENGAGE_THRESHOLD = 5.0
 
 if __name__ == "__main__":

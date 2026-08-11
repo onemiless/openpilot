@@ -22,6 +22,22 @@ BLINKER_LEFT = 1
 BLINKER_RIGHT = 2
 BLINKER_BOTH = 3
 
+
+def update_automatic_blinker_intent(current_intent, lane_change_state, lane_change_direction,
+                                    automatic_request, driver_blinker_state):
+  """Latch a system-requested signal for the full automatic lane-change state machine."""
+  if lane_change_state == LaneChangeState.off or driver_blinker_state != BLINKER_NONE:
+    return BLINKER_NONE
+  if automatic_request in (BLINKER_LEFT, BLINKER_RIGHT):
+    request_direction = (LaneChangeDirection.left if automatic_request == BLINKER_LEFT else
+                         LaneChangeDirection.right)
+    return automatic_request if lane_change_direction in (LaneChangeDirection.none, request_direction) else BLINKER_NONE
+
+  expected_direction = (LaneChangeDirection.left if current_intent == BLINKER_LEFT else
+                        LaneChangeDirection.right if current_intent == BLINKER_RIGHT else
+                        LaneChangeDirection.none)
+  return current_intent if lane_change_direction in (LaneChangeDirection.none, expected_direction) else BLINKER_NONE
+
 DESIRES = {
   LaneChangeDirection.none: {
     LaneChangeState.off: log.Desire.none,
@@ -237,6 +253,7 @@ class DesireHelper:
     self.last_lane_count = 0
     self.blinker = "none"
     self.blinker_val = BLINKER_NONE
+    self.automatic_blinker_intent = BLINKER_NONE
     self.stockBlinkerCtrl = 0
     self.blinkerMode = 0
     self.autoLaneChangeMinSpeed = 0
@@ -1369,6 +1386,15 @@ class DesireHelper:
     if not turn_left_right and self.lane_change_state == LaneChangeState.off:
       if self.blinker_val != BLINKER_NONE:
         print(f"---[{time.strftime('%H:%M:%S')}.{self.frame%100}]not turn_left_right and LaneChangeState.off: clear ext_blinker_val")
+      self.blinker_val = BLINKER_NONE
+    previous_automatic_blinker_intent = self.automatic_blinker_intent
+    self.automatic_blinker_intent = update_automatic_blinker_intent(
+      self.automatic_blinker_intent, self.lane_change_state, self.lane_change_direction,
+      atc_blinker_state, driver_blinker_state,
+    )
+    if self.automatic_blinker_intent != BLINKER_NONE:
+      self.blinker_val = self.automatic_blinker_intent
+    elif previous_automatic_blinker_intent != BLINKER_NONE and not turn_left_right:
       self.blinker_val = BLINKER_NONE
     if self.stockBlinkerCtrl == 1:
       self.blinker = "stockleft" if self.blinker_val == BLINKER_LEFT else "stockright" if self.blinker_val == BLINKER_RIGHT else "none"

@@ -12,13 +12,18 @@ from opendbc.car.tesla.coop_steering import (
   calc_override_angle_delta_limit,
 )
 from opendbc.car.tesla.interface import CarInterface
+from opendbc.car.tesla.values import STEER_THRESHOLD
 from opendbc.car.vehicle_model import VehicleModel
 
 
-def test_strong_driver_input_is_recoverable_only_in_cooperative_mode():
+def test_strong_driver_input_always_disengages():
   assert classify_steering_input(3, 2.5, "EAC_ACTIVE", 0, False) == (False, True)
-  assert classify_steering_input(3, 2.5, "EAC_ACTIVE", 0, True) == (True, False)
-  assert classify_steering_input(0, 5.01, "EAC_ACTIVE", 0, True) == (True, False)
+  assert classify_steering_input(3, 2.5, "EAC_ACTIVE", 0, True) == (False, True)
+  assert classify_steering_input(0, 5.01, "EAC_ACTIVE", 0, True) == (False, True)
+
+
+def test_driver_steering_threshold_matches_dev_new():
+  assert STEER_THRESHOLD == 1.0
 
 
 def test_high_angle_rate_fault_is_never_recoverable():

@@ -12,7 +12,7 @@ from opendbc.car.tesla.coop_steering import CoopSteeringCarController
 from opendbc.car.tesla.speed_sync_controller import SpeedSyncController
 from opendbc.car.tesla.teslacan import TeslaCAN
 from opendbc.car.tesla.turn_signal_controller import TurnSignalController
-from opendbc.car.tesla.values import CarControllerParams, TeslaFlags
+from opendbc.car.tesla.values import TESLA_SPEED_SYNC_BUILD_ENABLED, CarControllerParams, TeslaFlags
 from opendbc.car.vehicle_model import VehicleModel
 from openpilot.common.params import Params
 
@@ -47,7 +47,10 @@ class CarController(CarControllerBase):
       bool(CP.flags & TeslaFlags.TURN_SIGNAL_TEST),
       auto_configured=bool(CP.flags & TeslaFlags.AUTO_TURN_SIGNAL),
     )
-    self.speed_sync_controller = SpeedSyncController(bool(CP.flags & TeslaFlags.SPEED_SYNC))
+    # Fail closed even if stale CarParams still contain SPEED_SYNC after an update.
+    self.speed_sync_controller = SpeedSyncController(
+      TESLA_SPEED_SYNC_BUILD_ENABLED and bool(CP.flags & TeslaFlags.SPEED_SYNC),
+    )
     self.speed_sync_target_mps = 0.0
     self.speed_sync_target_valid = False
     log.info("Tesla cooperative steering configured enabled=%d", int(self.coop_steering_enabled))
