@@ -515,8 +515,8 @@ RadarPanel::RadarPanel(QWidget *parent) : ListWidget(parent) {
   auto add_config = [this](const QString &title, const QString &field, const QStringList &labels,
                            const QList<int> &values, bool store) {
     auto *control = new ButtonControl(title, store ? tr("写入 NVM") : tr("保存（当前生效）"),
-                                      store ? tr("先应用并回读确认，再发送 NVM 保存命令。")
-                                            : tr("只修改当前运行配置，不写入 NVM。"));
+                                      store ? tr("行驶及接管中也可手动修改；先应用并回读确认，再发送 NVM 保存命令。")
+                                            : tr("行驶及接管中也可手动修改；只修改当前运行配置，不写入 NVM。"));
     connect(control, &ButtonControl::clicked, this, [=]() { requestConfig(field, title, labels, values, store); });
     addItem(control);
   };
@@ -568,7 +568,9 @@ void RadarPanel::requestConfig(const QString &field, const QString &title, const
   if (index < 0 || index >= values.size()) return;
 
   QString action = store ? tr("写入 NVM") : tr("保存（当前生效）");
-  if (!ConfirmationDialog::confirm(tr("车辆必须静止且控制未接管。确认%1：%2？").arg(action, selected), action, this)) return;
+  if (!ConfirmationDialog::confirm(
+        tr("行驶及 openpilot 接管中也会立即修改。改变输出类型可能使雷达目标即时出现或消失；请勿由驾驶员操作屏幕。确认%1：%2？").arg(action, selected),
+        action, this)) return;
 
   QString request_id = QString::number(QDateTime::currentMSecsSinceEpoch());
   enqueueRequest("TeslaRadarConfigRequest",
@@ -588,7 +590,7 @@ void RadarPanel::requestObjectLimit() {
   if (selected.isEmpty()) return;
   int maximum = selected.startsWith("32") ? 32 : (selected.startsWith("48") ? 48 : 64);
   if (!ConfirmationDialog::confirm(
-        tr("将先读取 Index 0，再手动把目标数量上限写为 %1。行驶中允许写入，但 openpilot 横向和纵向控制必须均未接管；雷达会自动保存到 NVM。请勿由驾驶员操作屏幕。确认继续？").arg(maximum),
+        tr("将先读取 Index 0，再手动把目标数量上限写为 %1。行驶及 openpilot 接管中也会立即写入，雷达会自动保存到 NVM；目标列表可能瞬时变化。请勿由驾驶员操作屏幕。确认继续？").arg(maximum),
         tr("查询并设置"), this)) return;
   QString request_id = QString::number(QDateTime::currentMSecsSinceEpoch());
   enqueueRequest("TeslaRadarFilterRequest", QString("%1,0,1,0,%2").arg(request_id).arg(maximum));
@@ -622,7 +624,7 @@ void RadarPanel::requestFilter() {
     ConfirmationDialog::alert(tr("数值无效：必须是数字且最小值不能大于最大值。"), this);
     return;
   }
-  if (!ConfirmationDialog::confirm(tr("该过滤记录会由雷达自动写入 NVM。行驶中允许写入，但 openpilot 横向和纵向控制必须均未接管；请勿由驾驶员操作屏幕。确认继续？"),
+  if (!ConfirmationDialog::confirm(tr("该过滤记录会由雷达自动写入 NVM，行驶及 openpilot 接管中也会立即生效；目标列表可能瞬时变化。请勿由驾驶员操作屏幕。确认继续？"),
                                    tr("配置并保存"), this)) return;
 
   QString request_id = QString::number(QDateTime::currentMSecsSinceEpoch());
