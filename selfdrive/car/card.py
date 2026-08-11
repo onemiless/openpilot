@@ -314,6 +314,9 @@ class Car:
         model_valid = (self.sm.seen['modelV2'] and self.sm.valid['modelV2'] and
                        context_now - self.sm.recv_time['modelV2'] <= TESLA_LANE_CHANGE_CONTEXT_STALE_S)
         lane_change_meta = self.sm['modelV2'].meta
+        automatic_blinker = str(lane_change_meta.blinker)
+        automatic_direction = ("left" if automatic_blinker in ("left", "stockleft") else
+                               "right" if automatic_blinker in ("right", "stockright") else "none")
         self.tesla_controller.update_turn_signal_context(
           now_nanos,
           valid=model_valid,
@@ -321,6 +324,9 @@ class Car:
           direction=int(getattr(lane_change_meta.laneChangeDirection, "raw", lane_change_meta.laneChangeDirection)),
           lateral_active=bool(CC.latActive),
           brake_pressed=bool(CS.brakePressed),
+          vehicle_left_blinker=bool(CS.leftBlinker),
+          vehicle_right_blinker=bool(CS.rightBlinker),
+          automatic_direction=automatic_direction,
         )
       self.last_actuators_output, can_sends = self.CI.apply(CC, now_nanos)
       self.pm.send('sendcan', can_list_to_can_capnp(can_sends, msgtype='sendcan', valid=CS.canValid))

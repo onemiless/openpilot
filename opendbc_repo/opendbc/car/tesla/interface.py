@@ -38,9 +38,12 @@ class CarInterface(CarInterfaceBase):
       ret.stoppingDecelRate = 0.3
 
     params = Params()
+    # Automatic lane changes use the same reviewed 0x3E9 safety path as the
+    # web-only diagnostic, but do not depend on the diagnostic being enabled.
+    ret.flags |= TeslaFlags.AUTO_TURN_SIGNAL.value
+    ret.safetyConfigs[0].safetyParam |= TeslaSafetyFlags.TURN_SIGNAL_TEST.value
     if params.get_bool("EnableTeslaTools"):
       ret.flags |= TeslaFlags.TURN_SIGNAL_TEST.value
-      ret.safetyConfigs[0].safetyParam |= TeslaSafetyFlags.TURN_SIGNAL_TEST.value
 
     if (ret.openpilotLongitudinalControl and params.get_bool("TeslaSpeedSyncEnabled") and
         params.get_int("SpeedFromPCM") == 1):
