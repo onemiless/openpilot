@@ -23,6 +23,9 @@ class FakeParams:
   def put_nonblocking(self, key, value):
     self.values[key] = value
 
+  def put(self, key, value):
+    self.values[key] = value
+
 
 @pytest.fixture
 def web_server():
@@ -70,6 +73,35 @@ def test_invalid_turn_request_is_rejected(web_server):
   assert status == 400
   assert "TeslaTurnSignalRequest" not in params.values
   assert json.loads(data)["error"] == "direction must be left or right"
+
+
+def test_pending_turn_start_is_not_overwritten(web_server):
+  server, params = web_server
+  status, _, data = request(server, "POST", "/api/v1/turn/start", {"direction": "left"})
+  assert status == 202
+  first = json.loads(params.values["TeslaTurnSignalRequest"])
+  assert first["id"] == json.loads(data)["id"]
+
+  status, _, data = request(server, "POST", "/api/v1/turn/start", {"direction": "right"})
+  assert status == 409
+  assert json.loads(data)["error"] == "request_pending"
+  assert json.loads(params.values["TeslaTurnSignalRequest"]) == first
+
+
+def test_pending_turn_cancel_is_not_overwritten(web_server):
+  server, params = web_server
+  status, _, data = request(server, "POST", "/api/v1/turn/start", {"direction": "left"})
+  assert status == 202
+  test_id = json.loads(data)["id"]
+
+  status, _, _ = request(server, "POST", "/api/v1/turn/cancel", {"id": test_id})
+  assert status == 202
+  first = json.loads(params.values["TeslaTurnSignalCancel"])
+
+  status, _, data = request(server, "POST", "/api/v1/turn/cancel", {"id": "different"})
+  assert status == 409
+  assert json.loads(data)["error"] == "request_pending"
+  assert json.loads(params.values["TeslaTurnSignalCancel"]) == first
 
 
 def test_status_and_health_are_read_only(web_server):

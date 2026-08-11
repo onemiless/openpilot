@@ -4,10 +4,10 @@
 
 | 范围 | 结果 | 说明 |
 |---|---:|---|
-| 新控制器、feature flags、目标 provider | 16 passed | 包含 1 秒边界与超过 1 秒不恢复、MADS-only/制动/AP fail-closed |
-| Tesla car 全目录 + provider | 88 passed | 包含既有 ARS408、radar、cooperative steering 测试 |
+| 新控制器、feature flags、目标 provider | 19 passed | 包含 1 秒边界、巡航/目标变化恢复、外部设速暂停、MADS-only/制动/AP fail-closed |
+| Tesla car 全目录 + provider/protocol | 93 passed | 包含既有 ARS408、radar、cooperative steering 测试 |
 | Card JSON/TTL 协议 | 2 passed | 对象类型、5 秒边界、未来时间和过期请求 |
-| Tesla Web API | 4 passed | start/cancel/status/health、无 CORS 通配、无认证提示 |
+| Tesla Web API | 6 passed | start/cancel/status/health、待消费请求 409 防覆盖、无 CORS 通配、无认证提示 |
 | Tesla interface | 2 passed | Model 3/Y 实例化和 apply 冒烟 |
 | Manager process config | 3 passed, 1 skipped | 包含新进程 prepare/import 检查 |
 | MADS | 19 passed | 独立状态机与 radar/driver override 回归 |

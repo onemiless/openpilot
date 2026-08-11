@@ -42,6 +42,8 @@ class SpeedSyncController:
     self._seen_manual_counter = 0
     self._seen_resume_counter = 0
     self.manual_override = False
+    self.planned_target_display: int | None = None
+    self.last_current_display: int | None = None
     self.target_candidate: int | None = None
     self.target_candidate_nanos = 0
     self.last_tx_nanos = 0
@@ -86,6 +88,13 @@ class SpeedSyncController:
     self.feedback_blocked_signature = None
     self._clear_pending()
 
+  def _reset_runtime(self, *, clear_manual_override: bool) -> None:
+    self._reset_target()
+    self.planned_target_display = None
+    self.last_current_display = None
+    if clear_manual_override:
+      self.manual_override = False
+
   @staticmethod
   def _display_speed(speed_mps: float, units: str) -> int:
     factor = CV.MS_TO_MPH if units == "MPH" else CV.MS_TO_KPH
@@ -100,32 +109,60 @@ class SpeedSyncController:
     current_display = self._display_speed(CS.out.cruiseState.speed, units)
     target_display = self._display_speed(target_mps, units) if target_valid else 0
 
-    if self.manual_adjustment_counter != self._seen_manual_counter:
-      resumed = self.resume_gesture_counter != self._seen_resume_counter
+    manual_changed = self.manual_adjustment_counter != self._seen_manual_counter
+    resumed = self.resume_gesture_counter != self._seen_resume_counter
+    if manual_changed:
       self._seen_manual_counter = self.manual_adjustment_counter
       self._seen_resume_counter = self.resume_gesture_counter
-      self.manual_override = not resumed
-      self._reset_target()
 
     blocked_reason = None
+    clear_manual_override = False
     if not self.configured:
       blocked_reason = "disabled"
+      clear_manual_override = True
     elif getattr(CS, "tesla_autopilot_active", False):
       blocked_reason = "tesla_ap_active"
     elif not CC.enabled or not CC.longActive:
       blocked_reason = "longitudinal_inactive"
+      clear_manual_override = True
     elif CC.cruiseControl.cancel or not CS.out.cruiseState.enabled:
       blocked_reason = "cruise_inactive"
+      clear_manual_override = True
     elif CS.out.brakePressed:
       blocked_reason = "brake_pressed"
     elif not target_valid:
       blocked_reason = "target_invalid"
-    elif self.manual_override:
-      blocked_reason = "manual_override"
 
     if blocked_reason is not None:
-      self._reset_target()
+      self._reset_runtime(clear_manual_override=clear_manual_override)
       self._set_status("blocked", reason=blocked_reason, current=current_display, target=target_display, unit=units)
+      return []
+
+    target_changed = self.planned_target_display != target_display
+    if target_changed:
+      self.planned_target_display = target_display
+      self.manual_override = False
+      self._reset_target()
+
+    if resumed:
+      self.manual_override = False
+      self._reset_target()
+    elif manual_changed:
+      self.manual_override = True
+      self._reset_target()
+
+    target_stable = (self.target_candidate == target_display and
+                     now_nanos - self.target_candidate_nanos >= TARGET_STABLE_NS)
+    external_speed_change = (self.last_current_display is not None and current_display != self.last_current_display and
+                             not self.pending_direction and self.feedback_blocked_signature is None and target_stable and
+                             not target_changed and not manual_changed and not resumed)
+    self.last_current_display = current_display
+    if external_speed_change:
+      self.manual_override = True
+      self._reset_target()
+
+    if self.manual_override:
+      self._set_status("blocked", reason="manual_override", current=current_display, target=target_display, unit=units)
       return []
 
     if self.target_candidate != target_display:

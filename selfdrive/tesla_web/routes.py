@@ -1,4 +1,5 @@
 import json
+import threading
 import time
 import uuid
 from collections import defaultdict, deque
@@ -31,6 +32,17 @@ class ActionRateLimiter:
 def make_handler(params, template_root: Path | None = None):
   templates = template_root or Path(__file__).with_name("templates")
   limiter = ActionRateLimiter()
+  request_lock = threading.Lock()
+
+  def queue_request(key: str, payload: dict) -> bool:
+    encoded = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+    with request_lock:
+      if params.get(key):
+        return False
+      # Action requests are infrequent and must be visible before returning 202;
+      # otherwise two nonblocking writes can collapse into one Params value.
+      params.put(key, encoded)
+      return True
 
   class TeslaToolsHandler(BaseHTTPRequestHandler):
     server_version = "TeslaTools/1"
@@ -116,17 +128,23 @@ def make_handler(params, template_root: Path | None = None):
           if direction not in ("left", "right"):
             raise ValueError("direction must be left or right")
           test_id = uuid.uuid4().hex
-          params.put_nonblocking("TeslaTurnSignalRequest", json.dumps({
+          accepted = queue_request("TeslaTurnSignalRequest", {
             "id": test_id, "direction": direction, "created_ms": created_ms,
-          }, separators=(",", ":"), sort_keys=True))
+          })
+          if not accepted:
+            self._json(409, {"error": "request_pending"})
+            return
           self._json(202, {"accepted": True, "id": test_id, "direction": direction})
         elif path == "/api/v1/turn/cancel":
           test_id = str(payload.get("id", ""))
           if not test_id or len(test_id) > 64:
             raise ValueError("valid id is required")
-          params.put_nonblocking("TeslaTurnSignalCancel", json.dumps({
+          accepted = queue_request("TeslaTurnSignalCancel", {
             "id": test_id, "created_ms": created_ms,
-          }, separators=(",", ":"), sort_keys=True))
+          })
+          if not accepted:
+            self._json(409, {"error": "request_pending"})
+            return
           self._json(202, {"accepted": True, "id": test_id})
         else:
           self._json(404, {"error": "not_found"})
