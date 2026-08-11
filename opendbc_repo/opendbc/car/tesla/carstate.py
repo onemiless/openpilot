@@ -63,6 +63,7 @@ class CarState(CarStateBase):
     self.mads_touch_input = MadsTouchInput(bool(CP.alternativeExperience & ALTERNATIVE_EXPERIENCE.ENABLE_MADS))
 
   def observe_aux_can(self, address, data, source):
+    self.mads_touch_input.set_enabled(bool(self.CP.alternativeExperience & ALTERNATIVE_EXPERIENCE.ENABLE_MADS))
     self.mads_touch_input.observe(address, data, source)
 
   def update(self, can_parsers) -> structs.CarState:

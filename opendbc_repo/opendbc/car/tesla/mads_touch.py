@@ -17,6 +17,13 @@ class MadsTouchInput:
     self.touch_points = 0
     self._pending_events = []
 
+  def set_enabled(self, enabled: bool) -> None:
+    enabled = bool(enabled)
+    if not enabled:
+      self.touch_points = 0
+      self._pending_events = []
+    self.enabled = enabled
+
   def observe(self, address: int, data: bytes, source: int) -> None:
     if (not self.enabled or source != TESLA_VEHICLE_BUS or address != TESLA_UI_STATUS_2 or
         len(data) != TESLA_UI_STATUS_2_LENGTH):

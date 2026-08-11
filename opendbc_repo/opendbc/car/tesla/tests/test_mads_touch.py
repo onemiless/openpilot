@@ -1,8 +1,12 @@
-from opendbc.car.structs import CarState
+from opendbc.car.interfaces import CarInterfaceBase
+from opendbc.car.structs import CarState as CarStateStruct
+from opendbc.car.tesla.carstate import CarState as TeslaCarState
 from opendbc.car.tesla.mads_touch import MadsTouchInput, TESLA_UI_STATUS_2
+from opendbc.car.tesla.values import CAR
+from opendbc.safety import ALTERNATIVE_EXPERIENCE
 
 
-ButtonType = CarState.ButtonEvent.Type
+ButtonType = CarStateStruct.ButtonEvent.Type
 
 
 def touch_frame(points, length=8):
@@ -40,3 +44,14 @@ def test_touch_input_is_inert_when_mads_is_not_configured():
   touch = MadsTouchInput(False)
   touch.observe(TESLA_UI_STATUS_2, touch_frame(3), 1)
   assert touch.take_button_events() == []
+
+
+def test_carstate_touch_input_follows_mads_enabled_after_carstate_construction():
+  CP = CarInterfaceBase.get_std_params(CAR.TESLA_MODEL_3)
+  CP.alternativeExperience = 0
+  car_state = TeslaCarState(CP)
+
+  CP.alternativeExperience |= ALTERNATIVE_EXPERIENCE.ENABLE_MADS
+  car_state.observe_aux_can(TESLA_UI_STATUS_2, touch_frame(3), 1)
+  events = car_state.mads_touch_input.take_button_events()
+  assert [(event.type, event.pressed) for event in events] == [(ButtonType.lkas, True)]
