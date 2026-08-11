@@ -12,7 +12,7 @@
 
 - `EnableTeslaTools=0` 为默认状态；关闭时 8090 进程不启动，Panda turn-test flag 也不启用。
 - 开启并重启后，访问 `http://设备IP:8090`，可发起左/右测试、取消并查看状态。
-- 按来源行为，网页请求不能独立强制点灯：Card 必须持续收到新鲜 `modelV2` 变道上下文，`CC.latActive` 必须为真，方向必须匹配；制动、横向失活、上下文过期、变道完成或超时都会进入取消流程。
+- 网页请求不能独立强制点灯：Card 必须持续收到新鲜 `modelV2` 变道上下文，`CC.latActive` 必须为真，方向必须匹配。按用户最终确认，`laneChangeFinishing` 阶段继续保持转向请求，只有本次变道状态回到 `off` 后才以 `lane_change_complete` 进入取消流程；制动、横向失活、上下文过期或超时仍会提前取消。
 - `0x3E9` 只从 bus 1 的新鲜 OEM idle 帧重建；更新 request/reason/counter/checksum，其余字段必须与模板一致。
 - Panda safety 使用独立 flag、1.5 秒模板有效期、12 秒/64 帧 session 限制、方向连续性和显式 cancel 规则。没有扩大现有 ARS408、MADS、转向角或纵向帧权限。
 - 按用户当前测试要求，8090 暂无认证。服务没有 CORS 通配、没有通用 Params 写接口，限制 4 KiB 请求体和单客户端每秒 5 次动作请求。网页显著提示测试结束后关闭参数并重启。

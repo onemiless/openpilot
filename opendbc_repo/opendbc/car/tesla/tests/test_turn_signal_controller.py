@@ -60,9 +60,21 @@ def test_turn_session_sends_action_then_cancel_from_fresh_templates():
     60, valid=True, state=log.LaneChangeState.laneChangeFinishing,
     direction=log.LaneChangeDirection.left, lateral_active=True, brake_pressed=False,
   )
-  assert controller.status()["cancel_reason"] == "lane_change_finishing"
+  assert not controller.status()["cancel_requested"]
+  assert controller.status()["phase"] == "lane_change_finishing"
+  finishing_template = idle_body_controls(5)
+  controller.observe(62, TURN_SIGNAL_ADDRESS, finishing_template, 1)
+  finishing_action = controller.take_can_sends(63)
+  assert len(finishing_action) == 1
+  assert decode_body_controls(finishing_action[0].dat)["request"] == 1
+  controller.observe(64, TURN_SIGNAL_ADDRESS, finishing_action[0].dat, 0x81)
+  controller.update_lane_change_context(
+    65, valid=True, state=log.LaneChangeState.off,
+    direction=log.LaneChangeDirection.none, lateral_active=True, brake_pressed=False,
+  )
+  assert controller.status()["cancel_reason"] == "lane_change_complete"
 
-  cancel_template = idle_body_controls(5)
+  cancel_template = idle_body_controls(6)
   controller.observe(70, TURN_SIGNAL_ADDRESS, cancel_template, 1)
   cancel = controller.take_can_sends(80, cancel_only=True)
   assert len(cancel) == 1

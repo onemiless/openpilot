@@ -140,6 +140,8 @@ TeslaTurnSignalTestStatus / Result Params
 - brake、`CC.latActive` 失效、lane-change context 陈旧、方向不一致、finishing/off 都请求取消。
 - 观察 Panda `txEcho` / `rejected`，并用车辆灯态反馈确认动作与取消。
 
+实施决策补充（2026-08-11）：以上是来源快照事实。目标实现按用户后续确认调整关闭时机：`laneChangeFinishing` 继续保持，实际状态回到 `off`、确认本次变道完成后才发送取消。
+
 ### 6.3 Panda safety 的约束
 
 来源 safety 不是简单 whitelist：

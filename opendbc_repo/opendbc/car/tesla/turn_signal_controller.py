@@ -198,9 +198,9 @@ class TurnSignalController:
       self.session.lane_change_started = True
       self.session.phase = "lane_changing"
     elif state == log.LaneChangeState.laneChangeFinishing and self.session.lane_change_started:
-      self._request_cancel("lane_change_finishing", now_nanos)
+      self.session.phase = "lane_change_finishing"
     elif state == log.LaneChangeState.off and self.session.lane_change_started:
-      self._request_cancel("lane_change_state_off", now_nanos)
+      self._request_cancel("lane_change_complete", now_nanos)
 
   def observe(self, monotonic_nanos: int, address: int, data: bytes, source: int) -> None:
     data = bytes(data)
