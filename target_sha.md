@@ -8,7 +8,9 @@
 - 来源分支：`cpv9-mads-ars408-motion-track-20260810`
 - 实施分支：`codex/tesla-tools-migration-20260811`
 - 基线提交：`0c39cc20bec3d8e1a8a5db8b7850df31a869168c`
-- 远程：`origin = https://github.com/juyun86/cp`
+- 基线跟踪远程：`origin = https://github.com/juyun86/cp`
+- 交付远程（用户最终确认）：`onemiless = https://github.com/onemiless/openpilot.git`
+- 交付远程分支：`onemiless/codex/tesla-tools-migration-20260811`
 - 来源分支在冻结时相对对应远程分支 ahead 9。
 - 冻结前工作树只有第一阶段生成的三份未跟踪分析文档：`turn_signal_analysis.md`、`auto_speed_analysis.md`、`migration_plan.md`。
 
