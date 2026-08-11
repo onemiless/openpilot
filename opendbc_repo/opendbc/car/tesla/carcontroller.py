@@ -124,6 +124,14 @@ class CarController(CarControllerBase):
   def _configuration_safe(self, CC, CS):
     return bool(CS.out.canValid and CS.out.standstill and not CC.latActive and not CC.longActive)
 
+  @staticmethod
+  def _filter_query_safe(CS):
+    return bool(CS.out.canValid)
+
+  @staticmethod
+  def _filter_write_safe(CC, CS):
+    return bool(CS.out.canValid and not CC.latActive and not CC.longActive)
+
   def _publish_config_result(self, request_id, status, detail=""):
     self.params.put_nonblocking("TeslaRadarConfigResult", f"{request_id},{status},{detail}")
 
@@ -223,8 +231,12 @@ class CarController(CarControllerBase):
         self._radar_filter_request = None
         return sends
       if not request["sent"]:
-        if not self._configuration_safe(CC, CS):
-          self._publish_filter_result(request["id"], "waiting", "stop vehicle and disengage controls")
+        if request["phase"] == "query" and not self._filter_query_safe(CS):
+          self._publish_filter_result(request["id"], "waiting", "wait for valid CAN")
+          return sends
+        if request["phase"] == "write" and not self._filter_write_safe(CC, CS):
+          detail = "wait for valid CAN" if not CS.out.canValid else "disengage controls before changing radar filter"
+          self._publish_filter_result(request["id"], "waiting", detail)
           return sends
         try:
           if request["phase"] == "query":

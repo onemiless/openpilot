@@ -324,8 +324,8 @@ def test_filter_query_only_reports_index_zero_without_writing():
   controller._radar_config_request = None
   controller._radar_filter_request = None
   controller.frame = 100
-  controls = SimpleNamespace(latActive=False, longActive=False)
-  car_state = SimpleNamespace(out=SimpleNamespace(canValid=True, standstill=True))
+  controls = SimpleNamespace(latActive=True, longActive=True)
+  car_state = SimpleNamespace(out=SimpleNamespace(canValid=True, standstill=False))
 
   sends = controller.update_radar_configuration(controls, car_state)
   assert len(sends) == 1
@@ -338,7 +338,7 @@ def test_filter_query_only_reports_index_zero_without_writing():
   assert controller.params.values["TeslaRadarFilterResult"].split(",")[1:] == ["queried", "0:1:0.0:32.0"]
 
 
-def test_filter_write_rechecks_standstill_after_query():
+def test_filter_write_allows_moving_vehicle_when_controls_inactive():
   request_id = str(int(time.time() * 1000))
   controller = CarController.__new__(CarController)
   controller.ars408_can = ARS408CAN()
@@ -350,19 +350,45 @@ def test_filter_write_rechecks_standstill_after_query():
   controller._radar_filter_request = None
   controller.frame = 100
   controls = SimpleNamespace(latActive=False, longActive=False)
-  car_state = SimpleNamespace(out=SimpleNamespace(canValid=True, standstill=True))
+  car_state = SimpleNamespace(out=SimpleNamespace(canValid=True, standstill=False))
 
   assert len(controller.update_radar_configuration(controls, car_state)) == 1
   controller.params.values.update({"TeslaRadarFilterState": "0,1,0.0,32.0", "TeslaRadarFilterStateSeq": "1"})
   controller.frame += 1
   assert controller.update_radar_configuration(controls, car_state) == []
 
-  car_state.out.standstill = False
+  controller.frame += 1
+  sends = controller.update_radar_configuration(controls, car_state)
+  assert len(sends) == 1
+  assert decode(sends[0], "FilterCfg")["FilterCfg_Max_NofObj"] == 48
+
+
+@pytest.mark.parametrize("active_field", ["latActive", "longActive"])
+def test_filter_write_blocks_while_controls_active(active_field):
+  request_id = str(int(time.time() * 1000))
+  controller = CarController.__new__(CarController)
+  controller.ars408_can = ARS408CAN()
+  controller.params = FakeParams({
+    "TeslaRadarFilterRequest": f"{request_id},0,1,0,48",
+    "TeslaRadarFilterStateSeq": "0",
+  })
+  controller._radar_config_request = None
+  controller._radar_filter_request = None
+  controller.frame = 100
+  controls = SimpleNamespace(latActive=False, longActive=False)
+  car_state = SimpleNamespace(out=SimpleNamespace(canValid=True, standstill=False))
+
+  assert len(controller.update_radar_configuration(controls, car_state)) == 1
+  controller.params.values.update({"TeslaRadarFilterState": "0,1,0.0,32.0", "TeslaRadarFilterStateSeq": "1"})
   controller.frame += 1
   assert controller.update_radar_configuration(controls, car_state) == []
-  assert controller.params.values["TeslaRadarFilterResult"].split(",")[1] == "waiting"
 
-  car_state.out.standstill = True
+  setattr(controls, active_field, True)
+  controller.frame += 1
+  assert controller.update_radar_configuration(controls, car_state) == []
+  assert controller.params.values["TeslaRadarFilterResult"].split(",")[1:] == ["waiting", "disengage controls before changing radar filter"]
+
+  setattr(controls, active_field, False)
   controller.frame += 1
   sends = controller.update_radar_configuration(controls, car_state)
   assert len(sends) == 1

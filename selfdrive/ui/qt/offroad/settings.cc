@@ -535,12 +535,12 @@ RadarPanel::RadarPanel(QWidget *parent) : ListWidget(parent) {
   add_config(tr("输出类型"), "output_type", {tr("关闭输出"), tr("Objects")}, {0, 1}, true);
 
   auto *filter_query = new ButtonControl(tr("读取目标数量过滤器"), tr("读取 Index 0"),
-                                         tr("发送 Valid=0，只读取当前 NofObj 状态，不修改雷达 NVM。"));
+                                         tr("手动发送 Valid=0，只读取当前 NofObj 状态，不修改雷达 NVM；行驶中也可读取。"));
   connect(filter_query, &ButtonControl::clicked, this, &RadarPanel::requestFilterQuery);
   addItem(filter_query);
 
   auto *object_limit = new ButtonControl(tr("目标数量上限"), tr("分阶段设置"),
-                                         tr("先设置 48 并复测 60–100 米；只有 48 仍不足且 CAN 周期完整时再设置 64。"));
+                                         tr("仅在点击时调整，不会自动切换。32 用于基线对照，先设置 48；48 仍不足且 CAN 周期完整时再设置 64。"));
   connect(object_limit, &ButtonControl::clicked, this, &RadarPanel::requestObjectLimit);
   addItem(object_limit);
 
@@ -576,7 +576,7 @@ void RadarPanel::requestConfig(const QString &field, const QString &title, const
 }
 
 void RadarPanel::requestFilterQuery() {
-  if (!ConfirmationDialog::confirm(tr("车辆必须静止且控制未接管。确认读取目标数量过滤器 Index 0？"),
+  if (!ConfirmationDialog::confirm(tr("这是只读查询，行驶中也可执行且不会修改 NVM。请勿由驾驶员操作屏幕。确认读取 Index 0？"),
                                    tr("读取 Index 0"), this)) return;
   QString request_id = QString::number(QDateTime::currentMSecsSinceEpoch());
   enqueueRequest("TeslaRadarFilterRequest", QString("%1,query,0").arg(request_id));
@@ -584,11 +584,11 @@ void RadarPanel::requestFilterQuery() {
 
 void RadarPanel::requestObjectLimit() {
   QString selected = MultiOptionDialog::getSelection(
-    tr("选择目标数量上限"), {tr("48（首轮推荐）"), tr("64（48 复测不足后）")}, "", this);
+    tr("选择目标数量上限"), {tr("32（基线对照）"), tr("48（首轮推荐）"), tr("64（48 复测不足后）")}, "", this);
   if (selected.isEmpty()) return;
-  int maximum = selected.startsWith("48") ? 48 : 64;
+  int maximum = selected.startsWith("32") ? 32 : (selected.startsWith("48") ? 48 : 64);
   if (!ConfirmationDialog::confirm(
-        tr("将先读取 Index 0，再把目标数量上限从当前值写为 %1。过滤器会自动保存到 NVM；车辆必须静止且控制未接管。确认继续？").arg(maximum),
+        tr("将先读取 Index 0，再手动把目标数量上限写为 %1。行驶中允许写入，但 openpilot 横向和纵向控制必须均未接管；雷达会自动保存到 NVM。请勿由驾驶员操作屏幕。确认继续？").arg(maximum),
         tr("查询并设置"), this)) return;
   QString request_id = QString::number(QDateTime::currentMSecsSinceEpoch());
   enqueueRequest("TeslaRadarFilterRequest", QString("%1,0,1,0,%2").arg(request_id).arg(maximum));
@@ -622,7 +622,7 @@ void RadarPanel::requestFilter() {
     ConfirmationDialog::alert(tr("数值无效：必须是数字且最小值不能大于最大值。"), this);
     return;
   }
-  if (!ConfirmationDialog::confirm(tr("该过滤记录会由雷达自动写入 NVM。车辆必须静止且控制未接管，确认继续？"),
+  if (!ConfirmationDialog::confirm(tr("该过滤记录会由雷达自动写入 NVM。行驶中允许写入，但 openpilot 横向和纵向控制必须均未接管；请勿由驾驶员操作屏幕。确认继续？"),
                                    tr("配置并保存"), this)) return;
 
   QString request_id = QString::number(QDateTime::currentMSecsSinceEpoch());
