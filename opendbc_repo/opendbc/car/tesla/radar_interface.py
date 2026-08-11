@@ -30,9 +30,8 @@ ARS408_MESSAGES = {
 }
 ARS408_PROTOCOL_MAX_OBJECTS = 100
 ARS408_OBJECT_CORRIDOR = 5.5
-ARS408_MIN_PROBABILITY = 3       # >= 75%
-ARS408_MIN_TRACKED_PROBABILITY = 2  # >= 50%, Toyota-style hysteresis for an existing track
-ARS408_MIN_STATIC_PROBABILITY = 5  # >= 99%
+ARS408_MIN_PROBABILITY = 2       # >= 50%; distant targets commonly fluctuate below 75%
+ARS408_MIN_TRACKED_PROBABILITY = 2
 ARS408_TRACK_GRACE_CYCLES = 2
 LOG_EVERY_CYCLES = 20
 # RadarState is nominally 1 Hz. Cover the ten-second startup configuration
@@ -77,13 +76,9 @@ def object_rejection_reason(obj, previously_tracked=False, timed_out=False, max_
           -100.0 <= v_rel <= 100.0 and abs(yv_rel) <= 60.0):
     return "out of range"
 
-  # ARS408 reports roadside infrastructure as stationary/candidate/crossing
-  # stationary. Keep stopped targets (7), and only keep never-moving static
-  # targets when they are high-confidence and within the current/adjacent
-  # three-lane corridor.
+  # DynProp is not reliable enough to impose a second confidence threshold.
+  # Keep its lateral corridor only to reject obvious roadside infrastructure.
   if dynamic_property in (1, 3, 5):
-    if probability < ARS408_MIN_STATIC_PROBABILITY:
-      return "low probability"
     if abs(y_rel) > ARS408_OBJECT_CORRIDOR:
       return "out of range"
   return None

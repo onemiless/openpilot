@@ -28,6 +28,7 @@ RADAR_TO_CAMERA = 1.52  # RADAR is ~ 1.5m ahead from center of mesh frame
 LEAD_DUPLICATE_DREL = 5.0
 LEAD_DUPLICATE_YREL = 0.6
 LEAD_DUPLICATE_VREL = 1.5
+RADAR_PREDICTION_GRACE_UPDATES = 2
 
 
 def _lead_value(lead, name, default=0.0):
@@ -54,6 +55,7 @@ class Track:
     self.selected_count = 0
     self.cut_in_count = 0
     self.measured = False
+    self.predicted_count = 0
     self.score = 0.0
     self.in_lane_prob = 0.0
     self.in_lane_prob_future = 0.0
@@ -72,7 +74,11 @@ class Track:
     self.objectClass = pt.objectClass
 
     self.measured = pt.measured   # measured or estimate
-    if not self.measured:
+    if self.measured:
+      self.predicted_count = 0
+    else:
+      self.predicted_count += 1
+    if self.predicted_count > RADAR_PREDICTION_GRACE_UPDATES:
       self.cnt = 0
 
     self.yRel_future = self.yRel + self.yvLead * radar_lat_factor
