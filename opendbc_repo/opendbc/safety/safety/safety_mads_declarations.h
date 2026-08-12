@@ -49,4 +49,5 @@ extern uint32_t heartbeat_engaged_mads_mismatches;
 void mads_set_alternative_experience(const int *mode);
 void mads_state_update(bool op_acc_main, bool op_allowed, bool is_braking, bool steering_disengage_now);
 void mads_exit_controls(MadsDisengageReason reason);
+void mads_set_heartbeat_engaged(bool engaged);
 void mads_heartbeat_engaged_check(void);

@@ -287,6 +287,7 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
     if cooperative_steering:
       alternative_experience |= ALTERNATIVE_EXPERIENCE.MADS_COOPERATIVE_STEERING
     self.safety.set_alternative_experience(alternative_experience)
+    self.safety.set_heartbeat_engaged_mads(True)
     self.safety.set_controls_allowed(True)
     self.assertTrue(self._rx(self._speed_msg(10)))
     self.assertTrue(self.safety.get_controls_allowed_lateral())
@@ -299,13 +300,13 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
     self.assertTrue(self.safety.get_controls_allowed_lateral())
     self.assertTrue(self._tx(self._angle_cmd_msg(0, True)))
 
-  def test_mads_retains_lateral_in_standby_but_exits_when_cruise_main_is_off(self):
+  def test_mads_retains_lateral_across_standby_and_cruise_main_off(self):
     self._engage_mads()
     self.assertTrue(self._rx(self._pcm_standby_msg()))
     self.assertFalse(self.safety.get_controls_allowed())
     self.assertTrue(self.safety.get_controls_allowed_lateral())
     self.assertTrue(self._rx(self._pcm_status_msg(False)))
-    self.assertFalse(self.safety.get_controls_allowed_lateral())
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
 
   def test_mads_brake_modes(self):
     safety_param = self.safety.get_current_safety_param()
@@ -394,6 +395,62 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
     self.safety.run_mads_heartbeat_check()
     self.assertFalse(self.safety.get_controls_allowed_lateral())
 
+  def test_three_finger_touch_waits_for_mads_heartbeat_and_is_independent_of_cruise_main(self):
+    self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.ENABLE_MADS)
+    self.safety.set_controls_allowed(False)
+    self.safety.set_heartbeat_engaged_mads(False)
+    self.assertTrue(self._rx(self._pcm_status_msg(False)))
+
+    # The touch is a request, not authority. Panda waits for Python/pandad to
+    # confirm the published MADS state through the existing heartbeat channel.
+    self.assertTrue(self._rx(self._mads_touch_msg(3)))
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+    self.safety.set_heartbeat_engaged_mads(True)
+    self.assertTrue(self._rx(self._speed_msg(10)))
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+
+    # Tesla cruise-main state may move through STANDBY/UNAVAILABLE without
+    # revoking an independently heartbeat-authorized lateral session.
+    self.assertTrue(self._rx(self._pcm_standby_msg()))
+    self.assertTrue(self._rx(self._pcm_status_msg(False)))
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+
+  def test_mads_heartbeat_falling_edge_revokes_independent_lateral_immediately(self):
+    self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.ENABLE_MADS)
+    self.safety.set_controls_allowed(False)
+    self.safety.set_heartbeat_engaged_mads(False)
+    self.assertTrue(self._rx(self._mads_touch_msg(3)))
+    self.safety.set_heartbeat_engaged_mads(True)
+    self.assertTrue(self._rx(self._speed_msg(10)))
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+
+    self.safety.set_heartbeat_engaged_mads(False)
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+
+  def test_three_finger_touch_requires_a_fresh_post_request_heartbeat(self):
+    self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.ENABLE_MADS)
+    self.safety.set_controls_allowed(False)
+    self.safety.set_heartbeat_engaged_mads(True)  # stale state from an earlier session
+
+    self.assertTrue(self._rx(self._mads_touch_msg(3)))
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+    self.safety.set_heartbeat_engaged_mads(True)
+    self.assertTrue(self._rx(self._speed_msg(10)))
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+
+  def test_unconfirmed_three_finger_request_expires(self):
+    self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.ENABLE_MADS)
+    self.safety.set_controls_allowed(False)
+    self.safety.set_heartbeat_engaged_mads(False)
+    self.safety.set_timer(0)
+
+    self.assertTrue(self._rx(self._mads_touch_msg(3)))
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+    self.safety.set_timer(500_001)
+    self.safety.set_heartbeat_engaged_mads(True)
+    self.assertTrue(self._rx(self._speed_msg(10)))
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+
   def test_three_finger_touch_reenables_mads_without_an_acc_main_edge(self):
     self._engage_mads()
     self.assertTrue(self._rx(self._pcm_standby_msg()))
@@ -403,6 +460,9 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
     self.assertFalse(self.safety.get_controls_allowed_lateral())
 
     self.assertTrue(self._rx(self._mads_touch_msg(3)))
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+    self.safety.set_heartbeat_engaged_mads(True)
+    self.assertTrue(self._rx(self._speed_msg(10)))
     self.assertTrue(self.safety.get_controls_allowed_lateral())
 
   def test_three_finger_touch_requires_release_exact_bus_length_and_count(self):
@@ -421,19 +481,25 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
 
     self.assertTrue(self._rx(self._mads_touch_msg(0)))
     self.assertTrue(self._rx(self._mads_touch_msg(3)))
+    self.safety.set_heartbeat_engaged_mads(True)
+    self.assertTrue(self._rx(self._speed_msg(10)))
     self.assertTrue(self.safety.get_controls_allowed_lateral())
 
   def test_touch_message_is_never_transmitted_by_panda(self):
     self.assertFalse(self._tx(self._mads_touch_msg(3)))
 
-  def test_three_finger_touch_cannot_bypass_cruise_main(self):
+  def test_three_finger_touch_uses_heartbeat_instead_of_cruise_main(self):
     self._engage_mads()
     self.assertTrue(self._rx(self._pcm_standby_msg()))
     self.assertTrue(self._rx(self._pcm_status_msg(False)))
+    self.safety.set_heartbeat_engaged_mads(False)
     self.assertFalse(self.safety.get_controls_allowed_lateral())
     self.assertTrue(self._rx(self._mads_touch_msg(0)))
     self.assertTrue(self._rx(self._mads_touch_msg(3)))
     self.assertFalse(self.safety.get_controls_allowed_lateral())
+    self.safety.set_heartbeat_engaged_mads(True)
+    self.assertTrue(self._rx(self._speed_msg(10)))
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
 
   def test_three_finger_touch_cannot_enable_mads_while_braking(self):
     self._engage_mads()
@@ -448,6 +514,8 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
     self.assertTrue(self._rx(self._user_brake_msg(False)))
     self.assertTrue(self._rx(self._mads_touch_msg(0)))
     self.assertTrue(self._rx(self._mads_touch_msg(3)))
+    self.safety.set_heartbeat_engaged_mads(True)
+    self.assertTrue(self._rx(self._speed_msg(10)))
     self.assertTrue(self.safety.get_controls_allowed_lateral())
 
 

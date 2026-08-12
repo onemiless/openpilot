@@ -106,7 +106,6 @@ def test_mads_safety_exits_are_not_overridable():
   for CS in (make_car_state(steeringDisengage=True),
              make_car_state(brakePressed=True, gasPressed=True),
              make_car_state(invalidLkasSetting=True),
-             make_car_state(cruiseState=SimpleNamespace(available=False)),
              make_car_state(gearShifter=GearShifter.park),
              make_car_state(steerFaultPermanent=True),
              make_car_state(steerFaultTemporary=True, eacStatus=0, eacErrorCode=8)):
@@ -337,7 +336,7 @@ def test_three_finger_button_toggles_mads_without_longitudinal_engagement():
   assert not params.values["MadsUserEnabled"]
 
 
-def test_three_finger_button_cannot_enable_mads_when_cruise_main_is_unavailable():
+def test_three_finger_button_enables_independent_mads_when_cruise_main_is_unavailable():
   params = FakeParams(user_enabled=False)
   CP = SimpleNamespace(brand="tesla", passive=False)
   mads = ModularAssistiveDrivingSystem(CP, params)
@@ -345,8 +344,19 @@ def test_three_finger_button_cannot_enable_mads_when_cruise_main_is_unavailable(
 
   mads.update(make_car_state(buttonEvents=[button], cruiseState=SimpleNamespace(available=False)),
               False, False, FakeEvents())
-  assert not mads.enabled
-  assert not params.values["MadsUserEnabled"]
+  assert mads.enabled
+  assert mads.active
+  assert params.values["MadsUserEnabled"]
+
+
+def test_independent_mads_remains_enabled_across_cruise_main_unavailable():
+  mads = make_mads()
+  engage(mads)
+
+  mads.update(make_car_state(cruiseState=SimpleNamespace(available=False)), False, False, FakeEvents())
+
+  assert mads.enabled
+  assert mads.active
 
 
 def test_three_finger_button_cannot_enable_mads_while_braking():

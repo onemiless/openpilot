@@ -11,6 +11,8 @@ static uint8_t tesla_longitudinal_last_cp_counter = 0U;
 static bool tesla_turn_signal_test = false;
 static bool tesla_speed_sync = false;
 static bool tesla_mads_touch_pressed = false;
+static bool tesla_mads_touch_request_valid = false;
+static uint32_t tesla_mads_touch_request_ts = 0U;
 static uint8_t tesla_turn_signal_template[8];
 static uint8_t tesla_speed_sync_template[8];
 static bool tesla_turn_signal_template_valid = false;
@@ -26,6 +28,7 @@ static bool tesla_turn_signal_session_timed_out = false;
 static const uint32_t TESLA_AUX_TEMPLATE_TIMEOUT_US = 1500000U;
 static const uint32_t TESLA_SPEED_SYNC_MIN_TX_INTERVAL_US = 250000U;
 static const uint32_t TESLA_TURN_SIGNAL_SESSION_TIMEOUT_US = 12000000U;
+static const uint32_t TESLA_MADS_TOUCH_REQUEST_TIMEOUT_US = 500000U;
 static const uint8_t TESLA_LONGITUDINAL_HANDOFF_AEB_EVENT = 3U;
 static const uint8_t TESLA_TURN_SIGNAL_MAX_FRAMES = 64U;
 static const int TESLA_STEERING_DISENGAGE_TORQUE = 500;  // 5.0 Nm in 0.01 Nm units
@@ -54,6 +57,17 @@ static uint8_t tesla_longitudinal_checksum(const CANPacket_t *msg) {
 static void tesla_rx_hook(const CANPacket_t *to_push) {
   int bus = GET_BUS(to_push);
   int addr = GET_ADDR(to_push);
+
+  if (tesla_mads_touch_request_valid) {
+    const bool request_expired = get_ts_elapsed(microsecond_timer_get(), tesla_mads_touch_request_ts) >
+                                 TESLA_MADS_TOUCH_REQUEST_TIMEOUT_US;
+    if (request_expired) {
+      mads_state.controls_requested_lateral = false;
+      tesla_mads_touch_request_valid = false;
+    } else if (!mads_state.controls_requested_lateral) {
+      tesla_mads_touch_request_valid = false;
+    }
+  }
 
   if (bus == 0) {
     // Steering angle: (0.1 * val) - 819.2 in deg.
@@ -157,8 +171,15 @@ static void tesla_rx_hook(const CANPacket_t *to_push) {
   if ((bus == 1) && (GET_LEN(to_push) == 8U)) {
     if (addr == 0x3DF) {
       const bool touch_pressed = GET_BYTE(to_push, 3) == 3U;
-      if (touch_pressed && !tesla_mads_touch_pressed && acc_main_on && !brake_pressed && mads_state.system_enabled) {
+      if (touch_pressed && !tesla_mads_touch_pressed && !controls_allowed_lateral &&
+          !brake_pressed && mads_state.system_enabled) {
         mads_state.controls_requested_lateral = true;
+        tesla_mads_touch_request_valid = true;
+        tesla_mads_touch_request_ts = microsecond_timer_get();
+        // A level left over from an earlier session is not confirmation. The
+        // request must observe a fresh heartbeat after this touch edge.
+        heartbeat_engaged_mads = false;
+        heartbeat_engaged_mads_mismatches = 0U;
       }
       tesla_mads_touch_pressed = touch_pressed;
     }
@@ -489,6 +510,8 @@ static safety_config tesla_init(uint16_t param) {
   tesla_longitudinal_handoff_pending = false;
   tesla_longitudinal_last_cp_counter = 0U;
   tesla_mads_touch_pressed = false;
+  tesla_mads_touch_request_valid = false;
+  tesla_mads_touch_request_ts = 0U;
   tesla_eps_temp_fault_active = false;
   tesla_eps_temp_fault_counter = 0U;
   tesla_eps_temp_fault_recovery_counter = 0U;

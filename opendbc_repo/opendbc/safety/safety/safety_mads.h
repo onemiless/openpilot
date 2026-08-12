@@ -89,10 +89,23 @@ void mads_state_update(const bool op_acc_main, const bool op_allowed, const bool
     }
   }
 
-  if (allowed && mads_state.system_enabled && mads_state.controls_requested_lateral && !controls_allowed_lateral) {
+  const bool authority_confirmed = op_allowed || heartbeat_engaged_mads;
+  if (allowed && authority_confirmed && mads_state.system_enabled &&
+      mads_state.controls_requested_lateral && !controls_allowed_lateral) {
     mads_state.controls_requested_lateral = false;
     controls_allowed_lateral = true;
     mads_state.disengage_reason = MADS_DISENGAGE_REASON_NONE;
+  }
+}
+
+void mads_set_heartbeat_engaged(const bool engaged) {
+  heartbeat_engaged_mads = engaged;
+  if (engaged) {
+    heartbeat_engaged_mads_mismatches = 0U;
+  } else if (controls_allowed_lateral && !controls_allowed) {
+    // Independent MADS loses authority immediately. Full openpilot lateral is
+    // still governed by controls_allowed and its own heartbeat.
+    mads_exit_controls(MADS_DISENGAGE_REASON_HEARTBEAT_ENGAGED_MISMATCH);
   }
 }
 

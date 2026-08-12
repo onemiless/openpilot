@@ -33,7 +33,7 @@ bool get_controls_allowed_lateral(void){
 }
 
 void set_heartbeat_engaged_mads(bool engaged){
-  heartbeat_engaged_mads = engaged;
+  mads_set_heartbeat_engaged(engaged);
 }
 
 void run_mads_heartbeat_check(void){
