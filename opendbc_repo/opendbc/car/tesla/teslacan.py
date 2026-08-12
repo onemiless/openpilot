@@ -27,11 +27,10 @@ class TeslaCAN:
     return self.packer.make_can_msg("DAS_steeringControl", CANBUS.party, values)
 
   def create_longitudinal_command(self, acc_state, accel, cntr, v_ego, active):
-    from opendbc.car.interfaces import V_CRUISE_MAX
-    set_speed = max(v_ego * CV.MS_TO_KPH, 0)
-    if active:
-      # TODO: this causes jerking after gas override when above set speed
-      set_speed = 0 if accel < 0 else V_CRUISE_MAX
+    # Keep the reported ACC set speed close to the current vehicle state. The
+    # previous 0/maximum split made this field jump whenever accel crossed zero,
+    # even though Tesla still received ACC_ON with a continuous counter.
+    set_speed = min(max(v_ego + accel, 0) * CV.MS_TO_KPH, 400)
 
     values = {
       "DAS_setSpeed": set_speed,

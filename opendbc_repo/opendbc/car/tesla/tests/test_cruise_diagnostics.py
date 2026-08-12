@@ -1,13 +1,38 @@
 from collections import deque
 from types import SimpleNamespace
 
+from opendbc.can import CANPacker
 from opendbc.car.tesla import carcontroller
 from opendbc.car.tesla.carcontroller import CarController, TeslaLongitudinalOwnership
 from opendbc.car.tesla.cruise_diagnostics import (
   classify_cruise_snapshot,
+  decode_das_control_payload,
   is_cruise_failure_after_recent_operation,
   is_cruise_failure_transition,
 )
+from opendbc.car.tesla.teslacan import TeslaCAN
+
+
+def test_das_control_payload_diagnostics_decode_actual_packed_bytes():
+  tesla_can = TeslaCAN(CANPacker("tesla_model3_party"))
+  message = tesla_can.create_longitudinal_command(4, -0.4, 6, 31.0, True)
+
+  decoded = decode_das_control_payload(message[1])
+
+  assert decoded == {
+    "tx_raw": message[1].hex(),
+    "tx_set_speed_kph": 110.2,
+    "tx_state": 4,
+    "tx_aeb_event": 0,
+    "tx_jerk_min": -4.906,
+    "tx_jerk_max": 4.896,
+    "tx_accel_min": -0.4,
+    "tx_accel_max": 0.0,
+    "tx_counter": 6,
+    "tx_checksum": message[1][7],
+    "tx_checksum_expected": TeslaCAN.checksum(0x2B9, message[1][:7]),
+    "tx_checksum_valid": True,
+  }
 
 
 def test_cruise_failure_transition_requires_operational_source_state():
@@ -81,7 +106,15 @@ def test_controller_logs_delayed_fault_for_enabled_standby_unavailable(monkeypat
   controller._cruise_state_prev = None
   controller._cruise_diag_history = deque(maxlen=40)
   controller._cruise_diag_pending = None
-  controller._last_long_tx = {}
+  controller._last_long_tx = {
+    "tx_raw": "4b44a483ac7b37cf",
+    "tx_set_speed_kph": 109.9,
+    "tx_interval_ms": 40.0,
+    "tx_checksum_valid": True,
+    "tx_state": 4,
+    "tx_aeb_event": 0,
+    "tx_attempted_nanos": 1_000_000_000,
+  }
 
   cc = SimpleNamespace(enabled=True, longActive=True, latActive=False,
                        cruiseControl=SimpleNamespace(cancel=False))
@@ -107,3 +140,5 @@ def test_controller_logs_delayed_fault_for_enabled_standby_unavailable(monkeypat
   assert fault_events[0][1]["settled_classification"]["vehicle_reported"] == [
     "pmm_sys_fault:PMM_FAULT_DI_FAULT(3)",
   ]
+  assert all(snapshot["tx_raw"] == "4b44a483ac7b37cf" for snapshot in fault_events[0][1]["history"])
+  assert all(snapshot["tx_interval_ms"] == 40.0 for snapshot in fault_events[0][1]["history"])

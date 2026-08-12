@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from opendbc.can import CANPacker, CANParser
 from opendbc.car.tesla.carcontroller import CarController, LongitudinalAction, TeslaLongitudinalOwnership
 from opendbc.car.tesla.teslacan import TESLA_LONGITUDINAL_HANDOFF_AEB_EVENT, TeslaCAN
@@ -30,6 +32,41 @@ def controller_fixture(counter=3, long_active=True, fresh=True):
                        das_control_nanos=now_nanos if fresh else 0)
   cc = SimpleNamespace(longActive=long_active, actuators=SimpleNamespace(accel=1.0))
   return controller, cc, cs, das_control, now_nanos
+
+
+@pytest.mark.parametrize(("speed_kph", "accel"), (
+  (110.3, -0.1),
+  (110.3, 0.1),
+  (124.6, -0.1),
+  (124.6, 0.1),
+))
+def test_active_longitudinal_set_speed_stays_near_vehicle_speed(speed_kph, accel):
+  tesla_can = TeslaCAN(CANPacker("tesla_model3_party"))
+
+  message = tesla_can.create_longitudinal_command(4, accel, 1, speed_kph / 3.6, True)
+  signals = decode_das_control(message)
+
+  expected_set_speed = min(max(speed_kph / 3.6 + accel, 0) * 3.6, 400)
+  assert signals["DAS_setSpeed"] == pytest.approx(expected_set_speed, abs=0.11)
+
+
+def test_controller_records_complete_packed_longitudinal_payload_and_interval():
+  controller, cc, cs, _, now_nanos = controller_fixture()
+
+  first = controller.update_longitudinal_control(cc, cs, cruise_cancel=False, now_nanos=now_nanos)[0]
+  assert controller._last_long_tx["tx_raw"] == first[1].hex()
+  assert controller._last_long_tx["tx_set_speed_kph"] == 75.6
+  assert controller._last_long_tx["tx_accel_min"] == 1.0
+  assert controller._last_long_tx["tx_counter"] == 4
+  assert controller._last_long_tx["tx_checksum_valid"] is True
+  assert controller._last_long_tx["tx_interval_ms"] is None
+
+  controller.frame += 4
+  now_nanos += 40_000_000
+  second = controller.update_longitudinal_control(cc, cs, cruise_cancel=False, now_nanos=now_nanos)[0]
+  assert controller._last_long_tx["tx_raw"] == second[1].hex()
+  assert controller._last_long_tx["tx_counter"] == 5
+  assert controller._last_long_tx["tx_interval_ms"] == 40.0
 
 
 def test_longitudinal_ownership_is_silent_at_startup_and_releases_after_cancel():

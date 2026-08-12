@@ -38,6 +38,14 @@ def test_automatic_turn_signal_is_default_on_and_web_test_is_independent(monkeyp
   assert enabled.safetyConfigs[0].safetyParam & TeslaSafetyFlags.TURN_SIGNAL_TEST
 
 
+def test_tesla_longitudinal_remains_disabled_without_alpha_long(monkeypatch):
+  disabled = get_tesla_params(monkeypatch, alpha_long=False)
+
+  assert not disabled.openpilotLongitudinalControl
+  assert not disabled.safetyConfigs[0].safetyParam & TeslaSafetyFlags.LONG_CONTROL
+  assert disabled.safetyConfigs[0].safetyParam & TeslaSafetyFlags.TURN_SIGNAL_TEST
+
+
 def test_speed_sync_is_disabled_pending_vehicle_capture(monkeypatch):
   no_pcm = get_tesla_params(monkeypatch, alpha_long=True, speed_sync=True, speed_from_pcm=0)
   assert not no_pcm.flags & TeslaFlags.SPEED_SYNC

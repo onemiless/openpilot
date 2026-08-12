@@ -3,6 +3,34 @@ AVAILABLE_CRUISE_STATES = OPERATIONAL_CRUISE_STATES | {"STANDBY"}
 FAILURE_CRUISE_STATES = frozenset(("UNAVAILABLE", "FAULT"))
 
 
+def decode_das_control_payload(data: bytes) -> dict[str, bool | float | int | str]:
+  """Decode the actual packed Tesla 0x2B9 payload used for fault evidence."""
+  if len(data) != 8:
+    raise ValueError(f"DAS_control payload must be 8 bytes, got {len(data)}")
+
+  raw = int.from_bytes(data, "little")
+
+  def field(start, size):
+    return (raw >> start) & ((1 << size) - 1)
+
+  checksum_expected = (0xB9 + 0x02 + sum(data[:7])) & 0xFF
+  checksum = field(56, 8)
+  return {
+    "tx_raw": data.hex(),
+    "tx_set_speed_kph": round(field(0, 12) * 0.1, 1),
+    "tx_state": field(12, 4),
+    "tx_aeb_event": field(16, 2),
+    "tx_jerk_min": round(field(18, 9) * 0.018 - 9.1, 3),
+    "tx_jerk_max": round(field(27, 8) * 0.034, 3),
+    "tx_accel_min": round(field(35, 9) * 0.04 - 15, 2),
+    "tx_accel_max": round(field(44, 9) * 0.04 - 15, 2),
+    "tx_counter": field(53, 3),
+    "tx_checksum": checksum,
+    "tx_checksum_expected": checksum_expected,
+    "tx_checksum_valid": checksum == checksum_expected,
+  }
+
+
 def is_cruise_failure_transition(previous: str | None, current: str | None) -> bool:
   """Return true only for a newly observed transition from usable cruise into a failure state."""
   return previous in AVAILABLE_CRUISE_STATES and current in FAILURE_CRUISE_STATES

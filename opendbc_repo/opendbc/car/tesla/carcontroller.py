@@ -13,6 +13,7 @@ from opendbc.car.tesla.ars408_log import get_ars408_logger
 from opendbc.car.tesla.coop_steering import CoopSteeringCarController
 from opendbc.car.tesla.cruise_diagnostics import (
   classify_cruise_snapshot,
+  decode_das_control_payload,
   is_cruise_failure_after_recent_operation,
   is_cruise_failure_transition,
 )
@@ -103,6 +104,7 @@ class CarController(CarControllerBase):
     self._cruise_diag_pending = None
     self._last_long_tx = {}
     self._last_cp_tx_counter = None
+    self._last_vehicle_long_tx_nanos = 0
     log.info("Tesla cooperative steering configured enabled=%d", int(self.coop_steering_enabled))
     radar_log.info("ARS408 motion input configured enabled=%d bus=1 rate_hz=20", int(self.radar_motion_enabled))
 
@@ -373,8 +375,9 @@ class CarController(CarControllerBase):
       if not cruise_cancel:
         return []
       cntr = (CS.das_control["DAS_controlCounter"] + 1) % 8
-      self._record_longitudinal_tx("cancel", 13, 0, cntr, now_nanos)
-      return [self.tesla_can.create_longitudinal_command(13, 0, cntr, CS.out.vEgo, False)]
+      command = self.tesla_can.create_longitudinal_command(13, 0, cntr, CS.out.vEgo, False)
+      self._record_longitudinal_tx("cancel", command, now_nanos)
+      return [command]
 
     if self.frame % 4 != 0:
       return []
@@ -396,37 +399,53 @@ class CarController(CarControllerBase):
         self.longitudinal_counter = CS.das_control["DAS_controlCounter"]
       self.longitudinal_counter = (self.longitudinal_counter + 1) % 8
       accel = float(np.clip(CC.actuators.accel, CarControllerParams.ACCEL_MIN, CarControllerParams.ACCEL_MAX))
-      self._record_longitudinal_tx("control", 4, 0, self.longitudinal_counter, now_nanos)
-      return [self.tesla_can.create_longitudinal_command(4, accel, self.longitudinal_counter, CS.out.vEgo, True)]
+      command = self.tesla_can.create_longitudinal_command(4, accel, self.longitudinal_counter, CS.out.vEgo, True)
+      self._record_longitudinal_tx("control", command, now_nanos)
+      return [command]
     if longitudinal_action == LongitudinalAction.CANCEL:
       self.longitudinal_counter = (self.longitudinal_counter + 1) % 8
-      self._record_longitudinal_tx("cancel", 13, 0, self.longitudinal_counter, now_nanos)
-      return [self.tesla_can.create_longitudinal_command(13, 0, self.longitudinal_counter, CS.out.vEgo, False)]
+      command = self.tesla_can.create_longitudinal_command(13, 0, self.longitudinal_counter, CS.out.vEgo, False)
+      self._record_longitudinal_tx("cancel", command, now_nanos)
+      return [command]
     if longitudinal_action == LongitudinalAction.RELEASE:
       handoff_counter = self.longitudinal_counter
       self.longitudinal_counter = None
       self.longitudinal_handoff_nanos = now_nanos
-      self._record_longitudinal_tx("handoff_marker", int(CS.das_control["DAS_accState"]), 3, handoff_counter, now_nanos)
+      command = self.tesla_can.create_stock_longitudinal_handoff(CS.das_control, handoff_counter)
+      self._record_longitudinal_tx("handoff_marker", command, now_nanos)
       self._last_cp_tx_counter = None
-      return [self.tesla_can.create_stock_longitudinal_handoff(CS.das_control, handoff_counter)]
+      self._last_vehicle_long_tx_nanos = 0
+      return [command]
     return []
 
-  def _record_longitudinal_tx(self, kind, state, aeb_event, counter, now_nanos):
+  def _record_longitudinal_tx(self, kind, command, now_nanos):
+    address, data, bus = command
+    payload = decode_das_control_payload(bytes(data))
+    vehicle_candidate = payload["tx_aeb_event"] == 0
+    previous_tx_nanos = getattr(self, "_last_vehicle_long_tx_nanos", 0)
+    tx_interval_ms = None
+    if vehicle_candidate:
+      if previous_tx_nanos and now_nanos >= previous_tx_nanos:
+        tx_interval_ms = round((now_nanos - previous_tx_nanos) / 1e6, 3)
+      self._last_vehicle_long_tx_nanos = now_nanos
+
     counter_gap = False
     # Only compare consecutive CP frames intended for the vehicle. The handoff
     # marker is consumed by Panda and a later takeover starts from a new OEM base.
-    if aeb_event == 0:
+    if vehicle_candidate:
       previous_counter = getattr(self, "_last_cp_tx_counter", None)
       if previous_counter is not None:
-        counter_gap = counter != (previous_counter + 1) % 8
-      self._last_cp_tx_counter = counter
+        counter_gap = payload["tx_counter"] != (previous_counter + 1) % 8
+      self._last_cp_tx_counter = payload["tx_counter"]
     self._last_long_tx = {
       "tx_kind": kind,
-      "tx_state": state,
-      "tx_aeb_event": aeb_event,
-      "tx_counter": counter,
+      "tx_address": address,
+      "tx_bus": bus,
+      "tx_vehicle_candidate": vehicle_candidate,
+      "tx_interval_ms": tx_interval_ms,
       "tx_counter_gap": counter_gap,
       "tx_attempted_nanos": now_nanos,
+      **payload,
     }
 
   def _cruise_diagnostic_snapshot(self, CC, CS, now_nanos):
