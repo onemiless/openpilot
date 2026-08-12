@@ -38,9 +38,9 @@ def test_automatic_turn_signal_is_default_on_and_web_test_is_independent(monkeyp
   assert enabled.safetyConfigs[0].safetyParam & TeslaSafetyFlags.TURN_SIGNAL_TEST
 
 
-def test_speed_sync_requires_op_long_and_cp_owned_speed(monkeypatch):
+def test_speed_sync_requires_only_op_long_and_switch(monkeypatch):
   pcm_owned = get_tesla_params(monkeypatch, alpha_long=True, speed_sync=True, speed_from_pcm=1)
-  assert not pcm_owned.flags & TeslaFlags.SPEED_SYNC
+  assert pcm_owned.flags & TeslaFlags.SPEED_SYNC
 
   no_long = get_tesla_params(monkeypatch, alpha_long=False, speed_sync=True, speed_from_pcm=2)
   assert not no_long.flags & TeslaFlags.SPEED_SYNC

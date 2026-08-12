@@ -908,7 +908,7 @@
       "edescr": "0: Curve/Camera Deceleration + Long, 1: No Button Spamming (Stock SCC), 2: Curve/Camera Decel, 3: Honda/Toyota",
       "min": 0,
       "max": 3,
-      "default": 2,
+      "default": 0,
       "unit": 1
     },
     {
@@ -986,7 +986,7 @@
       "edescr": "Automatically increases speed on lead car, up to (road speed x ratio)",
       "min": 0,
       "max": 200,
-      "default": 100,
+      "default": 0,
       "unit": 10
     },
     {
@@ -999,7 +999,7 @@
       "edescr": "-1: set roadlimitspeed, 100: new road speed, 50: median, 0: not change",
       "min": -1,
       "max": 100,
-      "default": -1,
+      "default": 0,
       "unit": 10
     },
     {
@@ -1637,7 +1637,7 @@
       "edescr": "RoadLimitSpeed+Set Value, -1:Not Use",
       "min": -1,
       "max": 100,
-      "default": 0,
+      "default": -1,
       "unit": 1
     },
     {

@@ -622,7 +622,7 @@
       "edescr": "1: Cruise speed control from Car, 0,2: Speed OP, 3:Honda",
       "min": 0,
       "max": 3,
-      "default": 2,
+      "default": 0,
       "unit": 1
     },
     {
@@ -661,7 +661,7 @@
       "edescr": "",
       "min": 0,
       "max": 200,
-      "default": 100,
+      "default": 0,
       "unit": 10
     },
     {
@@ -672,9 +672,9 @@
       "egroup": "CRUISE",
       "etitle": "AutoRoadLimitSpeedAdjust (50)%",
       "edescr": "",
-      "min": -1,
+      "min": 0,
       "max": 100,
-      "default": -1,
+      "default": 0,
       "unit": 10
     },
     {

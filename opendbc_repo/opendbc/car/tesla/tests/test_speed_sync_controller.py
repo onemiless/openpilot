@@ -101,7 +101,7 @@ def test_manual_override_clears_when_longitudinal_control_reengages():
   assert controller.status()["state"] == "stabilizing"
 
 
-def test_speed_limit_change_clears_manual_override():
+def test_speed_limit_change_does_not_clear_manual_override():
   controller = SpeedSyncController(configured=True)
   cc, cs = make_context(70)
   controller.observe(2_000_000_000, SPEED_BUTTON_ADDRESS, build_speed_tick(idle_speed_button(), 1), 1)
@@ -109,8 +109,37 @@ def test_speed_limit_change_clears_manual_override():
   assert controller.manual_override is True
 
   controller.update(cc, cs, 75 / 3.6, True, 2_100_000_000)
+  assert controller.manual_override is True
+  assert controller.status()["reason"] == "manual_override"
+
+
+@pytest.mark.parametrize("interruption", ["cruise", "fault"])
+def test_cruise_interruption_does_not_clear_manual_override(interruption):
+  controller = SpeedSyncController(configured=True)
+  cc, cs = make_context(70)
+  controller.observe(2_000_000_000, SPEED_BUTTON_ADDRESS, build_speed_tick(idle_speed_button(), 1), 1)
+  controller.update(cc, cs, 72 / 3.6, True, 2_000_000_000)
+
+  if interruption == "cruise":
+    cs.out.cruiseState.enabled = False
+  else:
+    cs.out.accFaulted = True
+  controller.update(cc, cs, 72 / 3.6, True, 2_100_000_000)
+  cs.out.cruiseState.enabled = True
+  cs.out.accFaulted = False
+  controller.update(cc, cs, 72 / 3.6, True, 2_200_000_000)
+
+  assert controller.manual_override is True
+  assert controller.status()["reason"] == "manual_override"
+
+
+def test_returned_tx_echo_does_not_count_as_manual_input():
+  controller = SpeedSyncController(configured=True)
+  cc, cs = make_context(70)
+  controller.observe(0, SPEED_BUTTON_ADDRESS, idle_speed_button(), 1)
+  controller.observe(100_000_000, SPEED_BUTTON_ADDRESS, build_speed_tick(idle_speed_button(), 1), 129)
+  controller.update(cc, cs, 72 / 3.6, True, 100_000_000)
   assert controller.manual_override is False
-  assert controller.status()["state"] == "stabilizing"
 
 
 def test_external_cruise_speed_change_pauses_automatic_sync():

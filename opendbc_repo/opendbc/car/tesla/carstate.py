@@ -9,6 +9,17 @@ from opendbc.car.vehicle_model import VehicleModel
 from opendbc.safety import ALTERNATIVE_EXPERIENCE
 
 ButtonType = structs.CarState.ButtonEvent.Type
+TESLA_SPEED_LIMIT_MIN_KPH = 30.0
+TESLA_SPEED_LIMIT_MAX_KPH = 150.0
+
+
+def normalize_tesla_speed_limit(display_limit: float, units: str) -> float | None:
+  if not math.isfinite(display_limit) or display_limit <= 0:
+    return None
+  limit_kph = display_limit if units == "KPH" else display_limit * CV.MPH_TO_KPH if units == "MPH" else 0.0
+  if not TESLA_SPEED_LIMIT_MIN_KPH <= limit_kph <= TESLA_SPEED_LIMIT_MAX_KPH:
+    return None
+  return float(limit_kph)
 
 
 def classify_steering_input(hands_on_level: int, steering_torque: float, eac_status: str | None,
@@ -41,6 +52,9 @@ class CarState(CarStateBase):
     self.das_control = None
     self.tesla_speed_units = "KPH"
     self.tesla_autopilot_active = False
+    self.tesla_fused_speed_limit_kph = 0.0
+    self.tesla_fused_speed_limit_valid = False
+    self.tesla_fused_speed_limit_nanos = 0
 
   def update(self, can_parsers) -> structs.CarState:
     cp_party = can_parsers[Bus.party]
@@ -115,15 +129,21 @@ class CarState(CarStateBase):
     ret.seatbeltUnlatched = cp_party.vl["UI_warning"]["buckleStatus"] != 1
 
     # Blindspot
-    ret.leftBlindspot = cp_ap_party.vl["DAS_status"]["DAS_blindSpotRearLeft"] != 0
-    ret.rightBlindspot = cp_ap_party.vl["DAS_status"]["DAS_blindSpotRearRight"] != 0
+    das_status = cp_ap_party.vl["DAS_status"]
+    ret.leftBlindspot = das_status["DAS_blindSpotRearLeft"] != 0
+    ret.rightBlindspot = das_status["DAS_blindSpotRearRight"] != 0
+    fused_limit = normalize_tesla_speed_limit(float(das_status["DAS_fusedSpeedLimit"]), self.tesla_speed_units)
+    self.tesla_fused_speed_limit_valid = fused_limit is not None
+    self.tesla_fused_speed_limit_kph = fused_limit or 0.0
+    if self.tesla_fused_speed_limit_valid:
+      self.tesla_fused_speed_limit_nanos = int(cp_ap_party.ts_nanos["DAS_status"]["DAS_fusedSpeedLimit"])
 
     # AEB
     ret.stockAeb = cp_ap_party.vl["DAS_control"]["DAS_aebEvent"] == 1
 
     # Stock Autosteer should be off (includes FSD)
     ret.invalidLkasSetting = cp_ap_party.vl["DAS_settings"]["DAS_autosteerEnabled"] != 0
-    autopilot_state = int(cp_ap_party.vl["DAS_status"]["DAS_autopilotState"])
+    autopilot_state = int(das_status["DAS_autopilotState"])
     self.tesla_autopilot_active = autopilot_state not in (0, 1, 2)
 
     # Buttons # ToDo: add Gap adjust button

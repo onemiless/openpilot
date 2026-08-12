@@ -73,7 +73,7 @@ def get_default_params():
     ("DisableMinSteerSpeed", "0"),
     ("SoftHoldMode", "0"),
 
-    ("AutoSpeedUptoRoadSpeedLimit", "100"),
+    ("AutoSpeedUptoRoadSpeedLimit", "0"),
     ("AutoRoadSpeedAdjust", "-1"),
     ("AutoCurveSpeedLowerLimit", "30"),
     ("AutoCurveSpeedFactor", "100"),

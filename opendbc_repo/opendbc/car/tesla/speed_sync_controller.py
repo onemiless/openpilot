@@ -1,5 +1,6 @@
 from opendbc.car.can_definitions import CanData
 from opendbc.car.common.conversions import Conversions as CV
+from opendbc.car.tesla.speed_sync_log import get_speed_sync_logger, log_speed_sync
 
 
 SPEED_BUTTON_ADDRESS = 0x3C2
@@ -51,15 +52,25 @@ class SpeedSyncController:
     self.pending_display_speed = 0
     self.pending_since_nanos = 0
     self.feedback_blocked_signature: tuple[int, int] | None = None
+    self.log = get_speed_sync_logger()
+    self._last_status_signature = None
+    self._last_tx_data: bytes | None = None
+    self._acc_faulted_prev = False
     self._status = {"state": "disabled" if not configured else "idle", "configured": configured}
 
   def observe(self, monotonic_nanos: int, address: int, data: bytes, source: int) -> None:
-    if address != SPEED_BUTTON_ADDRESS or source != VEHICLE_BUS:
+    if address != SPEED_BUTTON_ADDRESS:
       return
     data = bytes(data)
     if not is_speed_button_frame(data):
       return
     tick = signed_wheel_tick(data)
+    if source != VEHICLE_BUS:
+      if source >= 128 and tick != 0:
+        log_speed_sync(self.log, "returned_3c2", monotonic_nanos=int(monotonic_nanos), source=source,
+                       tick=tick, data=data.hex(),
+                       last_tx_age_ms=(int(monotonic_nanos) - self.last_tx_nanos) / 1e6 if self.last_tx_nanos else None)
+      return
     if tick == 0:
       self.template = data
       self.template_nanos = int(monotonic_nanos)
@@ -68,14 +79,18 @@ class SpeedSyncController:
     direction = 1 if tick > 0 else -1
     now_nanos = int(monotonic_nanos)
     self.manual_adjustment_counter += 1
+    gesture = False
     if (self._manual_direction == -direction and self._manual_direction_nanos and
         now_nanos - self._manual_direction_nanos <= MANUAL_RESUME_GESTURE_NS):
       self.resume_gesture_counter += 1
+      gesture = True
       self._manual_direction = 0
       self._manual_direction_nanos = 0
     else:
       self._manual_direction = direction
       self._manual_direction_nanos = now_nanos
+    log_speed_sync(self.log, "manual_tick", monotonic_nanos=now_nanos, source=source,
+                   direction=direction, raw_tick=tick, data=data.hex(), resume_gesture=gesture)
 
   def _clear_pending(self) -> None:
     self.pending_direction = 0
@@ -102,12 +117,26 @@ class SpeedSyncController:
 
   def _set_status(self, state: str, **values) -> None:
     self._status = {"state": state, "configured": self.configured, "manual_override": self.manual_override, **values}
+    signature = tuple(sorted(self._status.items()))
+    if signature != self._last_status_signature:
+      self._last_status_signature = signature
+      log_speed_sync(self.log, "status", **self._status)
 
   def update(self, CC, CS, target_mps: float, target_valid: bool, now_nanos: int) -> list[CanData]:
     now_nanos = int(now_nanos)
     units = getattr(CS, "tesla_speed_units", "KPH")
     current_display = self._display_speed(CS.out.cruiseState.speed, units)
     target_display = self._display_speed(target_mps, units) if target_valid else 0
+
+    acc_faulted = bool(getattr(CS.out, "accFaulted", False))
+    if acc_faulted and not self._acc_faulted_prev:
+      log_speed_sync(self.log, "acc_faulted", warning=True, monotonic_nanos=now_nanos,
+                     last_tx_age_ms=(now_nanos - self.last_tx_nanos) / 1e6 if self.last_tx_nanos else None,
+                     last_tx_data=self._last_tx_data.hex() if self._last_tx_data is not None else None,
+                     current=current_display, target=target_display, unit=units,
+                     manual_override=self.manual_override, cc_enabled=bool(CC.enabled),
+                     cc_long_active=bool(CC.longActive), cruise_enabled=bool(CS.out.cruiseState.enabled))
+    self._acc_faulted_prev = acc_faulted
 
     manual_changed = self.manual_adjustment_counter != self._seen_manual_counter
     resumed = self.resume_gesture_counter != self._seen_resume_counter
@@ -127,10 +156,8 @@ class SpeedSyncController:
       clear_manual_override = True
     elif CC.cruiseControl.cancel or not CS.out.cruiseState.enabled:
       blocked_reason = "cruise_inactive"
-      clear_manual_override = True
-    elif getattr(CS.out, "accFaulted", False):
+    elif acc_faulted:
       blocked_reason = "acc_faulted"
-      clear_manual_override = True
     elif CS.out.brakePressed:
       blocked_reason = "brake_pressed"
     elif not target_valid:
@@ -144,12 +171,13 @@ class SpeedSyncController:
     target_changed = self.planned_target_display != target_display
     if target_changed:
       self.planned_target_display = target_display
-      self.manual_override = False
       self._reset_target()
 
     if resumed:
       self.manual_override = False
       self._reset_target()
+      log_speed_sync(self.log, "manual_resume_gesture", monotonic_nanos=now_nanos,
+                     current=current_display, target=target_display, unit=units)
     elif manual_changed:
       self.manual_override = True
       self._reset_target()
@@ -181,12 +209,16 @@ class SpeedSyncController:
 
     signature = (target_display, current_display)
     if self.pending_direction:
+      feedback_direction = self.pending_direction
       feedback_delta = current_display - self.pending_display_speed
-      feedback_received = feedback_delta * self.pending_direction > 0
+      feedback_received = feedback_delta * feedback_direction > 0
       if not feedback_received and now_nanos - self.pending_since_nanos < FEEDBACK_TIMEOUT_NS:
         self._set_status("waiting_feedback", current=current_display, target=target_display, unit=units)
         return []
       self._clear_pending()
+      log_speed_sync(self.log, "feedback", monotonic_nanos=now_nanos, received=feedback_received,
+                     delta=feedback_delta, direction=feedback_direction,
+                     current=current_display, target=target_display, unit=units)
       if not feedback_received:
         self.feedback_blocked_signature = signature
 
@@ -210,11 +242,15 @@ class SpeedSyncController:
     direction = 1 if remaining > 0 else -1
     data = build_speed_tick(self.template, direction)
     self.last_tx_nanos = now_nanos
+    self._last_tx_data = data
     self.pending_direction = direction
     self.pending_display_speed = current_display
     self.pending_since_nanos = now_nanos
     self._set_status("tick_sent", current=current_display, target=target_display, unit=units,
                      direction=direction, remaining=remaining)
+    log_speed_sync(self.log, "tick_sent", monotonic_nanos=now_nanos, current=current_display,
+                   target=target_display, unit=units, direction=direction, remaining=remaining,
+                   data=data.hex(), template_age_ms=(now_nanos - self.template_nanos) / 1e6)
     return [CanData(SPEED_BUTTON_ADDRESS, data, VEHICLE_BUS)]
 
   def status(self) -> dict:

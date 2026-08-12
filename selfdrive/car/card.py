@@ -19,9 +19,11 @@ from opendbc.car.fw_versions import ObdCallback
 from opendbc.car.car_helpers import get_car, interfaces
 from opendbc.car.interfaces import CarInterfaceBase, RadarInterfaceBase
 from opendbc.safety import ALTERNATIVE_EXPERIENCE
+from opendbc.car.tesla.speed_sync_log import get_speed_sync_logger, log_speed_sync
 from openpilot.selfdrive.pandad import can_capnp_to_list, can_list_to_can_capnp
 from openpilot.selfdrive.car.cruise import VCruiseCarrot
 from openpilot.selfdrive.car.car_specific import MockCarState
+from openpilot.selfdrive.car.tesla_speed_target_provider import TeslaSpeedTargetProvider
 
 REPLAY = "REPLAY" in os.environ
 
@@ -177,6 +179,10 @@ class Car:
     self.experimental_mode = self.params.get_bool("ExperimentalMode")
 
     self.tesla_controller = self.CI.CC if self.CP.brand == "tesla" else None
+    self.tesla_speed_target_provider = TeslaSpeedTargetProvider(self.params) if self.CP.brand == "tesla" else None
+    self.tesla_speed_target = None
+    self._tesla_speed_target_log_signature = None
+    self.speed_sync_log = get_speed_sync_logger() if self.CP.brand == "tesla" else None
     self._tesla_tools_last_service_nanos = 0
     if self.tesla_controller is not None:
       for key in ("TeslaTurnSignalRequest", "TeslaTurnSignalCancel", "TeslaTurnSignalStatus",
@@ -218,6 +224,23 @@ class Car:
     self.sm.update(0)
     if self.tesla_controller is not None:
       now_nanos = time.monotonic_ns()
+      self.tesla_speed_target = self.tesla_speed_target_provider.update(
+        self.CI.CS.tesla_fused_speed_limit_kph,
+        self.CI.CS.tesla_fused_speed_limit_valid,
+        self.CI.CS.tesla_fused_speed_limit_nanos,
+        now_nanos,
+      )
+      self.tesla_controller.set_speed_sync_target(self.tesla_speed_target.speed_mps, self.tesla_speed_target.valid)
+      target_signature = (self.tesla_speed_target.source, self.tesla_speed_target.fused_limit_kph,
+                          self.tesla_speed_target.offset_kph, self.tesla_speed_target.speed_kph)
+      if target_signature != self._tesla_speed_target_log_signature:
+        self._tesla_speed_target_log_signature = target_signature
+        log_speed_sync(self.speed_sync_log, "target", monotonic_nanos=now_nanos,
+                       source=self.tesla_speed_target.source, valid=self.tesla_speed_target.valid,
+                       fused_limit_kph=self.tesla_speed_target.fused_limit_kph,
+                       offset_kph=self.tesla_speed_target.offset_kph,
+                       target_kph=self.tesla_speed_target.speed_kph,
+                       source_nanos=self.tesla_speed_target.timestamp_nanos)
       self._service_tesla_tools(now_nanos)
     #self.t1 = time.monotonic()
 
@@ -247,12 +270,6 @@ class Car:
     else:
       v_cruise_kph = self.v_cruise_helper.v_cruise_kph
       v_cruise_cluster_kph = self.v_cruise_helper.v_cruise_cluster_kph
-    if self.tesla_controller is not None:
-      # Mirror CP's final cruise setpoint to Tesla. Transient planner targets
-      # (lead, curve, navigation, stop) never enter this path unless CP itself
-      # promotes them to the persistent vCruise setpoint.
-      speed_sync_valid = not self.v_cruise_helper._paddle_decel_active and 0.0 < v_cruise_kph < 200.0
-      self.tesla_controller.set_speed_sync_target(v_cruise_kph / 3.6, speed_sync_valid)
     CS.logCarrot = self.v_cruise_helper.log
     CS.vCruise = float(v_cruise_kph)
     CS.vCruiseCluster = float(v_cruise_cluster_kph)
@@ -381,7 +398,15 @@ class Car:
       self._publish_tool_json("TeslaTurnSignalResult", result)
     status = turn.status() or {"state": "idle"}
     self._publish_tool_json("TeslaTurnSignalStatus", status)
-    self._publish_tool_json("TeslaSpeedSyncStatus", self.tesla_controller.speed_sync_controller.status())
+    speed_status = self.tesla_controller.speed_sync_controller.status()
+    if self.tesla_speed_target is not None:
+      speed_status |= {
+        "target_source": self.tesla_speed_target.source,
+        "fused_limit_kph": self.tesla_speed_target.fused_limit_kph,
+        "offset_kph": self.tesla_speed_target.offset_kph,
+        "map_target_kph": self.tesla_speed_target.speed_kph,
+      }
+    self._publish_tool_json("TeslaSpeedSyncStatus", speed_status)
 
   def step(self):
     CS, RD = self.state_update()
@@ -400,6 +425,8 @@ class Car:
     while not evt.is_set():
       self.is_metric = self.params.get_bool("IsMetric")
       self.experimental_mode = self.params.get_bool("ExperimentalMode") and self.CP.openpilotLongitudinalControl
+      if self.tesla_speed_target_provider is not None:
+        self.tesla_speed_target_provider.refresh_params()
       time.sleep(0.1)
 
   def card_thread(self):
