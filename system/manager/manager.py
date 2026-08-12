@@ -69,11 +69,11 @@ def get_default_params():
     ("MadsSteeringMode", "2"),
     ("TeslaCoopSteering", "1"),
     ("EnableTeslaTools", "0"),
-    ("TeslaSpeedSyncEnabled", "0"),
+    ("TeslaSpeedSyncEnabled", "1"),
     ("DisableMinSteerSpeed", "0"),
     ("SoftHoldMode", "0"),
 
-    ("AutoSpeedUptoRoadSpeedLimit", "0"),
+    ("AutoSpeedUptoRoadSpeedLimit", "100"),
     ("AutoRoadSpeedAdjust", "-1"),
     ("AutoCurveSpeedLowerLimit", "30"),
     ("AutoCurveSpeedFactor", "100"),
