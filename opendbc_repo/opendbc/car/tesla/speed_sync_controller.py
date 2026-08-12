@@ -6,10 +6,12 @@ from opendbc.car.tesla.speed_sync_log import get_speed_sync_logger, log_speed_sy
 SPEED_BUTTON_ADDRESS = 0x3C2
 VEHICLE_BUS = 1
 TEMPLATE_TIMEOUT_NS = 1_500_000_000
-MIN_TX_INTERVAL_NS = 500_000_000
+MIN_TX_INTERVAL_NS = 1_000_000_000
 FEEDBACK_TIMEOUT_NS = 1_200_000_000
 TARGET_STABLE_NS = 500_000_000
 MANUAL_RESUME_GESTURE_NS = 1_000_000_000
+BATCH_SIZE = 5
+BATCH_COOLDOWN_NS = 5_000_000_000
 
 
 def signed_wheel_tick(data: bytes) -> int:
@@ -52,6 +54,11 @@ class SpeedSyncController:
     self.pending_display_speed = 0
     self.pending_since_nanos = 0
     self.feedback_blocked_signature: tuple[int, int] | None = None
+    self.batch_sent = 0
+    self.batch_direction = 0
+    self.batch_cooldown_until_nanos = 0
+    self.session_tick_count = 0
+    self._long_active_prev = False
     self.log = get_speed_sync_logger()
     self._last_status_signature = None
     self._last_tx_data: bytes | None = None
@@ -101,6 +108,9 @@ class SpeedSyncController:
     self.target_candidate = None
     self.target_candidate_nanos = 0
     self.feedback_blocked_signature = None
+    self.batch_sent = 0
+    self.batch_direction = 0
+    self.batch_cooldown_until_nanos = 0
     self._clear_pending()
 
   def _reset_runtime(self, *, clear_manual_override: bool) -> None:
@@ -127,6 +137,10 @@ class SpeedSyncController:
     units = getattr(CS, "tesla_speed_units", "KPH")
     current_display = self._display_speed(CS.out.cruiseState.speed, units)
     target_display = self._display_speed(target_mps, units) if target_valid else 0
+    long_active = bool(CC.enabled and CC.longActive)
+    if long_active and not self._long_active_prev:
+      self.session_tick_count = 0
+    self._long_active_prev = long_active
 
     acc_faulted = bool(getattr(CS.out, "accFaulted", False))
     if acc_faulted and not self._acc_faulted_prev:
@@ -135,7 +149,10 @@ class SpeedSyncController:
                      last_tx_data=self._last_tx_data.hex() if self._last_tx_data is not None else None,
                      current=current_display, target=target_display, unit=units,
                      manual_override=self.manual_override, cc_enabled=bool(CC.enabled),
-                     cc_long_active=bool(CC.longActive), cruise_enabled=bool(CS.out.cruiseState.enabled))
+                     cc_long_active=bool(CC.longActive), cruise_enabled=bool(CS.out.cruiseState.enabled),
+                     batch_sent=self.batch_sent,
+                     session_tick_count=self.session_tick_count,
+                     batch_cooldown_remaining_ms=max(0, self.batch_cooldown_until_nanos - now_nanos) / 1e6)
     self._acc_faulted_prev = acc_faulted
 
     manual_changed = self.manual_adjustment_counter != self._seen_manual_counter
@@ -221,6 +238,16 @@ class SpeedSyncController:
                      current=current_display, target=target_display, unit=units)
       if not feedback_received:
         self.feedback_blocked_signature = signature
+      elif self.batch_sent >= BATCH_SIZE and target_display != current_display:
+        self.batch_sent = 0
+        self.batch_cooldown_until_nanos = now_nanos + BATCH_COOLDOWN_NS
+        remaining = target_display - current_display
+        self._set_status("batch_cooldown", current=current_display, target=target_display, unit=units,
+                         remaining=remaining, cooldown_ms=BATCH_COOLDOWN_NS / 1e6)
+        log_speed_sync(self.log, "batch_pause", monotonic_nanos=now_nanos, current=current_display,
+                       target=target_display, unit=units, remaining=remaining,
+                       cooldown_ms=BATCH_COOLDOWN_NS / 1e6)
+        return []
 
     if self.feedback_blocked_signature is not None:
       if signature == self.feedback_blocked_signature:
@@ -232,6 +259,16 @@ class SpeedSyncController:
     if remaining == 0:
       self._set_status("synced", current=current_display, target=target_display, unit=units)
       return []
+    if self.batch_cooldown_until_nanos:
+      if now_nanos < self.batch_cooldown_until_nanos:
+        cooldown_remaining_ns = self.batch_cooldown_until_nanos - now_nanos
+        self._set_status("batch_cooldown", current=current_display, target=target_display, unit=units,
+                         remaining=remaining,
+                         cooldown_s=(cooldown_remaining_ns + 999_999_999) // 1_000_000_000)
+        return []
+      log_speed_sync(self.log, "batch_resume", monotonic_nanos=now_nanos, current=current_display,
+                     target=target_display, unit=units, remaining=remaining)
+      self.batch_cooldown_until_nanos = 0
     if self.last_tx_nanos and now_nanos - self.last_tx_nanos < MIN_TX_INTERVAL_NS:
       self._set_status("rate_limited", current=current_display, target=target_display, unit=units, remaining=remaining)
       return []
@@ -240,17 +277,24 @@ class SpeedSyncController:
       return []
 
     direction = 1 if remaining > 0 else -1
+    if direction != self.batch_direction:
+      self.batch_direction = direction
+      self.batch_sent = 0
     data = build_speed_tick(self.template, direction)
     self.last_tx_nanos = now_nanos
     self._last_tx_data = data
     self.pending_direction = direction
     self.pending_display_speed = current_display
     self.pending_since_nanos = now_nanos
+    self.batch_sent += 1
+    self.session_tick_count += 1
     self._set_status("tick_sent", current=current_display, target=target_display, unit=units,
-                     direction=direction, remaining=remaining)
+                     direction=direction, remaining=remaining, batch_sent=self.batch_sent, batch_size=BATCH_SIZE)
     log_speed_sync(self.log, "tick_sent", monotonic_nanos=now_nanos, current=current_display,
                    target=target_display, unit=units, direction=direction, remaining=remaining,
-                   data=data.hex(), template_age_ms=(now_nanos - self.template_nanos) / 1e6)
+                   data=data.hex(), template_age_ms=(now_nanos - self.template_nanos) / 1e6,
+                   batch_sent=self.batch_sent, batch_size=BATCH_SIZE,
+                   session_tick_count=self.session_tick_count)
     return [CanData(SPEED_BUTTON_ADDRESS, data, VEHICLE_BUS)]
 
   def status(self) -> dict:

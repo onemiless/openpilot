@@ -3,6 +3,8 @@ from types import SimpleNamespace
 import pytest
 
 from opendbc.car.tesla.speed_sync_controller import (
+  BATCH_COOLDOWN_NS,
+  BATCH_SIZE,
   MANUAL_RESUME_GESTURE_NS,
   SPEED_BUTTON_ADDRESS,
   SpeedSyncController,
@@ -52,7 +54,35 @@ def test_speed_sync_stabilizes_waits_for_feedback_and_steps_again():
   cs.out.cruiseState.speed = 71 / 3.6
   controller.observe(800_000_000, SPEED_BUTTON_ADDRESS, idle_speed_button(), 1)
   assert controller.update(cc, cs, 72 / 3.6, True, 800_000_000) == []
-  sends = controller.update(cc, cs, 72 / 3.6, True, 1_000_000_000)
+  assert controller.update(cc, cs, 72 / 3.6, True, 1_000_000_000) == []
+  sends = controller.update(cc, cs, 72 / 3.6, True, 1_500_000_000)
+  assert len(sends) == 1
+  assert signed_wheel_tick(sends[0].dat) == 1
+
+
+def test_large_difference_is_split_into_five_single_tick_batches():
+  controller = SpeedSyncController(configured=True)
+  cc, cs = make_context(15)
+  controller.observe(0, SPEED_BUTTON_ADDRESS, idle_speed_button(), 1)
+  assert controller.update(cc, cs, 60 / 3.6, True, 0) == []
+
+  send_time = 500_000_000
+  for step in range(BATCH_SIZE):
+    controller.observe(send_time, SPEED_BUTTON_ADDRESS, idle_speed_button(), 1)
+    sends = controller.update(cc, cs, 60 / 3.6, True, send_time)
+    assert len(sends) == 1
+    assert signed_wheel_tick(sends[0].dat) == 1
+    cs.out.cruiseState.speed = (16 + step) / 3.6
+    controller.update(cc, cs, 60 / 3.6, True, send_time + 100_000_000)
+    send_time += 1_000_000_000
+
+  assert controller.status()["state"] == "batch_cooldown"
+  cooldown_until = send_time - 900_000_000 + BATCH_COOLDOWN_NS
+  controller.observe(cooldown_until - 1, SPEED_BUTTON_ADDRESS, idle_speed_button(), 1)
+  assert controller.update(cc, cs, 60 / 3.6, True, cooldown_until - 1) == []
+  assert controller.status()["state"] == "batch_cooldown"
+  controller.observe(cooldown_until, SPEED_BUTTON_ADDRESS, idle_speed_button(), 1)
+  sends = controller.update(cc, cs, 60 / 3.6, True, cooldown_until)
   assert len(sends) == 1
   assert signed_wheel_tick(sends[0].dat) == 1
 

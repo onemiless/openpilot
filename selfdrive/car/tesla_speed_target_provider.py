@@ -31,7 +31,7 @@ class TeslaSpeedTargetProvider:
     self._candidate_frames = 0
     self._last_nanos = 0
 
-  def refresh_params(self) -> None:
+  def latch_offset(self) -> None:
     self.offset_kph = self.params.get_int("AutoRoadSpeedLimitOffset")
 
   def update(self, fused_limit_kph: float, fused_limit_valid: bool, fused_limit_nanos: int,

@@ -182,6 +182,7 @@ class Car:
     self.tesla_speed_target_provider = TeslaSpeedTargetProvider(self.params) if self.CP.brand == "tesla" else None
     self.tesla_speed_target = None
     self._tesla_speed_target_log_signature = None
+    self._tesla_long_active_prev = False
     self.speed_sync_log = get_speed_sync_logger() if self.CP.brand == "tesla" else None
     self._tesla_tools_last_service_nanos = 0
     if self.tesla_controller is not None:
@@ -224,6 +225,12 @@ class Car:
     self.sm.update(0)
     if self.tesla_controller is not None:
       now_nanos = time.monotonic_ns()
+      tesla_long_active = bool(self.sm['carControl'].longActive)
+      if tesla_long_active and not self._tesla_long_active_prev:
+        self.tesla_speed_target_provider.latch_offset()
+        log_speed_sync(self.speed_sync_log, "offset_latched", monotonic_nanos=now_nanos,
+                       offset_kph=self.tesla_speed_target_provider.offset_kph)
+      self._tesla_long_active_prev = tesla_long_active
       self.tesla_speed_target = self.tesla_speed_target_provider.update(
         self.CI.CS.tesla_fused_speed_limit_kph,
         self.CI.CS.tesla_fused_speed_limit_valid,
@@ -425,8 +432,6 @@ class Car:
     while not evt.is_set():
       self.is_metric = self.params.get_bool("IsMetric")
       self.experimental_mode = self.params.get_bool("ExperimentalMode") and self.CP.openpilotLongitudinalControl
-      if self.tesla_speed_target_provider is not None:
-        self.tesla_speed_target_provider.refresh_params()
       time.sleep(0.1)
 
   def card_thread(self):

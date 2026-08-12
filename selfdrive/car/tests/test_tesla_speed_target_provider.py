@@ -38,3 +38,15 @@ def test_provider_does_not_confirm_the_same_cached_frame_twice():
   provider = TeslaSpeedTargetProvider(FakeParams(0))
   for now in (100, 200, 300):
     assert not provider.update(80, True, 100, now).valid
+
+
+def test_offset_changes_only_when_explicitly_latched():
+  params = FakeParams(5)
+  provider = TeslaSpeedTargetProvider(params)
+  provider.update(80, True, 100, 100)
+  assert provider.update(80, True, 200, 200).speed_kph == 85
+
+  params.offset = 10
+  assert provider.update(80, True, 300, 300).speed_kph == 85
+  provider.latch_offset()
+  assert provider.update(80, True, 400, 400).speed_kph == 90
