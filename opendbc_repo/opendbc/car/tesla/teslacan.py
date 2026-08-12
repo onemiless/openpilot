@@ -1,3 +1,4 @@
+from opendbc.car import DT_CTRL
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.tesla.values import CANBUS, CarControllerParams
 
@@ -7,6 +8,10 @@ TESLA_LONGITUDINAL_HANDOFF_AEB_EVENT = 3
 class TeslaCAN:
   def __init__(self, packer):
     self.packer = packer
+    self.jerk = 0.0
+
+  def reset_longitudinal_jerk(self):
+    self.jerk = 0.0
 
   @staticmethod
   def checksum(msg_id, dat):
@@ -32,12 +37,19 @@ class TeslaCAN:
     # even though Tesla still received ACC_ON with a continuous counter.
     set_speed = min(max(v_ego + accel, 0) * CV.MS_TO_KPH, 400)
 
+    if active:
+      # DAS_control is sent every fourth 100 Hz control frame. Match dev-new's
+      # 1.0 m/s^3/s positive-jerk ramp instead of presenting the ECU with the
+      # encoded limit immediately on takeover.
+      self.jerk = min(self.jerk + CarControllerParams.JERK_RATE_UP * DT_CTRL * 4,
+                      CarControllerParams.JERK_LIMIT_MAX)
+
     values = {
       "DAS_setSpeed": set_speed,
       "DAS_accState": acc_state,
       "DAS_aebEvent": 0,
       "DAS_jerkMin": CarControllerParams.JERK_LIMIT_MIN,
-      "DAS_jerkMax": CarControllerParams.JERK_LIMIT_MAX,
+      "DAS_jerkMax": self.jerk,
       "DAS_accelMin": accel,
       "DAS_accelMax": max(accel, 0),
       "DAS_controlCounter": cntr,

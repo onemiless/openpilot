@@ -25,7 +25,7 @@ def test_das_control_payload_diagnostics_decode_actual_packed_bytes():
     "tx_state": 4,
     "tx_aeb_event": 0,
     "tx_jerk_min": -4.906,
-    "tx_jerk_max": 4.896,
+    "tx_jerk_max": 0.034,
     "tx_accel_min": -0.4,
     "tx_accel_max": 0.0,
     "tx_counter": 6,

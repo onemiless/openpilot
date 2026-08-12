@@ -50,6 +50,54 @@ def test_active_longitudinal_set_speed_stays_near_vehicle_speed(speed_kph, accel
   assert signals["DAS_setSpeed"] == pytest.approx(expected_set_speed, abs=0.11)
 
 
+def test_active_longitudinal_jerk_max_ramps_from_zero_at_sp_rate():
+  tesla_can = TeslaCAN(CANPacker("tesla_model3_party"))
+
+  first = decode_das_control(tesla_can.create_longitudinal_command(4, 0.0, 1, 20.0, True))
+  assert first["DAS_jerkMin"] == pytest.approx(-4.9, abs=0.02)
+  assert first["DAS_jerkMax"] == pytest.approx(0.04, abs=0.02)
+
+  # At 25 Hz and 1.0 m/s^3/s, the requested maximum reaches 4.9 in 123 frames.
+  for counter in range(2, 124):
+    message = tesla_can.create_longitudinal_command(4, 0.0, counter % 8, 20.0, True)
+  saturated = decode_das_control(message)
+  assert saturated["DAS_jerkMax"] == pytest.approx(4.9, abs=0.02)
+  assert tesla_can.jerk == pytest.approx(4.9)
+
+
+def test_controller_resets_jerk_ramp_for_each_new_ownership_session():
+  controller, cc, cs, _, now_nanos = controller_fixture()
+
+  first = controller.update_longitudinal_control(cc, cs, cruise_cancel=False, now_nanos=now_nanos)[0]
+  assert decode_das_control(first)["DAS_jerkMax"] == pytest.approx(0.04, abs=0.02)
+  assert controller._last_long_tx["ownership_age_ms"] == 0.0
+  assert controller._last_long_tx["jerk_ramp_age_ms"] == 0.0
+  assert controller._last_long_tx["jerk_reset_reason"] == "ownership_acquired"
+
+  controller.frame += 4
+  now_nanos += 40_000_000
+  second = controller.update_longitudinal_control(cc, cs, cruise_cancel=False, now_nanos=now_nanos)[0]
+  assert decode_das_control(second)["DAS_jerkMax"] == pytest.approx(0.08, abs=0.02)
+  assert controller._last_long_tx["ownership_age_ms"] == 40.0
+  assert controller._last_long_tx["jerk_ramp_age_ms"] == 40.0
+
+  controller.frame += 4
+  now_nanos += 40_000_000
+  cc.longActive = False
+  controller.update_longitudinal_control(cc, cs, cruise_cancel=False, now_nanos=now_nanos)
+  controller.frame += 4
+  now_nanos += 40_000_000
+  controller.update_longitudinal_control(cc, cs, cruise_cancel=False, now_nanos=now_nanos)
+
+  now_nanos += 400_000_001
+  cs.das_control_nanos = now_nanos
+  controller.frame += 4
+  cc.longActive = True
+  reacquired = controller.update_longitudinal_control(cc, cs, cruise_cancel=False, now_nanos=now_nanos)[0]
+  assert decode_das_control(reacquired)["DAS_jerkMax"] == pytest.approx(0.04, abs=0.02)
+  assert controller._last_long_tx["jerk_reset_reason"] == "ownership_acquired"
+
+
 def test_controller_records_complete_packed_longitudinal_payload_and_interval():
   controller, cc, cs, _, now_nanos = controller_fixture()
 

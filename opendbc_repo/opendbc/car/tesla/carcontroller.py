@@ -99,12 +99,16 @@ class CarController(CarControllerBase):
     self.longitudinal_ownership = TeslaLongitudinalOwnership()
     self.longitudinal_counter = None
     self.longitudinal_handoff_nanos = 0
+    self.longitudinal_ownership_nanos = 0
+    self.longitudinal_jerk_ramp_nanos = 0
+    self.longitudinal_jerk_reset_reason = "startup"
     self._cruise_state_prev = None
     self._cruise_diag_history = deque(maxlen=40)
     self._cruise_diag_pending = None
     self._last_long_tx = {}
     self._last_cp_tx_counter = None
     self._last_vehicle_long_tx_nanos = 0
+    self._last_cp_control_accel = None
     log.info("Tesla cooperative steering configured enabled=%d", int(self.coop_steering_enabled))
     radar_log.info("ARS408 motion input configured enabled=%d bus=1 rate_hz=20", int(self.radar_motion_enabled))
 
@@ -397,6 +401,11 @@ class CarController(CarControllerBase):
     if longitudinal_action == LongitudinalAction.CONTROL:
       if self.longitudinal_counter is None:
         self.longitudinal_counter = CS.das_control["DAS_controlCounter"]
+        self.tesla_can.reset_longitudinal_jerk()
+        self.longitudinal_ownership_nanos = now_nanos
+        self.longitudinal_jerk_ramp_nanos = now_nanos
+        self.longitudinal_jerk_reset_reason = "ownership_acquired"
+        self._last_cp_control_accel = None
       self.longitudinal_counter = (self.longitudinal_counter + 1) % 8
       accel = float(np.clip(CC.actuators.accel, CarControllerParams.ACCEL_MIN, CarControllerParams.ACCEL_MAX))
       command = self.tesla_can.create_longitudinal_command(4, accel, self.longitudinal_counter, CS.out.vEgo, True)
@@ -404,6 +413,9 @@ class CarController(CarControllerBase):
       return [command]
     if longitudinal_action == LongitudinalAction.CANCEL:
       self.longitudinal_counter = (self.longitudinal_counter + 1) % 8
+      self.tesla_can.reset_longitudinal_jerk()
+      self.longitudinal_jerk_ramp_nanos = 0
+      self.longitudinal_jerk_reset_reason = "ownership_cancelled"
       command = self.tesla_can.create_longitudinal_command(13, 0, self.longitudinal_counter, CS.out.vEgo, False)
       self._record_longitudinal_tx("cancel", command, now_nanos)
       return [command]
@@ -415,6 +427,8 @@ class CarController(CarControllerBase):
       self._record_longitudinal_tx("handoff_marker", command, now_nanos)
       self._last_cp_tx_counter = None
       self._last_vehicle_long_tx_nanos = 0
+      self.longitudinal_ownership_nanos = 0
+      self._last_cp_control_accel = None
       return [command]
     return []
 
@@ -437,6 +451,15 @@ class CarController(CarControllerBase):
       if previous_counter is not None:
         counter_gap = payload["tx_counter"] != (previous_counter + 1) % 8
       self._last_cp_tx_counter = payload["tx_counter"]
+    ownership_nanos = getattr(self, "longitudinal_ownership_nanos", 0)
+    ramp_nanos = getattr(self, "longitudinal_jerk_ramp_nanos", 0)
+    previous_accel = getattr(self, "_last_cp_control_accel", None)
+    accel_delta = None
+    if kind == "control":
+      if previous_accel is not None:
+        accel_delta = round(payload["tx_accel_min"] - previous_accel, 3)
+      self._last_cp_control_accel = payload["tx_accel_min"]
+
     self._last_long_tx = {
       "tx_kind": kind,
       "tx_address": address,
@@ -445,6 +468,12 @@ class CarController(CarControllerBase):
       "tx_interval_ms": tx_interval_ms,
       "tx_counter_gap": counter_gap,
       "tx_attempted_nanos": now_nanos,
+      "ownership_age_ms": round((now_nanos - ownership_nanos) / 1e6, 1)
+                          if ownership_nanos and now_nanos >= ownership_nanos else None,
+      "jerk_ramp_age_ms": round((now_nanos - ramp_nanos) / 1e6, 1)
+                         if ramp_nanos and now_nanos >= ramp_nanos else None,
+      "jerk_reset_reason": getattr(self, "longitudinal_jerk_reset_reason", "unknown"),
+      "tx_accel_delta": accel_delta,
       **payload,
     }
 
