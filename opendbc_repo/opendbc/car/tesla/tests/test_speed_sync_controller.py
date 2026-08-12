@@ -33,8 +33,9 @@ def test_speed_tick_changes_only_right_wheel_bits():
   assert signed_wheel_tick(down) == -1
   assert up[:3] == template[:3] and up[4:] == template[4:]
   assert down[:3] == template[:3] and down[4:] == template[4:]
-  with pytest.raises(ValueError):
-    build_speed_tick(template, 2)
+  for invalid_tick in (0, 2, -2, 31, -32):
+    with pytest.raises(ValueError):
+      build_speed_tick(template, invalid_tick)
 
 
 def test_speed_sync_stabilizes_waits_for_feedback_and_steps_again():
@@ -131,6 +132,7 @@ def test_external_cruise_speed_change_pauses_automatic_sync():
   ({"longActive": False}, "longitudinal_inactive"),
   ({"ap": True}, "tesla_ap_active"),
   ({"brake": True}, "brake_pressed"),
+  ({"acc_faulted": True}, "acc_faulted"),
 ])
 def test_speed_sync_fails_closed(change, reason):
   controller = SpeedSyncController(configured=True)
@@ -141,5 +143,7 @@ def test_speed_sync_fails_closed(change, reason):
     cs.tesla_autopilot_active = change["ap"]
   if "brake" in change:
     cs.out.brakePressed = change["brake"]
+  if "acc_faulted" in change:
+    cs.out.accFaulted = change["acc_faulted"]
   assert controller.update(cc, cs, 72 / 3.6, True, 0) == []
   assert controller.status()["reason"] == reason

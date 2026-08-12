@@ -1091,7 +1091,7 @@ CarrotPanel::CarrotPanel(QWidget* parent) : QWidget(parent) {
   speedToggles->addItem(new CValueControl("AutoCurveSpeedFactorH", "高速: 降速弯道曲率系数(100%)", "模型预测横摆角速度*此系数，系数越大降速越多", 50, 300, 1));
   speedToggles->addItem(new CValueControl("AutoCurveSpeedAggressivenessH", "高速: 降速横向加速度系数(100%)", "目标横向加速度*此系数，系数越小降速越多", 50, 300, 1));
   speedToggles->addItem(new CValueControl("AutoRoadSpeedLimitOffset", "道路限速偏移(0)", "-1:不启用(如果不想道路限速生效,设置为-1), 其他值:限速=道路限速+此偏移值", -1, 100, 1));
-  speedToggles->addItem(new CValueControl("TeslaSpeedSyncEnabled", "Tesla 原车巡航速度同步(0)", "将道路限速+偏移同步到Tesla巡航设定。仅SpeedFromPCM=1且纵向激活时工作；手动拨轮暂停，上下或下上在1秒内连续拨动可恢复。修改后需重启车辆", 0, 1, 1));
+  speedToggles->addItem(new CValueControl("TeslaSpeedSyncEnabled", "Tesla 原车巡航速度同步(0)", "将CP最终巡航设定速度通过右滚轮每次+1/-1同步到Tesla。仅SpeedFromPCM不为1且纵向激活时工作；手动拨轮暂停，上下或下上在1秒内连续拨动可恢复。修改后需重启车辆", 0, 1, 1));
   speedToggles->addItem(new CValueControl("AutoRoadSpeedAdjust", "自动调整道路限速(-1)", "当道路限速发生变化时，按此比例平滑调整到新限速,<0时，则用限速*测速点安全系数或限速+偏移", -1, 100, 5));
   speedToggles->addItem(new CValueControl("AutoNaviSpeedCtrlEnd", "测速点减速结束点(6秒)", "设置减速完成点, 数值越大减速越提前完成", 3, 20, 1));
   speedToggles->addItem(new CValueControl("AutoNaviSpeedCtrlMode", "导航限速控制模式(3)", "0:关闭, 1:测速摄像头, 2:+减速带, 3:+移动测速", 0, 3, 1));

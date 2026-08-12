@@ -186,8 +186,9 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
 
     self.safety.set_timer(250_001)
     self.assertTrue(self._tx(self._speed_sync_msg(-1, template=template)))
-    self.safety.set_timer(500_002)
-    self.assertFalse(self._tx(self._speed_sync_msg(2, template=template)))
+    for index, invalid_tick in enumerate((0, 2, -2, 3, 31, -32), start=2):
+      self.safety.set_timer(index * 250_001)
+      self.assertFalse(self._tx(self._speed_sync_msg(invalid_tick, template=template)))
 
   def test_speed_sync_rejects_rate_mutation_and_stale_template(self):
     self.safety.set_safety_hooks(CarParams.SafetyModel.tesla, TeslaSafetyFlags.SPEED_SYNC)

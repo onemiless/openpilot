@@ -128,6 +128,9 @@ class SpeedSyncController:
     elif CC.cruiseControl.cancel or not CS.out.cruiseState.enabled:
       blocked_reason = "cruise_inactive"
       clear_manual_override = True
+    elif getattr(CS.out, "accFaulted", False):
+      blocked_reason = "acc_faulted"
+      clear_manual_override = True
     elif CS.out.brakePressed:
       blocked_reason = "brake_pressed"
     elif not target_valid:

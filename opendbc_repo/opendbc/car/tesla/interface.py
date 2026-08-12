@@ -45,8 +45,11 @@ class CarInterface(CarInterfaceBase):
     if params.get_bool("EnableTeslaTools"):
       ret.flags |= TeslaFlags.TURN_SIGNAL_TEST.value
 
+    # In CP-owned mode vCruise is the source and Tesla follows it through
+    # synthetic right-wheel ticks. SpeedFromPCM=1 would feed each intermediate
+    # Tesla value back into CP and collapse the target after the first tick.
     if (ret.openpilotLongitudinalControl and params.get_bool("TeslaSpeedSyncEnabled") and
-        params.get_int("SpeedFromPCM") == 1):
+        params.get_int("SpeedFromPCM") != 1):
       ret.flags |= TeslaFlags.SPEED_SYNC.value
       ret.safetyConfigs[0].safetyParam |= TeslaSafetyFlags.SPEED_SYNC.value
 

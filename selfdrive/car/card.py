@@ -22,7 +22,6 @@ from opendbc.safety import ALTERNATIVE_EXPERIENCE
 from openpilot.selfdrive.pandad import can_capnp_to_list, can_list_to_can_capnp
 from openpilot.selfdrive.car.cruise import VCruiseCarrot
 from openpilot.selfdrive.car.car_specific import MockCarState
-from openpilot.selfdrive.car.tesla_speed_target_provider import TeslaSpeedTargetProvider
 
 REPLAY = "REPLAY" in os.environ
 
@@ -178,7 +177,6 @@ class Car:
     self.experimental_mode = self.params.get_bool("ExperimentalMode")
 
     self.tesla_controller = self.CI.CC if self.CP.brand == "tesla" else None
-    self.tesla_speed_target_provider = TeslaSpeedTargetProvider(self.params) if self.CP.brand == "tesla" else None
     self._tesla_tools_last_service_nanos = 0
     if self.tesla_controller is not None:
       for key in ("TeslaTurnSignalRequest", "TeslaTurnSignalCancel", "TeslaTurnSignalStatus",
@@ -221,11 +219,6 @@ class Car:
     if self.tesla_controller is not None:
       now_nanos = time.monotonic_ns()
       self._service_tesla_tools(now_nanos)
-      carrot_valid = (self.sm.seen['carrotMan'] and self.sm.valid['carrotMan'] and self.sm.alive['carrotMan'])
-      target = self.tesla_speed_target_provider.update(
-        self.sm['carrotMan'], CS, int(self.sm.logMonoTime['carrotMan']), carrot_valid, now_nanos,
-      )
-      self.tesla_controller.set_speed_sync_target(target.speed_mps, target.valid)
     #self.t1 = time.monotonic()
 
     can_rcv_valid = len(can_strs) > 0
@@ -254,6 +247,12 @@ class Car:
     else:
       v_cruise_kph = self.v_cruise_helper.v_cruise_kph
       v_cruise_cluster_kph = self.v_cruise_helper.v_cruise_cluster_kph
+    if self.tesla_controller is not None:
+      # Mirror CP's final cruise setpoint to Tesla. Transient planner targets
+      # (lead, curve, navigation, stop) never enter this path unless CP itself
+      # promotes them to the persistent vCruise setpoint.
+      speed_sync_valid = not self.v_cruise_helper._paddle_decel_active and 0.0 < v_cruise_kph < 200.0
+      self.tesla_controller.set_speed_sync_target(v_cruise_kph / 3.6, speed_sync_valid)
     CS.logCarrot = self.v_cruise_helper.log
     CS.vCruise = float(v_cruise_kph)
     CS.vCruiseCluster = float(v_cruise_cluster_kph)
@@ -401,8 +400,6 @@ class Car:
     while not evt.is_set():
       self.is_metric = self.params.get_bool("IsMetric")
       self.experimental_mode = self.params.get_bool("ExperimentalMode") and self.CP.openpilotLongitudinalControl
-      if self.tesla_speed_target_provider is not None:
-        self.tesla_speed_target_provider.refresh_params()
       time.sleep(0.1)
 
   def card_thread(self):
