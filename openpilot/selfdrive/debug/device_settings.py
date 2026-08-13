@@ -38,6 +38,8 @@ TITLE_OVERRIDES = {
   "LateralManeuverMode": "【测试】横向动作模式", "LongitudinalManeuverMode": "【测试】纵向动作模式",
   "CameraOffset": "调整摄像头偏移", "DynamicAutoStock": "动态原车控制",
   "RoadEdgeLaneChangeEnabled": "道路边缘变道保护",
+  "ScreenSaverEnabled": "屏幕保护程序",
+  "ScreenSaverTimeout": "屏幕保护持续时间",
 }
 OPTION_OVERRIDES = {
   "Information": "提示", "Car State Only": "仅车辆状态", "Map Data Only": "仅地图数据",

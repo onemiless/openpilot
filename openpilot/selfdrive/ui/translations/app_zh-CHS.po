@@ -1127,6 +1127,18 @@ msgstr "道路边缘变道保护"
 msgid "Blocks the lane change if the model sees a road edge on your signaled side."
 msgstr "模型检测到转向灯一侧存在道路边缘时，阻止向该侧变道。"
 
+msgid "Screen Saver"
+msgstr "屏幕保护程序"
+
+msgid "Screen Saver Duration"
+msgstr "屏幕保护持续时间"
+
+msgid "Show a screen saver when the device is offroad and idle, instead of turning the screen off."
+msgstr "设备处于设置模式且空闲时显示屏幕保护程序，而不是立即关闭屏幕。"
+
+msgid "How long the screen saver runs before the screen turns off."
+msgstr "屏幕保护程序运行多久后关闭屏幕。"
+
 msgid "Backup Failed"
 msgstr "备份失败"
 
