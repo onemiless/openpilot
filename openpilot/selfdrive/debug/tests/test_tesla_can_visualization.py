@@ -59,7 +59,7 @@ def test_tesla_can_visualization_builds_scene_from_multiple_buses():
   scene = visualization.snapshot(1_100_000_000)
 
   assert scene["available"]
-  assert scene["buses"] == ["AP", "CH", "VEH"]
+  assert scene["buses"] == ["AP-PARTY", "CH", "VEH"]
   assert scene["navigation"]["route_active"]
   assert scene["navigation"]["next_branch_distance_m"] == 120
   assert scene["navigation"]["speed_limit"] == 60
@@ -142,6 +142,49 @@ def test_tesla_can_visualization_hides_idle_traffic_control_without_light():
   assert traffic["light_state"] == "unknown"
   assert traffic["control_distance_m"] is None
   assert traffic["stop_line_distance_m"] is None
+
+
+def test_tesla_can_visualization_surfaces_party_visual_light_when_feature_is_disabled():
+  """ESP32-S3 PARTY capture: feature=disabled, but type/source/light/distance
+  still form a coherent visual traffic-light observation."""
+  visualization = TeslaCanVisualization()
+  visualization.update([(1_000_000_000, [(0x25D, bytes.fromhex("18 1E 03 39 40 24"), 2)])])
+
+  traffic = visualization.snapshot(1_100_000_000)["traffic"]
+  assert traffic["control_frame_fresh"]
+  assert traffic["available"]
+  assert not traffic["control_available"]
+  assert traffic["light_observation_available"]
+  assert traffic["feature_state"] == "disabled"
+  assert traffic["feature_state_code"] == 0
+  assert traffic["state_machine_code"] == 6
+  assert traffic["control_source_code"] == 3
+  assert traffic["control_type_code"] == 3
+  assert traffic["control_source"] == "map_and_vision"
+  assert traffic["control_type"] == "traffic_light"
+  assert traffic["light_state"] == "red"
+  assert traffic["control_distance_m"] == 3.0
+  assert traffic["sources"] == ["AP-PARTY"]
+
+
+def test_tesla_can_visualization_accepts_traffic_control_from_party_and_ch_but_not_veh():
+  sample = (0x25D, bytes.fromhex("18 1E 28 2A 40 04"))
+
+  for bus, expected_source, ch_bus in ((0, "PARTY", None), (2, "AP-PARTY", None), (4, "CH", 4)):
+    visualization = TeslaCanVisualization(ch_bus=ch_bus)
+    visualization.update([(1_000_000_000, [(*sample, bus)])])
+    traffic = visualization.snapshot(1_100_000_000)["traffic"]
+    assert traffic["light_observation_available"]
+    assert traffic["light_state"] == "green"
+    assert traffic["control_distance_m"] == 40.0
+    assert traffic["sources"] == [expected_source]
+
+  # On VEH/CAN1, 0x25D is CP_status (charge-port status), not APP_trafficControl.
+  visualization = TeslaCanVisualization()
+  visualization.update([(1_000_000_000, [(*sample, 1)])])
+  traffic = visualization.snapshot(1_100_000_000)["traffic"]
+  assert not traffic["control_frame_fresh"]
+  assert not traffic["available"]
 
 
 def test_tesla_can_visualization_traffic_light_sign_gates_stop_line_and_arrow():
@@ -248,6 +291,8 @@ def test_tesla_can_visualization_decodes_road_sign_pedestrian_blind_spot_and_fro
   assert pedestrians["available"]
   assert pedestrians["front_main"]
   assert pedestrians["backup"]
+  assert pedestrians["camera_mask"] == 0x81
+  assert pedestrians["simultaneous_front_rear"]
   assert pedestrians["coordinate_slots"][0]["dx_scaled"] == 3.2
   assert pedestrians["coordinate_slots"][0]["dy_scaled"] == -1.6
   assert not pedestrians["position_available"]

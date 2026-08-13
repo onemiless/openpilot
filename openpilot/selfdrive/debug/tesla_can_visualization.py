@@ -26,6 +26,7 @@ PARTY_MESSAGES = (
   "DAS_integratedSafetyFront",
 )
 CH_MESSAGES = (
+  "APP_trafficControl",
   "DAS_visualDebug",
   "DAS_lanes",
   "UI_driverAssistRoadSign",
@@ -33,7 +34,7 @@ CH_MESSAGES = (
   "DAS_object",
 )
 MESSAGE_NAMES = (*VEH_MESSAGES, *PARTY_MESSAGES, *CH_MESSAGES)
-BUS_NAMES = {0: "PARTY", 1: "VEH", 2: "AP"}
+BUS_NAMES = {0: "PARTY", 1: "VEH", 2: "AP-PARTY"}
 FRAME_STALE_NS = 2_000_000_000
 NAV_STALE_NS = 5_000_000_000
 PEDESTRIAN_STALE_NS = 750_000_000
@@ -98,12 +99,15 @@ class TeslaCanVisualization:
       raise ValueError("CH must use a dedicated CAN source, not VEH or AP-PARTY")
 
     # The harness exposes VEH on source 1 and the Autopilot side of PARTY on
-    # source 2. CH is not present on the stock three-bus Panda connection. A
+    # source 2; source 0 may also expose the other PARTY side. CH is not
+    # present on the stock three-bus Panda connection. A
     # DBC must never be applied by address alone across these networks: e.g.
     # PARTY also carries 0x30A, but it is not the CH DAS_object message.
     self.ch_bus = ch_bus
     enabled_buses = set(buses)
     message_buses: dict[int, tuple[str, ...]] = {}
+    if 0 in enabled_buses:
+      message_buses[0] = PARTY_MESSAGES
     if 1 in enabled_buses:
       message_buses[1] = VEH_MESSAGES
     if 2 in enabled_buses:
@@ -383,26 +387,38 @@ class TeslaCanVisualization:
     feature_code = _int(control, "APP_tcFeatureState")
     control_type_code = _int(control, "APP_tcControlType")
     control_light = bool(control_frame) and control_type_code == 3 and feature_code in (2, 3)
+    light_code = _int(control, "APP_tcControlLightState")
+    source_code = _int(control, "APP_tcControlSource")
+    control_distance = float(control.get("APP_tcControlDistance", 255.0))
+    # The ESP32-S3 PARTY capture contains coherent visual light observations
+    # while the separate traffic-control feature is disabled. Surface the
+    # observation without claiming that Tesla control is available/active.
+    light_observation = (bool(control_frame) and control_type_code == 3 and source_code in (1, 2, 3)
+                         and light_code in LIGHT_STATES and light_code != 0 and control_distance < 255.0)
     crosswalk_active = bool(control_frame) and control_type_code in (5, 9) and feature_code in (2, 3)
     control_available = control_light or crosswalk_active
 
     sign_type_code = _int(sign, "DAS_roadSignId")
     sign_valid = bool(sign_frame) and sign_type_code in (0, 1) and _int(sign, "DAS_roadSignSource") != 0
 
-    control_distance = float(control.get("APP_tcControlDistance", 255.0))
     stop_line_distance = float(sign.get("DAS_roadSignStopLineDist", 184.6))
     return {
-      "available": bool(control_available or sign_valid),
+      "available": bool(control_available or light_observation or sign_valid),
       "control_available": bool(control_available),
+      "light_observation_available": bool(light_observation),
       "road_sign_available": bool(sign_valid),
       "control_frame_fresh": bool(control_frame),
       "sign_frame_fresh": bool(sign_frame),
       "feature_state": TRAFFIC_FEATURE_STATES.get(feature_code, "unknown"),
+      "feature_state_code": feature_code,
       "state_machine": TRAFFIC_MACHINE_STATES.get(_int(control, "APP_tcStateMachine"), "unknown"),
+      "state_machine_code": _int(control, "APP_tcStateMachine"),
       "control_source": TRAFFIC_SOURCES.get(_int(control, "APP_tcControlSource"), "unknown"),
+      "control_source_code": source_code,
       "control_type": TRAFFIC_TYPES.get(control_type_code, "unknown"),
-      "control_distance_m": _round(control_distance) if control_available and control_distance < 255.0 else None,
-      "light_state": LIGHT_STATES.get(_int(control, "APP_tcControlLightState"), "unknown") if control_available else "unknown",
+      "control_type_code": control_type_code,
+      "control_distance_m": _round(control_distance) if control_available or light_observation else None,
+      "light_state": LIGHT_STATES.get(light_code, "unknown") if control_available or light_observation else "unknown",
       "continuation_reason": _int(control, "APP_tcContinuationReason"),
       "confirmation_type": _int(control, "APP_tcConfirmationType"),
       "warning_suppression_reason": _int(control, "APP_tcWarningSuppressionReason"),
@@ -513,6 +529,8 @@ class TeslaCanVisualization:
     }
     detected_any = bool(frame) and any(flags.values())
     active_cameras = [name for name, active in flags.items() if active]
+    camera_mask = sum((1 << index) for index, active in enumerate(flags.values()) if active)
+    front_detected = any(flags[name] for name in ("front_main", "front_fisheye", "front_narrow"))
     coordinate_slots = []
     if detected_any:
       for index in (1, 2, 3):
@@ -535,6 +553,8 @@ class TeslaCanVisualization:
       **flags,
       "detected_any": detected_any,
       "active_cameras": active_cameras,
+      "camera_mask": camera_mask,
+      "simultaneous_front_rear": bool(front_detected and flags["backup"]),
       "collision_warning": collision_warning,
       "evidence_present": bool(detected_any or positioned_objects or collision_warning),
       "evidence_tier": evidence_tier,
