@@ -36,6 +36,7 @@ MESSAGE_NAMES = (*VEH_MESSAGES, *PARTY_MESSAGES, *CH_MESSAGES)
 BUS_NAMES = {0: "PARTY", 1: "VEH", 2: "AP"}
 FRAME_STALE_NS = 2_000_000_000
 NAV_STALE_NS = 5_000_000_000
+PEDESTRIAN_STALE_NS = 750_000_000
 
 USAGE = {0: "rejected", 1: "available", 2: "fused", 3: "blacklisted"}
 VEHICLE_TYPES = {0: "unknown", 1: "truck", 2: "car", 3: "motorcycle", 4: "bicycle", 5: "pedestrian", 6: "ipso"}
@@ -497,8 +498,8 @@ class TeslaCanVisualization:
       "spline_location_confidence": _int(values, "UI_splineLocConfidence") if any_frame else None,
     }
 
-  def _pedestrian_detection(self, now_ns: int) -> dict[str, Any]:
-    frame = self._frame("APP_pedestrianDetection", now_ns)
+  def _pedestrian_detection(self, now_ns: int, positioned_objects: list[dict[str, Any]], collision_warning: bool) -> dict[str, Any]:
+    frame = self._frame("APP_pedestrianDetection", now_ns, PEDESTRIAN_STALE_NS)
     values = frame[0] if frame else {}
     flags = {
       "front_main": _bool(values, "APP_pedestrianDetectedFrontMain"),
@@ -511,22 +512,37 @@ class TeslaCanVisualization:
       "backup": _bool(values, "APP_pedestrianDetectedBackup"),
     }
     detected_any = bool(frame) and any(flags.values())
-    closest = []
+    active_cameras = [name for name, active in flags.items() if active]
+    coordinate_slots = []
     if detected_any:
       for index in (1, 2, 3):
-        x = float(values.get(f"APP_closestPedestrian{index}dX", 0.0))
-        y = float(values.get(f"APP_closestPedestrian{index}dY", 0.0))
-        # Both coordinates saturate at the DBC extrema in the idle frame.
-        # Coordinates are only meaningful while at least one camera flag is
-        # asserted, and saturated endpoints are still suppressed.
-        if (x != 0.0 or y != 0.0) and -12.8 < x < 12.4 and -12.8 < y < 12.4:
-          closest.append({"index": index, "x_m": _round(x), "y_m": _round(y)})
+        # T-CAN documents only signed 6-bit values with scale 0.4. It does not
+        # publish a physical unit, per-slot valid bit, confidence, track id, or
+        # a mapping between slots and the eight camera flags. Preserve these
+        # as diagnostics; never promote them to metric positions or a count.
+        coordinate_slots.append({
+          "index": index,
+          "dx_scaled": _round(values.get(f"APP_closestPedestrian{index}dX", 0.0)),
+          "dy_scaled": _round(values.get(f"APP_closestPedestrian{index}dY", 0.0)),
+          "validity": "unknown",
+        })
+    evidence_tier = ("collision_warning" if collision_warning else
+                     "positioned_object" if positioned_objects else
+                     "camera_detection" if detected_any else "none")
     return {
       "available": bool(frame),
       "bus": self._bus(frame),
       **flags,
       "detected_any": detected_any,
-      "closest": closest,
+      "active_cameras": active_cameras,
+      "collision_warning": collision_warning,
+      "evidence_present": bool(detected_any or positioned_objects or collision_warning),
+      "evidence_tier": evidence_tier,
+      "position_available": bool(positioned_objects),
+      "positioned_objects": positioned_objects,
+      "coordinate_slots": coordinate_slots,
+      "coordinate_unit": None,
+      "coordinate_validity": "undocumented",
     }
 
   def _blind_spot(self, now_ns: int) -> dict[str, Any]:
@@ -692,12 +708,15 @@ class TeslaCanVisualization:
     traffic = self._traffic(now_ns)
     driver_assist = self._driver_assist(now_ns)
     road_sign = self._road_sign(now_ns)
-    pedestrian_detection = self._pedestrian_detection(now_ns)
     blind_spot = self._blind_spot(now_ns)
     front_safety = self._front_safety(now_ns)
     longitudinal_shadow = self._longitudinal_shadow(now_ns)
     proximity_safety = self._proximity_safety(now_ns)
     parking_obstacle = self._parking_obstacle(now_ns)
+    pedestrians = [vehicle for vehicle in vehicles if vehicle["type"] == "pedestrian"]
+    pedestrian_detection = self._pedestrian_detection(
+      now_ns, pedestrians, proximity_safety.get("long_collision_warning") == 2,
+    )
     buses = sorted({
       *(navigation.get("sources") or []),
       *(traffic.get("sources") or []),
@@ -737,6 +756,6 @@ class TeslaCanVisualization:
       "longitudinal_shadow": longitudinal_shadow,
       "proximity_safety": proximity_safety,
       "parking_obstacle": parking_obstacle,
-      "pedestrians": [vehicle for vehicle in vehicles if vehicle["type"] == "pedestrian"],
+      "pedestrians": pedestrians,
       "cyclists": [vehicle for vehicle in vehicles if vehicle["type"] in ("bicycle", "motorcycle")],
     }

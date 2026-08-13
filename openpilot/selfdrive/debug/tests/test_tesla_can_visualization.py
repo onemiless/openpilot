@@ -248,8 +248,9 @@ def test_tesla_can_visualization_decodes_road_sign_pedestrian_blind_spot_and_fro
   assert pedestrians["available"]
   assert pedestrians["front_main"]
   assert pedestrians["backup"]
-  assert pedestrians["closest"][0]["x_m"] == 3.2
-  assert pedestrians["closest"][0]["y_m"] == -1.6
+  assert pedestrians["coordinate_slots"][0]["dx_scaled"] == 3.2
+  assert pedestrians["coordinate_slots"][0]["dy_scaled"] == -1.6
+  assert not pedestrians["position_available"]
 
   blind_spot = scene["blind_spot"]
   assert blind_spot["available"]
@@ -301,7 +302,7 @@ def test_tesla_can_visualization_rejects_same_address_from_wrong_physical_bus():
 
 
 def test_tesla_can_visualization_hides_pedestrian_coordinates_without_detection_flag():
-  """The 12.4 m coordinate is a saturated idle/SNA value, not a pedestrian."""
+  """Coordinate slots without a camera detection flag are not actionable."""
   packer = CANPacker("tesla_modely_hw4_perception")
   visualization = TeslaCanVisualization()
   visualization.update([(1_000_000_000, [_frame(packer, "APP_pedestrianDetection", 1, {
@@ -316,7 +317,55 @@ def test_tesla_can_visualization_hides_pedestrian_coordinates_without_detection_
   pedestrians = visualization.snapshot(1_100_000_000)["pedestrian_detection"]
   assert pedestrians["available"]
   assert not pedestrians["detected_any"]
-  assert pedestrians["closest"] == []
+  assert pedestrians["coordinate_slots"] == []
+  assert "closest" not in pedestrians
+
+
+def test_tesla_can_visualization_does_not_promote_unverified_pedestrian_slots_to_positions():
+  """T-CAN gives the 0x400 coordinate fields no unit, confidence, track id,
+  or per-slot validity bit. They are diagnostics, not positioned objects."""
+  packer = CANPacker("tesla_modely_hw4_perception")
+  visualization = TeslaCanVisualization()
+  visualization.update([(1_000_000_000, [_frame(packer, "APP_pedestrianDetection", 1, {
+    "APP_pedestrianDetectedFrontMain": 1,
+    "APP_closestPedestrian1dX": 3.2,
+    "APP_closestPedestrian1dY": -1.6,
+    "APP_closestPedestrian2dX": 5.2,
+    "APP_closestPedestrian2dY": 4.0,
+  })])])
+
+  pedestrians = visualization.snapshot(1_100_000_000)["pedestrian_detection"]
+  assert pedestrians["detected_any"]
+  assert pedestrians["active_cameras"] == ["front_main"]
+  assert not pedestrians["position_available"]
+  assert pedestrians["positioned_objects"] == []
+  assert pedestrians["coordinate_unit"] is None
+  assert pedestrians["coordinate_slots"] == [
+    {"index": 1, "dx_scaled": 3.2, "dy_scaled": -1.6, "validity": "unknown"},
+    {"index": 2, "dx_scaled": 5.2, "dy_scaled": 4.0, "validity": "unknown"},
+    {"index": 3, "dx_scaled": 0.0, "dy_scaled": 0.0, "validity": "unknown"},
+  ]
+  assert "closest" not in pedestrians
+
+
+def test_tesla_can_visualization_expires_pedestrian_flags_quickly_and_surfaces_collision_warning():
+  packer = CANPacker("tesla_modely_hw4_perception")
+  frames = [
+    _frame(packer, "APP_pedestrianDetection", 1, {"APP_pedestrianDetectedFrontMain": 1}),
+    _frame(packer, "DAS_status2", 2, {"DAS_longCollisionWarning": 2}),
+  ]
+  visualization = TeslaCanVisualization()
+  visualization.update([(1_000_000_000, frames)])
+
+  fresh = visualization.snapshot(1_100_000_000)["pedestrian_detection"]
+  assert fresh["detected_any"]
+  assert fresh["collision_warning"]
+  assert fresh["evidence_tier"] == "collision_warning"
+
+  stale = visualization.snapshot(1_800_000_000)["pedestrian_detection"]
+  assert not stale["available"]
+  assert not stale["detected_any"]
+  assert stale["collision_warning"]
 
 
 def test_tesla_can_visualization_requires_front_safety_quality_flags():
@@ -422,3 +471,30 @@ def test_tesla_can_visualization_exposes_ch_objects_only_when_ch_source_is_confi
   assert scene["vehicles"][0]["x_m"] == 8.0
   assert scene["vehicles"][0]["y_m"] == -2.1
   assert scene["vehicles"][0]["track_id"] == 12
+
+
+def test_tesla_can_visualization_uses_ch_pedestrian_object_as_positioned_evidence():
+  packer = CANPacker("tesla_modely_hw4_perception")
+  frame = _frame(packer, "DAS_object", 4, {
+    "DAS_objectId": 0,
+    "DAS_leadVehType": 5,
+    "DAS_leadVehDx": 16.0,
+    "DAS_leadVehDy": 1.0,
+    "DAS_leadVehId": 23,
+  })
+  visualization = TeslaCanVisualization(ch_bus=4)
+  visualization.update([(1_000_000_000, [frame])])
+
+  pedestrian = visualization.snapshot(1_100_000_000)["pedestrian_detection"]
+  assert not pedestrian["available"]
+  assert not pedestrian["detected_any"]
+  assert pedestrian["evidence_present"]
+  assert pedestrian["evidence_tier"] == "positioned_object"
+  assert pedestrian["position_available"]
+  positioned = pedestrian["positioned_objects"]
+  assert len(positioned) == 1
+  assert positioned[0]["category"] == "lead"
+  assert positioned[0]["track_id"] == 23
+  assert positioned[0]["type"] == "pedestrian"
+  assert positioned[0]["x_m"] == 16.0
+  assert positioned[0]["y_m"] == 1.05
