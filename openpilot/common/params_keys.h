@@ -250,6 +250,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"LaneTurnDesire", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"LaneTurnValue", {PERSISTENT | BACKUP, FLOAT, "19.0"}},
     {"PlanplusControl", {PERSISTENT | BACKUP, FLOAT, "1.0"}},
+    {"RoadEdgeLaneChangeEnabled", {PERSISTENT | BACKUP, BOOL, "1"}},
 
     // Dynamic auto stock / AP hybrid (Tesla)
     {"DynamicAutoStock", {PERSISTENT | BACKUP, BOOL, "0"}},

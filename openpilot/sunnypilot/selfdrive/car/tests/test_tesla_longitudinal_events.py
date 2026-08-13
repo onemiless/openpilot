@@ -22,3 +22,10 @@ def test_tesla_stock_longitudinal_edge_events_round_trip():
   assert deactivated.names == [event_name.stockLongitudinalInactive]
   assert deactivated.to_msg()[0].name == event_name.stockLongitudinalInactive
   assert deactivated.create_alerts([ET.WARNING])[0].alert_text_1 == "OP 纵向：激活"
+
+
+def test_custom_event_wire_numbers_remain_compatible():
+  event_name = custom.OnroadEventSP.EventName
+  assert int(event_name.stockLongitudinalActive) == 24
+  assert int(event_name.stockLongitudinalInactive) == 25
+  assert int(event_name.laneChangeRoadEdge) == 26

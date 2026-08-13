@@ -1,108 +1,102 @@
-"""
-Copyright (c) 2021-, Haibin Wen, sunnypilot, and a number of other contributors.
+"""Tests for road-edge lane-change blocking."""
 
-This file is part of sunnypilot and is licensed under the MIT License.
-See the LICENSE.md file in the root directory for more details.
-"""
+from types import SimpleNamespace
 
 import pytest
-from openpilot.cereal import log
+
+from openpilot.cereal import custom, log
 from openpilot.common.realtime import DT_MDL
-from openpilot.sunnypilot.selfdrive.controls.lib.relc import RoadEdgeLaneChangeController
+from openpilot.sunnypilot.selfdrive.controls.lib.relc import (
+  EDGE_CLEAR_TIME,
+  EDGE_REACTION_TIME,
+  MIN_SPEED,
+  RoadEdgeLaneChangeController,
+)
 
 
 class DummyParams:
-  """Mock Params object for testing"""
   def __init__(self, enabled=True):
-    self._enabled = enabled
+    self.enabled = enabled
 
   def get_bool(self, key):
-    return self._enabled
+    assert key == "RoadEdgeLaneChangeEnabled"
+    return self.enabled
+
+
+def road_edges(left_y=2.0, right_y=-2.0):
+  return [SimpleNamespace(y=[left_y]), SimpleNamespace(y=[right_y])]
 
 
 @pytest.fixture
 def controller(monkeypatch):
-  # Replace Params with DummyParams
-  monkeypatch.setattr(
-    "openpilot.sunnypilot.selfdrive.controls.lib.relc.Params",
-    lambda: DummyParams(True),
-  )
-  return RoadEdgeLaneChangeController(desire_helper=None)
+  monkeypatch.setattr("openpilot.sunnypilot.selfdrive.controls.lib.relc.Params", lambda: DummyParams(True))
+  return RoadEdgeLaneChangeController()
 
 
-def test_init_and_enable_disable(controller):
-  assert controller.enabled is True
-  controller.set_enabled(False)
-  assert controller.enabled is False
+def run_for(controller, seconds, *, left=True, right=False, speed=MIN_SPEED + 1.0, edges=None):
+  road_edge_stds = [0.5 if left else 1.0, 0.5 if right else 1.0]
+  lane_line_probs = [0.0 if left else 0.8, 0.5, 0.5, 0.0 if right else 0.8]
+  for _ in range(int(seconds / DT_MDL) + 1):
+    controller.update(road_edge_stds, lane_line_probs, speed, edges or road_edges())
+
+
+def test_enabled_by_preserved_fork_default(controller):
+  assert controller.enabled
+
+
+def test_below_minimum_speed_resets(controller):
+  run_for(controller, EDGE_REACTION_TIME + DT_MDL)
+  assert controller.left_edge_detected
+  controller.update([0.5, 1.0], [0.0, 0.5, 0.5, 0.8], MIN_SPEED - 0.1, road_edges())
   assert not controller.edge_detected
-  assert controller.left_edge_timer == 0.0
-  assert controller.right_edge_timer == 0.0
 
 
-def test_update_params_reads_enabled(monkeypatch):
-  monkeypatch.setattr(
-    "openpilot.sunnypilot.selfdrive.controls.lib.relc.Params",
-    lambda: DummyParams(False),
-  )
-  c = RoadEdgeLaneChangeController(desire_helper=None)
-  c.param_check_counter = 0
-  c.update_params()
-  assert c.enabled is False
-
-
-def test_left_edge_detection(controller):
-  road_edge_stds = [0.5, 1.0]  # left std low → higher prob
-  lane_line_probs = [0.0, 0.5, 0.5, 0.8]  # left_nearside low
-  # Run until EDGE_REACTION_TIME passes
-  for _ in range(int(1.0 / DT_MDL) + 1):
-    controller._update_edge_detection(road_edge_stds, lane_line_probs)
-  assert controller.left_edge_detected
-  assert controller.can_change_lane_left() is False
-
-
-def test_right_edge_detection(controller):
-  road_edge_stds = [1.0, 0.5]  # right std low → higher prob
-  lane_line_probs = [0.8, 0.5, 0.5, 0.0]  # right_nearside low
-  for _ in range(int(1.0 / DT_MDL) + 1):
-    controller._update_edge_detection(road_edge_stds, lane_line_probs)
-  assert controller.right_edge_detected
-  assert controller.can_change_lane_right() is False
-
-
-def test_reset_edge_detection(controller):
-  road_edge_stds = [0.5, 1.0]
-  lane_line_probs = [0.0, 0.5, 0.5, 0.8]
-  for _ in range(int(1.0 / DT_MDL) + 1):
-    controller._update_edge_detection(road_edge_stds, lane_line_probs)
-  assert controller.left_edge_detected
-  controller._reset_state()
+def test_requires_reaction_time(controller):
+  run_for(controller, EDGE_REACTION_TIME - 2 * DT_MDL)
   assert not controller.left_edge_detected
-  assert not controller.right_edge_detected
+  run_for(controller, 2 * DT_MDL)
+  assert controller.left_edge_detected
 
 
-def test_is_lane_change_blocked(controller):
-  controller.left_edge_detected = True
-  controller.right_edge_detected = False
-  assert controller.is_lane_change_blocked(log.LaneChangeDirection.left) is True
-  assert controller.is_lane_change_blocked(log.LaneChangeDirection.right) is False
-  assert controller.is_lane_change_blocked(log.LaneChangeDirection.none) is False
+def test_clearance_prevents_false_block(controller):
+  run_for(controller, EDGE_REACTION_TIME + DT_MDL, edges=road_edges(left_y=6.0))
+  assert not controller.left_edge_detected
 
 
-def test_should_trigger_lane_change(controller):
-  result = controller.should_trigger_lane_change(carstate=None, lateral_active=True)
-  assert result == (False, log.LaneChangeDirection.none)
+def test_clear_debounce(controller):
+  run_for(controller, EDGE_REACTION_TIME + DT_MDL)
+  assert controller.left_edge_detected
+  run_for(controller, EDGE_CLEAR_TIME - 2 * DT_MDL, left=False)
+  assert controller.left_edge_detected
+  run_for(controller, 2 * DT_MDL, left=False)
+  assert not controller.left_edge_detected
 
 
-def test_disabled_controller(monkeypatch):
-  monkeypatch.setattr(
-    "openpilot.sunnypilot.selfdrive.controls.lib.relc.Params",
-    lambda: DummyParams(False),
+def test_disabled_controller_resets(monkeypatch):
+  params = DummyParams(True)
+  monkeypatch.setattr("openpilot.sunnypilot.selfdrive.controls.lib.relc.Params", lambda: params)
+  controller = RoadEdgeLaneChangeController()
+  run_for(controller, EDGE_REACTION_TIME + DT_MDL)
+  assert controller.left_edge_detected
+  params.enabled = False
+  controller.param_read_counter = 0
+  controller.update([0.5, 1.0], [0.0, 0.5, 0.5, 0.8], MIN_SPEED + 1.0, road_edges())
+  assert not controller.edge_detected
+
+
+def test_update_and_fill(controller):
+  run_for(controller, EDGE_REACTION_TIME + DT_MDL)
+  modelv2 = SimpleNamespace(
+    roadEdgeStds=[0.5, 1.0], laneLineProbs=[0.0, 0.5, 0.5, 0.8], roadEdges=road_edges(),
   )
-  c = RoadEdgeLaneChangeController(desire_helper=None)
-  road_edge_stds = [0.5, 0.5]
-  lane_line_probs = [0.0, 0.0, 0.0, 0.0]
-  c.update(road_edge_stds, lane_line_probs)
-  assert not c.edge_detected
-  assert c.can_change_lane_left() is True
-  assert c.can_change_lane_right() is True
+  mdv2sp = custom.ModelDataV2SP.new_message()
+  left, right = controller.update_and_fill(modelv2, mdv2sp, MIN_SPEED + 1.0)
+  assert left and not right
+  assert mdv2sp.leftLaneChangeEdgeBlock and not mdv2sp.rightLaneChangeEdgeBlock
 
+
+def test_legacy_query_helpers(controller):
+  controller.left_edge_detected = True
+  assert controller.is_lane_change_blocked(log.LaneChangeDirection.left)
+  assert not controller.can_change_lane_left()
+  assert controller.should_trigger_lane_change(None, True) == (False, log.LaneChangeDirection.none)

@@ -1121,6 +1121,12 @@ msgstr "盲区检测到障碍"
 msgid "Auto Lane Change: Delay with Blind Spot"
 msgstr "自动变道辅助：盲区有车时延迟"
 
+msgid "Block Lane Change: Road Edge Detection"
+msgstr "道路边缘变道保护"
+
+msgid "Blocks the lane change if the model sees a road edge on your signaled side."
+msgstr "模型检测到转向灯一侧存在道路边缘时，阻止向该侧变道。"
+
 msgid "Backup Failed"
 msgstr "备份失败"
 

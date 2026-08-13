@@ -408,9 +408,14 @@ class SelfdriveD(CruiseHelper):
     # Handle lane change
     if self.sm['modelV2'].meta.laneChangeState == LaneChangeState.preLaneChange:
       direction = self.sm['modelV2'].meta.laneChangeDirection
-      if ((CS.leftBlindspot or self.sm['modelDataV2SP'].leftLaneChangeEdgeBlock) and direction == LaneChangeDirection.left) or \
-         ((CS.rightBlindspot or self.sm['modelDataV2SP'].rightLaneChangeEdgeBlock) and direction == LaneChangeDirection.right):
+      mdv2sp = self.sm['modelDataV2SP']
+
+      if (CS.leftBlindspot and direction == LaneChangeDirection.left) or \
+         (CS.rightBlindspot and direction == LaneChangeDirection.right):
         self.events.add(EventName.laneChangeBlocked)
+      elif (mdv2sp.leftLaneChangeEdgeBlock and direction == LaneChangeDirection.left) or \
+           (mdv2sp.rightLaneChangeEdgeBlock and direction == LaneChangeDirection.right):
+        self.events_sp.add(custom.OnroadEventSP.EventName.laneChangeRoadEdge)
       else:
         if direction == LaneChangeDirection.left:
           self.events.add(EventName.preLaneChangeLeft)

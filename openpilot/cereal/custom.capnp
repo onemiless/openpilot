@@ -346,6 +346,7 @@ struct OnroadEventSP @0xda96579883444c35 {
     e2eChime @23;
     stockLongitudinalActive @24;    # 4-finger touch: switched to stock ACC longitudinal
     stockLongitudinalInactive @25;  # 4-finger touch: switched back to OP longitudinal
+    laneChangeRoadEdge @26;
   }
 }
 

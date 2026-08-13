@@ -255,4 +255,12 @@ EVENTS_SP: dict[int, dict[str, Alert | AlertCallbackType]] = {
   EventNameSP.stockLongitudinalInactive: {
     ET.WARNING: NormalPermanentAlert("OP 纵向：激活", duration=2.),
   },
+
+  EventNameSP.laneChangeRoadEdge: {
+    ET.WARNING: Alert(
+      "道路边缘：暂时无法变道",
+      "",
+      AlertStatus.userPrompt, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 0.1),
+  },
 }

@@ -37,6 +37,7 @@ TITLE_OVERRIDES = {
   "RainbowMode": "Tesla 彩虹模式", "OffroadMode": "强制设置模式", "LanguageSetting": "语言",
   "LateralManeuverMode": "【测试】横向动作模式", "LongitudinalManeuverMode": "【测试】纵向动作模式",
   "CameraOffset": "调整摄像头偏移", "DynamicAutoStock": "动态原车控制",
+  "RoadEdgeLaneChangeEnabled": "道路边缘变道保护",
 }
 OPTION_OVERRIDES = {
   "Information": "提示", "Car State Only": "仅车辆状态", "Map Data Only": "仅地图数据",
