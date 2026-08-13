@@ -96,6 +96,7 @@ def test_three_finger_starts_at_standstill_without_cruise_main_or_full_cp():
   mads.update(CS, False, False, FakeEvents())
   assert mads.state == MadsState.enabled
   assert mads.active
+  assert mads.last_transition_reason == "screen_toggle"
 
 
 def test_cruise_main_unavailable_does_not_exit_independent_tesla_mads():

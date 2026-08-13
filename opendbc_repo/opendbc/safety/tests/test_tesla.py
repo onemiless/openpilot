@@ -340,6 +340,56 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
       self.assertTrue(self._rx(msg))
       self.assertFalse(self.safety.get_controls_allowed_lateral())
 
+  def test_touch_mads_heartbeat_is_liveness_not_start_authority(self):
+    self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.ENABLE_MADS)
+    self.safety.set_heartbeat_engaged_mads(False)
+    self.assertTrue(self._rx(self._pcm_status_msg(False)))
+    self.assertTrue(self._rx(self._mads_touch_msg(3)))
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+
+    for _ in range(2):
+      self.safety.run_mads_heartbeat_check()
+      self.assertTrue(self.safety.get_controls_allowed_lateral())
+    self.safety.run_mads_heartbeat_check()
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+
+  def test_touch_mads_brake_modes_remain_authoritative(self):
+    safety_param = self.safety.get_current_safety_param()
+    for mode, resumes in ((ALTERNATIVE_EXPERIENCE.MADS_DISENGAGE_LATERAL_ON_BRAKE, False),
+                          (ALTERNATIVE_EXPERIENCE.MADS_PAUSE_LATERAL_ON_BRAKE, True)):
+      self.safety.set_safety_hooks(CarParams.SafetyModel.tesla, safety_param)
+      self.safety.init_tests()
+      self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.ENABLE_MADS | mode)
+      self.safety.set_heartbeat_engaged_mads(True)
+      self.assertTrue(self._rx(self._pcm_status_msg(False)))
+      self.assertTrue(self._rx(self._mads_touch_msg(3)))
+      self.assertTrue(self.safety.get_controls_allowed_lateral())
+      self.assertTrue(self._rx(self._user_brake_msg(True)))
+      self.assertFalse(self.safety.get_controls_allowed_lateral())
+      self.assertTrue(self._rx(self._user_brake_msg(False)))
+      self.assertEqual(resumes, self.safety.get_controls_allowed_lateral())
+
+  def test_touch_mads_does_not_grant_unconfigured_longitudinal_or_speed_sync_tx(self):
+    safety_param = self.safety.get_current_safety_param() | TeslaSafetyFlags.SPEED_SYNC
+    self.safety.set_safety_hooks(CarParams.SafetyModel.tesla, safety_param)
+    self.safety.init_tests()
+    self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.ENABLE_MADS)
+    self.safety.set_heartbeat_engaged_mads(True)
+    self.assertTrue(self._rx(self._pcm_status_msg(False)))
+    self.assertTrue(self._rx(self._mads_touch_msg(3)))
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+    self.assertFalse(self.safety.get_controls_allowed())
+
+    # MADS cannot turn a stock-longitudinal safety configuration into active
+    # longitudinal authority. A LONG_CONTROL configuration is intentionally a
+    # separate authority selected before this gesture is received.
+    if not self.LONGITUDINAL:
+      active_long = self._long_control_msg(30, acc_state=self.acc_states["ACC_ON"])
+      self.assertFalse(self._tx(active_long))
+    template = self._speed_sync_msg(0)
+    self.assertTrue(self._rx(template))
+    self.assertFalse(self._tx(self._speed_sync_msg(1, template=template)))
+
   def test_mads_brake_modes(self):
     safety_param = self.safety.get_current_safety_param()
     for mode, resumes in ((ALTERNATIVE_EXPERIENCE.MADS_DISENGAGE_LATERAL_ON_BRAKE, False),
