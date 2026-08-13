@@ -1139,6 +1139,12 @@ msgstr "设备处于设置模式且空闲时显示屏幕保护程序，而不是
 msgid "How long the screen saver runs before the screen turns off."
 msgstr "屏幕保护程序运行多久后关闭屏幕。"
 
+msgid "Lateral Jerk Torque Controller"
+msgstr "横向加加速度扭矩控制器"
+
+msgid "Looks ahead at planned steering to reduce sudden corrections, so the wheel moves more smoothly through turns. Works with Self-Tune and custom tuning. Thanks to @twilsonco for the implementation."
+msgstr "根据规划方向提前减小突然修正，使方向盘在弯道中运行更平顺。支持自学习和自定义调校。"
+
 msgid "Backup Failed"
 msgstr "备份失败"
 

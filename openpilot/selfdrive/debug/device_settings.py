@@ -40,6 +40,7 @@ TITLE_OVERRIDES = {
   "RoadEdgeLaneChangeEnabled": "道路边缘变道保护",
   "ScreenSaverEnabled": "屏幕保护程序",
   "ScreenSaverTimeout": "屏幕保护持续时间",
+  "LateralJerkTorqueController": "横向加加速度扭矩控制器",
 }
 OPTION_OVERRIDES = {
   "Information": "提示", "Car State Only": "仅车辆状态", "Map Data Only": "仅地图数据",

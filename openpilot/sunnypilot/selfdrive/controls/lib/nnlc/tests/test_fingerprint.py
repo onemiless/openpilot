@@ -41,3 +41,17 @@ class TestNNLCFingerprintBase:
   def test_no_fingerprint(self, car_name):
     CI = self._setup_platform(car_name)
     assert CI.CP_SP.neuralNetworkLateralControl.model.name == "MOCK"
+
+  def test_tesla_cannot_enable_torque_jerk_controller(self):
+    params = Params()
+    params.put_bool("LateralJerkTorqueController", True, block=True)
+    params.put_bool("TeslaCoopSteering", True, block=True)
+
+    CarInterface = interfaces[TESLA.TESLA_MODEL_3]
+    CP = CarInterface.get_non_essential_params(TESLA.TESLA_MODEL_3)
+    CP_SP = CarInterface.get_non_essential_params_sp(CP, TESLA.TESLA_MODEL_3)
+    CI = CarInterface(CP, CP_SP)
+    sunnypilot_interfaces.setup_interfaces(CI, params)
+
+    assert not params.get_bool("LateralJerkTorqueController")
+    assert params.get_bool("TeslaCoopSteering")
