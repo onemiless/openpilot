@@ -4,6 +4,7 @@ from opendbc.can import CANDefine, CANParser
 from opendbc.car import Bus, structs
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarStateBase
+from opendbc.car.tesla.mads_touch import MadsTouchInput
 from opendbc.car.tesla.values import DBC, CANBUS, GEAR_MAP, STEER_DISENGAGE_THRESHOLD, STEER_THRESHOLD
 from opendbc.car.vehicle_model import VehicleModel
 from opendbc.safety import ALTERNATIVE_EXPERIENCE
@@ -55,6 +56,12 @@ class CarState(CarStateBase):
     self.tesla_fused_speed_limit_kph = 0.0
     self.tesla_fused_speed_limit_valid = False
     self.tesla_fused_speed_limit_nanos = 0
+    self.mads_touch_input = MadsTouchInput(bool(CP.alternativeExperience & ALTERNATIVE_EXPERIENCE.ENABLE_MADS))
+
+  def observe_aux_can(self, address, data, source):
+    # Card applies parameter-derived alternativeExperience after constructing CarState.
+    self.mads_touch_input.set_enabled(bool(self.CP.alternativeExperience & ALTERNATIVE_EXPERIENCE.ENABLE_MADS))
+    self.mads_touch_input.observe(address, data, source)
 
   def update(self, can_parsers) -> structs.CarState:
     cp_party = can_parsers[Bus.party]
@@ -146,7 +153,8 @@ class CarState(CarStateBase):
     autopilot_state = int(das_status["DAS_autopilotState"])
     self.tesla_autopilot_active = autopilot_state not in (0, 1, 2)
 
-    # Buttons # ToDo: add Gap adjust button
+    # The Tesla center display reports active touch points on the vehicle bus.
+    ret.buttonEvents = self.mads_touch_input.take_button_events()
 
     # Messages needed by carcontroller
     self.das_control = copy.copy(cp_ap_party.vl["DAS_control"])

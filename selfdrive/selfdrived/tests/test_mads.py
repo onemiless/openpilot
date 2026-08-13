@@ -11,6 +11,7 @@ from openpilot.selfdrive.selfdrived.selfdrived import radar_error_event
 MadsState = custom.MadsState.State
 GearShifter = structs.CarState.GearShifter
 SafetyModel = structs.CarParams.SafetyModel
+ButtonType = structs.CarState.ButtonEvent.Type
 
 
 class FakeParams:
@@ -52,6 +53,7 @@ def make_car_state(**overrides):
     "steerFaultPermanent": False,
     "eacStatus": 1,
     "eacErrorCode": 0,
+    "buttonEvents": [],
   }
   values.update(overrides)
   return SimpleNamespace(**values)
@@ -65,6 +67,27 @@ def make_mads(steering_mode=2):
 def engage(mads, CS=None):
   mads.update(CS or make_car_state(), True, True, FakeEvents())
   assert mads.state == MadsState.enabled
+
+
+def mads_touch(pressed=True):
+  return SimpleNamespace(type=ButtonType.lkas, pressed=pressed)
+
+
+def test_three_finger_event_toggles_independent_mads_and_persists_request():
+  mads = make_mads(steering_mode=0)
+  mads.update(make_car_state(buttonEvents=[mads_touch()]), False, False, FakeEvents())
+  assert mads.state == MadsState.enabled
+  assert mads.params.get_bool("MadsUserEnabled")
+
+  # Release events and held frames do not toggle the session.
+  mads.update(make_car_state(buttonEvents=[mads_touch(False)]), False, False, FakeEvents())
+  assert mads.state == MadsState.enabled
+  mads.update(make_car_state(), False, False, FakeEvents())
+  assert mads.state == MadsState.enabled
+
+  mads.update(make_car_state(buttonEvents=[mads_touch()]), False, False, FakeEvents())
+  assert mads.state == MadsState.disabled
+  assert not mads.params.get_bool("MadsUserEnabled")
 
 
 def test_mads_keeps_lateral_active_after_normal_longitudinal_disengage():
