@@ -54,6 +54,7 @@ def make_car_state(**overrides):
     "eacStatus": 1,
     "eacErrorCode": 0,
     "buttonEvents": [],
+    "vEgo": 0.0,
   }
   values.update(overrides)
   return SimpleNamespace(**values)
@@ -107,6 +108,48 @@ def test_cruise_main_unavailable_does_not_exit_independent_tesla_mads():
   assert mads.active
 
 
+def test_reverse_gear_pauses_mads_at_any_speed_and_drive_resumes():
+  for speed in (0.0, 10.0):
+    mads = make_mads(steering_mode=0)
+    engage(mads)
+    mads.update(make_car_state(gearShifter=GearShifter.reverse, vEgo=speed), False, False, FakeEvents())
+    assert mads.state == MadsState.paused
+    assert mads.enabled
+    assert not mads.active
+
+    mads.update(make_car_state(gearShifter=GearShifter.drive, vEgo=speed), False, False, FakeEvents())
+    assert mads.state == MadsState.enabled
+    assert mads.active
+
+
+def test_low_speed_wrong_gears_pause_without_disabling_session():
+  for gear in (GearShifter.park, GearShifter.neutral, GearShifter.unknown):
+    mads = make_mads(steering_mode=0)
+    engage(mads)
+    mads.update(make_car_state(gearShifter=gear, vEgo=0.0), False, False, FakeEvents())
+    assert mads.state == MadsState.paused
+    assert mads.enabled
+    assert not mads.active
+
+
+def test_three_finger_in_reverse_starts_mads_paused():
+  mads = make_mads(steering_mode=0)
+  mads.update(make_car_state(buttonEvents=[mads_touch()], gearShifter=GearShifter.reverse),
+              False, False, FakeEvents())
+  assert mads.state == MadsState.paused
+  assert mads.enabled
+  assert not mads.active
+  assert mads.params.get_bool("MadsUserEnabled")
+
+
+def test_high_speed_non_reverse_wrong_gear_matches_sp_and_stays_active():
+  mads = make_mads(steering_mode=0)
+  engage(mads)
+  mads.update(make_car_state(gearShifter=GearShifter.neutral, vEgo=3.0), False, False, FakeEvents())
+  assert mads.state == MadsState.enabled
+  assert mads.active
+
+
 def test_mads_keeps_lateral_active_after_normal_longitudinal_disengage():
   mads = make_mads()
   CS = make_car_state()
@@ -144,7 +187,6 @@ def test_mads_safety_exits_are_not_overridable():
   for CS in (make_car_state(steeringDisengage=True),
              make_car_state(brakePressed=True, gasPressed=True),
              make_car_state(invalidLkasSetting=True),
-             make_car_state(gearShifter=GearShifter.park),
              make_car_state(steerFaultPermanent=True),
              make_car_state(steerFaultTemporary=True, eacStatus=0, eacErrorCode=8)):
     mads = make_mads(steering_mode=0)

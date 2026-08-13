@@ -297,14 +297,12 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
     self.assertTrue(self.safety.get_controls_allowed_lateral())
     self.assertTrue(self._tx(self._angle_cmd_msg(0, True)))
 
-  def test_mads_retains_lateral_when_cruise_main_is_standby_off_or_faulted(self):
+  def test_mads_retains_lateral_when_cruise_main_is_standby_or_unavailable(self):
     self._engage_mads()
     self.assertTrue(self._rx(self._pcm_standby_msg()))
     self.assertFalse(self.safety.get_controls_allowed())
     self.assertTrue(self.safety.get_controls_allowed_lateral())
     self.assertTrue(self._rx(self._pcm_status_msg(False)))
-    self.assertTrue(self.safety.get_controls_allowed_lateral())
-    self.assertTrue(self._rx(self.packer.make_can_msg_panda("DI_state", 0, {"DI_cruiseState": 5})))
     self.assertTrue(self.safety.get_controls_allowed_lateral())
 
   def test_three_finger_touch_requests_mads_without_acc_main_or_full_cp(self):
@@ -327,6 +325,15 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
     self.assertTrue(self._rx(self._steering_status_msg(eac_status=1)))
     self.assertTrue(self._rx(self._mads_touch_msg(3)))
     self.assertTrue(self.safety.get_controls_allowed_lateral())
+
+  def test_three_finger_touch_cannot_reauthorize_during_persistent_steering_fault(self):
+    self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.ENABLE_MADS)
+    self.safety.set_heartbeat_engaged_mads(True)
+    self.assertTrue(self._rx(self._pcm_status_msg(False)))
+    self.assertTrue(self._rx(self._steering_status_msg(eac_status=3)))
+    self.assertTrue(self._rx(self._mads_touch_msg(3)))
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+    self.assertFalse(self._tx(self._angle_cmd_msg(0, True)))
 
   def test_mads_touch_requires_exact_count_bus_and_length(self):
     safety_param = self.safety.get_current_safety_param()

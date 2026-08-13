@@ -233,7 +233,10 @@ class ModularAssistiveDrivingSystem:
       cloudlog.event("mads.engagement_blocked", reason="user_disarmed")
 
     steering_disengage = bool(getattr(CS, "steeringDisengage", False))
-    unsafe_gear = CS.gearShifter in (GearShifter.park, GearShifter.reverse, GearShifter.neutral, GearShifter.unknown)
+    wrong_gear = CS.gearShifter in (GearShifter.park, GearShifter.reverse, GearShifter.neutral, GearShifter.unknown)
+    # Match SP: keep the MADS session armed, but pause active lateral output in
+    # reverse at any speed and in other wrong gears below 2.5 m/s.
+    gear_pause = CS.gearShifter == GearShifter.reverse or (wrong_gear and CS.vEgo < 2.5)
     pause_for_brake = self.steering_mode == MadsSteeringMode.PAUSE and CS.brakePressed
     recoverable_eps_temp_fault_now = (CS.steerFaultTemporary and
                                       self._eac_status == EAC_STATUS_INHIBITED and
@@ -257,8 +260,6 @@ class ModularAssistiveDrivingSystem:
       exit_reasons.append("panda_lateral_mismatch")
     if CS.invalidLkasSetting:
       exit_reasons.append("invalid_lkas_setting")
-    if unsafe_gear:
-      exit_reasons.append("unsafe_gear")
     if immediate_steering_fault:
       exit_reasons.append("steering_fault")
     if eps_temp_fault_timed_out:
@@ -301,6 +302,8 @@ class ModularAssistiveDrivingSystem:
       self._set_state(MadsState.paused, "eps_temporary_fault")
     elif self._driver_override_latched:
       self._set_state(MadsState.paused, "driver_override")
+    elif gear_pause:
+      self._set_state(MadsState.paused, "gear_pause")
     elif pause_for_brake:
       self._set_state(MadsState.paused, "brake_pause")
     elif events.contains(ET.OVERRIDE_LATERAL):
@@ -309,6 +312,7 @@ class ModularAssistiveDrivingSystem:
       reason = ("selfdrive_engaged" if selfdrive_rising else
                 "screen_toggle" if screen_enabled else
                 "driver_override_released" if driver_override_released else
+                "gear_resumed" if self.state == MadsState.paused and self.last_transition_reason == "gear_pause" else
                 "brake_released" if self.state == MadsState.paused else "requested")
       self._set_state(MadsState.enabled, reason)
 

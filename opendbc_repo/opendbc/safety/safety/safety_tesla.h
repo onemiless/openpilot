@@ -157,7 +157,7 @@ static void tesla_rx_hook(const CANPacket_t *to_push) {
   if ((bus == 1) && (GET_LEN(to_push) == 8U)) {
     if (addr == 0x3DF) {
       const bool touch_pressed = GET_BYTE(to_push, 3) == 3U;
-      if (touch_pressed && !tesla_mads_touch_pressed && !controls_allowed_lateral &&
+      if (touch_pressed && !tesla_mads_touch_pressed && !controls_allowed_lateral && !steering_disengage &&
           !brake_pressed && mads_state.system_enabled) {
         mads_state.controls_requested_lateral = true;
       }
