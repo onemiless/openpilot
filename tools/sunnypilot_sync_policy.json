@@ -1,0 +1,48 @@
+{
+  "upstream_remote": "sunnypilot",
+  "upstream_branch": "master",
+  "last_reviewed_upstream": "2d859a8ca610bc20f48b0b3e4f7d570a80b59c29",
+  "safe_prefixes": [
+    ".github/",
+    "docs/"
+  ],
+  "safe_exact_files": [
+    ".codespellignore",
+    ".editorconfig"
+  ],
+  "protected_prefixes": [
+    "panda",
+    "opendbc_repo",
+    "tinygrad_repo",
+    "openpilot/cereal/",
+    "openpilot/common/params_keys.h",
+    "openpilot/selfdrive/controls/",
+    "openpilot/selfdrive/modeld/",
+    "openpilot/selfdrive/selfdrived/",
+    "openpilot/selfdrive/ui/",
+    "openpilot/sunnypilot/mads/",
+    "openpilot/sunnypilot/modeld_v2/",
+    "openpilot/sunnypilot/selfdrive/",
+    "openpilot/sunnypilot/sunnylink/",
+    "openpilot/system/"
+  ],
+  "reviewed_commits": {
+    "978ec800fead1b34c4e43ebc69fb92b67695bdf0": "already-present",
+    "50b860c9285057f04a74af0b3dedf728bc5aada9": "already-present",
+    "1a07e4722853c0606b0e1caa8f300a371e342948": "already-present",
+    "5bdc0c23a98da8843d95d7e9b69ac1c89691d5ef": "deferred-deep-models-device-validation-required",
+    "6909aa95ff037183ec5e26f3e73bb6572634810b": "applied",
+    "099143ad9df14de601ed95a694b0fc3e55f20503": "applied",
+    "fec5a97a9e78e323e8f179ac54cf4f9be216d18c": "applied",
+    "9e0d89968dd5a4485ee536a0b9f1cd6e7cee26e4": "adapted-current-baseline",
+    "6f2a1d573c0bcc21c0ed94033163f5d766b043b8": "applied",
+    "f531952be32993cf46ec1a57b65178f2929d608c": "adapted-current-baseline",
+    "9e32dee2814fd2c61c62e3988f0dc16f356b8b6f": "adapted-replay-only-live-health-checks-preserved",
+    "fc4699a74783a2f80094f4b890a106c713f7fb96": "applied",
+    "91a53aa1610891070cf2877c84f00c2c2965ec31": "adapted-tesla-angle-control-isolated",
+    "617fcd40849f2c8d4df2ab77edefe06d8d1b1781": "adapted-current-opendbc-and-generated-docs",
+    "c6595fd99bfac45ff4ce030b9c9b4428b870b947": "applied",
+    "2a16b0fbba64de33b8eb04e833b68a31ec982ec7": "adapted-disabled-by-default",
+    "2d859a8ca610bc20f48b0b3e4f7d570a80b59c29": "adapted-relc-wire-compatible"
+  }
+}
