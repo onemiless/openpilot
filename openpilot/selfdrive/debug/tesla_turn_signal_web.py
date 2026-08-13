@@ -61,6 +61,7 @@ def render_page() -> bytes:
     #terminal-output { min-height:100px; max-height:420px; overflow:auto; text-align:left; white-space:pre-wrap; background:#020617; border-radius:10px; padding:12px; color:#cbd5e1; }
     .terminal-row { display:flex; gap:8px; margin:10px 0; } .terminal-row input { min-width:0; flex:1; padding:9px; border:1px solid #475569; border-radius:9px; background:#0f172a; color:white; }
     .drive-alert { white-space:pre-wrap; } #driving-canvas { display:block; width:100%; height:min(72vh,640px); margin:12px 0; border:1px solid #334155; border-radius:18px; background:#07111f; }
+    .ped-coordinate-lab { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:10px 0 4px; padding:10px 12px; border:1px solid #92400e; border-radius:11px; background:#451a0355; color:#fde68a; font-size:12px; } .ped-coordinate-lab select { width:auto; max-width:100%; font-size:13px; padding:7px; }
     .can-diagnostics { margin-top:10px; } .can-diagnostics summary { cursor:pointer; color:#94a3b8; font-size:13px; padding:8px 2px; user-select:none; }
     .can-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:9px; margin-top:10px; } .can-detail { background:#1e293b; border-radius:11px; padding:11px; color:#cbd5e1; font-size:12px; line-height:1.55; } .can-detail strong { display:block; color:#93c5fd; font-size:14px; margin-bottom:3px; } .can-detail .ok { color:#86efac; } .can-detail.warn { color:#fbbf24; }
   </style>
@@ -68,7 +69,7 @@ def render_page() -> bytes:
   <h1>车载设置</h1><p>通过手机或电脑访问此页面。行驶中仅允许修改实时生效的白名单设置。</p>
   <div class="tabs"><button class="tab active" id="settings-tab" onclick="showPanel('settings')">设置</button><button class="tab" id="driving-tab" onclick="showPanel('driving')">行驶信息</button><button class="tab" id="turn-tab" onclick="showPanel('turn')">转向测试</button><button class="tab" id="terminal-tab" onclick="showPanel('terminal')">终端</button></div>
   <section id="settings-panel"><div id="mode" class="notice">正在读取设置…</div><div id="category-nav" class="category-nav"></div><div id="settings"></div></section>
-  <section id="driving-panel" hidden><h1>行驶道路视图</h1><p>只读实时视图；融合 SP 模型与 HW4 Model Y 原车 CAN，不启动视频或屏幕采集。</p><div id="driving-state" class="notice">正在连接车辆数据…</div><canvas id="driving-canvas" aria-label="预测道路轨迹与原车感知"></canvas><details id="can-diagnostics" class="can-diagnostics"><summary>CAN 诊断详情（可选）</summary><div id="can-details" class="can-grid"></div></details><div id="driving-alert" class="notice drive-alert" hidden></div></section>
+  <section id="driving-panel" hidden><h1>行驶道路视图</h1><p>只读实时视图；融合 SP 模型与 HW4 Model Y 原车 CAN，不启动视频或屏幕采集。</p><div id="driving-state" class="notice">正在连接车辆数据…</div><div class="ped-coordinate-lab"><strong>行人坐标实验</strong><select id="pedestrian-coordinate-mode" onchange="setPedestrianCoordinateMode(this.value)"><option value="off">关闭（默认）</option><option value="dx_forward_dy_left">dX 前后 / dY 左右</option><option value="dx_forward_dy_right">dX 前后 / -dY 左右</option><option value="dy_forward_dx_left">dY 前后 / dX 左右</option><option value="dy_forward_dx_right">dY 前后 / -dX 左右</option></select><span>黄色/蓝色/粉色对应槽 #1/#2/#3；u 为未知单位，仅供实车验证。</span></div><canvas id="driving-canvas" aria-label="预测道路轨迹与原车感知"></canvas><details id="can-diagnostics" class="can-diagnostics"><summary>CAN 诊断详情（可选）</summary><div id="can-details" class="can-grid"></div></details><div id="driving-alert" class="notice drive-alert" hidden></div></section>
   <section id="turn-panel" hidden>
     <h1>Tesla 转向 CAN 测试</h1><p>请求由 card 实时线程跟随原车 0x3E9 模板持续发送；SP 完成变道后会自动关闭转向灯。</p>
     <div class="buttons"><button class="turn" id="left" onclick="run('left')">← 左转</button><button class="turn" id="right" onclick="run('right')">右转 →</button></div>
@@ -81,6 +82,9 @@ def render_page() -> bytes:
   </section>
 <script>
 let settingsState = null, hotspotState = null, selectedCategory = null, currentPanel = 'settings', drivingLoading = false;
+let pedestrianCoordinateMode = localStorage.getItem('pedestrianCoordinateMode') || 'off';
+function setPedestrianCoordinateMode(value) { pedestrianCoordinateMode = value; localStorage.setItem('pedestrianCoordinateMode', value); loadDrivingStatus(); }
+document.getElementById('pedestrian-coordinate-mode').value = pedestrianCoordinateMode;
 function showPanel(name) {
   currentPanel = name;
   document.getElementById('settings-panel').hidden = name !== 'settings'; document.getElementById('driving-panel').hidden = name !== 'driving'; document.getElementById('turn-panel').hidden = name !== 'turn'; document.getElementById('terminal-panel').hidden = name !== 'terminal';
@@ -158,6 +162,34 @@ function drawPedestrianCameraIndicators(ctx, pedestrian, width, height) {
   if(pedestrian.backup){ctx.textAlign='center';ctx.fillText('⚠ 后方行人',width/2,height-58);}
   ctx.textAlign='left';
 }
+const pedestrianCoordinateModeLabels = {
+  dx_forward_dy_left:'dX→前，dY→左', dx_forward_dy_right:'dX→前，-dY→左',
+  dy_forward_dx_left:'dY→前，dX→左', dy_forward_dx_right:'dY→前，-dX→左'
+};
+function experimentalPedestrianPosition(slot, mode) {
+  const dx=Number(slot.dx_scaled),dy=Number(slot.dy_scaled);if(!Number.isFinite(dx)||!Number.isFinite(dy))return null;
+  if(mode==='dx_forward_dy_left')return {x:dx,y:dy};
+  if(mode==='dx_forward_dy_right')return {x:dx,y:-dy};
+  if(mode==='dy_forward_dx_left')return {x:dy,y:dx};
+  if(mode==='dy_forward_dx_right')return {x:dy,y:-dx};
+  return null;
+}
+function drawExperimentalPedestrianSlots(ctx, pedestrian, xScale, yScale, width, height) {
+  if(pedestrianCoordinateMode==='off'||!pedestrian?.detected_any)return;
+  const colors=['#fbbf24','#38bdf8','#f472b6'];
+  const slots=(pedestrian.coordinate_slots||[]).map(slot=>({slot,pos:experimentalPedestrianPosition(slot,pedestrianCoordinateMode)})).filter(item=>item.pos&&!(item.pos.x===0&&item.pos.y===0));
+  ctx.save();
+  for(const {slot,pos} of slots){
+    if(pos.x<0||pos.x>100||Math.abs(pos.y)>14)continue;
+    const [px,py]=canvasPoint(ctx.canvas,pos.x,pos.y,xScale,yScale);if(py<52||py>height-20)continue;
+    const color=colors[(slot.index-1)%colors.length];ctx.strokeStyle=color;ctx.lineWidth=2;ctx.setLineDash([4,3]);ctx.beginPath();ctx.arc(px,py,9,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);drawObjectLabel(ctx,'试 #'+slot.index+' '+pos.x.toFixed(1)+'u/'+pos.y.toFixed(1)+'u',px+12,py+4,color);
+  }
+  const size=Math.min(132,width*.36),left=width-size-12,top=height-size-48,cx=left+size/2,cy=top+size/2,scale=(size-24)/25.6;
+  fillRoundedRect(ctx,left,top,size,size,'#020617e8',10);ctx.strokeStyle='#64748b';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(cx,top+8);ctx.lineTo(cx,top+size-8);ctx.moveTo(left+8,cy);ctx.lineTo(left+size-8,cy);ctx.stroke();ctx.fillStyle='#cbd5e1';ctx.font='10px sans-serif';ctx.fillText('+前',cx+4,top+12);ctx.fillText('+左',left+6,cy-4);ctx.fillText(pedestrianCoordinateModeLabels[pedestrianCoordinateMode],left+7,top+size-7);
+  for(const {slot,pos} of slots){const px=cx-pos.y*scale,py=cy-pos.x*scale,color=colors[(slot.index-1)%colors.length];ctx.fillStyle=color;ctx.beginPath();ctx.arc(px,py,5,0,Math.PI*2);ctx.fill();ctx.font='bold 10px sans-serif';ctx.fillText('#'+slot.index,px+7,py+3);}
+  if(!slots.length){ctx.fillStyle='#94a3b8';ctx.font='11px sans-serif';ctx.fillText('坐标槽均为 0',left+22,cy+4);}
+  ctx.restore();
+}
 function drawParkingObstacle(ctx, obstacle, xScale, yScale, width, height) {
   if (!obstacle?.valid_obstacle) return;
   let px=width/2, py=height-48; if(obstacle.x_m!=null&&obstacle.y_m!=null){[px,py]=canvasPoint(ctx.canvas,obstacle.x_m,obstacle.y_m,xScale,yScale);} else if(obstacle.collision_side==='left')px=width/2-46;else if(obstacle.collision_side==='right')px=width/2+46;else if(obstacle.collision_side==='front')py=height-82;
@@ -202,7 +234,7 @@ function renderCanDetails(can, modelLeads = []) {
   add('前车（SP 视觉模型）', modelLeads.length ? modelLeads.map((lead, index) => '目标 ' + (index + 1) + '：纵向 ' + lead.x.toFixed(1) + 'm，横向 ' + lead.y.toFixed(1) + 'm，速度 ' + lead.velocity_mps.toFixed(1) + 'm/s，置信度 ' + (lead.probability * 100).toFixed(0) + '%') : ['modelV2 当前未输出有效前车；该来源由摄像头模型融合得到，并非单个摄像头的独立车辆列表']);
   const a = can.driver_assist || {}; add('驾驶辅助', [a.available ? '规划：' + ct(a.planner_state) + ' · 行为 ' + ct(a.behavior) : '未收到驾驶辅助调试报文', a.available ? '健康：' + ct(a.health) + ' · 异常等级 ' + a.health_anomaly_level + ' · 中止原因 ' + a.last_abort_reason : '', a.available ? '路面：' + ct(a.road_surface) + ' · 偏移侧 ' + a.offset_side + ' · 选线原因 ' + a.last_line_preference_reason : '', a.available ? '融合：车辆 ' + ct(a.vehicles_usage) + ' / HPP ' + ct(a.hpp_usage) + ' / 模型 ' + ct(a.model_usage) + ' / Botts dots ' + ct(a.botts_dots_usage) : '', a.available ? '智能限速 ' + (a.smart_speed_active?'激活':'未激活') + ' · 状态 ' + a.smart_speed_state + ' · ISA ' + a.isa_state + ' · 交通感知设定速度 ' + (a.traffic_aware_set_speed?'是':'否') : '', a.available ? 'ULC ' + (a.ulc_in_progress?'进行中':'未进行') + ' · 类型 ' + a.ulc_type + ' · 开发者接口 ' + (a.developer_app_interface_enabled?'开':'关') : '', '全部数据总线：' + (can.buses || []).join(' / ')]);
   const rs = can.road_sign || {}; add('道路标志（地图/车队）', [rs.available ? '红绿灯停止线：' + (rs.traffic_light_stop_line_distance_m != null ? rs.traffic_light_stop_line_distance_m + 'm' : '无') + (rs.traffic_light_stop_line_confidence != null ? '（置信度 ' + rs.traffic_light_stop_line_confidence + '）' : '') : '未收到 UI_driverAssistRoadSign', rs.stop_sign_stop_line_distance_m != null ? '停止标志停止线：' + rs.stop_sign_stop_line_distance_m + 'm（置信度 ' + (rs.stop_sign_stop_line_confidence ?? '—') + '）' : '', rs.base_map_speed_limit_mps != null ? '地图限速：' + (rs.base_map_speed_limit_mps * 3.6).toFixed(0) + ' km/h' : '', rs.mean_fleet_spline_speed_mps != null ? '车队速度：' + (rs.mean_fleet_spline_speed_mps * 3.6).toFixed(0) + ' km/h' : '', rs.ramp_type != null ? '匝道类型 ' + rs.ramp_type : '', '数据源总线：' + (rs.bus || '—')]);
-  const p = can.pedestrian_detection || {}, cameraNames={front_main:'前主',front_fisheye:'前鱼眼',front_narrow:'前窄',left_pillar:'左柱',left_repeater:'左镜',right_pillar:'右柱',right_repeater:'右镜',backup:'后视'}; const cameraList=(p.active_cameras||[]).map(name=>cameraNames[name]||name), positioned=p.positioned_objects||[], slots=p.coordinate_slots||[]; add('行人检测', [p.available ? '相机区域：' + (cameraList.length?cameraList.join(' / '):'未检测到') : '未收到 VEH 0x400 行人检测报文', p.collision_warning ? '行人碰撞告警：PARTY 0x389 已触发' : '行人碰撞告警：未触发', positioned.length ? 'CH 定位对象：' + positioned.map(v=>ct(v.category)+' #'+v.track_id+' '+v.x_m.toFixed(1)+'m').join(' / ') : 'CH 定位对象：无', slots.length ? '原始坐标槽：' + slots.map(s=>'#'+s.index+' dX '+s.dx_scaled+' / dY '+s.dy_scaled).join(' · ') : '', 'T-CAN 未提供单位和单槽有效位，原始坐标不作为距离或 Canvas 位置', '证据级别：' + ct(p.evidence_tier) + ' · 数据源总线：' + (p.bus || '—')]);
+  const p = can.pedestrian_detection || {}, cameraNames={front_main:'前主',front_fisheye:'前鱼眼',front_narrow:'前窄',left_pillar:'左柱',left_repeater:'左镜',right_pillar:'右柱',right_repeater:'右镜',backup:'后视'}; const cameraList=(p.active_cameras||[]).map(name=>cameraNames[name]||name), positioned=p.positioned_objects||[], slots=p.coordinate_slots||[]; add('行人检测', [p.available ? '相机区域：' + (cameraList.length?cameraList.join(' / '):'未检测到') : '未收到 VEH 0x400 行人检测报文', p.collision_warning ? '行人碰撞告警：PARTY 0x389 已触发' : '行人碰撞告警：未触发', positioned.length ? 'CH 定位对象：' + positioned.map(v=>ct(v.category)+' #'+v.track_id+' '+v.x_m.toFixed(1)+'m').join(' / ') : 'CH 定位对象：无', slots.length ? '原始坐标槽：' + slots.map(s=>'#'+s.index+' dX '+s.dx_scaled+' / dY '+s.dy_scaled).join(' · ') : '', 'T-CAN 未提供单位和单槽有效位；默认不作为距离或 Canvas 位置，仅实验模式按假设投影', '实验解析：' + (pedestrianCoordinateModeLabels[pedestrianCoordinateMode]||'关闭') + ' · 证据级别：' + ct(p.evidence_tier) + ' · 数据源总线：' + (p.bus || '—')]);
   const bs = can.blind_spot || {}; add('盲区 / 侧碰', [bs.available ? '左后等级 ' + (bs.left_level ?? '—') + ' · 右后等级 ' + (bs.right_level ?? '—') + (bs.left_live || bs.right_live ? ' ⚠' : '') : '未收到 DAS_status', bs.side_collision_warning_level != null ? '侧碰预警 ' + bs.side_collision_warning_level + ' · 避让 ' + bs.side_collision_avoid_level + (bs.side_collision_inhibit ? '（抑制）' : '') : '', bs.forward_collision_warning_level != null ? '前碰预警 ' + bs.forward_collision_warning_level : '', bs.lane_departure_warning_level != null ? '车道偏离 ' + bs.lane_departure_warning_level : '', bs.fused_speed_limit_kph ? '融合限速 ' + bs.fused_speed_limit_kph + ' km/h' : '', '数据源总线：' + (bs.sources || []).join(' / ')]);
   const f = can.front_safety || {}; add('前向安全（只读）', [f.available && f.valid_target ? '有效近距目标：' + f.target_distance_m + 'm' : (f.available ? '报文在线，但质量位无有效目标' : '未收到前向安全报文'), f.relative_velocity_mps != null ? '相对速度 ' + f.relative_velocity_mps + ' m/s' : '', f.time_to_impact_s != null ? '碰撞时间 ' + f.time_to_impact_s + 's' : '', f.predicted_impact_overlap_pct != null ? '预测重叠 ' + f.predicted_impact_overlap_pct + '%' : '', f.imminent_collision ? '⚠ 即将碰撞' : '', '0x299 量程仅 12.7m，不用于高速舒适减速控制', '数据源总线：' + (f.bus || '—')]);
   const lc = can.longitudinal_shadow || {}, aeb = lc.aeb || {}, vp = lc.velocity_profile || {}, tp = lc.torque_profiler || {}; add('Tesla 纵向影子状态（只读）', [lc.available ? '当前栈：' + (lc.current_stack || 'unknown') + '（' + (lc.current_stack_code ?? '—') + '）' : '未收到 0x209 DAS_longControl', tp.available ? '扭矩规划：目标 ' + (tp.target_speed_kph ?? '—') + ' km/h · 加速度 ' + (tp.accel_min_mps2 ?? '—') + '～' + (tp.accel_max_mps2 ?? '—') + ' m/s²' : '', vp.available ? '速度规划：目标 ' + (vp.future_target_speed_kph ?? '—') + ' km/h · 加速度 ' + (vp.accel_mps2 ?? '—') + ' m/s²' : '', aeb.available ? 'AEB：' + (aeb.active ? '激活 ⚠' : '未激活') + ' · 目标加速度 ' + (aeb.target_accel_mps2 ?? '—') + ' m/s²' : '', '仅用于采集、对比和告警验证，不参与 SP 控制', '数据源总线：' + (lc.bus || '—')]);
@@ -218,7 +250,7 @@ function drawDrivingGeometry(geometry, data) {
   drawLine(ctx, geometry.path || [], xScale, yScale, danger ? '#ef4444' : '#22c55e', 5); const legacyTraffic=geometry.oem_traffic||{}; const traffic=can.traffic?.available?can.traffic:legacyTraffic.available?{available:true,control_available:true,light_state:['none','red','green','yellow'][legacyTraffic.light_color]||'unknown',control_distance_m:legacyTraffic.stop_line_distance,control_type:'traffic_light'}:{}; drawTraffic(ctx, traffic, xScale, width, height, can.road_sign || {});
   (can.vehicles || []).forEach(vehicle => drawCanVehicle(ctx,vehicle,xScale,yScale)); (geometry.leads || []).forEach(lead => { if ((can.vehicles||[]).some(v => v.category==='lead')) return; const [px,py]=canvasPoint(canvas,lead.x,lead.y,xScale,yScale); if(py>50&&py<height){const color=danger?'#ef4444':'#f97316';fillRoundedRect(ctx,px-8,py-8,16,16,color,6);drawObjectLabel(ctx,'SP '+Math.round(lead.x)+'m',px+11,py+4,color);} });
   const ped = can.pedestrian_detection || {};
-  drawPedestrianCameraIndicators(ctx,ped,width,height); drawParkingObstacle(ctx,can.parking_obstacle||{},xScale,yScale,width,height);
+  drawPedestrianCameraIndicators(ctx,ped,width,height); drawExperimentalPedestrianSlots(ctx,ped,xScale,yScale,width,height); drawParkingObstacle(ctx,can.parking_obstacle||{},xScale,yScale,width,height);
   const rear = can.rear_vehicles || {}, blind = can.blind_spot || {};
   if (blind.left_live || rear.left_live) { drawHudChip(ctx,'◀ 左后车',12,height-16,'#60a5fa'); } if (blind.right_live || rear.right_live) { ctx.font='bold 12px sans-serif';const rw=Math.ceil(ctx.measureText('右后车 ▶').width)+18;drawHudChip(ctx,'右后车 ▶',width-rw-12,height-16,'#c084fc'); }
   ctx.fillStyle='#2563eb';roundedRect(ctx,width/2-17,height-35,34,25,9);ctx.fill();ctx.fillStyle='#93c5fd';ctx.fillRect(width/2-8,height-31,16,5);fillRoundedRect(ctx,10,10,178,62,'#020617b8',12);ctx.fillStyle='#f8fafc';ctx.font='bold 21px sans-serif';ctx.fillText(data.speed_kph.toFixed(0)+' km/h',22,36);ctx.font='13px sans-serif';const mode=data.openpilot_enabled?'SP 接管':data.mads_enabled?'MADS 横向':'未接管';ctx.fillStyle=data.openpilot_enabled?'#86efac':'#cbd5e1';ctx.fillText(mode+'  ·  设定 '+data.set_speed_kph.toFixed(0),22,58);

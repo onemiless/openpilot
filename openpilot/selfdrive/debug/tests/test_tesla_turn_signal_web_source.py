@@ -22,8 +22,17 @@ def test_vehicle_distance_sources_are_drawn_with_optional_diagnostics():
   assert "renderOptionalCanDetails(can,geometry.leads||[])" in source
 
 
-def test_unverified_pedestrian_coordinate_slots_are_not_drawn_as_metric_positions():
+def test_unverified_pedestrian_coordinate_slots_require_explicit_experiment_mode():
   source = WEB_SOURCE.read_text()
   assert "ped.closest" not in source
   assert "T-CAN 未提供单位和单槽有效位" in source
   assert "行人碰撞告警" in source
+  assert '<select id="pedestrian-coordinate-mode"' in source
+  assert '<option value="off">关闭（默认）</option>' in source
+  assert "dx_forward_dy_left" in source
+  assert "dx_forward_dy_right" in source
+  assert "dy_forward_dx_left" in source
+  assert "dy_forward_dx_right" in source
+  assert "drawExperimentalPedestrianSlots(ctx,ped,xScale,yScale,width,height)" in source
+  assert "localStorage.getItem('pedestrianCoordinateMode') || 'off'" in source
+  assert "仅实验模式按假设投影" in source
