@@ -400,7 +400,10 @@ void generic_rx_checks(bool stock_ecu_detected) {
   if ((safety_mode_cnt > RELAY_TRNS_TIMEOUT) && stock_ecu_detected && !gm_skip_relay_check) {
     relay_malfunction_set();
   }
-  mads_state_update(acc_main_on, controls_allowed, brake_pressed || regen_braking, steering_disengage);
+  // Tesla's physical cruise-main state remains authoritative for cruise and
+  // longitudinal safety, but its independent lateral session is touch-driven.
+  const bool mads_acc_main = (current_safety_mode == SAFETY_TESLA) ? false : acc_main_on;
+  mads_state_update(mads_acc_main, controls_allowed, brake_pressed || regen_braking, steering_disengage);
 }
 
 static void relay_malfunction_reset(void) {

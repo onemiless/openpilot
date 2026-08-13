@@ -90,6 +90,22 @@ def test_three_finger_event_toggles_independent_mads_and_persists_request():
   assert not mads.params.get_bool("MadsUserEnabled")
 
 
+def test_three_finger_starts_at_standstill_without_cruise_main_or_full_cp():
+  mads = make_mads(steering_mode=0)
+  CS = make_car_state(buttonEvents=[mads_touch()], cruiseState=SimpleNamespace(available=False))
+  mads.update(CS, False, False, FakeEvents())
+  assert mads.state == MadsState.enabled
+  assert mads.active
+
+
+def test_cruise_main_unavailable_does_not_exit_independent_tesla_mads():
+  mads = make_mads(steering_mode=0)
+  engage(mads)
+  mads.update(make_car_state(cruiseState=SimpleNamespace(available=False)), False, False, FakeEvents())
+  assert mads.state == MadsState.enabled
+  assert mads.active
+
+
 def test_mads_keeps_lateral_active_after_normal_longitudinal_disengage():
   mads = make_mads()
   CS = make_car_state()
@@ -127,7 +143,6 @@ def test_mads_safety_exits_are_not_overridable():
   for CS in (make_car_state(steeringDisengage=True),
              make_car_state(brakePressed=True, gasPressed=True),
              make_car_state(invalidLkasSetting=True),
-             make_car_state(cruiseState=SimpleNamespace(available=False)),
              make_car_state(gearShifter=GearShifter.park),
              make_car_state(steerFaultPermanent=True),
              make_car_state(steerFaultTemporary=True, eacStatus=0, eacErrorCode=8)):

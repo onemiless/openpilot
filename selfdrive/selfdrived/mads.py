@@ -257,8 +257,6 @@ class ModularAssistiveDrivingSystem:
       exit_reasons.append("panda_lateral_mismatch")
     if CS.invalidLkasSetting:
       exit_reasons.append("invalid_lkas_setting")
-    if not CS.cruiseState.available:
-      exit_reasons.append("cruise_main_unavailable")
     if unsafe_gear:
       exit_reasons.append("unsafe_gear")
     if immediate_steering_fault:

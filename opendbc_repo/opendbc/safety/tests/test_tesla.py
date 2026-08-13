@@ -18,6 +18,7 @@ MSG_ARS408_SPEED = 0x300
 MSG_ARS408_YAW_RATE = 0x301
 MSG_SPEED_SYNC = 0x3C2
 MSG_TURN_SIGNAL = 0x3E9
+MSG_UI_STATUS_2 = 0x3DF
 
 
 class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyTest, common.LongitudinalAccelSafetyTest):
@@ -127,6 +128,12 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
     msg[0].data[2] = (msg[0].data[2] & 0xE1) | ((reason & 0xF) << 1)
     msg[0].data[6] = (msg[0].data[6] & 0x0F) | ((counter & 0xF) << 4)
     msg[0].data[7] = (0xE9 + 0x03 + sum(msg[0].data[i] for i in range(7))) & 0xFF
+    return msg
+
+  def _mads_touch_msg(self, points, bus=1, length=8):
+    msg = common.make_msg(bus, MSG_UI_STATUS_2, length)
+    if length > 3:
+      msg[0].data[3] = points
     return msg
 
   def test_turn_signal_requires_flag_and_fresh_idle_template(self):
@@ -290,13 +297,48 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
     self.assertTrue(self.safety.get_controls_allowed_lateral())
     self.assertTrue(self._tx(self._angle_cmd_msg(0, True)))
 
-  def test_mads_retains_lateral_in_standby_but_exits_when_cruise_main_is_off(self):
+  def test_mads_retains_lateral_when_cruise_main_is_standby_off_or_faulted(self):
     self._engage_mads()
     self.assertTrue(self._rx(self._pcm_standby_msg()))
     self.assertFalse(self.safety.get_controls_allowed())
     self.assertTrue(self.safety.get_controls_allowed_lateral())
     self.assertTrue(self._rx(self._pcm_status_msg(False)))
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+    self.assertTrue(self._rx(self.packer.make_can_msg_panda("DI_state", 0, {"DI_cruiseState": 5})))
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+
+  def test_three_finger_touch_requests_mads_without_acc_main_or_full_cp(self):
+    self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.ENABLE_MADS)
+    self.safety.set_heartbeat_engaged_mads(True)
+    self.assertTrue(self._rx(self._pcm_status_msg(False)))
+    self.assertFalse(self.safety.get_controls_allowed())
     self.assertFalse(self.safety.get_controls_allowed_lateral())
+
+    self.assertTrue(self._rx(self._mads_touch_msg(3)))
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+
+    # Holding three fingers cannot create another request after a safety exit.
+    self.assertTrue(self._rx(self._steering_status_msg(eac_status=3)))
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+    self.assertTrue(self._rx(self._mads_touch_msg(3)))
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+
+    self.assertTrue(self._rx(self._mads_touch_msg(0)))
+    self.assertTrue(self._rx(self._steering_status_msg(eac_status=1)))
+    self.assertTrue(self._rx(self._mads_touch_msg(3)))
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+
+  def test_mads_touch_requires_exact_count_bus_and_length(self):
+    safety_param = self.safety.get_current_safety_param()
+    invalid_messages = [*(self._mads_touch_msg(points) for points in (1, 2, 4, 5)),
+                        self._mads_touch_msg(3, bus=0), self._mads_touch_msg(3, length=7)]
+    for msg in invalid_messages:
+      self.safety.set_safety_hooks(CarParams.SafetyModel.tesla, safety_param)
+      self.safety.init_tests()
+      self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.ENABLE_MADS)
+      self.assertTrue(self._rx(self._pcm_status_msg(False)))
+      self.assertTrue(self._rx(msg))
+      self.assertFalse(self.safety.get_controls_allowed_lateral())
 
   def test_mads_brake_modes(self):
     safety_param = self.safety.get_current_safety_param()
