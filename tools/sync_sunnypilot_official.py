@@ -93,7 +93,15 @@ def assert_apply_context() -> None:
 
 
 def fetch_upstream(policy: dict) -> None:
-  git("fetch", policy["upstream_remote"], policy["upstream_branch"])
+  remote = policy["upstream_remote"]
+  expected_url = policy["upstream_url"]
+  configured_url = git("remote", "get-url", remote, check=False)
+  if not configured_url:
+    git("remote", "add", remote, expected_url)
+  elif configured_url != expected_url:
+    raise SyncError(f"remote {remote} points to {configured_url}, expected {expected_url}")
+
+  git("fetch", remote, policy["upstream_branch"])
 
 
 def list_new_commits(policy: dict) -> list[str]:

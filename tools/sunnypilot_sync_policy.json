@@ -1,5 +1,6 @@
 {
   "upstream_remote": "sunnypilot",
+  "upstream_url": "https://github.com/sunnypilot/sunnypilot.git",
   "upstream_branch": "master",
   "last_reviewed_upstream": "2d859a8ca610bc20f48b0b3e4f7d570a80b59c29",
   "safe_prefixes": [
