@@ -77,8 +77,3 @@ void PandaSafety::setSafetyMode(const std::vector<std::string> &params_string) {
   panda_->set_alternative_experience(alternative_experience, safety_param_sp);
   panda_->set_safety_model(safety_model, safety_param);
 }
-
-bool PandaSafety::getOffroadMode() {
-  auto offroad_mode = params_.getBool("OffroadMode");
-  return offroad_mode;
-}

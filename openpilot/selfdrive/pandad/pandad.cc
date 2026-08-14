@@ -1,4 +1,5 @@
 #include "selfdrive/pandad/pandad.h"
+#include "selfdrive/pandad/pandad_mode.h"
 
 #include <array>
 #include <atomic>
@@ -202,7 +203,7 @@ void fill_panda_can_state(cereal::PandaState::PandaCanState::Builder &cs, const 
   cs.setCanCoreResetCnt(can_health.can_core_reset_cnt);
 }
 
-std::optional<bool> send_panda_states(PubMaster *pm, Panda *panda, bool is_onroad, bool spoofing_started, bool always_offroad) {
+std::optional<bool> send_panda_states(PubMaster *pm, Panda *panda, bool is_onroad, bool spoofing_started) {
   // build msg
   MessageBuilder msg;
   auto evt = msg.initEvent();
@@ -228,21 +229,23 @@ std::optional<bool> send_panda_states(PubMaster *pm, Panda *panda, bool is_onroa
     health.ignition_line_pkt = 1;
   }
 
-  bool ignition_local = ((health.ignition_line_pkt != 0) || (health.ignition_can_pkt != 0)) && !always_offroad;
+  // Always Offroad is a software state, not a replacement for the physical ignition signal.
+  // Keep Panda CAN awake with ignition present while NO_OUTPUT restores the stock vehicle path.
+  const PandaRuntimeMode runtime_mode = get_panda_runtime_mode(health.ignition_line_pkt != 0,
+                                                                health.ignition_can_pkt != 0,
+                                                                is_onroad);
 
   // Make sure CAN buses are live: safety_setter_thread does not work if Panda CAN are silent and there is only one other CAN node
   if (health.safety_mode_pkt == (uint8_t)(cereal::CarParams::SafetyModel::SILENT)) {
     panda->set_safety_model(cereal::CarParams::SafetyModel::NO_OUTPUT);
   }
 
-  bool power_save_desired = !ignition_local;
-  if (health.power_save_enabled_pkt != power_save_desired) {
-    panda->set_power_saving(power_save_desired);
+  if (health.power_save_enabled_pkt != runtime_mode.power_save) {
+    panda->set_power_saving(runtime_mode.power_save);
   }
 
   // set safety mode to NO_OUTPUT when car is off or we're not onroad. ELM327 is an alternative if we want to leverage athenad/connect
-  bool should_close_relay = !ignition_local || !is_onroad;
-  if (should_close_relay && (health.safety_mode_pkt != (uint8_t)(cereal::CarParams::SafetyModel::NO_OUTPUT))) {
+  if (runtime_mode.no_output && (health.safety_mode_pkt != (uint8_t)(cereal::CarParams::SafetyModel::NO_OUTPUT))) {
     panda->set_safety_model(cereal::CarParams::SafetyModel::NO_OUTPUT);
   }
 
@@ -272,7 +275,7 @@ std::optional<bool> send_panda_states(PubMaster *pm, Panda *panda, bool is_onroa
   }
 
   pm->send("pandaStates", msg);
-  return ignition_local;
+  return runtime_mode.ignition;
 }
 
 void send_peripheral_state(Panda *panda, PubMaster *pm) {
@@ -307,8 +310,8 @@ void send_peripheral_state(Panda *panda, PubMaster *pm) {
   pm->send("peripheralState", msg);
 }
 
-void process_panda_state(Panda *panda, PubMaster *pm, bool engaged, bool engaged_mads, bool is_onroad, bool spoofing_started, bool always_offroad) {
-  auto ignition_opt = send_panda_states(pm, panda, is_onroad, spoofing_started, always_offroad);
+void process_panda_state(Panda *panda, PubMaster *pm, bool engaged, bool engaged_mads, bool is_onroad, bool spoofing_started) {
+  auto ignition_opt = send_panda_states(pm, panda, is_onroad, spoofing_started);
   if (!ignition_opt) {
     LOGE("Failed to get ignition_opt");
     return;
@@ -422,7 +425,6 @@ void pandad_run(Panda *panda) {
   bool engaged = false;
   bool engaged_mads = false;
   bool is_onroad = false;
-  bool always_offroad = false;
 
   // Main loop: receive CAN first, then process lower priority panda and peripheral state.
   while (!do_exit && check_connected(panda)) {
@@ -441,8 +443,7 @@ void pandad_run(Panda *panda) {
         is_onroad = sm["deviceState"].getDeviceState().getStarted();
       }
       engaged_mads = process_mads_heartbeat(&sm);
-      always_offroad = panda_safety.getOffroadMode();
-      process_panda_state(panda, &pm, engaged, engaged_mads, is_onroad, spoofing_started, always_offroad);
+      process_panda_state(panda, &pm, engaged, engaged_mads, is_onroad, spoofing_started);
       panda_safety.configureSafetyMode(is_onroad);
     }
 

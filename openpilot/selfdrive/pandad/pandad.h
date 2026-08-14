@@ -19,7 +19,6 @@ class PandaSafety {
 public:
   PandaSafety(Panda *panda) : panda_(panda) {}
   void configureSafetyMode(bool is_onroad);
-  bool getOffroadMode();
 
 private:
   void updateMultiplexingMode();
