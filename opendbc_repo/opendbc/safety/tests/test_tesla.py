@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import unittest
 
+import numpy as np
+
 from opendbc.car.tesla.values import TeslaSafetyFlags
 from opendbc.car.structs import CarParams
 from opendbc.can import CANDefine
@@ -98,7 +100,8 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
   def _pcm_standby_msg(self):
     return self.packer.make_can_msg_panda("DI_state", 0, {"DI_cruiseState": 1})
 
-  def _long_control_msg(self, set_speed, acc_state=0, jerk_limits=(0, 0), accel_limits=(0, 0), aeb_event=0, bus=0):
+  def _long_control_msg(self, set_speed, acc_state=0, jerk_limits=(0, 0), accel_limits=(0, 0), aeb_event=0,
+                        counter=0, bus=0):
     values = {
       "DAS_setSpeed": set_speed,
       "DAS_accState": acc_state,
@@ -107,6 +110,7 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
       "DAS_jerkMax": jerk_limits[1],
       "DAS_accelMin": accel_limits[0],
       "DAS_accelMax": accel_limits[1],
+      "DAS_controlCounter": counter,
     }
     return self.packer.make_can_msg_panda("DAS_control", bus, values)
 
@@ -217,7 +221,7 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
 
   def _accel_msg(self, accel: float):
     # For common.LongitudinalAccelSafetyTest
-    return self._long_control_msg(10, accel_limits=(accel, max(accel, 0)))
+    return self._long_control_msg(10, acc_state=self.acc_states["ACC_ON"], accel_limits=(accel, max(accel, 0)))
 
   def test_vehicle_speed_measurements(self):
     # OVERRIDDEN: 79.1667 is the max speed in m/s
@@ -507,8 +511,8 @@ class TestTeslaStockSafety(TestTeslaSafetyBase):
 
 
 class TestTeslaLongitudinalSafety(TestTeslaSafetyBase):
-  RELAY_MALFUNCTION_ADDRS = {0: (MSG_DAS_steeringControl, MSG_APS_eacMonitor, MSG_DAS_Control)}
-  FWD_BLACKLISTED_ADDRS = {2: [MSG_DAS_steeringControl, MSG_APS_eacMonitor, MSG_DAS_Control]}
+  RELAY_MALFUNCTION_ADDRS = {0: (MSG_DAS_steeringControl, MSG_APS_eacMonitor)}
+  FWD_BLACKLISTED_ADDRS = {2: [MSG_DAS_steeringControl, MSG_APS_eacMonitor]}
 
   def setUp(self):
     super().setUp()
@@ -517,45 +521,96 @@ class TestTeslaLongitudinalSafety(TestTeslaSafetyBase):
     self.safety.init_tests()
 
   def test_no_aeb(self):
+    self.safety.set_controls_allowed(True)
     for aeb_event in range(4):
-      self.assertEqual(self._tx(self._long_control_msg(10, aeb_event=aeb_event)), aeb_event == 0)
+      self.assertEqual(self._tx(self._long_control_msg(
+        10, acc_state=self.acc_states["ACC_ON"], aeb_event=aeb_event,
+      )), aeb_event == 0)
+
+  def test_accel_actuation_limits(self):
+    for alternative_experience in (ALTERNATIVE_EXPERIENCE.DEFAULT,
+                                   ALTERNATIVE_EXPERIENCE.RAISE_LONGITUDINAL_LIMITS_TO_ISO_MAX):
+      for accel in np.concatenate((np.arange(self.MIN_ACCEL - 1, self.MAX_ACCEL + 1, 0.05), [0, self.INACTIVE_ACCEL])):
+        accel = round(accel, 2)
+        for controls_allowed in (True, False):
+          self.setUp()
+          self.safety.set_controls_allowed(controls_allowed)
+          self.safety.set_alternative_experience(alternative_experience)
+          should_tx = controls_allowed and self.MIN_ACCEL <= accel <= self.MAX_ACCEL
+          self.assertEqual(should_tx, self._tx(self._accel_msg(accel)))
 
   def test_stock_aeb_passthrough(self):
-    no_aeb_msg = self._long_control_msg(10, aeb_event=0)
+    no_aeb_msg = self._long_control_msg(10, acc_state=self.acc_states["ACC_ON"], aeb_event=0)
     no_aeb_msg_cam = self._long_control_msg(10, aeb_event=0, bus=2)
     aeb_msg_cam = self._long_control_msg(10, aeb_event=1, bus=2)
 
-    # stock system sends no AEB -> no forwarding, and OP is allowed to TX
+    # OEM owns the stream at startup. A valid CP ACC_ON atomically takes it.
     self.assertEqual(1, self._rx(no_aeb_msg_cam))
-    self.assertEqual(-1, self.safety.safety_fwd_hook(2, no_aeb_msg_cam.addr))
+    self.assertEqual(0, self.safety.safety_fwd_hook(2, no_aeb_msg_cam.addr))
+    self.safety.set_controls_allowed(True)
     self.assertTrue(self._tx(no_aeb_msg))
+    self.assertEqual(-1, self.safety.safety_fwd_hook(2, no_aeb_msg_cam.addr))
 
     # stock system sends AEB -> forwarding, and OP is not allowed to TX
     self.assertEqual(1, self._rx(aeb_msg_cam))
     self.assertEqual(0, self.safety.safety_fwd_hook(2, aeb_msg_cam.addr))
     self.assertFalse(self._tx(no_aeb_msg))
 
+  def test_longitudinal_handoff_requires_cancel_marker_and_exact_next_oem_counter(self):
+    self.safety.set_controls_allowed(True)
+    stock = self._long_control_msg(10, acc_state=self.acc_states["ACC_ON"], counter=0, bus=2)
+    control = self._long_control_msg(10, acc_state=self.acc_states["ACC_ON"], counter=4)
+    cancel = self._long_control_msg(0, acc_state=self.acc_states["ACC_CANCEL_GENERIC_SILENT"], counter=5)
+    marker = self._long_control_msg(0, acc_state=self.acc_states["ACC_CANCEL_GENERIC_SILENT"],
+                                    aeb_event=3, counter=5)
+
+    self.assertEqual(1, self._rx(stock))
+    self.assertEqual(0, self.safety.safety_fwd_hook(2, stock.addr))
+    self.assertTrue(self._tx(control))
+    self.assertEqual(-1, self.safety.safety_fwd_hook(2, stock.addr))
+    self.assertTrue(self._tx(cancel))
+    self.assertFalse(self._tx(marker))
+    self.assertEqual(-1, self.safety.safety_fwd_hook(2, stock.addr))
+
+    wrong = self._long_control_msg(10, acc_state=self.acc_states["ACC_ON"], counter=7, bus=2)
+    expected = self._long_control_msg(10, acc_state=self.acc_states["ACC_ON"], counter=6, bus=2)
+    self.assertEqual(1, self._rx(wrong))
+    self.assertEqual(-1, self.safety.safety_fwd_hook(2, stock.addr))
+    self.assertEqual(1, self._rx(expected))
+    self.assertEqual(0, self.safety.safety_fwd_hook(2, stock.addr))
+
+  def test_controls_drop_does_not_implicitly_restore_oem_source(self):
+    self.safety.set_controls_allowed(True)
+    control = self._long_control_msg(10, acc_state=self.acc_states["ACC_ON"], counter=1)
+    stock = self._long_control_msg(10, acc_state=self.acc_states["ACC_ON"], counter=2, bus=2)
+    self.assertTrue(self._tx(control))
+    self.safety.set_controls_allowed(False)
+    self.assertEqual(1, self._rx(stock))
+    self.assertEqual(-1, self.safety.safety_fwd_hook(2, stock.addr))
+
   def test_prevent_reverse(self):
     # Note: Tesla can reverse while at a standstill if both accel_min and accel_max are negative.
     self.safety.set_controls_allowed(True)
+    def control_msg(set_speed, accel_limits):
+      return self._long_control_msg(set_speed, acc_state=self.acc_states["ACC_ON"], accel_limits=accel_limits)
 
     # accel_min and accel_max are positive
-    self.assertTrue(self._tx(self._long_control_msg(set_speed=10, accel_limits=(1.1, 0.8))))
-    self.assertTrue(self._tx(self._long_control_msg(set_speed=0, accel_limits=(1.1, 0.8))))
+    self.assertTrue(self._tx(control_msg(set_speed=10, accel_limits=(1.1, 0.8))))
+    self.assertTrue(self._tx(control_msg(set_speed=0, accel_limits=(1.1, 0.8))))
 
     # accel_min and accel_max are both zero
-    self.assertTrue(self._tx(self._long_control_msg(set_speed=10, accel_limits=(0, 0))))
-    self.assertTrue(self._tx(self._long_control_msg(set_speed=0, accel_limits=(0, 0))))
+    self.assertTrue(self._tx(control_msg(set_speed=10, accel_limits=(0, 0))))
+    self.assertTrue(self._tx(control_msg(set_speed=0, accel_limits=(0, 0))))
 
     # accel_min and accel_max have opposing signs
-    self.assertTrue(self._tx(self._long_control_msg(set_speed=10, accel_limits=(-0.8, 1.3))))
-    self.assertTrue(self._tx(self._long_control_msg(set_speed=0, accel_limits=(0.8, -1.3))))
-    self.assertTrue(self._tx(self._long_control_msg(set_speed=0, accel_limits=(0, -1.3))))
+    self.assertTrue(self._tx(control_msg(set_speed=10, accel_limits=(-0.8, 1.3))))
+    self.assertTrue(self._tx(control_msg(set_speed=0, accel_limits=(0.8, -1.3))))
+    self.assertTrue(self._tx(control_msg(set_speed=0, accel_limits=(0, -1.3))))
 
     # accel_min and accel_max are negative
-    self.assertFalse(self._tx(self._long_control_msg(set_speed=10, accel_limits=(-1.1, -0.6))))
-    self.assertFalse(self._tx(self._long_control_msg(set_speed=0, accel_limits=(-0.6, -1.1))))
-    self.assertFalse(self._tx(self._long_control_msg(set_speed=0, accel_limits=(-0.1, -0.1))))
+    self.assertFalse(self._tx(control_msg(set_speed=10, accel_limits=(-1.1, -0.6))))
+    self.assertFalse(self._tx(control_msg(set_speed=0, accel_limits=(-0.6, -1.1))))
+    self.assertFalse(self._tx(control_msg(set_speed=0, accel_limits=(-0.1, -0.1))))
 
 
 if __name__ == "__main__":

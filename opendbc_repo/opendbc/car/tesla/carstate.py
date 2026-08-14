@@ -50,6 +50,9 @@ class CarState(CarStateBase):
     self.eac_status = None
     self.eac_error_code = 0
     self.das_control = None
+    self.das_control_nanos = 0
+    self.cruise_state = None
+    self.cruise_diagnostics = {}
     self.tesla_speed_units = "KPH"
     self.tesla_autopilot_active = False
     self.tesla_fused_speed_limit_kph = 0.0
@@ -107,6 +110,7 @@ class CarState(CarStateBase):
 
     # Cruise state
     cruise_state = self.can_define.dv["DI_state"]["DI_cruiseState"].get(int(cp_party.vl["DI_state"]["DI_cruiseState"]), None)
+    self.cruise_state = cruise_state
     speed_units = self.can_define.dv["DI_state"]["DI_speedUnits"].get(int(cp_party.vl["DI_state"]["DI_speedUnits"]), None)
     if speed_units in ("KPH", "MPH"):
       self.tesla_speed_units = speed_units
@@ -157,6 +161,41 @@ class CarState(CarStateBase):
 
     # Messages needed by carcontroller
     self.das_control = copy.copy(cp_ap_party.vl["DAS_control"])
+    self.das_control_nanos = int(cp_ap_party.ts_nanos["DAS_control"]["DAS_controlCounter"])
+    das_status2 = cp_ap_party.vl["DAS_status2"]
+    diagnostic_signals = {
+      "pmm_sys_fault": "DAS_pmmSysFaultReason",
+      "pmm_camera_fault": "DAS_pmmCameraFaultReason",
+      "pmm_radar_fault": "DAS_pmmRadarFaultReason",
+      "pmm_ultrasonics_fault": "DAS_pmmUltrasonicsFaultReason",
+      "acc_report": "DAS_ACC_report",
+      "activation_failure": "DAS_activationFailureStatus",
+      "obstacle_severity": "DAS_pmmObstacleSeverity",
+    }
+    self.cruise_diagnostics = {
+      "party_can_valid": bool(cp_party.can_valid),
+      "ap_party_can_valid": bool(cp_ap_party.can_valid),
+      "party_bus_timeout": bool(cp_party.bus_timeout),
+      "ap_party_bus_timeout": bool(cp_ap_party.bus_timeout),
+      "brake_pressed": bool(ret.brakePressed),
+      "gas_pressed": bool(ret.gasPressed),
+      "stock_aeb": bool(ret.stockAeb),
+      "v_ego": round(float(ret.vEgo), 3),
+      "a_ego": round(float(ret.aEgo), 3),
+      "oem_2b9_nanos": self.das_control_nanos,
+      "oem_2b9_state": int(self.das_control["DAS_accState"]),
+      "oem_2b9_aeb_event": int(self.das_control["DAS_aebEvent"]),
+      "oem_2b9_counter": int(self.das_control["DAS_controlCounter"]),
+      "oem_2b9_set_speed_kph": float(self.das_control["DAS_setSpeed"]),
+      "oem_2b9_accel_min": float(self.das_control["DAS_accelMin"]),
+      "oem_2b9_accel_max": float(self.das_control["DAS_accelMax"]),
+      "oem_2b9_jerk_min": float(self.das_control["DAS_jerkMin"]),
+      "oem_2b9_jerk_max": float(self.das_control["DAS_jerkMax"]),
+    }
+    for key, signal in diagnostic_signals.items():
+      raw = int(das_status2[signal])
+      self.cruise_diagnostics[f"{key}_raw"] = raw
+      self.cruise_diagnostics[key] = self.can_define.dv["DAS_status2"][signal].get(raw, f"UNKNOWN_{raw}")
 
     return ret
 

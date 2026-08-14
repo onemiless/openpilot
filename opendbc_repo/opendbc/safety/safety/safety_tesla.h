@@ -4,6 +4,10 @@
 
 static bool tesla_longitudinal = false;
 static bool tesla_stock_aeb = false;
+static bool tesla_stock_longitudinal_active = false;
+static bool tesla_longitudinal_cancel_pending = false;
+static bool tesla_longitudinal_handoff_pending = false;
+static uint8_t tesla_longitudinal_last_cp_counter = 0U;
 static bool tesla_turn_signal_test = false;
 static bool tesla_speed_sync = false;
 static bool tesla_mads_touch_pressed = false;
@@ -22,6 +26,7 @@ static bool tesla_turn_signal_session_timed_out = false;
 static const uint32_t TESLA_AUX_TEMPLATE_TIMEOUT_US = 1500000U;
 static const uint32_t TESLA_SPEED_SYNC_MIN_TX_INTERVAL_US = 250000U;
 static const uint32_t TESLA_TURN_SIGNAL_SESSION_TIMEOUT_US = 12000000U;
+static const uint8_t TESLA_LONGITUDINAL_HANDOFF_AEB_EVENT = 3U;
 static const uint8_t TESLA_TURN_SIGNAL_MAX_FRAMES = 64U;
 static const int TESLA_STEERING_DISENGAGE_TORQUE = 500;  // 5.0 Nm in 0.01 Nm units
 static const uint16_t TESLA_EPS_TEMP_FAULT_RECOVERY_FRAMES = 25U;  // 0.25 s at 100 Hz
@@ -30,6 +35,14 @@ static uint16_t tesla_eps_temp_fault_recovery_counter = 0U;
 
 static uint8_t tesla_body_controls_checksum(const CANPacket_t *msg) {
   uint16_t checksum = 0xE9U + 0x03U;
+  for (uint8_t i = 0U; i < 7U; i++) {
+    checksum += GET_BYTE(msg, i);
+  }
+  return checksum & 0xFFU;
+}
+
+static uint8_t tesla_longitudinal_checksum(const CANPacket_t *msg) {
+  uint16_t checksum = 0xB9U + 0x02U;
   for (uint8_t i = 0U; i < 7U; i++) {
     checksum += GET_BYTE(msg, i);
   }
@@ -121,6 +134,18 @@ static void tesla_rx_hook(const CANPacket_t *to_push) {
     if (tesla_longitudinal && (addr == 0x2b9)) {
       // "AEB_ACTIVE"
       tesla_stock_aeb = (GET_BYTE(to_push, 2) & 0x03U) == 1U;
+
+      // Restore OEM forwarding only on the exact valid counter following the
+      // last accepted CP cancel. This frame is then forwarded as the first OEM
+      // frame, avoiding both a duplicate source and a missing 0x2B9 interval.
+      const uint8_t stock_counter = GET_BYTE(to_push, 6) >> 5;
+      const uint8_t expected_counter = (tesla_longitudinal_last_cp_counter + 1U) % 8U;
+      const bool checksum_valid = tesla_longitudinal_checksum(to_push) == GET_BYTE(to_push, 7);
+      if (tesla_longitudinal_handoff_pending && checksum_valid && (stock_counter == expected_counter)) {
+        tesla_stock_longitudinal_active = true;
+        tesla_longitudinal_handoff_pending = false;
+        tesla_longitudinal_cancel_pending = false;
+      }
     }
   }
 
@@ -160,7 +185,7 @@ static void tesla_rx_hook(const CANPacket_t *to_push) {
   }
 
   bool stock_ecu_detected = (bus == 0) && ((addr == 0x488) || (addr == 0x27d) ||
-                            (tesla_longitudinal && (addr == 0x2b9)));
+                            (tesla_longitudinal && !tesla_stock_longitudinal_active && (addr == 0x2b9)));
   generic_rx_checks(stock_ecu_detected);
 }
 
@@ -208,8 +233,17 @@ static bool tesla_tx_hook(const CANPacket_t *to_send) {
 
   // DAS_control: longitudinal control message
   if (addr == 0x2b9) {
-    // No AEB events may be sent by openpilot
     int aeb_event = GET_BYTE(to_send, 2) & 0x03U;
+    // Event 3 is an internal ownership-release marker. Panda consumes it; it
+    // must never be transmitted onto the vehicle bus.
+    if (tesla_longitudinal && (aeb_event == TESLA_LONGITUDINAL_HANDOFF_AEB_EVENT)) {
+      const uint8_t handoff_counter = GET_BYTE(to_send, 6) >> 5;
+      if (tesla_longitudinal_cancel_pending && (handoff_counter == tesla_longitudinal_last_cp_counter)) {
+        tesla_longitudinal_handoff_pending = true;
+        tesla_longitudinal_cancel_pending = false;
+      }
+      return false;
+    }
     if (aeb_event != 0) {
       violation = true;
     }
@@ -217,8 +251,21 @@ static bool tesla_tx_hook(const CANPacket_t *to_send) {
     int raw_accel_max = ((GET_BYTE(to_send, 6) & 0x1FU) << 4) | (GET_BYTE(to_send, 5) >> 4);
     int raw_accel_min = ((GET_BYTE(to_send, 5) & 0x0FU) << 5) | (GET_BYTE(to_send, 4) >> 3);
     int acc_state = GET_BYTE(to_send, 1) >> 4;
+    const uint8_t tx_counter = GET_BYTE(to_send, 6) >> 5;
 
     if (tesla_longitudinal) {
+      const bool cp_takeover = tesla_stock_longitudinal_active && controls_allowed && (acc_state == 4);
+      const bool cp_control = !tesla_stock_longitudinal_active && !tesla_longitudinal_handoff_pending &&
+                              controls_allowed && (acc_state == 4);
+      const bool cp_cancel = !tesla_stock_longitudinal_active && (acc_state == 13);
+      if (!cp_takeover && !cp_control && !cp_cancel) {
+        violation = true;
+      }
+      if (cp_cancel && ((raw_accel_max != TESLA_LONG_LIMITS.inactive_accel) ||
+                        (raw_accel_min != TESLA_LONG_LIMITS.inactive_accel))) {
+        violation = true;
+      }
+
       // Don't send messages when the stock AEB system is active
       if (tesla_stock_aeb) {
         violation = true;
@@ -232,6 +279,15 @@ static bool tesla_tx_hook(const CANPacket_t *to_send) {
       // Don't allow any acceleration limits above the safety limits
       violation |= longitudinal_accel_checks(raw_accel_max, TESLA_LONG_LIMITS);
       violation |= longitudinal_accel_checks(raw_accel_min, TESLA_LONG_LIMITS);
+
+      if (!violation) {
+        if (cp_takeover) {
+          tesla_stock_longitudinal_active = false;
+        }
+        tesla_longitudinal_cancel_pending = cp_cancel;
+        tesla_longitudinal_handoff_pending = false;
+        tesla_longitudinal_last_cp_counter = tx_counter;
+      }
     } else {
       // does allowing cancel here disrupt stock AEB? TODO: find out and add safety or remove comment
       // Can only send cancel longitudinal messages when not controlling longitudinal
@@ -386,7 +442,7 @@ static int tesla_fwd_hook(int bus_num, int addr) {
     }
 
     // DAS_control
-    if (tesla_longitudinal && (addr == 0x2b9) && !tesla_stock_aeb) {
+    if (tesla_longitudinal && !tesla_stock_longitudinal_active && (addr == 0x2b9) && !tesla_stock_aeb) {
       block_msg = true;
     }
 
@@ -423,6 +479,10 @@ static safety_config tesla_init(uint16_t param) {
 #endif
 
   tesla_stock_aeb = false;
+  tesla_stock_longitudinal_active = tesla_longitudinal;
+  tesla_longitudinal_cancel_pending = false;
+  tesla_longitudinal_handoff_pending = false;
+  tesla_longitudinal_last_cp_counter = 0U;
   tesla_mads_touch_pressed = false;
   tesla_eps_temp_fault_active = false;
   tesla_eps_temp_fault_recovery_counter = 0U;

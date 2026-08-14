@@ -1,6 +1,8 @@
 import logging
 import math
 import time
+from collections import deque
+from enum import IntEnum
 
 import numpy as np
 from opendbc.can import CANPacker
@@ -9,16 +11,48 @@ from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.tesla.ars408_can import ARS408CAN, ARS408_FILTER_SIGNALS, ARS408_MOTION_INPUT_ENABLED
 from opendbc.car.tesla.ars408_log import get_ars408_logger
 from opendbc.car.tesla.coop_steering import CoopSteeringCarController
+from opendbc.car.tesla.cruise_diagnostics import classify_cruise_snapshot, decode_das_control_payload, is_cruise_failure_transition
 from opendbc.car.tesla.speed_sync_controller import SpeedSyncController
 from opendbc.car.tesla.teslacan import TeslaCAN
 from opendbc.car.tesla.turn_signal_controller import TurnSignalController
 from opendbc.car.tesla.values import CarControllerParams, TeslaFlags
 from opendbc.car.vehicle_model import VehicleModel
 from openpilot.common.params import Params
+from openpilot.common.swaglog import cloudlog
 
 log = logging.getLogger(__name__)
 radar_log = get_ars408_logger("card")
 ARS408_REQUEST_TTL_MS = 30 * 60 * 1000
+TESLA_LONGITUDINAL_OEM_FRESHNESS_NS = 200_000_000
+TESLA_LONGITUDINAL_HANDOFF_SETTLE_NS = 400_000_000
+
+
+class LongitudinalAction(IntEnum):
+  NONE = 0
+  CONTROL = 1
+  CANCEL = 2
+  RELEASE = 3
+
+
+class TeslaLongitudinalOwnership:
+  """Sequence CP control, one cancel frame, then an internal OEM handoff marker."""
+
+  def __init__(self):
+    self.cp_active = False
+    self.release_pending = False
+
+  def update(self, long_active: bool, cancel: bool) -> LongitudinalAction:
+    if self.release_pending:
+      self.release_pending = False
+      return LongitudinalAction.RELEASE
+    if self.cp_active and (cancel or not long_active):
+      self.cp_active = False
+      self.release_pending = True
+      return LongitudinalAction.CANCEL
+    if long_active and not cancel:
+      self.cp_active = True
+      return LongitudinalAction.CONTROL
+    return LongitudinalAction.NONE
 
 
 class CarController(CarControllerBase):
@@ -50,6 +84,14 @@ class CarController(CarControllerBase):
     self.speed_sync_controller = SpeedSyncController(bool(CP.flags & TeslaFlags.SPEED_SYNC))
     self.speed_sync_target_mps = 0.0
     self.speed_sync_target_valid = False
+    self.longitudinal_ownership = TeslaLongitudinalOwnership()
+    self.longitudinal_counter = None
+    self.longitudinal_handoff_nanos = 0
+    self._cruise_state_prev = None
+    self._cruise_diag_history = deque(maxlen=50)
+    self._last_long_tx = {}
+    self._last_vehicle_long_tx_nanos = 0
+    self._last_cp_tx_counter = None
     log.info("Tesla cooperative steering configured enabled=%d", int(self.coop_steering_enabled))
     radar_log.info("ARS408 motion input configured enabled=%d bus=1 rate_hz=20", int(self.radar_motion_enabled))
 
@@ -315,6 +357,121 @@ class CarController(CarControllerBase):
     self.apply_angle_last = coop_steering.steeringAngleDeg
     return self.apply_angle_last, coop_steering.lat_active
 
+  def update_longitudinal_control(self, CC, CS, cruise_cancel, now_nanos):
+    if not self.CP.openpilotLongitudinalControl:
+      if not cruise_cancel:
+        return []
+      cntr = (CS.das_control["DAS_controlCounter"] + 1) % 8
+      command = self.tesla_can.create_longitudinal_command(13, 0, cntr, CS.out.vEgo, False)
+      self._record_longitudinal_tx("cancel", command, now_nanos)
+      return [command]
+
+    if self.frame % 4 != 0:
+      return []
+
+    if self.longitudinal_handoff_nanos:
+      if now_nanos < self.longitudinal_handoff_nanos or \
+         now_nanos - self.longitudinal_handoff_nanos < TESLA_LONGITUDINAL_HANDOFF_SETTLE_NS:
+        return []
+      self.longitudinal_handoff_nanos = 0
+
+    das_control_nanos = int(getattr(CS, "das_control_nanos", 0))
+    oem_state_fresh = (das_control_nanos > 0 and now_nanos >= das_control_nanos and
+                       now_nanos - das_control_nanos <= TESLA_LONGITUDINAL_OEM_FRESHNESS_NS)
+    # Fresh OEM data is required to acquire the stream. Once CP owns it, a
+    # short parser gap must not cause an uncommanded source switch.
+    long_active = (CC.longActive and not CS.out.brakePressed and
+                   (self.longitudinal_ownership.cp_active or oem_state_fresh))
+    action = self.longitudinal_ownership.update(long_active, cruise_cancel)
+
+    if action == LongitudinalAction.CONTROL:
+      if self.longitudinal_counter is None:
+        self.longitudinal_counter = int(CS.das_control["DAS_controlCounter"])
+        self.tesla_can.reset_longitudinal_jerk()
+      self.longitudinal_counter = (self.longitudinal_counter + 1) % 8
+      accel = float(np.clip(CC.actuators.accel, CarControllerParams.ACCEL_MIN, CarControllerParams.ACCEL_MAX))
+      command = self.tesla_can.create_longitudinal_command(4, accel, self.longitudinal_counter, CS.out.vEgo, True)
+      self._record_longitudinal_tx("control", command, now_nanos)
+      return [command]
+
+    if action == LongitudinalAction.CANCEL:
+      self.longitudinal_counter = (self.longitudinal_counter + 1) % 8
+      self.tesla_can.reset_longitudinal_jerk()
+      command = self.tesla_can.create_longitudinal_command(13, 0, self.longitudinal_counter, CS.out.vEgo, False)
+      self._record_longitudinal_tx("cancel", command, now_nanos)
+      return [command]
+
+    if action == LongitudinalAction.RELEASE:
+      handoff_counter = self.longitudinal_counter
+      self.longitudinal_counter = None
+      self.longitudinal_handoff_nanos = now_nanos
+      command = self.tesla_can.create_stock_longitudinal_handoff(CS.das_control, handoff_counter)
+      self._record_longitudinal_tx("handoff_marker", command, now_nanos)
+      self._last_cp_tx_counter = None
+      self._last_vehicle_long_tx_nanos = 0
+      return [command]
+
+    return []
+
+  def _record_longitudinal_tx(self, kind, command, now_nanos):
+    payload = decode_das_control_payload(bytes(command[1]))
+    vehicle_candidate = payload["tx_aeb_event"] == 0
+    previous_tx_nanos = getattr(self, "_last_vehicle_long_tx_nanos", 0)
+    tx_interval_ms = None
+    if vehicle_candidate:
+      if previous_tx_nanos and now_nanos >= previous_tx_nanos:
+        tx_interval_ms = round((now_nanos - previous_tx_nanos) / 1e6, 3)
+      self._last_vehicle_long_tx_nanos = now_nanos
+
+    counter_gap = False
+    if vehicle_candidate:
+      previous_counter = getattr(self, "_last_cp_tx_counter", None)
+      if previous_counter is not None:
+        counter_gap = payload["tx_counter"] != (previous_counter + 1) % 8
+      self._last_cp_tx_counter = payload["tx_counter"]
+
+    self._last_long_tx = {
+      "tx_kind": kind,
+      "tx_interval_ms": tx_interval_ms,
+      "tx_counter_gap": counter_gap,
+      "tx_attempted_nanos": now_nanos,
+      **payload,
+    }
+
+  def _cruise_diagnostic_snapshot(self, CC, CS, now_nanos):
+    snapshot = dict(getattr(CS, "cruise_diagnostics", {}))
+    snapshot.update({
+      "frame": self.frame,
+      "now_nanos": now_nanos,
+      "cruise_state": getattr(CS, "cruise_state", None),
+      "cc_enabled": bool(CC.enabled),
+      "cc_long_active": bool(CC.longActive),
+      "cc_lat_active": bool(CC.latActive),
+      "cc_cancel": bool(CC.cruiseControl.cancel),
+      "cp_2b9_active": bool(self.longitudinal_ownership.cp_active),
+      "cp_2b9_release_pending": bool(self.longitudinal_ownership.release_pending),
+    })
+    snapshot.update(self._last_long_tx)
+    if self._last_long_tx:
+      snapshot["tx_attempt_age_ms"] = round((now_nanos - self._last_long_tx["tx_attempted_nanos"]) / 1e6, 1)
+    return snapshot
+
+  def log_cruise_diagnostic(self, CC, CS, now_nanos):
+    snapshot = self._cruise_diagnostic_snapshot(CC, CS, now_nanos)
+    current = snapshot["cruise_state"]
+    previous = getattr(self, "_cruise_state_prev", None)
+    transition = current != previous
+    if self.frame % 4 == 0 or transition:
+      self._cruise_diag_history.append(snapshot)
+    if is_cruise_failure_transition(previous, current):
+      classification = classify_cruise_snapshot(snapshot)
+      cloudlog.event("tesla.cruise_fault_diagnostic", error=True,
+                     previous_state=previous, current_state=current,
+                     classification=classification, history=list(self._cruise_diag_history))
+      log.error("Tesla cruise fault %s->%s classification=%s tx=%s",
+                previous, current, classification, self._last_long_tx)
+    self._cruise_state_prev = current
+
   def update(self, CC, CS, now_nanos):
     actuators = CC.actuators
     can_sends = []
@@ -363,19 +520,8 @@ class CarController(CarControllerBase):
     if self.frame % 10 == 0:
       can_sends.append(self.tesla_can.create_steering_allowed((self.frame // 10) % 16))
 
-    # Longitudinal control
-    if self.CP.openpilotLongitudinalControl:
-      if self.frame % 4 == 0:
-        state = 13 if cruise_cancel else 4  # 4=ACC_ON, 13=ACC_CANCEL_GENERIC_SILENT
-        accel = float(np.clip(actuators.accel, CarControllerParams.ACCEL_MIN, CarControllerParams.ACCEL_MAX))
-        cntr = (self.frame // 4) % 8
-        can_sends.append(self.tesla_can.create_longitudinal_command(state, accel, cntr, CS.out.vEgo, CC.longActive))
-
-    else:
-      # Increment counter so cancel is prioritized even without openpilot longitudinal
-      if cruise_cancel:
-        cntr = (CS.das_control["DAS_controlCounter"] + 1) % 8
-        can_sends.append(self.tesla_can.create_longitudinal_command(13, 0, cntr, CS.out.vEgo, False))
+    can_sends.extend(self.update_longitudinal_control(CC, CS, cruise_cancel, now_nanos))
+    self.log_cruise_diagnostic(CC, CS, now_nanos)
 
     can_sends.extend(self.speed_sync_controller.update(
       CC, CS, self.speed_sync_target_mps, self.speed_sync_target_valid, now_nanos,
