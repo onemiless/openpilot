@@ -65,8 +65,9 @@ omx_available = find_library("OmxCore") is not None or any(os.path.exists(path) 
 disable_screenrecorder = is_running_on_wsl2() or arch == "Darwin" or not omx_available
 if disable_screenrecorder:
   qt_env.Append(CXXFLAGS=['-DDISABLE_SCREENRECORDER'])
-  base_libs.remove('OmxCore')
-  qt_libs.remove('OmxCore')
+  for lib in ('OmxCore', 'avformat', 'avcodec', 'avutil'):
+    base_libs.remove(lib)
+    qt_libs.remove(lib)
   qt_src.remove("qt/screenrecorder/screenrecorder.cc")
   qt_src.remove("qt/screenrecorder/omx_encoder.cc")
   print("Screen Recorder disabled: OpenMAX is unavailable on this build platform")

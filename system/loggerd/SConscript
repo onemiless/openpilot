@@ -1,7 +1,6 @@
-Import('env', 'arch', 'messaging', 'common', 'visionipc')
+Import('env', 'arch', 'messaging', 'common', 'visionipc', 'ffmpeg_libs')
 
-libs = [common, messaging, visionipc,
-        'avformat', 'avcodec', 'avutil',
+libs = [common, messaging, visionipc] + ffmpeg_libs + [
         'yuv', 'OpenCL', 'pthread', 'zstd']
 
 src = ['logger.cc', 'zstd_writer.cc', 'video_writer.cc', 'encoder/encoder.cc', 'encoder/v4l_encoder.cc', 'encoder/jpeg_encoder.cc']

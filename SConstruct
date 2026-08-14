@@ -100,6 +100,7 @@ for build_path_env in ("PARAMS_ROOT", "CACHEDB"):
     lenv[build_path_env] = os.environ[build_path_env]
 
 rpath = lenv["LD_LIBRARY_PATH"].copy()
+ffmpeg_libs = ["avformat", "avcodec", "avutil"]
 
 if arch == "larch64":
   # AGNOS packages native dependencies in the system Python environment.
@@ -109,6 +110,10 @@ if arch == "larch64":
 
   agnos_pkg_names = ["bzip2", "capnproto", "eigen", "ffmpeg", "ncurses", "zeromq", "zstd"]
   agnos_pkgs = [importlib.import_module(name) for name in agnos_pkg_names]
+  ffmpeg_pkg = agnos_pkgs[agnos_pkg_names.index("ffmpeg")]
+  ffmpeg_shared = any(name.startswith("libavcodec.so") for name in os.listdir(ffmpeg_pkg.LIB_DIR))
+  if not ffmpeg_shared:
+    ffmpeg_libs += ["x264", "z", "va", "va-drm", "drm"]
 
   cpppath = [
     "#third_party/opencl/include",
@@ -342,7 +347,7 @@ if GetOption("clazy"):
   qt_env['ENV']['CLAZY_IGNORE_DIRS'] = qt_dirs[0]
   qt_env['ENV']['CLAZY_CHECKS'] = ','.join(checks)
 
-Export('env', 'qt_env', 'arch', 'real_arch')
+Export('env', 'qt_env', 'arch', 'real_arch', 'ffmpeg_libs')
 
 # Build common module
 SConscript(['common/SConscript'])
