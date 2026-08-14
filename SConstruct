@@ -109,10 +109,19 @@ if arch == "larch64":
   import importlib
 
   agnos_pkg_names = ["bzip2", "capnproto", "eigen", "ffmpeg", "ncurses", "zeromq", "zstd"]
-  agnos_pkgs = [importlib.import_module(name) for name in agnos_pkg_names]
-  ffmpeg_pkg = agnos_pkgs[agnos_pkg_names.index("ffmpeg")]
-  ffmpeg_shared = any(name.startswith("libavcodec.so") for name in os.listdir(ffmpeg_pkg.LIB_DIR))
-  if not ffmpeg_shared:
+  agnos_pkgs = []
+  for name in agnos_pkg_names:
+    try:
+      agnos_pkgs.append(importlib.import_module(name))
+    except ModuleNotFoundError as exc:
+      if exc.name != name:
+        raise
+      # AGNOS 12.4 provides these dependencies through the legacy system
+      # include/library paths instead of Python packages.
+      pass
+
+  ffmpeg_pkg = next((pkg for pkg in agnos_pkgs if pkg.__name__ == "ffmpeg"), None)
+  if ffmpeg_pkg is not None and not any(name.startswith("libavcodec.so") for name in os.listdir(ffmpeg_pkg.LIB_DIR)):
     ffmpeg_libs += ["x264", "z", "va", "va-drm", "drm"]
 
   cpppath = [
