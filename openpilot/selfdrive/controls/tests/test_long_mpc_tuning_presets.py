@@ -1,12 +1,12 @@
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.tuning_presets import (
-  MPC_PRESET_CURRENT, MPC_PRESET_CUSTOM, MPC_PRESET_MOUMOU, MPC_PRESETS, MPC_TUNING_KEYS, apply_preset, get_preset_values,
-  save_preset_values,
+  MPC_OFFICIAL_VALUES, MPC_PROFILE_CURRENT, MPC_PROFILE_CUSTOM, MPC_PROFILE_DEFAULT, MPC_PROFILES, MPC_TUNING_KEYS,
+  apply_profile, get_profile_values, save_profile_values,
 )
 
 
 class FakeParams:
   def __init__(self, values=None):
-    self.values = dict(values or {})
+    self.values = values or {}
 
   def get(self, key, return_default=False):
     del return_default
@@ -17,41 +17,31 @@ class FakeParams:
     self.values[key] = value
 
 
-def test_builtin_presets_apply_all_live_values() -> None:
+def test_default_profile_is_official_and_can_store_tuning():
   params = FakeParams()
-
-  values = apply_preset(params, MPC_PRESET_CURRENT)
-
-  assert values == MPC_PRESETS[MPC_PRESET_CURRENT]
-  assert params.values["MpcTuningPreset"] == MPC_PRESET_CURRENT
-  assert {key: params.values[key] for key in MPC_TUNING_KEYS} == values
+  assert get_profile_values(params, MPC_PROFILE_DEFAULT) == MPC_OFFICIAL_VALUES
+  tuned = {**MPC_OFFICIAL_VALUES, "MpcJerkCost": 650}
+  save_profile_values(params, MPC_PROFILE_DEFAULT, tuned)
+  assert get_profile_values(params, MPC_PROFILE_DEFAULT)["MpcJerkCost"] == 650
 
 
-def test_saved_preset_values_override_only_known_keys() -> None:
-  params = FakeParams({
-    "MpcTuningMoumouValues": '{"MpcStopDistance": 725, "unknown": 1}',
-  })
-
-  values = get_preset_values(params, MPC_PRESET_MOUMOU)
-
-  assert values["MpcStopDistance"] == 725
-  assert "unknown" not in values
-  assert values["MpcComfortBrake"] == MPC_PRESETS[MPC_PRESET_MOUMOU]["MpcComfortBrake"]
+def test_apply_current_profile_updates_live_values_and_selector():
+  params = FakeParams()
+  values = apply_profile(params, MPC_PROFILE_CURRENT)
+  assert values == MPC_PROFILES[MPC_PROFILE_CURRENT]
+  assert params.values["MpcTuningProfile"] == MPC_PROFILE_CURRENT
+  assert all(params.values[key] == value for key, value in values.items())
 
 
-def test_custom_preset_preserves_current_live_values() -> None:
+def test_custom_profile_reads_live_values():
   live_values = {key: index + 100 for index, key in enumerate(MPC_TUNING_KEYS)}
-  params = FakeParams(live_values)
-
-  assert apply_preset(params, MPC_PRESET_CUSTOM) == live_values
-  assert {key: params.values[key] for key in MPC_TUNING_KEYS} == live_values
-  assert params.values["MpcTuningPreset"] == MPC_PRESET_CUSTOM
+  params = FakeParams(live_values.copy())
+  assert apply_profile(params, MPC_PROFILE_CUSTOM) == live_values
+  assert params.values["MpcTuningProfile"] == MPC_PROFILE_CUSTOM
 
 
-def test_custom_values_are_not_saved_over_builtin_presets() -> None:
+def test_custom_profile_has_no_separate_saved_blob():
   live_values = {key: index + 100 for index, key in enumerate(MPC_TUNING_KEYS)}
-  params = FakeParams(live_values)
-
-  save_preset_values(params, MPC_PRESET_CUSTOM, live_values)
-
-  assert set(params.values) == set(MPC_TUNING_KEYS)
+  params = FakeParams()
+  save_profile_values(params, MPC_PROFILE_CUSTOM, live_values)
+  assert params.values == {}

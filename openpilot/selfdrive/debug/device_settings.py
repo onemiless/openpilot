@@ -14,7 +14,10 @@ from pathlib import Path
 from typing import Any
 
 from openpilot.common.params import Params
-from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.tuning_presets import apply_preset
+from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.modes import LONGITUDINAL_PLANNER_OFFICIAL, get_longitudinal_planner_mode
+from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.tuning_presets import (
+  apply_profile, get_mpc_tuning_profile, get_profile_values, save_profile_values,
+)
 
 
 SETTINGS_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "sunnypilot" / "sunnylink" / "settings_ui.json"
@@ -111,12 +114,12 @@ def _translate_option(text: str, key: str) -> str:
     return f"{match.group(1)} 小时"
   if text == "30h (Default)":
     return "30 小时（默认）"
-  if text == "Moumou":
-    return "Moumou 预设"
+  if text == "CrazyMax":
+    return "CrazyMax"
   return text
 
 # These controls are user settings in this branch but have no SunnyLink schema
-# entry.  Only MPC values are allowed onroad: the MPC reloads them at runtime.
+# entry. Planner/profile selection and tuning are intentionally settings-mode only.
 EXTRA_SETTINGS: tuple[dict[str, Any], ...] = (
   {"key": "TeslaApHybrid", "widget": "toggle", "title": "Tesla AP 混合控制", "category": "Tesla", "group": "Tesla", "offroad_only": True},
   {"key": "TeslaDynamicApLongitudinal", "widget": "toggle", "title": "Tesla 动态 AP 纵向", "group": "Tesla", "offroad_only": True},
@@ -128,18 +131,19 @@ EXTRA_SETTINGS: tuple[dict[str, Any], ...] = (
   {"key": "TeslaMadsScreenButton", "widget": "toggle", "title": "Tesla MADS 屏幕按钮", "group": "Tesla", "offroad_only": True},
   {"key": "TeslaTouchLongitudinalSwitch", "widget": "toggle", "title": "4指触摸切换原车ACC", "group": "Tesla", "offroad_only": True},
   {"key": "TeslaTurnSignalValidation", "widget": "toggle", "title": "启用 Tesla 转向 CAN 测试", "category": "Developer", "group": "Tesla 测试", "offroad_only": True},
-  {"key": "MpcTuningPreset", "widget": "multiple_button", "title": "纵向 MPC 预设", "group": "纵向 MPC", "options": [{"value": 0, "label": "Moumou"}, {"value": 1, "label": "当前"}, {"value": 2, "label": "自定义"}], "offroad_only": False},
+  {"key": "LongitudinalPlannerMode", "widget": "multiple_button", "title": "纵向规划器", "group": "纵向 MPC", "options": [{"value": 0, "label": "Official（默认）"}, {"value": 1, "label": "Local"}], "offroad_only": True},
+  {"key": "MpcTuningProfile", "widget": "multiple_button", "title": "MPC 参数方案", "group": "纵向 MPC", "options": [{"value": 0, "label": "Default（官方参数）"}, {"value": 1, "label": "CrazyMax"}, {"value": 2, "label": "Current"}, {"value": 3, "label": "Custom"}], "offroad_only": True},
 )
 
 MPC_FIELDS = (
-  ("MpcXObstacleCost", "障碍物代价", 0, 1000, 1),
-  ("MpcJerkCost", "加加速度代价", 0, 2000, 1),
-  ("MpcAccelChangeCost", "加速度变化代价", 0, 50000, 100),
-  ("MpcDangerZoneCost", "危险区代价", 0, 50000, 100),
-  ("MpcLeadDangerFactor", "前车危险系数", 0, 300, 1),
-  ("MpcComfortBrake", "舒适制动", 0, 600, 1),
-  ("MpcStopDistance", "停车距离", 0, 2000, 10),
-  ("MpcJerkFactorStandard", "标准跟车加加速度系数", 0, 300, 1),
+  ("MpcXObstacleCost", "障碍物代价", 1, 1000, 1),
+  ("MpcJerkCost", "加加速度代价", 1, 1000, 1),
+  ("MpcAccelChangeCost", "加速度变化代价", 1, 50000, 1),
+  ("MpcDangerZoneCost", "危险区代价", 1, 50000, 1),
+  ("MpcLeadDangerFactor", "前车危险系数", 1, 500, 1),
+  ("MpcComfortBrake", "舒适制动", 50, 500, 1),
+  ("MpcStopDistance", "停车距离", 100, 1200, 10),
+  ("MpcJerkFactorStandard", "标准跟车加加速度系数", 1, 300, 1),
   ("MpcTFollowRelaxed", "舒适跟车时距", 50, 400, 1),
   ("MpcTFollowStandard", "标准跟车时距", 50, 400, 1),
   ("MpcTFollowAggressive", "激进跟车时距", 50, 400, 1),
@@ -201,7 +205,7 @@ def get_settings(brand: str | None = None) -> dict[str, dict[str, Any]]:
   settings.extend(EXTRA_SETTINGS)
   settings.extend({
     "key": key, "widget": "option", "title": title, "category": "纵向 MPC", "group": "纵向 MPC", "min": minimum, "max": maximum,
-    "step": step, "unit": "原始整数值", "offroad_only": False,
+    "step": step, "unit": "原始整数值", "offroad_only": True,
   } for key, title, minimum, maximum, step in MPC_FIELDS)
   # Duplicate keys in a nested schema are harmless; retain the first canonical definition.
   for setting in settings:
@@ -243,7 +247,9 @@ def _read_value(params: Params, setting: dict[str, Any]) -> bool | int | float |
 def settings_snapshot(params: Params | None = None) -> dict[str, Any]:
   params = params or Params()
   settings = get_settings(_current_brand(params))
-  visible_settings = [{**setting, "value": _read_value(params, setting), "order": order}
+  official_planner = get_longitudinal_planner_mode(params) == LONGITUDINAL_PLANNER_OFFICIAL
+  visible_settings = [{**setting, "value": _read_value(params, setting), "order": order,
+                       "enabled": not (official_planner and setting["key"] in {"MpcComfortBrake", "MpcStopDistance"})}
                       for order, setting in enumerate(settings.values())]
   return {
     "onroad": not params.get_bool("IsOffroad"),
@@ -259,6 +265,8 @@ def validate_and_write(key: str, value: Any, params: Params | None = None) -> di
     raise KeyError(key)
   if setting["offroad_only"] and not params.get_bool("IsOffroad"):
     raise PermissionError("该设置只能在停车后的设置模式修改")
+  if key in {"MpcComfortBrake", "MpcStopDistance"} and get_longitudinal_planner_mode(params) == LONGITUDINAL_PLANNER_OFFICIAL:
+    raise PermissionError("官方规划器中该参数固定在求解器内，请切换到 Local 规划器后修改")
 
   if setting["widget"] == "toggle":
     if not isinstance(value, bool):
@@ -285,8 +293,12 @@ def validate_and_write(key: str, value: Any, params: Params | None = None) -> di
     step = setting.get("step")
     if step and minimum is not None and abs(round((value - minimum) / step) * step - (value - minimum)) > 1e-9:
       raise ValueError(f"数值必须按 {step} 递增")
-    if key == "MpcTuningPreset":
-      apply_preset(params, int(value))
-    else:
-      params.put(key, value, block=True)
+    if key == "MpcTuningProfile":
+      apply_profile(params, int(value))
+    params.put(key, value, block=True)
+    if key in {field[0] for field in MPC_FIELDS}:
+      profile = get_mpc_tuning_profile(params)
+      profile_values = get_profile_values(params, profile)
+      profile_values[key] = int(value)
+      save_profile_values(params, profile, profile_values)
   return {**setting, "value": _read_value(params, setting)}

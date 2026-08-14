@@ -17,21 +17,21 @@ from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.tuning_presets import
 if __name__ == '__main__':  # generating code
   from acados.acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 else:
-  from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.c_generated_code.acados_ocp_solver_pyx import AcadosOcpSolverCython
+  from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.c_generated_code_official.acados_ocp_solver_pyx import AcadosOcpSolverCython
 
 from casadi import SX, vertcat
 
-MODEL_NAME = 'long'
+MODEL_NAME = 'long_official'
 LONG_MPC_DIR = os.path.dirname(os.path.abspath(__file__))
-EXPORT_DIR = os.path.join(LONG_MPC_DIR, "c_generated_code")
-JSON_FILE = os.path.join(LONG_MPC_DIR, "acados_ocp_long.json")
+EXPORT_DIR = os.path.join(LONG_MPC_DIR, "c_generated_code_official")
+JSON_FILE = os.path.join(LONG_MPC_DIR, "acados_ocp_long_official.json")
 
 LongitudinalPlanSource = log.LongitudinalPlan.LongitudinalPlanSource
-MPC_SOURCES = (LongitudinalPlanSource.lead0, LongitudinalPlanSource.lead1)
+MPC_SOURCES = (LongitudinalPlanSource.lead0, LongitudinalPlanSource.lead1, LongitudinalPlanSource.cruise)
 
 X_DIM = 3
 U_DIM = 1
-PARAM_DIM = 8
+PARAM_DIM = 6
 COST_E_DIM = 5
 COST_DIM = COST_E_DIM + 1
 CONSTR_DIM = 4
@@ -59,36 +59,32 @@ FCW_IDXS = T_IDXS < 5.0
 T_DIFFS = np.diff(T_IDXS, prepend=[0.])
 COMFORT_BRAKE = 2.5
 STOP_DISTANCE = 6.0
+CRUISE_MIN_ACCEL = -1.2
+CRUISE_MAX_ACCEL = 1.6
 MIN_X_LEAD_FACTOR = 0.5
-
 MPC_TUNING_SCALE = 100.0
 
 
 @dataclass(frozen=True)
-class LongMpcTuning:
+class OfficialLongMpcTuning:
   x_ego_obstacle_cost: float = X_EGO_OBSTACLE_COST
   j_ego_cost: float = J_EGO_COST
   a_change_cost: float = A_CHANGE_COST
   danger_zone_cost: float = DANGER_ZONE_COST
   lead_danger_factor: float = LEAD_DANGER_FACTOR
-  comfort_brake: float = COMFORT_BRAKE
-  stop_distance: float = STOP_DISTANCE
   jerk_factor_standard: float = 1.0
   t_follow_relaxed: float = 1.75
   t_follow_standard: float = 1.45
   t_follow_aggressive: float = 1.25
 
 
-DEFAULT_LONG_MPC_TUNING = LongMpcTuning()
-
-MPC_TUNING_PARAMS = {
+DEFAULT_OFFICIAL_LONG_MPC_TUNING = OfficialLongMpcTuning()
+OFFICIAL_MPC_TUNING_PARAMS = {
   "MpcXObstacleCost": ("x_ego_obstacle_cost", 1, 1000),
   "MpcJerkCost": ("j_ego_cost", 1, 1000),
   "MpcAccelChangeCost": ("a_change_cost", 1, 50000),
   "MpcDangerZoneCost": ("danger_zone_cost", 1, 50000),
   "MpcLeadDangerFactor": ("lead_danger_factor", 1, 500),
-  "MpcComfortBrake": ("comfort_brake", 50, 500),
-  "MpcStopDistance": ("stop_distance", 100, 1200),
   "MpcJerkFactorStandard": ("jerk_factor_standard", 1, 300),
   "MpcTFollowRelaxed": ("t_follow_relaxed", 50, 400),
   "MpcTFollowStandard": ("t_follow_standard", 50, 400),
@@ -96,28 +92,26 @@ MPC_TUNING_PARAMS = {
 }
 
 
-def read_long_mpc_tuning(params=None):
-  params = params or Params()
-  profile_values = get_profile_values(params)
+def read_official_long_mpc_tuning(params=None):
+  profile_values = get_profile_values(params or Params())
   values = {}
-  for key, (field, min_value, max_value) in MPC_TUNING_PARAMS.items():
-    raw = profile_values.get(key, int(getattr(DEFAULT_LONG_MPC_TUNING, field) * MPC_TUNING_SCALE))
+  for key, (field, min_value, max_value) in OFFICIAL_MPC_TUNING_PARAMS.items():
+    raw = profile_values.get(key, int(getattr(DEFAULT_OFFICIAL_LONG_MPC_TUNING, field) * MPC_TUNING_SCALE))
     values[field] = max(min_value, min(max_value, int(raw))) / MPC_TUNING_SCALE
-  return LongMpcTuning(**values)
+  return OfficialLongMpcTuning(**values)
 
-
-def get_jerk_factor(personality=log.LongitudinalPersonality.standard, tuning=DEFAULT_LONG_MPC_TUNING):
+def get_jerk_factor(personality=log.LongitudinalPersonality.standard, tuning=DEFAULT_OFFICIAL_LONG_MPC_TUNING):
   if personality==log.LongitudinalPersonality.relaxed:
-    return 1.0
-  elif personality==log.LongitudinalPersonality.standard:
     return tuning.jerk_factor_standard
+  elif personality==log.LongitudinalPersonality.standard:
+    return 1.0
   elif personality==log.LongitudinalPersonality.aggressive:
     return 0.5
   else:
     raise NotImplementedError("Longitudinal personality not supported")
 
 
-def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, tuning=DEFAULT_LONG_MPC_TUNING):
+def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, tuning=DEFAULT_OFFICIAL_LONG_MPC_TUNING):
   if personality==log.LongitudinalPersonality.relaxed:
     return tuning.t_follow_relaxed
   elif personality==log.LongitudinalPersonality.standard:
@@ -127,11 +121,11 @@ def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, tuning=DEFAUL
   else:
     raise NotImplementedError("Longitudinal personality not supported")
 
-def get_stopped_equivalence_factor(v_lead, comfort_brake=COMFORT_BRAKE):
-  return (v_lead**2) / (2 * comfort_brake)
+def get_stopped_equivalence_factor(v_lead):
+  return (v_lead**2) / (2 * COMFORT_BRAKE)
 
-def get_safe_obstacle_distance(v_ego, t_follow, comfort_brake=COMFORT_BRAKE, stop_distance=STOP_DISTANCE):
-  return (v_ego**2) / (2 * comfort_brake) + t_follow * v_ego + stop_distance
+def get_safe_obstacle_distance(v_ego, t_follow):
+  return (v_ego**2) / (2 * COMFORT_BRAKE) + t_follow * v_ego + STOP_DISTANCE
 
 def gen_long_model():
   model = AcadosModel()
@@ -158,9 +152,7 @@ def gen_long_model():
   a_prev = SX.sym('a_prev')
   lead_t_follow = SX.sym('lead_t_follow')
   lead_danger_factor = SX.sym('lead_danger_factor')
-  comfort_brake = SX.sym('comfort_brake')
-  stop_distance = SX.sym('stop_distance')
-  model.p = vertcat(a_min, a_max, x_obstacle, a_prev, lead_t_follow, lead_danger_factor, comfort_brake, stop_distance)
+  model.p = vertcat(a_min, a_max, x_obstacle, a_prev, lead_t_follow, lead_danger_factor)
 
   # dynamics model
   f_expl = vertcat(v_ego, a_ego, j_ego)
@@ -195,13 +187,11 @@ def gen_long_ocp():
   a_prev = ocp.model.p[3]
   lead_t_follow = ocp.model.p[4]
   lead_danger_factor = ocp.model.p[5]
-  comfort_brake = ocp.model.p[6]
-  stop_distance = ocp.model.p[7]
 
   ocp.cost.yref = np.zeros((COST_DIM, ))
   ocp.cost.yref_e = np.zeros((COST_E_DIM, ))
 
-  desired_dist_comfort = get_safe_obstacle_distance(v_ego, lead_t_follow, comfort_brake, stop_distance)
+  desired_dist_comfort = get_safe_obstacle_distance(v_ego, lead_t_follow)
 
   # The main cost in normal operation is how close you are to the "desired" distance
   # from an obstacle at every timestep. This obstacle can be a lead car
@@ -227,7 +217,7 @@ def gen_long_ocp():
 
   x0 = np.zeros(X_DIM)
   ocp.constraints.x0 = x0
-  ocp.parameter_values = np.array([-1.2, 1.2, 0.0, 0.0, get_T_FOLLOW(), LEAD_DANGER_FACTOR, COMFORT_BRAKE, STOP_DISTANCE])
+  ocp.parameter_values = np.array([-1.2, 1.2, 0.0, 0.0, get_T_FOLLOW(), LEAD_DANGER_FACTOR])
 
 
   # We put all constraint cost weights to 0 and only set them at runtime
@@ -269,10 +259,10 @@ class LongitudinalMpc:
     self.dt = dt
     self.solver = AcadosOcpSolverCython(MODEL_NAME, ACADOS_SOLVER_TYPE, N)
     self.params_reader = Params()
-    self.tuning = read_long_mpc_tuning(self.params_reader)
+    self.tuning = read_official_long_mpc_tuning(self.params_reader)
     self.last_tuning_update_t = 0.0
     self.reset()
-    self.source = LongitudinalPlanSource.lead0
+    self.source = LongitudinalPlanSource.cruise
 
   def reset(self):
     self.solver.reset()
@@ -294,7 +284,6 @@ class LongitudinalMpc:
       self.solver.set(i, 'x', np.zeros(X_DIM))
 
     self.last_cloudlog_t = 0
-    self.status = False
     self.crash_cnt = 0.0
     self.solution_status = 0
     # timers
@@ -306,10 +295,7 @@ class LongitudinalMpc:
     t = time.monotonic()
     if not force and t < self.last_tuning_update_t + PARAMS_UPDATE_PERIOD:
       return
-
-    tuning = read_long_mpc_tuning(self.params_reader)
-    if tuning != self.tuning:
-      self.tuning = tuning
+    self.tuning = read_official_long_mpc_tuning(self.params_reader)
     self.last_tuning_update_t = t
 
   def set_cost_weights(self, cost_weights, constraint_cost_weights):
@@ -376,10 +362,10 @@ class LongitudinalMpc:
     lead_xv = self.extrapolate_lead(x_lead, v_lead, a_lead, a_lead_tau)
     return lead_xv
 
-  def update(self, radarstate, personality=log.LongitudinalPersonality.standard):
+  def update(self, radarstate, v_cruise, personality=log.LongitudinalPersonality.standard):
     self.update_tuning()
     t_follow = get_T_FOLLOW(personality, self.tuning)
-    self.status = radarstate.leadOne.present or radarstate.leadTwo.present
+    v_ego = self.x0[1]
 
     lead_xv_0 = self.process_lead(radarstate.leadOne)
     lead_xv_1 = self.process_lead(radarstate.leadTwo)
@@ -387,10 +373,18 @@ class LongitudinalMpc:
     # To estimate a safe distance from a moving lead, we calculate how much stopping
     # distance that lead needs as a minimum. We can add that to the current distance
     # and then treat that as a stopped car/obstacle at this new distance.
-    lead_0_obstacle = lead_xv_0[:,0] + get_stopped_equivalence_factor(lead_xv_0[:,1], self.tuning.comfort_brake)
-    lead_1_obstacle = lead_xv_1[:,0] + get_stopped_equivalence_factor(lead_xv_1[:,1], self.tuning.comfort_brake)
+    lead_0_obstacle = lead_xv_0[:,0] + get_stopped_equivalence_factor(lead_xv_0[:,1])
+    lead_1_obstacle = lead_xv_1[:,0] + get_stopped_equivalence_factor(lead_xv_1[:,1])
 
-    x_obstacles = np.column_stack([lead_0_obstacle, lead_1_obstacle])
+    # Fake an obstacle for cruise, this ensures smooth acceleration to set speed
+    # when the leads are no factor.
+    v_lower = v_ego + (T_IDXS * CRUISE_MIN_ACCEL * 1.05)
+    # TODO does this make sense when max_a is negative?
+    v_upper = v_ego + (T_IDXS * CRUISE_MAX_ACCEL * 1.05)
+    v_cruise_clipped = np.clip(v_cruise * np.ones(N+1), v_lower, v_upper)
+    cruise_obstacle = np.cumsum(T_DIFFS * v_cruise_clipped) + get_safe_obstacle_distance(v_cruise_clipped, t_follow)
+
+    x_obstacles = np.column_stack([lead_0_obstacle, lead_1_obstacle, cruise_obstacle])
     self.source = MPC_SOURCES[np.argmin(x_obstacles[0])]
 
     self.yref[:,:] = 0.0
@@ -404,8 +398,6 @@ class LongitudinalMpc:
     self.params[:,3] = np.copy(self.a_prev)
     self.params[:,4] = t_follow
     self.params[:,5] = self.tuning.lead_danger_factor
-    self.params[:,6] = self.tuning.comfort_brake
-    self.params[:,7] = self.tuning.stop_distance
 
     self.run()
     if (np.any(lead_xv_0[FCW_IDXS,0] - self.x_sol[FCW_IDXS,0] < CRASH_DISTANCE) and

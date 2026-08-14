@@ -2,36 +2,43 @@ import json
 from typing import Any
 
 
-MPC_PRESET_MOUMOU = 0
-MPC_PRESET_CURRENT = 1
-MPC_PRESET_CUSTOM = 2
+MPC_PROFILE_DEFAULT = 0
+MPC_PROFILE_CRAZYMAX = 1
+MPC_PROFILE_CURRENT = 2
+MPC_PROFILE_CUSTOM = 3
 
-MPC_PRESET_LABELS = {
-  MPC_PRESET_MOUMOU: "dev260628XL",
-  MPC_PRESET_CURRENT: "Current",
-  MPC_PRESET_CUSTOM: "Custom",
+MPC_PROFILE_LABELS = {
+  MPC_PROFILE_DEFAULT: "Default",
+  MPC_PROFILE_CRAZYMAX: "CrazyMax",
+  MPC_PROFILE_CURRENT: "Current",
+  MPC_PROFILE_CUSTOM: "Custom",
 }
 
-MPC_PRESET_VALUE_PARAMS = {
-  MPC_PRESET_MOUMOU: "MpcTuningMoumouValues",
-  MPC_PRESET_CURRENT: "MpcTuningCurrentValues",
+MPC_PROFILE_VALUE_PARAMS = {
+  MPC_PROFILE_DEFAULT: "MpcTuningOfficialValues",
+  # Retain the historical storage key so existing CrazyMax tuning is preserved.
+  MPC_PROFILE_CRAZYMAX: "MpcTuningMoumouValues",
+  MPC_PROFILE_CURRENT: "MpcTuningCurrentValues",
 }
 
-MPC_PRESETS = {
-  MPC_PRESET_MOUMOU: {
-    "MpcXObstacleCost": 300,
-    "MpcJerkCost": 500,
-    "MpcAccelChangeCost": 20000,
-    "MpcDangerZoneCost": 10000,
-    "MpcLeadDangerFactor": 75,
-    "MpcComfortBrake": 250,
-    "MpcStopDistance": 600,
-    "MpcJerkFactorStandard": 100,
-    "MpcTFollowRelaxed": 175,
-    "MpcTFollowStandard": 145,
-    "MpcTFollowAggressive": 125,
-  },
-  MPC_PRESET_CURRENT: {
+MPC_OFFICIAL_VALUES = {
+  "MpcXObstacleCost": 300,
+  "MpcJerkCost": 500,
+  "MpcAccelChangeCost": 20000,
+  "MpcDangerZoneCost": 10000,
+  "MpcLeadDangerFactor": 75,
+  "MpcComfortBrake": 250,
+  "MpcStopDistance": 600,
+  "MpcJerkFactorStandard": 100,
+  "MpcTFollowRelaxed": 175,
+  "MpcTFollowStandard": 145,
+  "MpcTFollowAggressive": 125,
+}
+
+MPC_PROFILES = {
+  MPC_PROFILE_DEFAULT: MPC_OFFICIAL_VALUES,
+  MPC_PROFILE_CRAZYMAX: MPC_OFFICIAL_VALUES,
+  MPC_PROFILE_CURRENT: {
     "MpcXObstacleCost": 500,
     "MpcJerkCost": 300,
     "MpcAccelChangeCost": 10000,
@@ -46,21 +53,32 @@ MPC_PRESETS = {
   },
 }
 
-MPC_TUNING_KEYS = tuple(MPC_PRESETS[MPC_PRESET_MOUMOU])
+MPC_TUNING_KEYS = tuple(MPC_OFFICIAL_VALUES)
+# Official's six-parameter solver compiles these two values into the generated solver.
+OFFICIAL_MPC_TUNING_KEYS = tuple(key for key in MPC_TUNING_KEYS if key not in {"MpcComfortBrake", "MpcStopDistance"})
+
+
+def get_mpc_tuning_profile(params: Any) -> int:
+  try:
+    profile = int(params.get("MpcTuningProfile", return_default=True))
+  except (TypeError, ValueError):
+    profile = MPC_PROFILE_DEFAULT
+  return profile if profile in MPC_PROFILE_LABELS else MPC_PROFILE_DEFAULT
 
 
 def _live_values(params: Any) -> dict[str, int]:
   return {key: int(params.get(key, return_default=True)) for key in MPC_TUNING_KEYS}
 
 
-def get_preset_values(params: Any, preset: int) -> dict[str, int]:
-  if preset == MPC_PRESET_CUSTOM:
+def get_profile_values(params: Any, profile: int | None = None) -> dict[str, int]:
+  profile = get_mpc_tuning_profile(params) if profile is None else profile
+  if profile == MPC_PROFILE_CUSTOM:
     return _live_values(params)
-  if preset not in MPC_PRESETS:
-    raise ValueError(f"unknown MPC preset: {preset}")
+  if profile not in MPC_PROFILES:
+    raise ValueError(f"unknown MPC tuning profile: {profile}")
 
-  values = dict(MPC_PRESETS[preset])
-  saved = params.get(MPC_PRESET_VALUE_PARAMS[preset])
+  values = dict(MPC_PROFILES[profile])
+  saved = params.get(MPC_PROFILE_VALUE_PARAMS[profile])
   if saved:
     if isinstance(saved, dict):
       saved_values = saved
@@ -81,14 +99,14 @@ def write_live_values(params: Any, values: dict[str, int]) -> None:
     params.put(key, int(values[key]))
 
 
-def save_preset_values(params: Any, preset: int, values: dict[str, int]) -> None:
-  storage_key = MPC_PRESET_VALUE_PARAMS.get(preset)
+def save_profile_values(params: Any, profile: int, values: dict[str, int]) -> None:
+  storage_key = MPC_PROFILE_VALUE_PARAMS.get(profile)
   if storage_key is not None:
     params.put(storage_key, {key: int(values[key]) for key in MPC_TUNING_KEYS})
 
 
-def apply_preset(params: Any, preset: int) -> dict[str, int]:
-  values = get_preset_values(params, preset)
+def apply_profile(params: Any, profile: int) -> dict[str, int]:
+  values = get_profile_values(params, profile)
   write_live_values(params, values)
-  params.put("MpcTuningPreset", preset)
+  params.put("MpcTuningProfile", profile)
   return values

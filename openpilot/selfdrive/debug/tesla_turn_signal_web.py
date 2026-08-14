@@ -101,7 +101,9 @@ function renderSettings(data) {
     if (setting.group !== group) { group = setting.group; root.append(element('div', {className:'group'}, group)); }
     const card = element('div', {className:'card'}), description = element('div'), title = element('h2', {}, setting.title || setting.key);
     description.append(title); if (setting.description) description.append(element('p', {}, setting.description));
-    const locked = data.onroad && setting.offroad_only; if (locked) description.append(element('div', {className:'lock'}, '仅设置模式可调'));
+    const locked = (data.onroad && setting.offroad_only) || setting.enabled === false;
+    if (data.onroad && setting.offroad_only) description.append(element('div', {className:'lock'}, '仅设置模式可调'));
+    else if (setting.enabled === false) description.append(element('div', {className:'lock'}, '当前规划器不支持此参数'));
     let control;
     if (setting.widget === 'toggle') { control = element('input', {type:'checkbox', checked:setting.value, disabled:locked}); control.onchange = () => save(setting, control.checked, control); }
     else if (setting.options) { control = element('select', {disabled:locked}); setting.options.forEach(option => control.append(element('option', {value:String(option.value), selected:option.value === setting.value}, option.label))); control.onchange = () => save(setting, control.value === '' ? '' : Number(control.value), control); }
@@ -117,7 +119,7 @@ function renderSettings(data) {
   }
 }
 async function loadSettings() { try { const [settingsResponse, hotspotResponse] = await Promise.all([fetch('/api/settings', {cache:'no-store'}), fetch('/api/hotspot', {cache:'no-store'})]); if (!settingsResponse.ok) throw new Error('HTTP ' + settingsResponse.status); hotspotState = hotspotResponse.ok ? await hotspotResponse.json() : null; renderSettings(await settingsResponse.json()); } catch (e) { document.getElementById('mode').textContent = '设置读取失败：' + e; } }
-async function save(setting, value, control) { control.disabled = true; try { const r = await fetch('/api/settings/' + encodeURIComponent(setting.key), {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value})}); const result = await r.json(); if (!r.ok) throw new Error(result.message || 'HTTP ' + r.status); setting.value = result.value; } catch (e) { alert('保存失败：' + e); } finally { renderSettings(settingsState); } }
+async function save(setting, value, control) { control.disabled = true; try { const r = await fetch('/api/settings/' + encodeURIComponent(setting.key), {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value})}); const result = await r.json(); if (!r.ok) throw new Error(result.message || 'HTTP ' + r.status); setting.value = result.value; await loadSettings(); } catch (e) { alert('保存失败：' + e); } finally { renderSettings(settingsState); } }
 async function saveHotspot(enabled, control) { control.disabled = true; try { const r = await fetch('/api/hotspot', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({enabled})}); const result = await r.json(); if (!r.ok) throw new Error(result.message || 'HTTP ' + r.status); hotspotState = result; renderSettings(settingsState); } catch (e) { alert('热点切换失败：' + e); renderSettings(settingsState); } }
 loadSettings();
 function drawLine(ctx, points, xScale, yScale, color, width) { if (!points.length) return; ctx.beginPath(); points.forEach(([x,y], i) => { const px = ctx.canvas.clientWidth / 2 - y * yScale, py = ctx.canvas.clientHeight - 38 - x * xScale; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }); ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke(); }

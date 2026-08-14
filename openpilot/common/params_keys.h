@@ -262,6 +262,9 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"DynamicAutoStockSpeedLowKph", {PERSISTENT | BACKUP, INT, "70"}},
 
     // MPC tuning
+    {"LongitudinalPlannerMode", {PERSISTENT | BACKUP, INT, "0"}},  // 0=official, 1=local
+    {"MpcTuningProfile", {PERSISTENT | BACKUP, INT, "0"}},  // 0=official defaults, 1=CrazyMax, 2=current, 3=custom
+    {"MpcTuningOfficialValues", {PERSISTENT | BACKUP, JSON}},
     {"MpcAccelChangeCost", {PERSISTENT | BACKUP, INT, "20000"}},  // hundredths
     {"MpcComfortBrake", {PERSISTENT | BACKUP, INT, "250"}},  // hundredths of m/s^2
     {"MpcDangerZoneCost", {PERSISTENT | BACKUP, INT, "10000"}},  // hundredths
@@ -274,7 +277,6 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"MpcTFollowStandard", {PERSISTENT | BACKUP, INT, "145"}},  // hundredths of s
     {"MpcTuningCurrentValues", {PERSISTENT | BACKUP, JSON}},
     {"MpcTuningMoumouValues", {PERSISTENT | BACKUP, JSON}},
-    {"MpcTuningPreset", {PERSISTENT | BACKUP, INT, "0"}},  // 0=moumou/dev260628XL-tici, 1=current branch, 2=custom
     {"MpcXObstacleCost", {PERSISTENT | BACKUP, INT, "300"}},  // hundredths
 
     // Speed limit / stop line (Tesla)

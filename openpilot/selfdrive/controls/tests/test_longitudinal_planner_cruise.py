@@ -8,8 +8,8 @@ from opendbc.car.interfaces import ACCEL_MIN, ACCEL_MAX
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.selfdrive.controls.lib.longcontrol import LongCtrlState
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import MPC_SOURCES, PARAM_DIM, LongitudinalMpc, LongitudinalPlanSource
-import openpilot.selfdrive.controls.lib.longitudinal_planner as planner_module
-from openpilot.selfdrive.controls.lib.longitudinal_planner import LongitudinalPlanner, get_cruise_accel, get_max_accel
+import openpilot.selfdrive.controls.lib.longitudinal_planner_local as planner_module
+from openpilot.selfdrive.controls.lib.longitudinal_planner_local import LongitudinalPlanner, get_cruise_accel, get_max_accel
 from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_planner import LongitudinalPlannerSP
 
 
