@@ -88,6 +88,18 @@ function launch {
     echo "shapely installing."
     pip install shapely
   fi
+  if python -c "import codecs; codecs.lookup('future_fstrings')" > /dev/null 2>&1; then
+    echo "future-fstrings already installed."
+  else
+    echo "future-fstrings installing."
+    pip install "future-fstrings==1.2.0"
+  fi
+  if python -c "import onnx" > /dev/null 2>&1; then
+    echo "onnx already installed."
+  else
+    echo "onnx installing."
+    pip install "onnx==1.17.0"
+  fi
 
   # events language init
   #LANG=$(cat ${PARAMS_ROOT}/d/LanguageSetting)
