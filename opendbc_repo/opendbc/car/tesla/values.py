@@ -111,7 +111,10 @@ class TeslaFlags(IntFlag):
 
 DBC = CAR.create_dbc_map()
 
-STEER_THRESHOLD = 0.5
+# Match SP: cooperative steering starts blending at 0.5 Nm, while the generic
+# lateral override begins at 1.0 Nm. Keeping both thresholds at 0.5 Nm makes
+# latActive chatter at the edge of the cooperative deadzone.
+STEER_THRESHOLD = 1.0
 STEER_DISENGAGE_THRESHOLD = 5.0
 
 if __name__ == "__main__":

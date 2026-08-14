@@ -25,11 +25,10 @@ def normalize_tesla_speed_limit(display_limit: float, units: str) -> float | Non
 
 def classify_steering_input(hands_on_level: int, steering_torque: float, eac_status: str | None,
                             eac_error_code: int, cooperative_steering: bool) -> tuple[bool, bool]:
+  del cooperative_steering
   strong_driver_override = hands_on_level >= 3 or abs(steering_torque) > STEER_DISENGAGE_THRESHOLD
   high_angle_rate_fault = eac_status == "EAC_INHIBITED" and eac_error_code == 9
-  recoverable_override = cooperative_steering and strong_driver_override and not high_angle_rate_fault
-  steering_disengage = high_angle_rate_fault or (strong_driver_override and not cooperative_steering)
-  return recoverable_override, steering_disengage
+  return False, high_angle_rate_fault or strong_driver_override
 
 
 def calculate_yaw_rate(vehicle_model, speed_mps, steering_angle_deg):
