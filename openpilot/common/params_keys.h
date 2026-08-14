@@ -262,7 +262,13 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"DynamicAutoStockSpeedLowKph", {PERSISTENT | BACKUP, INT, "70"}},
 
     // MPC tuning
-    {"LongitudinalPlannerMode", {PERSISTENT | BACKUP, INT, "0"}},  // 0=official, 1=local
+    {"LongitudinalPlannerMode", {PERSISTENT | BACKUP, INT, "0"}},  // desired: 0=SP, 1=local, 2=TN-NoDEC
+    {"ActiveLongitudinalBackend", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, INT}},
+    {"LongitudinalTuningConfig", {PERSISTENT | BACKUP, JSON}},
+    {"LongitudinalTuningMigrated", {PERSISTENT, BOOL, "0"}},
+    {"LongitudinalTuningState", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON}},
+    {"AccelPersonalityEnabled", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"AccelPersonality", {PERSISTENT | BACKUP, INT, "1"}},  // 0=eco, 1=normal, 2=sport
     {"MpcTuningProfile", {PERSISTENT | BACKUP, INT, "0"}},  // 0=official defaults, 1=CrazyMax, 2=current, 3=custom
     {"MpcTuningOfficialValues", {PERSISTENT | BACKUP, JSON}},
     {"MpcAccelChangeCost", {PERSISTENT | BACKUP, INT, "20000"}},  // hundredths

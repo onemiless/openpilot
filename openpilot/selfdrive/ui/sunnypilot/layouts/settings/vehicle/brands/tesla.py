@@ -13,6 +13,8 @@ from openpilot.selfdrive.ui.sunnypilot.layouts.settings.vehicle.brands.base impo
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.modes import (
   LONGITUDINAL_PLANNER_OFFICIAL, get_longitudinal_planner_mode,
 )
+from openpilot.selfdrive.controls.lib.longitudinal_backends.registry import BACKENDS, PARAM_SPECS_BY_ID, BackendId, ordered_backends
+from openpilot.selfdrive.controls.lib.longitudinal_backends.tuning import LEGACY_TO_SEMANTIC, write_backend_overrides
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.tuning_presets import (
   MPC_TUNING_KEYS, OFFICIAL_MPC_TUNING_KEYS, apply_profile, get_mpc_tuning_profile, get_profile_values,
   save_profile_values, write_live_values,
@@ -25,40 +27,48 @@ from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.network import NavButton
 from openpilot.system.ui.widgets.scroller_tici import Scroller
 
-MPC_TUNING_ITEMS = [
+MPC_TUNING_PRESENTATION = [
   ("MpcStopDistance", "Stop Distance",
    "Higher values make the car target a farther stop and brake earlier. Lower values stop closer to the lead and can feel later.",
-   100, 1200, 25, lambda v: f"{v / 100.0:.2f} m"),
+   lambda v: f"{v / 100.0:.2f} m"),
   ("MpcComfortBrake", "Comfort Brake",
    "Higher values assume stronger comfortable braking and can allow closer, later braking. Lower values reserve more distance and feel gentler.",
-   50, 500, 5, lambda v: f"{v / 100.0:.2f} m/s^2"),
+   lambda v: f"{v / 100.0:.2f} m/s^2"),
   ("MpcLeadDangerFactor", "Lead Danger Factor",
    "Higher values add more safety pressure near a lead and brake sooner. Lower values allow following closer before the danger cost rises.",
-   1, 500, 5, lambda v: f"{v / 100.0:.2f}"),
+   lambda v: f"{v / 100.0:.2f}"),
   ("MpcTFollowRelaxed", "T Follow Relaxed",
    "Higher values increase the relaxed following gap. Lower values reduce the relaxed gap and follow closer.",
-   50, 400, 5, lambda v: f"{v / 100.0:.2f} s"),
+   lambda v: f"{v / 100.0:.2f} s"),
   ("MpcTFollowStandard", "T Follow Standard",
    "Higher values increase the standard following gap. Lower values reduce the standard gap and follow closer.",
-   50, 400, 5, lambda v: f"{v / 100.0:.2f} s"),
+   lambda v: f"{v / 100.0:.2f} s"),
   ("MpcTFollowAggressive", "T Follow Aggressive",
    "Higher values increase the aggressive following gap. Lower values reduce the aggressive gap and follow closer.",
-   50, 400, 5, lambda v: f"{v / 100.0:.2f} s"),
+   lambda v: f"{v / 100.0:.2f} s"),
   ("MpcXObstacleCost", "Obstacle Cost",
    "Higher values prioritize keeping the desired obstacle distance. Lower values allow smoother speed tracking but may hold a closer gap.",
-   1, 1000, 25, lambda v: f"{v / 100.0:.2f}"),
+   lambda v: f"{v / 100.0:.2f}"),
   ("MpcJerkCost", "Jerk Cost",
    "Higher values make acceleration and braking smoother but slower to react. Lower values react faster and can feel sharper.",
-   1, 1000, 25, lambda v: f"{v / 100.0:.2f}"),
-  ("MpcJerkFactorStandard", "Standard Jerk Factor",
-   "Higher values make standard mode smoother and less eager to change acceleration. Lower values make standard mode more responsive.",
-   1, 300, 5, lambda v: f"{v / 100.0:.2f}"),
+   lambda v: f"{v / 100.0:.2f}"),
+  ("MpcJerkFactorStandard", "Relaxed Jerk Factor",
+   "Higher values make relaxed mode smoother and less eager to change acceleration. Lower values make relaxed mode more responsive.",
+   lambda v: f"{v / 100.0:.2f}"),
   ("MpcAccelChangeCost", "Accel Change Cost",
    "Higher values resist acceleration changes and smooth the plan. Lower values let the car change acceleration more quickly.",
-   1, 50000, 500, lambda v: f"{v / 100.0:.0f}"),
+   lambda v: f"{v / 100.0:.0f}"),
   ("MpcDangerZoneCost", "Danger Zone Cost",
    "Higher values strongly avoid getting too close to a lead. Lower values reduce that penalty and can allow closer following.",
-   1, 50000, 500, lambda v: f"{v / 100.0:.0f}"),
+   lambda v: f"{v / 100.0:.0f}"),
+]
+
+MPC_TUNING_ITEMS = [
+  (key, title, description,
+   int(round(PARAM_SPECS_BY_ID[LEGACY_TO_SEMANTIC[key]].minimum * 100)),
+   int(round(PARAM_SPECS_BY_ID[LEGACY_TO_SEMANTIC[key]].maximum * 100)),
+   int(round(PARAM_SPECS_BY_ID[LEGACY_TO_SEMANTIC[key]].step * 100)), label_callback)
+  for key, title, description, label_callback in MPC_TUNING_PRESENTATION
 ]
 
 
@@ -75,8 +85,8 @@ class TeslaMpcSettingsLayout(Widget):
   def _initialize_items(self):
     self._planner_item = multiple_button_item_sp(
       title=lambda: tr("Longitudinal Planner"),
-      description=lambda: tr("Official uses the upstream cruise-aware planner. Local uses the retained lead-focused planner. Restart after changing."),
-      buttons=[lambda: tr("Official"), lambda: tr("Local")],
+      description=lambda: tr("SP Upstream Tunable, Local, and TN-NoDEC are isolated backends. A change takes effect next onroad session."),
+      buttons=[lambda label=backend.label: tr(label) for backend in ordered_backends()],
       param="LongitudinalPlannerMode",
       callback=self._on_planner_changed,
       inline=False,
@@ -87,6 +97,23 @@ class TeslaMpcSettingsLayout(Widget):
       buttons=[lambda: tr("Default"), lambda: tr("CrazyMax"), lambda: tr("Current"), lambda: tr("Custom")],
       param="MpcTuningProfile",
       callback=self._on_profile_changed,
+      inline=False,
+    )
+    self._tn_accel_enabled = toggle_item_sp(
+      title=tr("TN Accel Personality"), param="AccelPersonalityEnabled",
+      description=tr("Enable the TN backend-native acceleration profile controller."),
+      callback=lambda value: write_backend_overrides(
+        ui_state.params, BACKENDS[BackendId.TN_NO_DEC], {"tn.accel_personality.enabled": bool(value)},
+      ),
+    )
+    self._tn_accel_profile = multiple_button_item_sp(
+      title=lambda: tr("TN Accel Profile"),
+      description=lambda: tr("Backend-native Eco, Normal, or Sport acceleration limits."),
+      buttons=[lambda: tr("Eco"), lambda: tr("Normal"), lambda: tr("Sport")],
+      param="AccelPersonality",
+      callback=lambda value: write_backend_overrides(
+        ui_state.params, BACKENDS[BackendId.TN_NO_DEC], {"tn.accel_personality.profile": int(value)},
+      ),
       inline=False,
     )
 
@@ -100,11 +127,12 @@ class TeslaMpcSettingsLayout(Widget):
         description=tr(description),
         label_callback=label_callback,
         on_value_changed=self._on_mpc_tuning_changed,
-        enabled=ui_state.is_offroad,
+        enabled=lambda: True,
         inline=True,
       ))
 
-    self.items = [self._planner_item, self._profile_item, *self.mpc_tuning_options]
+    self.items = [self._planner_item, self._profile_item, self._tn_accel_enabled, self._tn_accel_profile,
+                  *self.mpc_tuning_options]
     self._apply_mpc_profile(get_mpc_tuning_profile(ui_state.params), update_profile_storage=False)
 
   @staticmethod
@@ -152,14 +180,17 @@ class TeslaMpcSettingsLayout(Widget):
 
   def _update_tuning_enablement(self):
     official = get_longitudinal_planner_mode(ui_state.params) == LONGITUDINAL_PLANNER_OFFICIAL
+    tn = get_longitudinal_planner_mode(ui_state.params) == int(BackendId.TN_NO_DEC)
+    self._tn_accel_enabled.set_visible(tn)
+    self._tn_accel_profile.set_visible(tn)
     for option in self.mpc_tuning_options:
       supported = not official or option.action_item.param_key in OFFICIAL_MPC_TUNING_KEYS
-      option.action_item.set_enabled(ui_state.is_offroad() and supported)
+      option.action_item.set_enabled(supported)
 
   def _update_state(self):
     super()._update_state()
     self._planner_item.action_item.set_enabled(ui_state.is_offroad())
-    self._profile_item.action_item.set_enabled(ui_state.is_offroad())
+    self._profile_item.action_item.set_enabled(True)
     self._update_tuning_enablement()
 
   def _render(self, rect):

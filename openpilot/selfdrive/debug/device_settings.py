@@ -14,10 +14,12 @@ from pathlib import Path
 from typing import Any
 
 from openpilot.common.params import Params
-from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.modes import LONGITUDINAL_PLANNER_OFFICIAL, get_longitudinal_planner_mode
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.tuning_presets import (
-  apply_profile, get_mpc_tuning_profile, get_profile_values, save_profile_values,
+  apply_profile, get_mpc_tuning_profile, get_profile_values, save_profile_values, write_live_values,
 )
+from openpilot.selfdrive.controls.lib.longitudinal_backends.registry import BACKENDS, BackendId
+from openpilot.selfdrive.controls.lib.longitudinal_backends.registry import PARAM_SPECS_BY_ID
+from openpilot.selfdrive.controls.lib.longitudinal_backends.tuning import LEGACY_TO_SEMANTIC, write_backend_overrides
 
 
 SETTINGS_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "sunnypilot" / "sunnylink" / "settings_ui.json"
@@ -131,22 +133,31 @@ EXTRA_SETTINGS: tuple[dict[str, Any], ...] = (
   {"key": "TeslaMadsScreenButton", "widget": "toggle", "title": "Tesla MADS 屏幕按钮", "group": "Tesla", "offroad_only": True},
   {"key": "TeslaTouchLongitudinalSwitch", "widget": "toggle", "title": "4指触摸切换原车ACC", "group": "Tesla", "offroad_only": True},
   {"key": "TeslaTurnSignalValidation", "widget": "toggle", "title": "启用 Tesla 转向 CAN 测试", "category": "Developer", "group": "Tesla 测试", "offroad_only": True},
-  {"key": "LongitudinalPlannerMode", "widget": "multiple_button", "title": "纵向规划器", "group": "纵向 MPC", "options": [{"value": 0, "label": "Official（默认）"}, {"value": 1, "label": "Local"}], "offroad_only": True},
-  {"key": "MpcTuningProfile", "widget": "multiple_button", "title": "MPC 参数方案", "group": "纵向 MPC", "options": [{"value": 0, "label": "Default（官方参数）"}, {"value": 1, "label": "CrazyMax"}, {"value": 2, "label": "Current"}, {"value": 3, "label": "Custom"}], "offroad_only": True},
+  {"key": "LongitudinalPlannerMode", "widget": "multiple_button", "title": "纵向规划器", "group": "纵向 MPC", "options": [{"value": 0, "label": "SP Upstream Tunable（默认）"}, {"value": 1, "label": "Local"}, {"value": 2, "label": "TN-NoDEC"}], "offroad_only": True},
+  {"key": "MpcTuningProfile", "widget": "multiple_button", "title": "MPC 参数方案", "group": "纵向 MPC", "options": [{"value": 0, "label": "Default（官方参数）"}, {"value": 1, "label": "CrazyMax"}, {"value": 2, "label": "Current"}, {"value": 3, "label": "Custom"}], "offroad_only": False},
+  {"key": "AccelPersonalityEnabled", "widget": "toggle", "title": "TN 加速个性控制", "group": "纵向 MPC", "offroad_only": False},
+  {"key": "AccelPersonality", "widget": "multiple_button", "title": "TN 加速个性", "group": "纵向 MPC", "options": [{"value": 0, "label": "Eco"}, {"value": 1, "label": "Normal"}, {"value": 2, "label": "Sport"}], "offroad_only": False},
 )
 
-MPC_FIELDS = (
-  ("MpcXObstacleCost", "障碍物代价", 1, 1000, 1),
-  ("MpcJerkCost", "加加速度代价", 1, 1000, 1),
-  ("MpcAccelChangeCost", "加速度变化代价", 1, 50000, 1),
-  ("MpcDangerZoneCost", "危险区代价", 1, 50000, 1),
-  ("MpcLeadDangerFactor", "前车危险系数", 1, 500, 1),
-  ("MpcComfortBrake", "舒适制动", 50, 500, 1),
-  ("MpcStopDistance", "停车距离", 100, 1200, 10),
-  ("MpcJerkFactorStandard", "标准跟车加加速度系数", 1, 300, 1),
-  ("MpcTFollowRelaxed", "舒适跟车时距", 50, 400, 1),
-  ("MpcTFollowStandard", "标准跟车时距", 50, 400, 1),
-  ("MpcTFollowAggressive", "激进跟车时距", 50, 400, 1),
+MPC_FIELDS_PRESENTATION = (
+  ("MpcXObstacleCost", "障碍物代价"),
+  ("MpcJerkCost", "加加速度代价"),
+  ("MpcAccelChangeCost", "加速度变化代价"),
+  ("MpcDangerZoneCost", "危险区代价"),
+  ("MpcLeadDangerFactor", "前车危险系数"),
+  ("MpcComfortBrake", "舒适制动"),
+  ("MpcStopDistance", "停车距离"),
+  ("MpcJerkFactorStandard", "舒适跟车加加速度系数"),
+  ("MpcTFollowRelaxed", "舒适跟车时距"),
+  ("MpcTFollowStandard", "标准跟车时距"),
+  ("MpcTFollowAggressive", "激进跟车时距"),
+)
+MPC_FIELDS = tuple(
+  (key, title,
+   int(round(PARAM_SPECS_BY_ID[LEGACY_TO_SEMANTIC[key]].minimum * 100)),
+   int(round(PARAM_SPECS_BY_ID[LEGACY_TO_SEMANTIC[key]].maximum * 100)),
+   int(round(PARAM_SPECS_BY_ID[LEGACY_TO_SEMANTIC[key]].step * 100)))
+  for key, title in MPC_FIELDS_PRESENTATION
 )
 VEHICLE_SETTING_BRANDS = {
   "HyundaiLongitudinalTuning": "hyundai", "SubaruStopAndGo": "subaru",
@@ -205,7 +216,7 @@ def get_settings(brand: str | None = None) -> dict[str, dict[str, Any]]:
   settings.extend(EXTRA_SETTINGS)
   settings.extend({
     "key": key, "widget": "option", "title": title, "category": "纵向 MPC", "group": "纵向 MPC", "min": minimum, "max": maximum,
-    "step": step, "unit": "原始整数值", "offroad_only": True,
+    "step": step, "unit": "原始整数值", "offroad_only": False,
   } for key, title, minimum, maximum, step in MPC_FIELDS)
   # Duplicate keys in a nested schema are harmless; retain the first canonical definition.
   for setting in settings:
@@ -247,9 +258,7 @@ def _read_value(params: Params, setting: dict[str, Any]) -> bool | int | float |
 def settings_snapshot(params: Params | None = None) -> dict[str, Any]:
   params = params or Params()
   settings = get_settings(_current_brand(params))
-  official_planner = get_longitudinal_planner_mode(params) == LONGITUDINAL_PLANNER_OFFICIAL
-  visible_settings = [{**setting, "value": _read_value(params, setting), "order": order,
-                       "enabled": not (official_planner and setting["key"] in {"MpcComfortBrake", "MpcStopDistance"})}
+  visible_settings = [{**setting, "value": _read_value(params, setting), "order": order, "enabled": True}
                       for order, setting in enumerate(settings.values())]
   return {
     "onroad": not params.get_bool("IsOffroad"),
@@ -265,12 +274,11 @@ def validate_and_write(key: str, value: Any, params: Params | None = None) -> di
     raise KeyError(key)
   if setting["offroad_only"] and not params.get_bool("IsOffroad"):
     raise PermissionError("该设置只能在停车后的设置模式修改")
-  if key in {"MpcComfortBrake", "MpcStopDistance"} and get_longitudinal_planner_mode(params) == LONGITUDINAL_PLANNER_OFFICIAL:
-    raise PermissionError("官方规划器中该参数固定在求解器内，请切换到 Local 规划器后修改")
-
   if setting["widget"] == "toggle":
     if not isinstance(value, bool):
       raise ValueError("开关值必须是 true 或 false")
+    if key == "AccelPersonalityEnabled":
+      write_backend_overrides(params, BACKENDS[BackendId.TN_NO_DEC], {"tn.accel_personality.enabled": value})
     params.put_bool(key, value, block=True)
   else:
     options = setting.get("options")
@@ -291,14 +299,20 @@ def validate_and_write(key: str, value: Any, params: Params | None = None) -> di
     if minimum is not None and not minimum <= value <= maximum:
       raise ValueError(f"数值必须在 {minimum} 到 {maximum} 之间")
     step = setting.get("step")
-    if step and minimum is not None and abs(round((value - minimum) / step) * step - (value - minimum)) > 1e-9:
+    if step and abs(round(value / step) * step - value) > 1e-9:
       raise ValueError(f"数值必须按 {step} 递增")
+    mpc_keys = {field[0] for field in MPC_FIELDS}
     if key == "MpcTuningProfile":
       apply_profile(params, int(value))
-    params.put(key, value, block=True)
-    if key in {field[0] for field in MPC_FIELDS}:
+    elif key in mpc_keys:
       profile = get_mpc_tuning_profile(params)
       profile_values = get_profile_values(params, profile)
       profile_values[key] = int(value)
+      write_live_values(params, profile_values)
       save_profile_values(params, profile, profile_values)
+    elif key == "AccelPersonality":
+      write_backend_overrides(params, BACKENDS[BackendId.TN_NO_DEC], {"tn.accel_personality.profile": value})
+      params.put(key, value, block=True)
+    else:
+      params.put(key, value, block=True)
   return {**setting, "value": _read_value(params, setting)}

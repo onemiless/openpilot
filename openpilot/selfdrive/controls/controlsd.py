@@ -19,6 +19,8 @@ from openpilot.selfdrive.controls.lib.latcontrol_angle import LatControlAngle, S
 from openpilot.selfdrive.controls.lib.latcontrol_curvature import LatControlCurvature
 from openpilot.selfdrive.controls.lib.latcontrol_torque import LatControlTorque
 from openpilot.selfdrive.controls.lib.longcontrol import LongControl
+from openpilot.selfdrive.controls.lib.longitudinal_backends.registry import get_backend
+from openpilot.selfdrive.controls.lib.longitudinal_backends.session import latch_active_backend
 from openpilot.selfdrive.modeld.modeld import LAT_SMOOTH_SECONDS
 from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
 
@@ -56,7 +58,8 @@ class Controls(ControlsExt):
     self.pose_calibrator = PoseCalibrator()
     self.calibrated_pose: Pose | None = None
 
-    self.LoC = LongControl(self.CP, self.CP_SP)
+    self.active_longitudinal_backend = get_backend(latch_active_backend(self.params))
+    self.LoC = LongControl(self.CP, self.CP_SP, self.active_longitudinal_backend)
     self.VM = VehicleModel(self.CP)
     self.LaC: LatControl
     if self.CP.steerControlType == car.CarParams.SteerControlType.angle:
@@ -117,7 +120,8 @@ class Controls(ControlsExt):
 
     CC.latActive = _lat_active and not CS.steerFaultTemporary and not CS.steerFaultPermanent and \
                    (not standstill or self.CP.steerAtStandstill)
-    CC.longActive = CC.enabled and not any(e.overrideLongitudinal for e in self.sm['onroadEvents']) and \
+    backend_matches = long_plan.activeBackendId == int(self.active_longitudinal_backend.id)
+    CC.longActive = backend_matches and CC.enabled and not any(e.overrideLongitudinal for e in self.sm['onroadEvents']) and \
                     (self.CP.openpilotLongitudinalControl or not self.CP_SP.pcmCruiseSpeed)
 
     actuators = CC.actuators

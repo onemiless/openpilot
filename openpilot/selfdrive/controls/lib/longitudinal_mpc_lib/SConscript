@@ -95,3 +95,4 @@ def build_mpc(script, gen, model):
 
 build_mpc('long_mpc.py', 'c_generated_code', 'long')
 build_mpc('long_mpc_official.py', 'c_generated_code_official', 'long_official')
+build_mpc('long_mpc_tn.py', 'c_generated_code_tn', 'long_tn')

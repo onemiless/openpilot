@@ -54,8 +54,8 @@ MPC_PROFILES = {
 }
 
 MPC_TUNING_KEYS = tuple(MPC_OFFICIAL_VALUES)
-# Official's six-parameter solver compiles these two values into the generated solver.
-OFFICIAL_MPC_TUNING_KEYS = tuple(key for key in MPC_TUNING_KEYS if key not in {"MpcComfortBrake", "MpcStopDistance"})
+# The tunable SP adapter uses its own eight-parameter solver contract.
+OFFICIAL_MPC_TUNING_KEYS = MPC_TUNING_KEYS
 
 
 def get_mpc_tuning_profile(params: Any) -> int:
@@ -94,9 +94,31 @@ def get_profile_values(params: Any, profile: int | None = None) -> dict[str, int
   return values
 
 
-def write_live_values(params: Any, values: dict[str, int]) -> None:
-  for key in MPC_TUNING_KEYS:
-    params.put(key, int(values[key]))
+def write_live_values(params: Any, values: dict[str, int], selected_profile: int | None = None) -> None:
+  from openpilot.selfdrive.controls.lib.longitudinal_backends.tuning import (
+    TuningSnapshot, load_snapshot, snapshot_from_legacy_values, tuning_transaction_lock, write_snapshot,
+  )
+  with tuning_transaction_lock():
+    try:
+      current = load_snapshot(params)
+    except ValueError:
+      current = None
+    profile = get_mpc_tuning_profile(params) if selected_profile is None else selected_profile
+    snapshot = snapshot_from_legacy_values(
+      values, profile, revision=(current.revision + 1 if current is not None else 1),
+    )
+    if current is not None:
+      snapshot = TuningSnapshot(snapshot.revision, snapshot.shared, snapshot.families, {
+        slug: {**config, "profileId": profile,
+               "overrides": {key: value for key, value in config.get("overrides", {}).items() if key.startswith("tn.")}}
+        for slug, config in current.backends.items()
+      })
+    # Only touch compatibility keys after the complete new revision validates.
+    if selected_profile is not None:
+      params.put("MpcTuningProfile", selected_profile)
+    for key in MPC_TUNING_KEYS:
+      params.put(key, int(values[key]))
+    write_snapshot(params, snapshot)
 
 
 def save_profile_values(params: Any, profile: int, values: dict[str, int]) -> None:
@@ -107,6 +129,5 @@ def save_profile_values(params: Any, profile: int, values: dict[str, int]) -> No
 
 def apply_profile(params: Any, profile: int) -> dict[str, int]:
   values = get_profile_values(params, profile)
-  write_live_values(params, values)
-  params.put("MpcTuningProfile", profile)
+  write_live_values(params, values, selected_profile=profile)
   return values

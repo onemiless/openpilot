@@ -82,6 +82,7 @@ def get_cruise_accel(e2e, v_cruise, v_ego, a_cruise_prev, angle_steers, CP, dt, 
 
 class LongitudinalPlanner(LongitudinalPlannerSP):
   def __init__(self, CP, CP_SP, init_v=0.0, init_a=0.0, dt=DT_MDL):
+    self.active_backend_id = 1
     self.CP = CP
     self.params = Params()
     self.mpc = LongitudinalMpc(dt=dt)
@@ -227,6 +228,8 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
     longitudinalPlan.shouldStop = bool(self.output_should_stop)
     longitudinalPlan.allowBrake = True
     longitudinalPlan.allowThrottle = bool(self.allow_throttle)
+    longitudinalPlan.activeBackendId = int(self.active_backend_id)
+    longitudinalPlan.tuningRevision = self.mpc.tuning_revision
 
     pm.send('longitudinalPlan', plan_send)
 

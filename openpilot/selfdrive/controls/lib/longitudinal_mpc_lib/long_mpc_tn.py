@@ -17,21 +17,22 @@ from openpilot.selfdrive.controls.lib.longitudinal_backends.tuning import (
   load_resolved_tuning, ramp_dataclass, read_valid_revision, write_effective_state,
 )
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.tuning_presets import get_profile_values
+from openpilot.selfdrive.controls.lib.longitudinal_backends.tn_no_dec.long_mpc_sp import LongitudinalMpcSP
 
 if __name__ == '__main__':  # generating code
   from acados.acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 else:
-  from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.c_generated_code.acados_ocp_solver_pyx import AcadosOcpSolverCython
+  from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.c_generated_code_tn.acados_ocp_solver_pyx import AcadosOcpSolverCython
 
 from casadi import SX, vertcat
 
-MODEL_NAME = 'long'
+MODEL_NAME = 'long_tn'
 LONG_MPC_DIR = os.path.dirname(os.path.abspath(__file__))
-EXPORT_DIR = os.path.join(LONG_MPC_DIR, "c_generated_code")
-JSON_FILE = os.path.join(LONG_MPC_DIR, "acados_ocp_long.json")
+EXPORT_DIR = os.path.join(LONG_MPC_DIR, "c_generated_code_tn")
+JSON_FILE = os.path.join(LONG_MPC_DIR, "acados_ocp_long_tn.json")
 
 LongitudinalPlanSource = log.LongitudinalPlan.LongitudinalPlanSource
-MPC_SOURCES = (LongitudinalPlanSource.lead0, LongitudinalPlanSource.lead1)
+MPC_SOURCES = (LongitudinalPlanSource.lead0, LongitudinalPlanSource.lead1, LongitudinalPlanSource.cruise)
 
 X_DIM = 3
 U_DIM = 1
@@ -63,13 +64,14 @@ FCW_IDXS = T_IDXS < 5.0
 T_DIFFS = np.diff(T_IDXS, prepend=[0.])
 COMFORT_BRAKE = 2.5
 STOP_DISTANCE = 6.0
+CRUISE_MIN_ACCEL = -1.2
+CRUISE_MAX_ACCEL = 1.6
 MIN_X_LEAD_FACTOR = 0.5
-
 MPC_TUNING_SCALE = 100.0
 
 
 @dataclass(frozen=True)
-class LongMpcTuning:
+class TNLongMpcTuning:
   x_ego_obstacle_cost: float = X_EGO_OBSTACLE_COST
   j_ego_cost: float = J_EGO_COST
   a_change_cost: float = A_CHANGE_COST
@@ -83,9 +85,8 @@ class LongMpcTuning:
   t_follow_aggressive: float = 1.25
 
 
-DEFAULT_LONG_MPC_TUNING = LongMpcTuning()
-
-MPC_TUNING_PARAMS = {
+DEFAULT_TN_LONG_MPC_TUNING = TNLongMpcTuning()
+TN_MPC_TUNING_PARAMS = {
   "MpcXObstacleCost": ("x_ego_obstacle_cost", 1, 1000),
   "MpcJerkCost": ("j_ego_cost", 1, 1000),
   "MpcAccelChangeCost": ("a_change_cost", 1, 50000),
@@ -100,35 +101,36 @@ MPC_TUNING_PARAMS = {
 }
 
 
-def read_long_mpc_tuning(params=None, last_known_good=None):
+def read_tn_long_mpc_tuning(params=None, last_known_good=None):
   params = params or Params()
   try:
-    resolved = load_resolved_tuning(params, BACKENDS[BackendId.LOCAL])
+    resolved = load_resolved_tuning(params, BACKENDS[BackendId.TN_NO_DEC])
   except ValueError:
-    return last_known_good or DEFAULT_LONG_MPC_TUNING
+    return last_known_good or DEFAULT_TN_LONG_MPC_TUNING
   if resolved is not None:
-    return LongMpcTuning(**resolved.native_values)
+    fields = TNLongMpcTuning.__dataclass_fields__
+    return TNLongMpcTuning(**{key: value for key, value in resolved.native_values.items() if key in fields})
 
   profile_values = get_profile_values(params)
   values = {}
-  for key, (field, min_value, max_value) in MPC_TUNING_PARAMS.items():
-    raw = profile_values.get(key, int(getattr(DEFAULT_LONG_MPC_TUNING, field) * MPC_TUNING_SCALE))
+  for key, (field, min_value, max_value) in TN_MPC_TUNING_PARAMS.items():
+    raw = profile_values.get(key, int(getattr(DEFAULT_TN_LONG_MPC_TUNING, field) * MPC_TUNING_SCALE))
     values[field] = max(min_value, min(max_value, int(raw))) / MPC_TUNING_SCALE
-  return LongMpcTuning(**values)
+  return TNLongMpcTuning(**values)
 
 
-def get_jerk_factor(personality=log.LongitudinalPersonality.standard, tuning=DEFAULT_LONG_MPC_TUNING):
+def get_jerk_factor(personality=log.LongitudinalPersonality.standard, tuning=DEFAULT_TN_LONG_MPC_TUNING):
   if personality==log.LongitudinalPersonality.relaxed:
-    return 1.0
-  elif personality==log.LongitudinalPersonality.standard:
     return tuning.jerk_factor_standard
+  elif personality==log.LongitudinalPersonality.standard:
+    return 1.0
   elif personality==log.LongitudinalPersonality.aggressive:
     return 0.5
   else:
     raise NotImplementedError("Longitudinal personality not supported")
 
 
-def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, tuning=DEFAULT_LONG_MPC_TUNING):
+def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, tuning=DEFAULT_TN_LONG_MPC_TUNING):
   if personality==log.LongitudinalPersonality.relaxed:
     return tuning.t_follow_relaxed
   elif personality==log.LongitudinalPersonality.standard:
@@ -238,7 +240,9 @@ def gen_long_ocp():
 
   x0 = np.zeros(X_DIM)
   ocp.constraints.x0 = x0
-  ocp.parameter_values = np.array([-1.2, 1.2, 0.0, 0.0, get_T_FOLLOW(), LEAD_DANGER_FACTOR, COMFORT_BRAKE, STOP_DISTANCE])
+  ocp.parameter_values = np.array([
+    -1.2, 1.2, 0.0, 0.0, get_T_FOLLOW(), LEAD_DANGER_FACTOR, COMFORT_BRAKE, STOP_DISTANCE,
+  ])
 
 
   # We put all constraint cost weights to 0 and only set them at runtime
@@ -275,18 +279,19 @@ def gen_long_ocp():
   return ocp
 
 
-class LongitudinalMpc:
+class LongitudinalMpc(LongitudinalMpcSP):
   def __init__(self, dt=DT_MDL):
+    LongitudinalMpcSP.__init__(self)
     self.dt = dt
     self.solver = AcadosOcpSolverCython(MODEL_NAME, ACADOS_SOLVER_TYPE, N)
     self.params_reader = Params()
-    self.tuning = read_long_mpc_tuning(self.params_reader)
+    self.tuning = read_tn_long_mpc_tuning(self.params_reader)
     self.target_tuning = self.tuning
     self.tuning_revision = read_valid_revision(self.params_reader)
     self.last_tuning_update_t = 0.0
     self.last_tuning_step_t = time.monotonic()
     self.reset()
-    self.source = LongitudinalPlanSource.lead0
+    self.source = LongitudinalPlanSource.cruise
 
   def reset(self):
     self.solver.reset()
@@ -308,7 +313,6 @@ class LongitudinalMpc:
       self.solver.set(i, 'x', np.zeros(X_DIM))
 
     self.last_cloudlog_t = 0
-    self.status = False
     self.crash_cnt = 0.0
     self.solution_status = 0
     # timers
@@ -320,16 +324,16 @@ class LongitudinalMpc:
     t = time.monotonic()
     polled = False
     if force or t >= self.last_tuning_update_t + PARAMS_UPDATE_PERIOD:
-      self.target_tuning = read_long_mpc_tuning(self.params_reader, last_known_good=self.target_tuning)
+      self.target_tuning = read_tn_long_mpc_tuning(self.params_reader, last_known_good=self.target_tuning)
       self.tuning_revision = read_valid_revision(self.params_reader, self.tuning_revision)
       self.last_tuning_update_t = t
       polled = True
     self.tuning = ramp_dataclass(
-      self.tuning, self.target_tuning, BACKENDS[BackendId.LOCAL], t - self.last_tuning_step_t,
+      self.tuning, self.target_tuning, BACKENDS[BackendId.TN_NO_DEC], t - self.last_tuning_step_t,
     )
     self.last_tuning_step_t = t
     if polled:
-      write_effective_state(self.params_reader, BACKENDS[BackendId.LOCAL], self.tuning_revision,
+      write_effective_state(self.params_reader, BACKENDS[BackendId.TN_NO_DEC], self.tuning_revision,
                             self.tuning, self.target_tuning)
 
   def set_cost_weights(self, cost_weights, constraint_cost_weights):
@@ -353,7 +357,8 @@ class LongitudinalMpc:
     jerk_factor = get_jerk_factor(personality, self.tuning)
     a_change_cost = self.tuning.a_change_cost if prev_accel_constraint else 0
     cost_weights = [self.tuning.x_ego_obstacle_cost, X_EGO_COST, V_EGO_COST, A_EGO_COST,
-                    jerk_factor * a_change_cost, jerk_factor * self.tuning.j_ego_cost]
+                    jerk_factor * a_change_cost,
+                    LongitudinalMpcSP.scale_jerk_cost(self, jerk_factor * self.tuning.j_ego_cost)]
     constraint_cost_weights = [LIMIT_COST, LIMIT_COST, LIMIT_COST, self.tuning.danger_zone_cost]
     self.set_cost_weights(cost_weights, constraint_cost_weights)
 
@@ -396,10 +401,10 @@ class LongitudinalMpc:
     lead_xv = self.extrapolate_lead(x_lead, v_lead, a_lead, a_lead_tau)
     return lead_xv
 
-  def update(self, radarstate, personality=log.LongitudinalPersonality.standard):
+  def update(self, radarstate, v_cruise, personality=log.LongitudinalPersonality.standard):
     self.update_tuning()
     t_follow = get_T_FOLLOW(personality, self.tuning)
-    self.status = radarstate.leadOne.present or radarstate.leadTwo.present
+    v_ego = self.x0[1]
 
     lead_xv_0 = self.process_lead(radarstate.leadOne)
     lead_xv_1 = self.process_lead(radarstate.leadTwo)
@@ -410,7 +415,17 @@ class LongitudinalMpc:
     lead_0_obstacle = lead_xv_0[:,0] + get_stopped_equivalence_factor(lead_xv_0[:,1], self.tuning.comfort_brake)
     lead_1_obstacle = lead_xv_1[:,0] + get_stopped_equivalence_factor(lead_xv_1[:,1], self.tuning.comfort_brake)
 
-    x_obstacles = np.column_stack([lead_0_obstacle, lead_1_obstacle])
+    # Fake an obstacle for cruise, this ensures smooth acceleration to set speed
+    # when the leads are no factor.
+    v_lower = v_ego + (T_IDXS * CRUISE_MIN_ACCEL * 1.05)
+    # TODO does this make sense when max_a is negative?
+    v_upper = v_ego + (T_IDXS * self.cruise_accel_max(CRUISE_MAX_ACCEL) * 1.05)
+    v_cruise_clipped = np.clip(v_cruise * np.ones(N+1), v_lower, v_upper)
+    cruise_obstacle = np.cumsum(T_DIFFS * v_cruise_clipped) + get_safe_obstacle_distance(
+      v_cruise_clipped, t_follow, self.tuning.comfort_brake, self.tuning.stop_distance,
+    )
+
+    x_obstacles = np.column_stack([lead_0_obstacle, lead_1_obstacle, cruise_obstacle])
     self.source = MPC_SOURCES[np.argmin(x_obstacles[0])]
 
     self.yref[:,:] = 0.0
@@ -420,6 +435,7 @@ class LongitudinalMpc:
 
     self.params[:,0] = ACCEL_MIN
     self.params[:,1] = ACCEL_MAX
+    LongitudinalMpcSP.apply_accel_limits(self)
     self.params[:,2] = np.min(x_obstacles, axis=1)
     self.params[:,3] = np.copy(self.a_prev)
     self.params[:,4] = t_follow
@@ -441,6 +457,7 @@ class LongitudinalMpc:
     self.solver.constraints_set(0, "ubx", self.x0)
 
     self.solution_status = self.solver.solve()
+    LongitudinalMpcSP.save_solution_status(self)
     self.solve_time = float(self.solver.get_stats('time_tot')[0])
 
     for i in range(N+1):

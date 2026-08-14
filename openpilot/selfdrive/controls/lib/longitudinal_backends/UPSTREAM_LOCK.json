@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "spUpstream": {
+    "repository": "https://github.com/sunnypilot/sunnypilot.git",
+    "trackingRef": "dev-c3",
+    "lastReviewedUpstreamCommit": "11c81b13aebb60d5fa69344b53aa7cf217576a3f",
+    "downstreamIntegrationBase": "b37c83357820ba82a7f6a4876c5c71916fec3521"
+  },
+  "tnNoDec": {
+    "repository": "https://github.com/sunnypilot/sunnypilot.git",
+    "commit": "08fad73ab48406622bd1ba5d845a70a26b5e1a65",
+    "dynamicExperimentalControl": "unsupported"
+  }
+}
