@@ -102,11 +102,18 @@ for build_path_env in ("PARAMS_ROOT", "CACHEDB"):
 rpath = lenv["LD_LIBRARY_PATH"].copy()
 
 if arch == "larch64":
+  # AGNOS packages native dependencies in the system Python environment.
+  # Use the package-provided paths instead of relying on the legacy
+  # /usr/local include and library layout.
+  import capnproto
+
   cpppath = [
     "#third_party/opencl/include",
+    capnproto.INCLUDE_DIR,
   ]
 
   libpath = [
+    capnproto.LIB_DIR,
     "/usr/local/lib",
     "/system/vendor/lib64",
     "#third_party/nanovg",
