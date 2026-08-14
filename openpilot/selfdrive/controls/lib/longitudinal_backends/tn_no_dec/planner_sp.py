@@ -153,7 +153,8 @@ class LongitudinalPlannerSP:
     sccVision.state = self.scc.vision.state
     sccVision.vTarget = float(self.scc.vision.output_v_target)
     sccVision.aTarget = float(self.scc.vision.output_a_target)
-    sccVision.currentLateralAccel = float(self.scc.vision.current_lat_acc)
+    # Keep the existing message field for compatibility; SCC-V now uses planned curvature.
+    sccVision.currentLateralAccel = float(self.scc.vision.desired_lat_acc)
     sccVision.maxPredictedLateralAccel = float(self.scc.vision.max_pred_lat_acc)
     sccVision.enabled = self.scc.vision.is_enabled
     sccVision.active = self.scc.vision.is_active

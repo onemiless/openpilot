@@ -16,7 +16,9 @@ from openpilot.common.realtime import DT_MDL
 from openpilot.selfdrive.car.cruise import V_CRUISE_UNSET
 from openpilot.selfdrive.modeld.constants import ModelConstants
 from openpilot.sunnypilot.selfdrive.controls.lib.smart_cruise_control import MIN_V
-from openpilot.sunnypilot.selfdrive.controls.lib.smart_cruise_control.vision_controller import SmartCruiseControlVision, _ENTERING_PRED_LAT_ACC_TH
+from openpilot.sunnypilot.selfdrive.controls.lib.smart_cruise_control.vision_controller import (
+  SmartCruiseControlVision, _ENTERING_PRED_LAT_ACC_TH, _TURNING_ACC_V,
+)
 
 VisionState = custom.LongitudinalPlanSP.SmartCruiseControl.VisionState
 
@@ -100,7 +102,8 @@ def generate_carState():
 
 def generate_controlsState():
   controls_state = messaging.new_message('controlsState')
-  controls_state.controlsState.curvature = 0.05
+  controls_state.controlsState.curvature = 0.0
+  controls_state.controlsState.desiredCurvature = 0.05
 
   return controls_state
 
@@ -144,6 +147,17 @@ class TestSmartCruiseControlVision:
     for _ in range(int(10. / DT_MDL)):
       self.scc_v.update(self.sm, True, False, 0., 0., 0.)
     assert self.scc_v.state == VisionState.enabled
+
+  def test_uses_desired_curvature_instead_of_current_curvature(self):
+    self.sm['controlsState'].curvature = 0.1
+    self.sm['controlsState'].desiredCurvature = 0.002
+
+    self.scc_v.update(self.sm, True, False, 20.0, 0.0, 0.0)
+
+    assert self.scc_v.desired_lat_acc == pytest.approx(0.8)
+
+  def test_turning_accel_table_remains_monotonic(self):
+    assert np.all(np.diff(_TURNING_ACC_V) <= 0.0)
 
   @pytest.mark.parametrize(
     "case, should_enter",

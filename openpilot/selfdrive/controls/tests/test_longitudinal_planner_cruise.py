@@ -9,7 +9,10 @@ from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.selfdrive.controls.lib.longcontrol import LongCtrlState
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import MPC_SOURCES, PARAM_DIM, LongitudinalMpc, LongitudinalPlanSource
 import openpilot.selfdrive.controls.lib.longitudinal_planner_local as planner_module
+from openpilot.selfdrive.controls.lib.longitudinal_backends.tn_no_dec.planner import limit_accel_in_turns as limit_accel_in_turns_tn
 from openpilot.selfdrive.controls.lib.longitudinal_planner_local import LongitudinalPlanner, get_cruise_accel, get_max_accel
+from openpilot.selfdrive.controls.lib.longitudinal_planner_local import limit_accel_in_turns as limit_accel_in_turns_local
+from openpilot.selfdrive.controls.lib.longitudinal_planner_official import limit_accel_in_turns as limit_accel_in_turns_official
 from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_planner import LongitudinalPlannerSP
 
 
@@ -27,7 +30,7 @@ def _cp():
 
 @pytest.mark.parametrize("v_ego", [0.0, 10.0, 25.0, 40.0])
 def test_normal_cruise_respects_comfort_and_jerk_limits(v_ego):
-  accel, should_stop = get_cruise_accel(False, v_ego + 20.0, v_ego, 0.0, 0.0, _cp(), DT, 0.0, True)
+  accel, should_stop = get_cruise_accel(False, v_ego + 20.0, v_ego, 0.0, 0.0, DT, 0.0, True)
 
   expected_jerk_step = get_max_accel(v_ego) * DT
   assert accel == pytest.approx(expected_jerk_step)
@@ -36,29 +39,39 @@ def test_normal_cruise_respects_comfort_and_jerk_limits(v_ego):
 
 
 def test_normal_cruise_decelerates_when_set_speed_drops():
-  accel, should_stop = get_cruise_accel(False, 20.0, 25.0, 0.0, 0.0, _cp(), DT, 0.0, True)
+  accel, should_stop = get_cruise_accel(False, 20.0, 25.0, 0.0, 0.0, DT, 0.0, True)
 
   assert accel < 0.0
   assert not should_stop
 
 
 def test_normal_cruise_respects_turn_and_coast_limits():
-  turn_limited, _ = get_cruise_accel(False, 40.0, 20.0, 0.0, 20.0, _cp(), 1.0, 0.0, True)
-  coast_limited, _ = get_cruise_accel(False, 40.0, 20.0, 0.0, 0.0, _cp(), 1.0, -0.4, False)
+  turn_limited, _ = get_cruise_accel(False, 40.0, 20.0, 0.0, 0.006, 1.0, 0.0, True)
+  coast_limited, _ = get_cruise_accel(False, 40.0, 20.0, 0.0, 0.0, 1.0, -0.4, False)
 
   assert turn_limited < get_max_accel(20.0)
   assert coast_limited <= -0.4
 
 
+@pytest.mark.parametrize("limit_accel", [limit_accel_in_turns_official, limit_accel_in_turns_local, limit_accel_in_turns_tn])
+def test_all_backends_limit_turn_accel_from_curvature(limit_accel):
+  straight = limit_accel(20.0, 0.0, [ACCEL_MIN, ACCEL_MAX])[1]
+  left_turn = limit_accel(20.0, 0.006, [ACCEL_MIN, ACCEL_MAX])[1]
+  right_turn = limit_accel(20.0, -0.006, [ACCEL_MIN, ACCEL_MAX])[1]
+
+  assert left_turn < straight
+  assert right_turn == pytest.approx(left_turn)
+
+
 def test_e2e_cruise_skips_comfort_turn_coast_and_jerk_limits():
-  accel, should_stop = get_cruise_accel(True, 30.0, 5.0, -1.0, 30.0, _cp(), DT, -0.5, False)
+  accel, should_stop = get_cruise_accel(True, 30.0, 5.0, -1.0, 0.1, DT, -0.5, False)
 
   assert accel == ACCEL_MAX
   assert not should_stop
 
 
 def test_zero_cruise_requests_stop():
-  _, should_stop = get_cruise_accel(False, 0.0, 10.0, 0.0, 0.0, _cp(), DT, 0.0, True)
+  _, should_stop = get_cruise_accel(False, 0.0, 10.0, 0.0, 0.0, DT, 0.0, True)
 
   assert should_stop
 
@@ -139,7 +152,7 @@ def _sm(long_control_state=LongCtrlState.pid, a_ego=0.4, experimental_mode=False
       standstill=False,
       steeringAngleDeg=0.0,
     ),
-    "controlsState": SimpleNamespace(longControlState=long_control_state, forceDecel=False),
+    "controlsState": SimpleNamespace(longControlState=long_control_state, forceDecel=False, curvature=0.0),
     "selfdriveState": SimpleNamespace(enabled=True, personality=0, experimentalMode=experimental_mode),
     "liveParameters": SimpleNamespace(angleOffsetDeg=0.0),
     "modelV2": SimpleNamespace(

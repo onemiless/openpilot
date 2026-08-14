@@ -46,25 +46,24 @@ def get_max_accel(v_ego):
 def get_coast_accel(pitch):
   return np.sin(pitch) * -5.65 - 0.3  # fitted from data using xx/projects/allow_throttle/compute_coast_accel.py
 
-def limit_accel_in_turns(v_ego, angle_steers, a_target, CP):
+def limit_accel_in_turns(v_ego, lateral_curvature, a_target):
   """
-  This function returns a limited long acceleration allowed, depending on the existing lateral acceleration
+  This function returns a limited longitudinal acceleration based on estimated current lateral acceleration
   this should avoid accelerating when losing the target in turns
   """
-  # FIXME: This function to calculate lateral accel is incorrect and should use the VehicleModel
-  # The lookup table for turns should also be updated if we do this
+  # TODO: The lookup table for turns should be verified against the curvature-based input.
   a_total_max = np.interp(v_ego, _A_TOTAL_MAX_BP, _A_TOTAL_MAX_V)
-  a_y = v_ego ** 2 * angle_steers * CV.DEG_TO_RAD / (CP.steerRatio * CP.wheelbase)
+  a_y = v_ego ** 2 * abs(lateral_curvature)
   a_x_allowed = math.sqrt(max(a_total_max ** 2 - a_y ** 2, 0.))
 
   return [a_target[0], min(a_target[1], a_x_allowed)]
 
 
-def get_cruise_accel(e2e, v_cruise, v_ego, a_cruise_prev, angle_steers, CP, dt, accel_coast, allow_throttle):
+def get_cruise_accel(e2e, v_cruise, v_ego, a_cruise_prev, lateral_curvature, dt, accel_coast, allow_throttle):
   max_accel = ACCEL_MAX if e2e else get_max_accel(v_ego)
 
   if not e2e:
-    max_accel = limit_accel_in_turns(v_ego, angle_steers, [ACCEL_MIN, max_accel], CP)[1]
+    max_accel = limit_accel_in_turns(v_ego, lateral_curvature, [ACCEL_MIN, max_accel])[1]
     if not allow_throttle:
       clipped_accel_coast = max(accel_coast, ACCEL_MIN)
       coast_limit = np.interp(v_ego, [MIN_ALLOW_THROTTLE_SPEED, MIN_ALLOW_THROTTLE_SPEED * 2],
@@ -135,8 +134,6 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
     # No change cost when user is controlling the speed, or when standstill
     prev_accel_constraint = not (reset_state or sm['carState'].standstill)
 
-    steer_angle_without_offset = sm['carState'].steeringAngleDeg - sm['liveParameters'].angleOffsetDeg
-
     if reset_state:
       self.v_desired_filter.x = v_ego
       # Keep both planner states anchored to measured acceleration while inactive.
@@ -187,7 +184,7 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
       output_a_target_e2e -= extra_decel
 
     self.a_cruise, cruise_should_stop = get_cruise_accel(
-      e2e, v_cruise, v_ego, self.a_cruise, steer_angle_without_offset, self.CP, self.dt,
+      e2e, v_cruise, v_ego, self.a_cruise, sm['controlsState'].curvature, self.dt,
       accel_coast, self.allow_throttle,
     )
 
