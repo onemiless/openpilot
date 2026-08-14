@@ -457,17 +457,22 @@ class TestTeslaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyT
     self.assertTrue(self._rx(self._steering_status_msg(eac_status=1)))
     self.assertTrue(self._tx(self._angle_cmd_msg(0, True)))
 
-  def test_mads_persistent_eps_error_4_disengages_after_timeout(self):
+  def test_mads_persistent_eps_inhibit_pauses_without_revoking_lateral_authority(self):
     self._engage_mads(cooperative_steering=True)
-    temporary_fault = self._steering_status_msg(eac_status=0, eac_error_code=4)
-    for _ in range(99):
-      self.assertTrue(self._rx(temporary_fault))
-      self.assertTrue(self.safety.get_controls_allowed_lateral())
+    for error_code in (0, 4, 8):
+      inhibited = self._steering_status_msg(eac_status=0, eac_error_code=error_code)
+      for _ in range(150):
+        self.assertTrue(self._rx(inhibited))
+        self.assertTrue(self.safety.get_controls_allowed_lateral())
+        self.assertFalse(self._tx(self._angle_cmd_msg(0, True)))
+
+    for _ in range(24):
+      self.assertTrue(self._rx(self._steering_status_msg(eac_status=1)))
       self.assertFalse(self._tx(self._angle_cmd_msg(0, True)))
 
-    self.assertTrue(self._rx(temporary_fault))
-    self.assertFalse(self.safety.get_controls_allowed_lateral())
-    self.assertFalse(self._tx(self._angle_cmd_msg(0, True)))
+    self.assertTrue(self._rx(self._steering_status_msg(eac_status=1)))
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+    self.assertTrue(self._tx(self._angle_cmd_msg(0, True)))
 
   def test_mads_heartbeat_mismatch_disengages(self):
     self._engage_mads()

@@ -17,11 +17,9 @@ DRIVER_OVERRIDE_RELEASE_TORQUE = 2.5  # Nm
 DRIVER_OVERRIDE_RELEASE_STEERING_RATE = 10.0  # deg/s
 DRIVER_OVERRIDE_RELEASE_FRAMES = round(0.25 / DT_CTRL)
 EPS_TEMP_FAULT_RECOVERY_FRAMES = round(0.25 / DT_CTRL)
-EPS_TEMP_FAULT_TIMEOUT_FRAMES = round(1.0 / DT_CTRL)
 EAC_STATUS_INHIBITED = 0
 EAC_STATUS_AVAILABLE = 1
 EAC_STATUS_ACTIVE = 2
-EAC_ERROR_TMP_FAULT = 4
 RADAR_SOFT_DISABLE_EVENTS = frozenset((
   EventName.radarFault,
   EventName.radarWrongConfig,
@@ -65,6 +63,7 @@ class ModularAssistiveDrivingSystem:
     self.lateral_mismatch_counter = 0
 
     self._requested = False
+    self._cp_scoped_request = False
     self._selfdrive_enabled_prev = False
     self._brake_pressed_prev = False
     self._param_refresh_counter = 0
@@ -74,7 +73,6 @@ class ModularAssistiveDrivingSystem:
     self._eps_temp_fault_latched = False
     self._eps_temp_fault_frames = 0
     self._eps_temp_fault_recovery_counter = 0
-    self._eps_temp_fault_timeout_logged = False
     self._eps_fault_consecutive_frames = 0
     self._eac_status = EAC_STATUS_AVAILABLE
     self._eac_error_code = 0
@@ -103,6 +101,7 @@ class ModularAssistiveDrivingSystem:
         self.feature_disabled_latched = True
         self.available = False
         self._requested = False
+        self._cp_scoped_request = False
         self._pending_exit_reason = "config_disabled"
       cloudlog.event("mads.config_changed", previous_enabled=previous_feature_enabled,
                      enabled=feature_enabled, available=self.available,
@@ -116,7 +115,12 @@ class ModularAssistiveDrivingSystem:
       self.user_enabled = user_enabled
       if not user_enabled:
         self._requested = False
+        self._cp_scoped_request = False
         self._pending_exit_reason = "manual_disarm"
+      elif self._cp_scoped_request:
+        # A driver re-arming independent MADS while full CP is active converts
+        # the temporary CP request into a persistent independent session.
+        self._cp_scoped_request = False
       cloudlog.event("mads.user_request", previous_enabled=previous_user_enabled,
                      enabled=user_enabled, active=self.active,
                      requires_normal_engagement=user_enabled)
@@ -163,14 +167,17 @@ class ModularAssistiveDrivingSystem:
                    stable_release_ms=round(DRIVER_OVERRIDE_RELEASE_FRAMES * DT_CTRL * 1000))
     return True
 
-  def _update_eps_temporary_fault(self, CS) -> tuple[bool, bool]:
+  def _update_eps_temporary_fault(self, CS) -> bool:
     self._eac_status = int(getattr(CS, "eacStatus", EAC_STATUS_AVAILABLE))
     self._eac_error_code = int(getattr(CS, "eacErrorCode", 0))
     self._eps_fault_consecutive_frames = (self._eps_fault_consecutive_frames + 1
                                           if CS.steerFaultTemporary or CS.steerFaultPermanent else 0)
+    # Match SP's state ownership: any non-disengaging EPS inhibit pauses
+    # steering output without destroying the MADS session. Error 9 and strong
+    # driver input arrive as steeringDisengage and remain hard exits.
     temporary_fault = (bool(CS.steerFaultTemporary) and
                        self._eac_status == EAC_STATUS_INHIBITED and
-                       self._eac_error_code == EAC_ERROR_TMP_FAULT)
+                       not bool(getattr(CS, "steeringDisengage", False)))
     eps_available = (not CS.steerFaultTemporary and not CS.steerFaultPermanent and
                      self._eac_status in (EAC_STATUS_AVAILABLE, EAC_STATUS_ACTIVE))
 
@@ -181,7 +188,7 @@ class ModularAssistiveDrivingSystem:
                        eac_status_raw=self._eac_status, eac_error_code=self._eac_error_code,
                        steering_torque=float(CS.steeringTorque), steering_rate=float(CS.steeringRateDeg))
       self._eps_temp_fault_latched = True
-      self._eps_temp_fault_frames = min(self._eps_temp_fault_frames + 1, EPS_TEMP_FAULT_TIMEOUT_FRAMES)
+      self._eps_temp_fault_frames += 1
       self._eps_temp_fault_recovery_counter = 0
     elif self._eps_temp_fault_latched:
       self._eps_temp_fault_recovery_counter = self._eps_temp_fault_recovery_counter + 1 if eps_available else 0
@@ -195,17 +202,8 @@ class ModularAssistiveDrivingSystem:
         self._eps_temp_fault_latched = False
         self._eps_temp_fault_frames = 0
         self._eps_temp_fault_recovery_counter = 0
-        self._eps_temp_fault_timeout_logged = False
 
-    timed_out = self._eps_temp_fault_latched and self._eps_temp_fault_frames >= EPS_TEMP_FAULT_TIMEOUT_FRAMES
-    if timed_out and not self._eps_temp_fault_timeout_logged:
-      cloudlog.event("mads.eps_temporary_fault_timeout", error=True,
-                     eac_status=EAC_STATUS_NAMES.get(self._eac_status, "EAC_UNKNOWN"),
-                     eac_status_raw=self._eac_status, eac_error_code=self._eac_error_code,
-                     fault_frames=self._eps_temp_fault_frames,
-                     timeout_ms=round(EPS_TEMP_FAULT_TIMEOUT_FRAMES * DT_CTRL * 1000))
-      self._eps_temp_fault_timeout_logged = True
-    return self._eps_temp_fault_latched, timed_out
+    return self._eps_temp_fault_latched
 
   def update(self, CS, selfdrive_enabled: bool, selfdrive_active: bool, events) -> None:
     self._refresh_params()
@@ -213,6 +211,7 @@ class ModularAssistiveDrivingSystem:
 
     if not self.available:
       self._requested = False
+      self._cp_scoped_request = False
       self._driver_override_latched = False
       self._driver_override_release_counter = 0
       self._set_state(MadsState.disabled, self._pending_exit_reason or "not_available")
@@ -222,15 +221,21 @@ class ModularAssistiveDrivingSystem:
       return
 
     selfdrive_rising = selfdrive_enabled and not self._selfdrive_enabled_prev
+    selfdrive_falling = not selfdrive_enabled and self._selfdrive_enabled_prev
     brake_rising = CS.brakePressed and not self._brake_pressed_prev
     both_pedals = CS.brakePressed and CS.gasPressed
     driver_override_released = self._update_driver_override(CS)
-    eps_temp_fault_paused, eps_temp_fault_timed_out = self._update_eps_temporary_fault(CS)
+    eps_temp_fault_paused = self._update_eps_temporary_fault(CS)
 
-    if selfdrive_rising and self.user_enabled:
+    if selfdrive_rising:
       self._requested = True
-    elif selfdrive_rising:
-      cloudlog.event("mads.engagement_blocked", reason="user_disarmed")
+      self._cp_scoped_request = not self.user_enabled
+      cloudlog.event("mads.full_cp_request", independent_mads_armed=self.user_enabled,
+                     cp_scoped=self._cp_scoped_request)
+    elif selfdrive_falling and self._cp_scoped_request:
+      self._requested = False
+      self._cp_scoped_request = False
+      self._pending_exit_reason = "full_cp_disengaged"
 
     steering_disengage = bool(getattr(CS, "steeringDisengage", False))
     wrong_gear = CS.gearShifter in (GearShifter.park, GearShifter.reverse, GearShifter.neutral, GearShifter.unknown)
@@ -238,10 +243,7 @@ class ModularAssistiveDrivingSystem:
     # reverse at any speed and in other wrong gears below 2.5 m/s.
     gear_pause = CS.gearShifter == GearShifter.reverse or (wrong_gear and CS.vEgo < 2.5)
     pause_for_brake = self.steering_mode == MadsSteeringMode.PAUSE and CS.brakePressed
-    recoverable_eps_temp_fault_now = (CS.steerFaultTemporary and
-                                      self._eac_status == EAC_STATUS_INHIBITED and
-                                      self._eac_error_code == EAC_ERROR_TMP_FAULT)
-    immediate_steering_fault = CS.steerFaultPermanent or (CS.steerFaultTemporary and not recoverable_eps_temp_fault_now)
+    immediate_steering_fault = CS.steerFaultPermanent
     soft_disable_events = [event for event in events.names if ET.SOFT_DISABLE in EVENTS.get(event, {})]
     radar_only_soft_disable = (bool(soft_disable_events) and
                                all(event in RADAR_SOFT_DISABLE_EVENTS for event in soft_disable_events))
@@ -262,8 +264,6 @@ class ModularAssistiveDrivingSystem:
       exit_reasons.append("invalid_lkas_setting")
     if immediate_steering_fault:
       exit_reasons.append("steering_fault")
-    if eps_temp_fault_timed_out:
-      exit_reasons.append("eps_temporary_fault_timeout")
     if events.contains(ET.IMMEDIATE_DISABLE):
       exit_reasons.append("immediate_disable_event")
     if events.contains(ET.SOFT_DISABLE) and not radar_only_soft_disable:
@@ -272,6 +272,7 @@ class ModularAssistiveDrivingSystem:
     safety_exit = bool(exit_reasons)
     if safety_exit or (brake_rising and self.steering_mode == MadsSteeringMode.DISENGAGE):
       self._requested = False
+      self._cp_scoped_request = False
       self._driver_override_latched = False
       self._driver_override_release_counter = 0
       if not safety_exit:
@@ -281,12 +282,14 @@ class ModularAssistiveDrivingSystem:
     if screen_toggle:
       if self._requested:
         self._requested = False
+        self._cp_scoped_request = False
         self.user_enabled = False
         self.params.put_bool("MadsUserEnabled", False)
         self._pending_exit_reason = "screen_toggle_off"
         cloudlog.event("mads.screen_toggle", enabled=False, active=self.active)
       elif not exit_reasons and not CS.brakePressed:
         self._requested = True
+        self._cp_scoped_request = False
         self.user_enabled = True
         self.params.put_bool("MadsUserEnabled", True)
         screen_enabled = True

@@ -187,8 +187,7 @@ def test_mads_safety_exits_are_not_overridable():
   for CS in (make_car_state(steeringDisengage=True),
              make_car_state(brakePressed=True, gasPressed=True),
              make_car_state(invalidLkasSetting=True),
-             make_car_state(steerFaultPermanent=True),
-             make_car_state(steerFaultTemporary=True, eacStatus=0, eacErrorCode=8)):
+             make_car_state(steerFaultPermanent=True)):
     mads = make_mads(steering_mode=0)
     engage(mads)
     mads.update(CS, False, False, FakeEvents())
@@ -287,17 +286,25 @@ def test_eps_error_4_recovery_timer_resets_if_fault_returns():
   assert mads.state == MadsState.enabled
 
 
-def test_persistent_eps_error_4_times_out_and_disables_mads():
+def test_persistent_eps_inhibit_pauses_without_disabling_mads_and_recovers():
   mads = make_mads(steering_mode=0)
   engage(mads)
-  transient_fault = make_car_state(steerFaultTemporary=True, eacStatus=0, eacErrorCode=4)
 
-  for _ in range(99):
-    mads.update(transient_fault, False, False, FakeEvents())
+  for error_code in (0, 4, 8):
+    inhibited = make_car_state(steerFaultTemporary=True, eacStatus=0, eacErrorCode=error_code)
+    for _ in range(150):
+      mads.update(inhibited, False, False, FakeEvents())
+      assert mads.state == MadsState.paused
+      assert mads.enabled
+
+  recovered = make_car_state(eacStatus=1, eacErrorCode=0)
+  for _ in range(24):
+    mads.update(recovered, False, False, FakeEvents())
     assert mads.state == MadsState.paused
 
-  mads.update(transient_fault, False, False, FakeEvents())
-  assert mads.state == MadsState.disabled
+  mads.update(recovered, False, False, FakeEvents())
+  assert mads.state == MadsState.enabled
+  assert mads.active
 
 
 def test_strong_driver_override_pauses_then_resumes_after_stable_release():
@@ -417,19 +424,17 @@ def test_manual_disarm_immediately_exits_mads():
   assert not mads.active
 
 
-def test_manual_rearm_waits_for_normal_engagement_edge():
+def test_full_cp_engagement_always_requests_lateral_when_independent_mads_is_disarmed():
   params = FakeParams(user_enabled=False)
   CP = SimpleNamespace(brand="tesla", passive=False)
   mads = ModularAssistiveDrivingSystem(CP, params)
 
   mads.update(make_car_state(), True, True, FakeEvents())
-  assert not mads.enabled
-
-  params.values["MadsUserEnabled"] = True
-  for _ in range(10):
-    mads.update(make_car_state(), False, False, FakeEvents())
-  assert not mads.enabled
-
-  mads.update(make_car_state(), True, True, FakeEvents())
   assert mads.enabled
   assert mads.active
+  assert not mads.user_enabled
+
+  # A CP-only request must not silently arm independent MADS after CP exits.
+  mads.update(make_car_state(), False, False, FakeEvents())
+  assert not mads.enabled
+  assert not mads.active

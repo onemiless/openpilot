@@ -898,7 +898,7 @@ CarrotPanel::CarrotPanel(QWidget* parent) : QWidget(parent) {
 
   latLongToggles = new ListWidget(this);
   latLongToggles->addItem(new CValueControl("Mads", "Tesla MADS 独立横向控制(1)", "0:关闭并保持原有控制逻辑, 1:开启。修改后需重启车辆", 0, 1, 1));
-  latLongToggles->addItem(new CValueControl("MadsUserEnabled", "Tesla MADS 手动允许(1)", "0:保持MADS关闭, 1:允许下次正常启用横向。行驶中可使用屏幕MADS按钮切换", 0, 1, 1));
+  latLongToggles->addItem(new CValueControl("MadsUserEnabled", "Tesla 独立 MADS 手动允许(1)", "0:仅关闭独立MADS，完整CP仍同时开启横向和纵向；1:允许独立MADS保持。行驶中可使用屏幕MADS按钮切换", 0, 1, 1));
   latLongToggles->addItem(new CValueControl("MadsSteeringMode", "Tesla MADS 制动策略(2)", "0:制动时保持横向, 1:制动时暂停并在释放后恢复, 2:制动时退出横向。修改后需重启车辆", 0, 2, 1));
   latLongToggles->addItem(new CValueControl("TeslaCoopSteering", "Tesla 协作转向(1)", "0:关闭并保持原有方向盘角度控制, 1:允许驾驶员与模型共同转向。修改后需重启车辆", 0, 1, 1));
   latLongToggles->addItem(new CValueControl("EnableTeslaTools", "Tesla 网页转向灯测试(0)", "0:关闭, 1:启动8090测试网页。测试动作要求横向激活并处于变道流程，车辆完成变道后自动关闭。当前网页无认证，仅限受控网络测试，修改后需重启车辆", 0, 1, 1));

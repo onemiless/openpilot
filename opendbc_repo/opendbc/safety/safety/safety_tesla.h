@@ -25,9 +25,7 @@ static const uint32_t TESLA_TURN_SIGNAL_SESSION_TIMEOUT_US = 12000000U;
 static const uint8_t TESLA_TURN_SIGNAL_MAX_FRAMES = 64U;
 static const int TESLA_STEERING_DISENGAGE_TORQUE = 500;  // 5.0 Nm in 0.01 Nm units
 static const uint16_t TESLA_EPS_TEMP_FAULT_RECOVERY_FRAMES = 25U;  // 0.25 s at 100 Hz
-static const uint16_t TESLA_EPS_TEMP_FAULT_TIMEOUT_FRAMES = 100U;  // 1.0 s at 100 Hz
 static bool tesla_eps_temp_fault_active = false;
-static uint16_t tesla_eps_temp_fault_counter = 0U;
 static uint16_t tesla_eps_temp_fault_recovery_counter = 0U;
 
 static uint8_t tesla_body_controls_checksum(const CANPacket_t *msg) {
@@ -57,35 +55,32 @@ static void tesla_rx_hook(const CANPacket_t *to_push) {
                                           (ABS(torsion_bar_torque) > TESLA_STEERING_DISENGAGE_TORQUE);
       const bool permanent_eps_fault = eac_status == 3;
       const bool high_angle_rate_fault = (eac_status == 0) && (eac_error_code == 9);
-      const bool temporary_eps_fault = (eac_status == 0) && (eac_error_code == 4);
+      // Match SP session ownership while retaining a stricter output gate:
+      // inhibited EPS pauses active steering requests, but only error 9,
+      // permanent faults, or driver override revoke lateral authority.
+      const bool temporary_eps_fault = (eac_status == 0) && (eac_error_code != 9);
       const bool eps_control_available = (eac_status == 1) || (eac_status == 2);
 
       if (temporary_eps_fault) {
         tesla_eps_temp_fault_active = true;
-        tesla_eps_temp_fault_counter = MIN(tesla_eps_temp_fault_counter + 1U, TESLA_EPS_TEMP_FAULT_TIMEOUT_FRAMES);
         tesla_eps_temp_fault_recovery_counter = 0U;
       } else if (tesla_eps_temp_fault_active) {
         tesla_eps_temp_fault_recovery_counter = eps_control_available ?
           MIN(tesla_eps_temp_fault_recovery_counter + 1U, TESLA_EPS_TEMP_FAULT_RECOVERY_FRAMES) : 0U;
         if (tesla_eps_temp_fault_recovery_counter >= TESLA_EPS_TEMP_FAULT_RECOVERY_FRAMES) {
           tesla_eps_temp_fault_active = false;
-          tesla_eps_temp_fault_counter = 0U;
           tesla_eps_temp_fault_recovery_counter = 0U;
         }
       } else {
-        tesla_eps_temp_fault_counter = 0U;
         tesla_eps_temp_fault_recovery_counter = 0U;
       }
 
       if (permanent_eps_fault || high_angle_rate_fault) {
         tesla_eps_temp_fault_active = false;
-        tesla_eps_temp_fault_counter = 0U;
         tesla_eps_temp_fault_recovery_counter = 0U;
       }
 
-      const bool eps_temp_fault_timeout = tesla_eps_temp_fault_active &&
-                                          (tesla_eps_temp_fault_counter >= TESLA_EPS_TEMP_FAULT_TIMEOUT_FRAMES);
-      steering_disengage = permanent_eps_fault || high_angle_rate_fault || eps_temp_fault_timeout || strong_driver_override;
+      steering_disengage = permanent_eps_fault || high_angle_rate_fault || strong_driver_override;
     }
 
     // Vehicle speed
@@ -430,7 +425,6 @@ static safety_config tesla_init(uint16_t param) {
   tesla_stock_aeb = false;
   tesla_mads_touch_pressed = false;
   tesla_eps_temp_fault_active = false;
-  tesla_eps_temp_fault_counter = 0U;
   tesla_eps_temp_fault_recovery_counter = 0U;
   tesla_turn_signal_template_valid = false;
   tesla_speed_sync_template_valid = false;
