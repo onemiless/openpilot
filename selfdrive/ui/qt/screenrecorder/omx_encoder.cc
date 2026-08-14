@@ -534,7 +534,7 @@ void OmxEncoder::handle_out_buf(OmxEncoder *e, OMX_BUFFERHEADERTYPE *out_buf) {
       err = av_write_frame(e->ofmt_ctx, &pkt);
       if (err < 0) { LOGW("ts encoder write issue"); }
 
-      av_free_packet(&pkt);
+      av_packet_unref(&pkt);
     }
   }
 
@@ -640,11 +640,8 @@ void OmxEncoder::encoder_open(const char* filename) {
     this->out_stream = avformat_new_stream(this->ofmt_ctx, NULL);
     assert(this->out_stream);
 
-    // set codec correctly
-    av_register_all();
-
-    AVCodec *codec = NULL;
-    codec = avcodec_find_encoder(AV_CODEC_ID_H264);
+    // FFmpeg registers codecs automatically.
+    const AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_H264);
     assert(codec);
 
     this->codec_ctx = avcodec_alloc_context3(codec);
