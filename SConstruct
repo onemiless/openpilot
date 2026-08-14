@@ -105,15 +105,18 @@ if arch == "larch64":
   # AGNOS packages native dependencies in the system Python environment.
   # Use the package-provided paths instead of relying on the legacy
   # /usr/local include and library layout.
-  import capnproto
+  import importlib
+
+  agnos_pkg_names = ["bzip2", "capnproto", "eigen", "ffmpeg", "ncurses", "zeromq", "zstd"]
+  agnos_pkgs = [importlib.import_module(name) for name in agnos_pkg_names]
 
   cpppath = [
     "#third_party/opencl/include",
-    capnproto.INCLUDE_DIR,
+    [pkg.INCLUDE_DIR for pkg in agnos_pkgs],
   ]
 
   libpath = [
-    capnproto.LIB_DIR,
+    [pkg.LIB_DIR for pkg in agnos_pkgs],
     "/usr/local/lib",
     "/system/vendor/lib64",
     "#third_party/nanovg",
