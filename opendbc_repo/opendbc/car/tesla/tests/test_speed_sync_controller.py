@@ -115,20 +115,32 @@ def test_manual_opposite_gesture_after_one_second_stays_paused():
   assert controller.status()["reason"] == "manual_override"
 
 
-def test_manual_override_clears_when_longitudinal_control_reengages():
+def test_manual_override_clears_when_cp_reengages():
   controller = SpeedSyncController(configured=True)
   cc, cs = make_context(70)
   controller.observe(2_000_000_000, SPEED_BUTTON_ADDRESS, build_speed_tick(idle_speed_button(), 1), 1)
   controller.update(cc, cs, 72 / 3.6, True, 2_000_000_000)
   assert controller.manual_override is True
 
-  cc.longActive = False
+  cc.enabled = False
   controller.update(cc, cs, 72 / 3.6, True, 2_100_000_000)
   assert controller.manual_override is False
 
-  cc.longActive = True
+  cc.enabled = True
   controller.update(cc, cs, 72 / 3.6, True, 2_200_000_000)
   assert controller.status()["state"] == "stabilizing"
+
+
+def test_speed_sync_works_with_stock_longitudinal():
+  controller = SpeedSyncController(configured=True)
+  cc, cs = make_context(70)
+  cc.longActive = False
+  controller.observe(0, SPEED_BUTTON_ADDRESS, idle_speed_button(), 1)
+
+  assert controller.update(cc, cs, 72 / 3.6, True, 0) == []
+  sends = controller.update(cc, cs, 72 / 3.6, True, 500_000_000)
+  assert len(sends) == 1
+  assert signed_wheel_tick(sends[0].dat) == 1
 
 
 def test_speed_limit_change_does_not_clear_manual_override():
@@ -188,7 +200,7 @@ def test_external_cruise_speed_change_pauses_automatic_sync():
 
 
 @pytest.mark.parametrize("change,reason", [
-  ({"longActive": False}, "longitudinal_inactive"),
+  ({"enabled": False}, "controls_inactive"),
   ({"ap": True}, "tesla_ap_active"),
   ({"brake": True}, "brake_pressed"),
   ({"acc_faulted": True}, "acc_faulted"),
@@ -196,8 +208,8 @@ def test_external_cruise_speed_change_pauses_automatic_sync():
 def test_speed_sync_fails_closed(change, reason):
   controller = SpeedSyncController(configured=True)
   cc, cs = make_context(70)
-  if "longActive" in change:
-    cc.longActive = change["longActive"]
+  if "enabled" in change:
+    cc.enabled = change["enabled"]
   if "ap" in change:
     cs.tesla_autopilot_active = change["ap"]
   if "brake" in change:

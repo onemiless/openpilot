@@ -58,7 +58,7 @@ class SpeedSyncController:
     self.batch_direction = 0
     self.batch_cooldown_until_nanos = 0
     self.session_tick_count = 0
-    self._long_active_prev = False
+    self._session_active_prev = False
     self.log = get_speed_sync_logger()
     self._last_status_signature = None
     self._last_tx_data: bytes | None = None
@@ -137,10 +137,10 @@ class SpeedSyncController:
     units = getattr(CS, "tesla_speed_units", "KPH")
     current_display = self._display_speed(CS.out.cruiseState.speed, units)
     target_display = self._display_speed(target_mps, units) if target_valid else 0
-    long_active = bool(CC.enabled and CC.longActive)
-    if long_active and not self._long_active_prev:
+    session_active = bool(CC.enabled)
+    if session_active and not self._session_active_prev:
       self.session_tick_count = 0
-    self._long_active_prev = long_active
+    self._session_active_prev = session_active
 
     acc_faulted = bool(getattr(CS.out, "accFaulted", False))
     if acc_faulted and not self._acc_faulted_prev:
@@ -168,8 +168,8 @@ class SpeedSyncController:
       clear_manual_override = True
     elif getattr(CS, "tesla_autopilot_active", False):
       blocked_reason = "tesla_ap_active"
-    elif not CC.enabled or not CC.longActive:
-      blocked_reason = "longitudinal_inactive"
+    elif not CC.enabled:
+      blocked_reason = "controls_inactive"
       clear_manual_override = True
     elif CC.cruiseControl.cancel or not CS.out.cruiseState.enabled:
       blocked_reason = "cruise_inactive"

@@ -47,7 +47,7 @@ class CarInterface(CarInterfaceBase):
 
     # Tesla's fused map limit feeds this independent wheel-tick loop; CP's own
     # vCruise and SpeedFromPCM behavior remain unchanged.
-    if ret.openpilotLongitudinalControl and params.get_bool("TeslaSpeedSyncEnabled"):
+    if params.get_bool("TeslaSpeedSyncEnabled"):
       ret.flags |= TeslaFlags.SPEED_SYNC.value
       ret.safetyConfigs[0].safetyParam |= TeslaSafetyFlags.SPEED_SYNC.value
 
