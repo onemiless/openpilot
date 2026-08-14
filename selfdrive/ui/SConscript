@@ -1,5 +1,6 @@
 import os
 import json
+from ctypes.util import find_library
 Import('qt_env', 'arch', 'common', 'messaging', 'visionipc', 'transformations')
 
 base_libs = [common, messaging, visionipc, transformations,
@@ -54,7 +55,14 @@ def is_running_on_wsl2():
   except FileNotFoundError:
     return False
 
-disable_screenrecorder = is_running_on_wsl2() or arch == "Darwin"
+omx_library_paths = (
+  "/system/vendor/lib64/libOmxCore.so",
+  "/vendor/lib64/libOmxCore.so",
+  "/usr/lib/aarch64-linux-gnu/libOmxCore.so",
+  "/usr/local/lib/libOmxCore.so",
+)
+omx_available = find_library("OmxCore") is not None or any(os.path.exists(path) for path in omx_library_paths)
+disable_screenrecorder = is_running_on_wsl2() or arch == "Darwin" or not omx_available
 if disable_screenrecorder:
   qt_env.Append(CXXFLAGS=['-DDISABLE_SCREENRECORDER'])
   base_libs.remove('OmxCore')
