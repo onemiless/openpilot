@@ -50,5 +50,9 @@ def test_unverified_pedestrian_coordinate_slots_require_explicit_experiment_mode
   assert "dy_forward_dx_right" in source
   assert "drawExperimentalPedestrianSlots(ctx,ped,xScale,yScale,width,height)" in source
   assert "localStorage.getItem('pedestrianCoordinateMode') || 'off'" in source
-  assert "实验解析：" in source
+  assert "坐标解析：" in source
   assert "原始前后位同时置位" in source
+  assert "drawObjectLabel(ctx,'行人 #'" in source
+  assert "drawObjectLabel(ctx,'试 #'" not in source
+  assert "+pos.x.toFixed(1)+'m/'+pos.y.toFixed(1)+'m'" in source
+  assert "坐标单位为米" in source

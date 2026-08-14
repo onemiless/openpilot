@@ -366,7 +366,7 @@ def test_tesla_can_visualization_hides_pedestrian_coordinates_without_detection_
   assert "closest" not in pedestrians
 
 
-def test_tesla_can_visualization_does_not_promote_unverified_pedestrian_slots_to_positions():
+def test_tesla_can_visualization_keeps_pedestrian_slot_validity_unverified():
   """T-CAN gives the 0x400 coordinate fields no unit, confidence, track id,
   or per-slot validity bit. They are diagnostics, not positioned objects."""
   packer = CANPacker("tesla_modely_hw4_perception")
@@ -384,7 +384,7 @@ def test_tesla_can_visualization_does_not_promote_unverified_pedestrian_slots_to
   assert pedestrians["active_cameras"] == ["front_main"]
   assert not pedestrians["position_available"]
   assert pedestrians["positioned_objects"] == []
-  assert pedestrians["coordinate_unit"] is None
+  assert pedestrians["coordinate_unit"] == "m"
   assert pedestrians["coordinate_slots"] == [
     {"index": 1, "dx_scaled": 3.2, "dy_scaled": -1.6, "validity": "unknown"},
     {"index": 2, "dx_scaled": 5.2, "dy_scaled": 4.0, "validity": "unknown"},

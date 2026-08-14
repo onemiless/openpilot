@@ -534,10 +534,9 @@ class TeslaCanVisualization:
     coordinate_slots = []
     if detected_any:
       for index in (1, 2, 3):
-        # T-CAN documents only signed 6-bit values with scale 0.4. It does not
-        # publish a physical unit, per-slot valid bit, confidence, track id, or
-        # a mapping between slots and the eight camera flags. Preserve these
-        # as diagnostics; never promote them to metric positions or a count.
+        # T-CAN documents signed 6-bit values with scale 0.4. Vehicle-position
+        # validation supports metres, but no per-slot valid bit, confidence,
+        # track id, or camera-to-slot mapping is documented.
         coordinate_slots.append({
           "index": index,
           "dx_scaled": _round(values.get(f"APP_closestPedestrian{index}dX", 0.0)),
@@ -561,7 +560,7 @@ class TeslaCanVisualization:
       "position_available": bool(positioned_objects),
       "positioned_objects": positioned_objects,
       "coordinate_slots": coordinate_slots,
-      "coordinate_unit": None,
+      "coordinate_unit": "m",
       "coordinate_validity": "undocumented",
     }
 
