@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from openpilot.common.params import Params
 from openpilot.selfdrive.controls.lib.longitudinal_backends.registry import (
   BACKENDS, PARAM_SPECS, BackendId, ApplyMode, get_backend, ordered_backends, validate_registry,
 )
@@ -115,11 +116,12 @@ def test_following_time_order_is_validated():
 
 
 def test_active_backend_is_latched_across_process_restarts():
-  params = FakeParams({"LongitudinalPlannerMode": "2"})
+  params = Params()
+  params.put("LongitudinalPlannerMode", int(BackendId.TN_NO_DEC), block=True)
   assert latch_active_backend(params) == BackendId.TN_NO_DEC
-  params.values["LongitudinalPlannerMode"] = "0"
+  params.put("LongitudinalPlannerMode", int(BackendId.SP_UPSTREAM_TUNABLE), block=True)
   assert latch_active_backend(params) == BackendId.TN_NO_DEC
-  assert params.values[ACTIVE_BACKEND_PARAM] == "2"
+  assert params.get(ACTIVE_BACKEND_PARAM) == int(BackendId.TN_NO_DEC)
 
 
 def test_ramped_and_hot_native_values_have_distinct_lifecycle():

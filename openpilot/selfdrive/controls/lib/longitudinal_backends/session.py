@@ -15,5 +15,5 @@ def latch_active_backend(params) -> BackendId:
       pass
 
   desired = get_backend(get_longitudinal_planner_mode(params)).id
-  params.put(ACTIVE_BACKEND_PARAM, str(int(desired)))
+  params.put(ACTIVE_BACKEND_PARAM, int(desired), block=True)
   return desired
