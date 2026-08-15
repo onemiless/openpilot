@@ -68,6 +68,10 @@ def get_action_from_model(model_output: dict[str, np.ndarray], prev_action: log.
                                 shouldStop=bool(should_stop))
 
 
+def model_output_is_valid(model_output: np.ndarray, usbgpu: bool) -> bool:
+  return not usbgpu or bool(np.all(np.isfinite(model_output)))
+
+
 class FrameMeta:
   frame_id: int = 0
   timestamp_sof: int = 0
@@ -133,6 +137,10 @@ class ModelState(ModelStateBase):
       **{k: self.input_queues[k] for k in POLICY_INPUTS if k in self.input_queues}, warped=warped
     )
     model_output = outs.numpy()[0]
+    if not model_output_is_valid(model_output, self.usbgpu):
+      # TODO remove with prev_feat
+      cloudlog.error("model output not finite, dropping frame")
+      return None
     outputs_dict = self.parser.parse_outputs(self.slice_outputs(model_output, self.output_slices))
     self.npy['prev_feat'][:] = model_output[self.output_slices['hidden_state']]
 
