@@ -12,7 +12,6 @@ from openpilot.common.utils import sudo_read, sudo_write
 from openpilot.common.gpio import gpio_set, gpio_init, get_irqs_for_action
 from openpilot.common.esim.base import LPABase
 from openpilot.common.hardware.base import HardwareBase, ThermalConfig, ThermalZone
-from openpilot.common.esim.lpa import TiciLPA
 from openpilot.common.hardware.tici.pins import GPIO
 from openpilot.common.hardware.tici.amplifier import Amplifier
 
@@ -145,6 +144,7 @@ class Tici(HardwareBase):
     }
 
   def get_sim_lpa(self) -> LPABase:
+    from openpilot.common.esim.lpa import TiciLPA
     return TiciLPA()
 
   def get_imei(self, slot):

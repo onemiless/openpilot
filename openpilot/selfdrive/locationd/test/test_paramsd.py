@@ -1,8 +1,10 @@
 import random
+from types import SimpleNamespace
 import numpy as np
 
 from openpilot.cereal import messaging
-from openpilot.selfdrive.locationd.paramsd import retrieve_initial_vehicle_params
+from opendbc.car.structs import car
+from openpilot.selfdrive.locationd.paramsd import retrieve_initial_vehicle_params, VehicleParamsLearner
 from openpilot.selfdrive.locationd.models.car_kf import CarKalman
 from openpilot.selfdrive.locationd.test.test_locationd_scenarios import TEST_ROUTE
 from openpilot.selfdrive.test.process_replay.migration import migrate, migrate_carParams
@@ -20,6 +22,24 @@ def get_random_live_parameters(CP):
 
 
 class TestParamsd:
+  def test_does_not_learn_in_reverse(self):
+    class Filter:
+      def set_filter_time(self, _):
+        pass
+
+      def reset_rewind(self):
+        pass
+
+    learner = VehicleParamsLearner.__new__(VehicleParamsLearner)
+    learner.kf = SimpleNamespace(filter=Filter(), predict_and_observe=lambda *args: None)
+    learner.active = True
+    learner.observed_speed = 0.0
+
+    msg = SimpleNamespace(steeringAngleDeg=0.0, vEgo=5.0, gearShifter=car.CarState.GearShifter.reverse)
+    learner.handle_log(1.0, "carState", msg)
+
+    assert not learner.active
+
   def test_read_saved_params(self):
     params = Params()
 
