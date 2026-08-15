@@ -21,6 +21,10 @@ def controller_fixture(counter=3, long_active=True, fresh=True):
   controller.longitudinal_ownership = TeslaLongitudinalOwnership()
   controller.longitudinal_counter = None
   controller.longitudinal_handoff_nanos = 0
+  controller.last_long_control_frame = -4
+  controller._last_long_tx = {}
+  controller._last_long_tx_echo_nanos = 0
+  controller._last_long_tx_echo = {}
   controller.frame = 0
   now_nanos = 1_000_000_000
   das_control = {
@@ -56,6 +60,23 @@ def test_active_longitudinal_jerk_max_ramps_from_zero():
     message = tesla_can.create_longitudinal_command(4, 0.0, counter % 8, 20.0, True)
   saturated = decode_das_control(message)
   assert saturated["DAS_jerkMax"] == pytest.approx(4.9, abs=0.02)
+
+
+def test_das_control_dbc_matches_known_sp_payload():
+  packer = CANPacker("tesla_model3_party")
+  values = {
+    "DAS_setSpeed": 47.3,
+    "DAS_accState": 4,
+    "DAS_aebEvent": 0,
+    "DAS_jerkMin": -4.9,
+    "DAS_jerkMax": 4.9,
+    "DAS_accelMin": -1.6,
+    "DAS_accelMax": 0,
+    "DAS_controlCounter": 7,
+    "DAS_controlChecksum": 0,
+  }
+  _, data, _ = packer.make_can_msg("DAS_control", 0, values)
+  assert data.hex() == "d941a4837c7af7e9"
 
 
 def test_ownership_cancel_then_release():
@@ -98,3 +119,33 @@ def test_controller_requires_fresh_oem_counter_and_releases_on_brake():
   cs.out.brakePressed = True
   cancel = controller.update_longitudinal_control(cc, cs, False, now_nanos + 40_000_000)
   assert decode_das_control(cancel[0])["DAS_accState"] == 13
+
+
+def test_longitudinal_schedule_reanchors_after_off_phase_send():
+  controller, cc, cs, _, now_nanos = controller_fixture(counter=2)
+  controller.frame = 1
+  controller.last_long_control_frame = -3
+  assert len(controller.update_longitudinal_control(cc, cs, False, now_nanos)) == 1
+  assert controller.last_long_control_frame == 1
+
+  controller.frame = 4
+  assert controller.update_longitudinal_control(cc, cs, False, now_nanos + 30_000_000) == []
+  controller.frame = 5
+  assert len(controller.update_longitudinal_control(cc, cs, False, now_nanos + 40_000_000)) == 1
+
+
+def test_longitudinal_returned_echo_records_physical_interval(monkeypatch):
+  controller, _, _, _, now_nanos = controller_fixture()
+  controller._last_long_tx = {"tx_raw": "d941a4837c7af7e9"}
+  events = []
+  monkeypatch.setattr("opendbc.car.tesla.carcontroller.cloudlog.event", lambda name, **kwargs: events.append((name, kwargs)))
+
+  data = bytes.fromhex("d941a4837c7af7e9")
+  controller._observe_longitudinal_tx_echo(now_nanos, 0x2B9, data, 0x80)
+  controller._observe_longitudinal_tx_echo(now_nanos + 58_000_000, 0x2B9, data, 0x80)
+
+  assert controller._last_long_tx_echo["echo_kind"] == "tx_echo"
+  assert controller._last_long_tx_echo["echo_bus"] == 0
+  assert controller._last_long_tx_echo["echo_interval_ms"] == 58.0
+  assert controller._last_long_tx_echo["echo_matches_last_attempt"] is True
+  assert events[-1][0] == "tesla.das_control_returned"

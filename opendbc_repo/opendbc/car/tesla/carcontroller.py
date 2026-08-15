@@ -25,6 +25,10 @@ radar_log = get_ars408_logger("card")
 ARS408_REQUEST_TTL_MS = 30 * 60 * 1000
 TESLA_LONGITUDINAL_OEM_FRESHNESS_NS = 200_000_000
 TESLA_LONGITUDINAL_HANDOFF_SETTLE_NS = 400_000_000
+TESLA_LONGITUDINAL_ADDRESS = 0x2B9
+TESLA_LONGITUDINAL_TX_INTERVAL_WARN_NS = 55_000_000
+PANDA_TX_ECHO_BASE = 0x80
+PANDA_TX_REJECTED_BASE = 0xC0
 
 
 class LongitudinalAction(IntEnum):
@@ -87,17 +91,48 @@ class CarController(CarControllerBase):
     self.longitudinal_ownership = TeslaLongitudinalOwnership()
     self.longitudinal_counter = None
     self.longitudinal_handoff_nanos = 0
+    self.last_long_control_frame = -4
     self._cruise_state_prev = None
     self._cruise_diag_history = deque(maxlen=50)
     self._last_long_tx = {}
     self._last_vehicle_long_tx_nanos = 0
     self._last_cp_tx_counter = None
+    self._last_long_tx_echo_nanos = 0
+    self._last_long_tx_echo = {}
     log.info("Tesla cooperative steering configured enabled=%d", int(self.coop_steering_enabled))
     radar_log.info("ARS408 motion input configured enabled=%d bus=1 rate_hz=20", int(self.radar_motion_enabled))
 
   def observe_aux_can(self, monotonic_nanos, address, data, source):
     self.turn_signal_controller.observe(monotonic_nanos, address, data, source)
     self.speed_sync_controller.observe(monotonic_nanos, address, data, source)
+    self._observe_longitudinal_tx_echo(monotonic_nanos, address, data, source)
+
+  def _observe_longitudinal_tx_echo(self, monotonic_nanos, address, data, source):
+    if address != TESLA_LONGITUDINAL_ADDRESS or source < PANDA_TX_ECHO_BASE:
+      return
+
+    rejected = source >= PANDA_TX_REJECTED_BASE
+    returned_bus = source - (PANDA_TX_REJECTED_BASE if rejected else PANDA_TX_ECHO_BASE)
+    payload = decode_das_control_payload(bytes(data))
+    echo = {
+      "echo_kind": "rejected" if rejected else "tx_echo",
+      "echo_nanos": int(monotonic_nanos),
+      "echo_bus": int(returned_bus),
+      **payload,
+    }
+    echo["echo_matches_last_attempt"] = payload["tx_raw"] == self._last_long_tx.get("tx_raw")
+
+    if not rejected:
+      previous_echo_nanos = self._last_long_tx_echo_nanos
+      echo["echo_interval_ms"] = None
+      if previous_echo_nanos and monotonic_nanos >= previous_echo_nanos:
+        echo["echo_interval_ms"] = round((monotonic_nanos - previous_echo_nanos) / 1e6, 3)
+      self._last_long_tx_echo_nanos = int(monotonic_nanos)
+
+    self._last_long_tx_echo = echo
+    if rejected or (echo.get("echo_interval_ms") is not None and
+                    echo["echo_interval_ms"] > TESLA_LONGITUDINAL_TX_INTERVAL_WARN_NS / 1e6):
+      cloudlog.event("tesla.das_control_returned", error=rejected, **echo)
 
   def set_speed_sync_target(self, speed_mps, valid):
     self.speed_sync_target_mps = float(speed_mps) if valid else 0.0
@@ -366,7 +401,7 @@ class CarController(CarControllerBase):
       self._record_longitudinal_tx("cancel", command, now_nanos)
       return [command]
 
-    if self.frame % 4 != 0:
+    if self.frame - self.last_long_control_frame < 4:
       return []
 
     if self.longitudinal_handoff_nanos:
@@ -392,6 +427,7 @@ class CarController(CarControllerBase):
       accel = float(np.clip(CC.actuators.accel, CarControllerParams.ACCEL_MIN, CarControllerParams.ACCEL_MAX))
       command = self.tesla_can.create_longitudinal_command(4, accel, self.longitudinal_counter, CS.out.vEgo, True)
       self._record_longitudinal_tx("control", command, now_nanos)
+      self.last_long_control_frame = self.frame
       return [command]
 
     if action == LongitudinalAction.CANCEL:
@@ -399,6 +435,7 @@ class CarController(CarControllerBase):
       self.tesla_can.reset_longitudinal_jerk()
       command = self.tesla_can.create_longitudinal_command(13, 0, self.longitudinal_counter, CS.out.vEgo, False)
       self._record_longitudinal_tx("cancel", command, now_nanos)
+      self.last_long_control_frame = self.frame
       return [command]
 
     if action == LongitudinalAction.RELEASE:
@@ -452,8 +489,12 @@ class CarController(CarControllerBase):
       "cp_2b9_release_pending": bool(self.longitudinal_ownership.release_pending),
     })
     snapshot.update(self._last_long_tx)
+    snapshot.update({f"physical_{key}": value for key, value in self._last_long_tx_echo.items()})
     if self._last_long_tx:
       snapshot["tx_attempt_age_ms"] = round((now_nanos - self._last_long_tx["tx_attempted_nanos"]) / 1e6, 1)
+    physical_echo_nanos = self._last_long_tx_echo.get("echo_nanos")
+    if physical_echo_nanos is not None:
+      snapshot["physical_echo_age_ms"] = round((now_nanos - physical_echo_nanos) / 1e6, 1)
     return snapshot
 
   def log_cruise_diagnostic(self, CC, CS, now_nanos):

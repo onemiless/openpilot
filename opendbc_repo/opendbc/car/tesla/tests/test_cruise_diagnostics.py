@@ -28,10 +28,25 @@ def test_classifier_separates_reported_faults_from_correlations():
     "ap_party_can_valid": True,
     "tx_counter_gap": True,
     "tx_interval_ms": 58.0,
+    "physical_echo_interval_ms": 57.0,
+    "physical_echo_age_ms": 14.0,
   }
   assert classify_cruise_snapshot(snapshot) == {
     "vehicle_reported": ["pmm_sys_fault:PMM_FAULT_DI_FAULT(3)"],
-    "correlated": ["cp_tx_counter_gap", "cp_tx_interval_long"],
+    "correlated": ["cp_tx_counter_gap", "cp_tx_interval_long", "physical_tx_interval_long"],
+  }
+
+
+def test_classifier_ignores_stale_physical_echo():
+  snapshot = {
+    "physical_echo_kind": "rejected",
+    "physical_echo_interval_ms": 58.0,
+    "physical_echo_matches_last_attempt": False,
+    "physical_echo_age_ms": 500.0,
+  }
+  assert classify_cruise_snapshot(snapshot) == {
+    "vehicle_reported": [],
+    "correlated": ["undetermined"],
   }
 
 
@@ -45,6 +60,10 @@ def test_fault_event_contains_tx_history(monkeypatch):
     "tx_raw": "0040a4832c7a17df", "tx_state": 4, "tx_counter": 3,
     "tx_interval_ms": 40.0, "tx_counter_gap": False,
     "tx_attempted_nanos": 1_000_000_000,
+  }
+  controller._last_long_tx_echo = {
+    "echo_kind": "tx_echo", "echo_nanos": 1_039_000_000, "echo_interval_ms": 40.0,
+    "echo_matches_last_attempt": True,
   }
   cc = SimpleNamespace(enabled=True, longActive=True, latActive=False,
                        cruiseControl=SimpleNamespace(cancel=False))

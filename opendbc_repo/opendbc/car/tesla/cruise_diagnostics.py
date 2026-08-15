@@ -53,6 +53,14 @@ def classify_cruise_snapshot(snapshot: dict) -> dict[str, list[str]]:
     correlated.append("cp_tx_counter_gap")
   if snapshot.get("tx_interval_ms") is not None and snapshot["tx_interval_ms"] > 55.0:
     correlated.append("cp_tx_interval_long")
+  physical_echo_recent = (snapshot.get("physical_echo_age_ms") is not None and
+                          0 <= snapshot["physical_echo_age_ms"] <= 200.0)
+  if physical_echo_recent and snapshot.get("physical_echo_kind") == "rejected":
+    correlated.append("panda_tx_rejected")
+  if physical_echo_recent and snapshot.get("physical_echo_interval_ms") is not None and snapshot["physical_echo_interval_ms"] > 55.0:
+    correlated.append("physical_tx_interval_long")
+  if physical_echo_recent and snapshot.get("physical_echo_matches_last_attempt") is False:
+    correlated.append("tx_echo_payload_mismatch")
   if not vehicle_reported and not correlated:
     correlated.append("undetermined")
   return {"vehicle_reported": vehicle_reported, "correlated": correlated}
