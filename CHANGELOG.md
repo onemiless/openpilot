@@ -1,5 +1,16 @@
 sunnypilot Version 2026.002.000 (2026-06-28) / sunnypilot 版本 2026.002.000（2026-06-28）
 ========================
+* MR.ONE Custom Features / MR.ONE 个性化功能
+  * Complete Simplified Chinese UI (575 strings) / 完整简体中文界面（575 条翻译）
+  * Full Noto Sans SC font with 1.3x larger Chinese text / 完整 Noto Sans SC 字体，中文字体放大 1.3 倍
+  * Home sidebar: CPU temperature value + IP address / 首页侧边栏：显示 CPU 温度数值 + IP 地址
+  * Home page: "Welcome to MR.ONE" with logo & banner / 首页：Welcome to MR.ONE + logo + banner 样式
+  * Sidebar labels: VI / RA abbreviations with Chinese (车辆接口 / 远程协助) / 侧边栏 VI/RA 简写 + 中文（车辆接口 / 远程协助）
+  * Hide OSM / Trips / Firehose settings menus / 设置隐藏 OSM / 行程 / 数据洪流菜单
+  * Fix developer UI crash (liveValid → valid) / 修复开发者界面崩溃（liveValid → valid）
+  * dashcam: LAN dashcam viewer (single-file, stdlib only) on port 5088 / dashcam：局域网行车记录查看（单文件纯标准库，端口 5088）
+  * Force timezone Asia/Shanghai (Beijing) / 强制北京时间（Asia/Shanghai）
+  * Re-enable loggerd dashcam recordings / 恢复 loggerd 行车记录
 * What's Changed (sunnypilot/sunnypilot) / 变更内容（sunnypilot/sunnypilot）
   * ui: update gates for certain toggles by @sunnyhaibin in PR #1830 / 界面：更新部分开关的启用条件（@sunnyhaibin，PR #1830）
   * release: ignore upstream IsReleaseBranch by @sunnyhaibin in PR #1831 / 发布：忽略上游 IsReleaseBranch 分支判断（@sunnyhaibin，PR #1831）
