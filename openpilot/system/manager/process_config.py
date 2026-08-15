@@ -129,7 +129,7 @@ procs = [
   PythonProcess("timed", "openpilot.system.timed", always_run, enabled=not PC),
 
   PythonProcess("modeld", "openpilot.selfdrive.modeld.modeld", and_(only_onroad, is_stock_model)),
-  PythonProcess("dmonitoringmodeld", "openpilot.selfdrive.modeld.dmonitoringmodeld", driverview, enabled=(WEBCAM or not PC)),
+  #PythonProcess("dmonitoringmodeld", "openpilot.selfdrive.modeld.dmonitoringmodeld", driverview, enabled=(WEBCAM or not PC)),  # disabled
 
   PythonProcess("sensord", "openpilot.system.sensord.sensord", only_onroad, enabled=not PC),
   PythonProcess("ui", "openpilot.selfdrive.ui.ui", always_run),
