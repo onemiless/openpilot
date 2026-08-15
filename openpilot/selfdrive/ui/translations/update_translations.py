@@ -16,7 +16,8 @@ def update_translations():
                                   os.walk(os.path.join(str(UI_DIR), "layouts")),
                                   os.walk(os.path.join(str(UI_DIR), "onroad")),
                                   os.walk(os.path.join(str(UI_DIR), "sunnypilot")),
-                                  os.walk(os.path.join(str(UI_DIR), "mici"))):
+                                  os.walk(os.path.join(str(UI_DIR), "mici")),
+                                  os.walk(os.path.join(str(UI_DIR), "..", "selfdrived"))):
     for filename in filenames:
       if filename.endswith(".py"):
         files.append(os.path.relpath(os.path.join(root, filename), BASEDIR))
