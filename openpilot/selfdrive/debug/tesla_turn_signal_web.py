@@ -15,7 +15,7 @@ from openpilot.selfdrive.debug.tesla_turn_signal_test import (
 from openpilot.selfdrive.debug.device_settings import settings_snapshot, validate_and_write
 from openpilot.selfdrive.debug.device_hotspot import hotspot_status, set_hotspot_enabled
 from openpilot.selfdrive.debug.device_terminal import change_password, run_command, terminal_status
-from openpilot.selfdrive.debug.driving_status import driving_status_snapshot
+from openpilot.selfdrive.debug.driving_status import driving_status_enabled, driving_status_snapshot
 
 
 HOST = "0.0.0.0"
@@ -35,6 +35,7 @@ def _clear_active_session(test_id: str) -> None:
 
 
 def render_page() -> bytes:
+  driving_tab_state = "" if driving_status_enabled() else 'disabled title="请先在设备设置中开启浏览器行驶信息"'
   return """<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -67,7 +68,7 @@ def render_page() -> bytes:
   </style>
 </head><body><main>
   <h1>车载设置</h1><p>通过手机或电脑访问此页面。行驶中仅允许修改实时生效的白名单设置。</p>
-  <div class="tabs"><button class="tab active" id="settings-tab" onclick="showPanel('settings')">设置</button><button class="tab" id="driving-tab" onclick="showPanel('driving')">行驶信息</button><button class="tab" id="turn-tab" onclick="showPanel('turn')">转向测试</button><button class="tab" id="terminal-tab" onclick="showPanel('terminal')">终端</button></div>
+  <div class="tabs"><button class="tab active" id="settings-tab" onclick="showPanel('settings')">设置</button><button class="tab" id="driving-tab" __DRIVING_TAB_STATE__ onclick="showPanel('driving')">行驶信息</button><button class="tab" id="turn-tab" onclick="showPanel('turn')">转向测试</button><button class="tab" id="terminal-tab" onclick="showPanel('terminal')">终端</button></div>
   <section id="settings-panel"><div id="mode" class="notice">正在读取设置…</div><div id="category-nav" class="category-nav"></div><div id="settings"></div></section>
   <section id="driving-panel" hidden><h1>行驶道路视图</h1><p>只读实时视图；融合 SP 模型与 HW4 Model Y 原车 CAN，不启动视频或屏幕采集。</p><div id="driving-state" class="notice">正在连接车辆数据…</div><div class="ped-coordinate-lab"><strong>行人坐标</strong><select id="pedestrian-coordinate-mode" onchange="setPedestrianCoordinateMode(this.value)"><option value="off">关闭（默认）</option><option value="dx_forward_dy_left">dX 前后 / dY 左右</option><option value="dx_forward_dy_right">dX 前后 / -dY 左右</option><option value="dy_forward_dx_left">dY 前后 / dX 左右</option><option value="dy_forward_dx_right">dY 前后 / -dX 左右</option></select><span>黄色/蓝色/粉色对应行人 #1/#2/#3；坐标单位为米。</span></div><canvas id="driving-canvas" aria-label="预测道路轨迹与原车感知"></canvas><details id="can-diagnostics" class="can-diagnostics"><summary>CAN 诊断详情（可选）</summary><div id="can-details" class="can-grid"></div></details><div id="driving-alert" class="notice drive-alert" hidden></div></section>
   <section id="turn-panel" hidden>
@@ -308,7 +309,7 @@ function finishUi(message) {
   document.getElementById('cancel').style.display = 'none';
   activeTestId = null;
 }
-</script></main></body></html>""".encode()
+</script></main></body></html>""".replace("__DRIVING_TAB_STATE__", driving_tab_state).encode()
 
 
 class TurnSignalHandler(BaseHTTPRequestHandler):
@@ -329,6 +330,8 @@ class TurnSignalHandler(BaseHTTPRequestHandler):
     if self.path == "/api/driving-status":
       try:
         self._json(HTTPStatus.OK, driving_status_snapshot())
+      except PermissionError as error:
+        self._json(HTTPStatus.FORBIDDEN, {"ok": False, "message": str(error)})
       except Exception as error:
         self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "message": f"行驶数据暂不可用：{error}"})
       return

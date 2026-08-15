@@ -2559,6 +2559,12 @@ msgstr ""
 msgid "Tesla Settings"
 msgstr "Tesla 专用设置"
 
+msgid "Browser Driving Information"
+msgstr "浏览器行驶信息"
+
+msgid "Allow the local web page on port 8088 to read and display live SP model and Tesla CAN information."
+msgstr "允许本地 8088 网页读取并显示实时 SP 模型和 Tesla CAN 信息。"
+
 msgid "Configure Tesla-specific steering, MADS screen controls, longitudinal handoff, and stop-line behavior."
 msgstr "集中配置 Tesla 专用转向、MADS 屏幕控制、纵向控制切换和停止线行为。"
 

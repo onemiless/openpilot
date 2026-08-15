@@ -368,6 +368,12 @@ class TeslaSettings(BrandSettings):
       param="TeslaARS408Radar",
       enabled=ui_state.is_offroad,
     )
+    self.web_driving_visualization_toggle = toggle_item_sp(
+      title=tr("Browser Driving Information"),
+      description=tr("Allow the local web page on port 8088 to read and display live SP model and Tesla CAN information."),
+      param="TeslaWebDrivingVisualization",
+      enabled=ui_state.is_offroad,
+    )
     self.coop_steering_toggle = toggle_item_sp(
       tr("Cooperative Steering"), "", param="TeslaCoopSteering",
     )
@@ -385,7 +391,8 @@ class TeslaSettings(BrandSettings):
       description=tr("Configure Tesla-specific steering, MADS screen controls, longitudinal handoff, and stop-line behavior."),
       callback=self._show_settings,
     )
-    self.items = [self.ars408_radar_toggle, self.coop_steering_toggle, self.mads_screen_button, self._settings_button]
+    self.items = [self.web_driving_visualization_toggle, self.ars408_radar_toggle, self.coop_steering_toggle,
+                  self.mads_screen_button, self._settings_button]
 
   def _show_settings(self):
     gui_app.push_widget(self._settings_layout)
@@ -393,6 +400,7 @@ class TeslaSettings(BrandSettings):
   def update_settings(self):
     offroad = ui_state.is_offroad()
     enable_offroad_msg = tr("Enable \"Always Offroad\" in Device panel, or turn vehicle off to toggle.")
+    self.web_driving_visualization_toggle.action_item.set_enabled(offroad)
     self.ars408_radar_toggle.action_item.set_enabled(offroad)
     coop_steering_desc = (
       f"{tr('Converts light steering input into steering-wheel rotation.')}<br>" +
