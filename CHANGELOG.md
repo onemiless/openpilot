@@ -1,4 +1,4 @@
-sunnypilot Version 2026.002.000 (2026-06-28) / sunnypilot 版本 2026.002.000（2026-06-28）
+sunnypilot Version MR.ONE-2026 (2026-08-15) / sunnypilot 版本 MR.ONE-2026（2026-08-15）
 ========================
 * MR.ONE Custom Features / MR.ONE 个性化功能
   * Complete Simplified Chinese UI (575 strings) / 完整简体中文界面（575 条翻译）
