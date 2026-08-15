@@ -113,7 +113,7 @@ class Car:
     self.can_sock = messaging.sub_sock('can', timeout=20)
     self.sm = messaging.SubMaster(['pandaStates', 'carControl', 'onroadEvents', 'modelV2'] +
                                   ['carControlSP', 'longitudinalPlanSP', 'selfdriveStateSP'])
-    self.pm = messaging.PubMaster(['sendcan', 'carState', 'carParams', 'carOutput', 'liveTracks'] + ['carParamsSP', 'carStateSP'])
+    self.pm = messaging.PubMaster(['sendcan', 'carState', 'carParams', 'carOutput', 'radarTracks'] + ['carParamsSP', 'carStateSP'])
 
     self.can_rcv_cum_timeout_counter = 0
     self.dynamic_acc_last_blocked_log_nanos = 0
@@ -353,10 +353,10 @@ class Car:
     self.pm.send('carState', cs_send)
 
     if RD is not None:
-      tracks_msg = messaging.new_message('liveTracks')
+      tracks_msg = messaging.new_message('radarTracks')
       tracks_msg.valid = not any(RD.errors.to_dict().values())
-      tracks_msg.liveTracks = RD
-      self.pm.send('liveTracks', tracks_msg)
+      tracks_msg.radarTracks = RD
+      self.pm.send('radarTracks', tracks_msg)
 
     # carParamsSP - logged every 50 seconds (> 1 per segment)
     if self.sm.frame % int(50. / DT_CTRL) == 0:

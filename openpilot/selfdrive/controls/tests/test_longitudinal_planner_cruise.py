@@ -154,7 +154,7 @@ def _sm(long_control_state=LongCtrlState.pid, a_ego=0.4, experimental_mode=False
     ),
     "controlsState": SimpleNamespace(longControlState=long_control_state, forceDecel=False, curvature=0.0),
     "selfdriveState": SimpleNamespace(enabled=True, personality=0, experimentalMode=experimental_mode),
-    "liveParameters": SimpleNamespace(angleOffsetDeg=0.0),
+    "vehicleParameters": SimpleNamespace(angleOffsetDeg=0.0),
     "modelV2": SimpleNamespace(
       meta=SimpleNamespace(disengagePredictions=SimpleNamespace(gasPressProbs=[0.0, 1.0])),
       action=SimpleNamespace(desiredAcceleration=1.0, shouldStop=False),

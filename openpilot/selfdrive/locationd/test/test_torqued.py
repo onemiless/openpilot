@@ -6,7 +6,7 @@ class TestTorqued:
   def test_cal_percent(self):
     est = TorqueEstimator(car.CarParams())
     msg = est.get_msg()
-    assert msg.liveTorqueParameters.calPerc == 0
+    assert msg.lateralTorqueParameters.calPerc == 0
 
     for (low, high), min_pts in zip(est.filtered_points.buckets.keys(),
                                     est.filtered_points.buckets_min_points.values(), strict=True):
@@ -15,7 +15,7 @@ class TestTorqued:
 
     # enough bucket points, but not enough total points
     msg = est.get_msg()
-    assert msg.liveTorqueParameters.calPerc == (len(est.filtered_points) / est.min_points_total * 100 + 100) / 2
+    assert msg.lateralTorqueParameters.calPerc == (len(est.filtered_points) / est.min_points_total * 100 + 100) / 2
 
     # add enough points to bucket with most capacity
     key = list(est.filtered_points.buckets)[0]
@@ -23,4 +23,4 @@ class TestTorqued:
       est.filtered_points.add_point((key[0] + key[1]) / 2.0, 0.0)
 
     msg = est.get_msg()
-    assert msg.liveTorqueParameters.calPerc == 100
+    assert msg.lateralTorqueParameters.calPerc == 100

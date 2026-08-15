@@ -453,7 +453,7 @@ msgid "Developer"
 msgstr ""
 
 #: openpilot/selfdrive/ui/layouts/settings/device.py
-msgid "Preview the driver facing camera to ensure that driver monitoring has good visibility. (vehicle must be off)"
+msgid "Preview the cabin camera to ensure that driver monitoring has good visibility. (vehicle must be off)"
 msgstr ""
 
 #: openpilot/selfdrive/ui/layouts/settings/device.py
@@ -521,7 +521,7 @@ msgid "Serial"
 msgstr ""
 
 #: openpilot/selfdrive/ui/layouts/settings/device.py
-msgid "Driver Camera"
+msgid "Cabin Camera"
 msgstr ""
 
 #: openpilot/selfdrive/ui/layouts/settings/device.py
@@ -656,7 +656,7 @@ msgid "Enable driver monitoring even when sunnypilot is not engaged."
 msgstr ""
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
-msgid "Upload data from the driver facing camera and help improve the driver monitoring algorithm."
+msgid "Upload data from the cabin camera and help improve the driver monitoring algorithm."
 msgstr ""
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
@@ -700,7 +700,7 @@ msgid "Always-On Driver Monitoring"
 msgstr ""
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
-msgid "Record and Upload Driver Camera"
+msgid "Record and Upload Cabin Camera"
 msgstr ""
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
@@ -869,6 +869,6 @@ msgstr ""
 msgid "mph"
 msgstr ""
 
-#: openpilot/selfdrive/ui/onroad/driver_camera_dialog.py
+#: openpilot/selfdrive/ui/onroad/cabin_camera_dialog.py
 msgid "camera starting"
 msgstr ""

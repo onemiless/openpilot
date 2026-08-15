@@ -210,7 +210,7 @@ msgid "Download"
 msgstr "Télécharger"
 
 #: openpilot/selfdrive/ui/layouts/settings/device.py
-msgid "Driver Camera"
+msgid "Cabin Camera"
 msgstr "Caméra conducteur"
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
@@ -494,7 +494,7 @@ msgid "Prevent large data uploads when on a metered cellular connection"
 msgstr "Empêcher les téléversements volumineux sur une connexion cellulaire limitée"
 
 #: openpilot/selfdrive/ui/layouts/settings/device.py
-msgid "Preview the driver facing camera to ensure that driver monitoring has good visibility. (vehicle must be off)"
+msgid "Preview the cabin camera to ensure that driver monitoring has good visibility. (vehicle must be off)"
 msgstr "Prévisualisez la caméra orientée conducteur pour vous assurer que la surveillance du conducteur a une bonne visibilité. (le véhicule doit être éteint)"
 
 #: openpilot/selfdrive/ui/widgets/pairing_dialog.py
@@ -530,7 +530,7 @@ msgid "Reboot and Update"
 msgstr "Redémarrer et mettre à jour"
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
-msgid "Record and Upload Driver Camera"
+msgid "Record and Upload Cabin Camera"
 msgstr "Enregistrer et téléverser la caméra conducteur"
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
@@ -686,7 +686,7 @@ msgid "Upgrade Now"
 msgstr "Mettre à jour"
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
-msgid "Upload data from the driver facing camera and help improve the driver monitoring algorithm."
+msgid "Upload data from the cabin camera and help improve the driver monitoring algorithm."
 msgstr "Téléverser les données de la caméra orientée conducteur et aider à améliorer l'algorithme de surveillance du conducteur."
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
@@ -733,7 +733,7 @@ msgstr "Vous devez accepter les conditions d'utilisation pour utiliser sunnypilo
 msgid "You must accept the Terms of Service to use sunnypilot. Read the latest terms at https://sunnypilot.ai/terms before continuing."
 msgstr "Vous devez accepter les conditions d'utilisation pour utiliser sunnypilot. Consultez les dernières conditions sur https://sunnypilot.ai/terms avant de continuer."
 
-#: openpilot/selfdrive/ui/onroad/driver_camera_dialog.py
+#: openpilot/selfdrive/ui/onroad/cabin_camera_dialog.py
 msgid "camera starting"
 msgstr "démarrage de la caméra"
 

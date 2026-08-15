@@ -242,11 +242,11 @@ def _build_sm(selfdrive_enabled, lat_active, steering_pressed, gas_pressed):
   cc.latActive = lat_active
   mv2 = log.ModelDataV2.new_message()
   mv2.meta.disengagePredictions.brakeDisengageProbs = [0.0]
-  lc = log.LiveCalibrationData.new_message()
+  lc = log.ExtrinsicsCalibration.new_message()
   lc.rpyCalib = [0.0, 0.0, 0.0]
   return {
     'carState': cs, 'selfdriveState': ss, 'carControl': cc,
-    'modelV2': mv2, 'liveCalibration': lc, 'driverStateV2': make_msg(False),
+    'modelV2': mv2, 'extrinsicsCalibration': lc, 'driverStateV2': make_msg(False),
   }
 
 

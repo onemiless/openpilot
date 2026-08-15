@@ -23,12 +23,12 @@ def get_camera_configs():
 CAMERA_CONFIGS = get_camera_configs()
 
 tg_flags = {
-  'larch64': 'DEV=QCOM FLOAT16=1 NOLOCALS=1 JIT_BATCH_SIZE=0',
+  'comma_arm64': 'DEV=QCOM FLOAT16=1 NOLOCALS=1 JIT_BATCH_SIZE=0',
   'Darwin': f'DEV=CPU HOME={os.path.expanduser("~")}',
 }.get(arch, 'DEV=CPU:LLVM')
 
 image_flag = {
-  'larch64': 'IMAGE=2',
+  'comma_arm64': 'IMAGE=2',
 }.get(arch, 'IMAGE=0')
 
 model_w, model_h = MEDMODEL_INPUT_SIZE

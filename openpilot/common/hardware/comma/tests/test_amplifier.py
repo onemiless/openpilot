@@ -3,15 +3,15 @@ import time
 import subprocess
 
 from panda import Panda
-from openpilot.common.hardware import TICI, HARDWARE
-from openpilot.common.hardware.tici.amplifier import Amplifier
+from openpilot.common.hardware import COMMA_HARDWARE, HARDWARE
+from openpilot.common.hardware.comma.amplifier import Amplifier
 
 
 class TestAmplifier:
 
   @classmethod
   def setup_class(cls):
-    if not TICI:
+    if not COMMA_HARDWARE:
       pytest.skip()
 
   def setup_method(self):

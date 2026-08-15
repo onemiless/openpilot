@@ -244,7 +244,7 @@ msgid "Download"
 msgstr "下载"
 
 #: openpilot/selfdrive/ui/layouts/settings/device.py
-msgid "Driver Camera"
+msgid "Cabin Camera"
 msgstr "车内摄像头"
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
@@ -569,7 +569,7 @@ msgid "Prevent large data uploads when on a metered cellular connection"
 msgstr "在计量制蜂窝网络时避免大量上传"
 
 #: openpilot/selfdrive/ui/layouts/settings/device.py
-msgid "Preview the driver facing camera to ensure that driver monitoring has good visibility. (vehicle must be off)"
+msgid "Preview the cabin camera to ensure that driver monitoring has good visibility. (vehicle must be off)"
 msgstr "预览车内摄像头以确保驾驶员监控视野良好。（车辆必须熄火）"
 
 #: openpilot/selfdrive/ui/widgets/pairing_dialog.py
@@ -614,7 +614,7 @@ msgstr ""
 "接收引导回车道的警报。"
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
-msgid "Record and Upload Driver Camera"
+msgid "Record and Upload Cabin Camera"
 msgstr "录制并上传车内摄像头"
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
@@ -781,7 +781,7 @@ msgid "Upgrade Now"
 msgstr "立即升级"
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
-msgid "Upload data from the driver facing camera and help improve the driver monitoring algorithm."
+msgid "Upload data from the cabin camera and help improve the driver monitoring algorithm."
 msgstr "上传车内摄像头数据，帮助改进驾驶员监控算法。"
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
@@ -844,7 +844,7 @@ msgstr "您需要接受服务条款才能使用sunnypilot功能。"
 msgid "You must accept the Terms of Service to use sunnypilot. Read the latest terms at https://sunnypilot.ai/terms before continuing."
 msgstr "您必须接受服务条款才能使用sunnypilot。使用前请在 https://sunnypilot.ai/terms 阅读最新条款。"
 
-#: openpilot/selfdrive/ui/onroad/driver_camera_dialog.py
+#: openpilot/selfdrive/ui/onroad/cabin_camera_dialog.py
 msgid "camera starting"
 msgstr "相机启动中"
 
@@ -1393,7 +1393,7 @@ msgstr "正在下载地图"
 msgid "Downloading Maps..."
 msgstr "地图下载中..."
 
-msgid "Driver Camera Preview"
+msgid "Cabin Camera Preview"
 msgstr "驾驶员监控预览"
 
 msgid "Drives"

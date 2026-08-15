@@ -15,7 +15,7 @@ from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.params import Params
 from openpilot.common.realtime import DT_HW
 from openpilot.selfdrive.selfdrived.alertmanager import set_offroad_alert
-from openpilot.common.hardware import HARDWARE, TICI, AGNOS
+from openpilot.common.hardware import HARDWARE, COMMA_HARDWARE, AGNOS
 from openpilot.common.hardware.usb import get_usb_state, set_usb_state
 from openpilot.common.linux import LinuxSystemStats
 from openpilot.system.loggerd.config import get_available_percent
@@ -474,7 +474,7 @@ def main():
     threading.Thread(target=hardware_thread, args=(end_event, hw_queue)),
   ]
 
-  if TICI:
+  if COMMA_HARDWARE:
     threads.append(threading.Thread(target=touch_thread, args=(end_event,)))
 
   for t in threads:

@@ -6,7 +6,8 @@ from tools.agnos_preflight import EXPECTED_PARTITIONS, load_manifest, validate_m
 
 
 ROOT = Path(__file__).parents[2]
-MANIFEST = ROOT / "openpilot/common/hardware/tici/agnos.json"
+MANIFEST = ROOT / "openpilot/common/hardware/comma/agnos.json"
+SYSTEM_MANIFEST = ROOT / "openpilot/system/hardware/comma/agnos.json"
 MR_ONE_DEV_19_6_HASHES = {
   "xbl": "e8acf2a9cc7f0ce84cb803bfea9477f765c0d7b4daf26048e59651b9e6a7bfbb",
   "xbl_config": "758552ecf92b5569677197783bf0ccb73d7f961685308e45d3276ac9dd974f85",
@@ -23,6 +24,11 @@ def test_runtime_19_6_manifest_is_valid() -> None:
   assert tuple(partition["name"] for partition in manifest) == EXPECTED_PARTITIONS
   assert validate_manifest(manifest) == []
   assert {partition["name"]: partition["hash_raw"] for partition in manifest} == MR_ONE_DEV_19_6_HASHES
+
+
+def test_runtime_manifest_alias_resolves_to_comma_manifest() -> None:
+  assert SYSTEM_MANIFEST.resolve() == MANIFEST.resolve()
+  assert SYSTEM_MANIFEST.read_bytes() == MANIFEST.read_bytes()
 
 
 def test_rejects_non_ab_partition() -> None:

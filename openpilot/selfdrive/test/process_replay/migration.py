@@ -40,7 +40,7 @@ def migrate_all(lr: LogIterable, manager_states: bool = False, panda_states: boo
     migrate_carOutput,
     migrate_controlsState,
     migrate_carState,
-    migrate_livePose,
+    migrate_deviceMotion,
     migrate_liveTracks,
     migrate_driverAssistance,
     migrate_drivingModelData,
@@ -161,11 +161,11 @@ def migrate_drivingModelData(msgs):
   return [], add_ops, []
 
 
-@migration(inputs=["liveTracksDEPRECATED"], product="liveTracks")
+@migration(inputs=["liveTracksDEPRECATED"], product="radarTracks")
 def migrate_liveTracks(msgs):
   ops = []
   for index, msg in msgs:
-    new_msg = messaging.new_message('liveTracks')
+    new_msg = messaging.new_message('radarTracks')
     new_msg.valid = msg.valid
     new_msg.logMonoTime = msg.logMonoTime
 
@@ -179,42 +179,42 @@ def migrate_liveTracks(msgs):
       pt.vRel = track.vRel
       pts.append(pt)
 
-    new_msg.liveTracks.points = pts
+    new_msg.radarTracks.points = pts
     ops.append((index, as_reader(new_msg)))
   return ops, [], []
 
 
-@migration(inputs=["liveLocationKalmanDEPRECATED"], product="livePose")
+@migration(inputs=["liveLocationKalmanDEPRECATED"], product="deviceMotion")
 def migrate_liveLocationKalman(msgs):
   nans = [float('nan')] * 3
   ops = []
   for index, msg in msgs:
-    m = messaging.new_message('livePose')
+    m = messaging.new_message('deviceMotion')
     m.valid = msg.valid
     m.logMonoTime = msg.logMonoTime
-    m.livePose.timestamp = msg.logMonoTime
+    m.deviceMotion.timestamp = msg.logMonoTime
     for field in ["orientationNED", "velocityDevice", "accelerationDevice", "angularVelocityDevice"]:
-      lp_field, llk_field = getattr(m.livePose, field), getattr(msg.liveLocationKalmanDEPRECATED, field)
+      lp_field, llk_field = getattr(m.deviceMotion, field), getattr(msg.liveLocationKalmanDEPRECATED, field)
       lp_field.x, lp_field.y, lp_field.z = llk_field.value or nans
       lp_field.xStd, lp_field.yStd, lp_field.zStd = llk_field.std or nans
       lp_field.valid = llk_field.valid
     for flag in ["inputsOK", "posenetOK", "sensorsOK"]:
-      setattr(m.livePose, flag, getattr(msg.liveLocationKalmanDEPRECATED, flag))
+      setattr(m.deviceMotion, flag, getattr(msg.liveLocationKalmanDEPRECATED, flag))
     ops.append((index, as_reader(m)))
   return ops, [], []
 
 
-@migration(inputs=["livePose"])
-def migrate_livePose(msgs):
+@migration(inputs=["deviceMotion"])
+def migrate_deviceMotion(msgs):
   ops = []
-  needs_migration = all(msg.livePose.timestamp == 0 for _, msg in msgs if msg.which() == 'livePose')
+  needs_migration = all(msg.deviceMotion.timestamp == 0 for _, msg in msgs if msg.which() == 'deviceMotion')
   if not needs_migration:
     return [], [], []
 
   for index, msg in msgs:
-    if msg.which() == "livePose":
+    if msg.which() == "deviceMotion":
       new_msg = msg.as_builder()
-      new_msg.livePose.timestamp = msg.logMonoTime
+      new_msg.deviceMotion.timestamp = msg.logMonoTime
       ops.append((index, as_reader(new_msg)))
   return ops, [], []
 
@@ -361,7 +361,7 @@ def migrate_peripheralState(msgs):
   return [], add_ops, []
 
 
-@migration(inputs=["roadEncodeIdx", "wideRoadEncodeIdx", "driverEncodeIdx", "roadCameraState", "wideRoadCameraState", "driverCameraState"])
+@migration(inputs=["narrowRoadEncodeIdx", "wideRoadEncodeIdx", "cabinEncodeIdx", "narrowRoadCameraState", "wideRoadCameraState", "cabinCameraState"])
 def migrate_cameraStates(msgs):
   add_ops, del_ops = [], []
   frame_to_encode_id = defaultdict(dict)
@@ -369,7 +369,7 @@ def migrate_cameraStates(msgs):
   min_frame_id = defaultdict(lambda: float('inf'))
 
   for _, msg in msgs:
-    if msg.which() not in ["roadEncodeIdx", "wideRoadEncodeIdx", "driverEncodeIdx"]:
+    if msg.which() not in ["narrowRoadEncodeIdx", "wideRoadEncodeIdx", "cabinEncodeIdx"]:
       continue
 
     encode_index = getattr(msg, msg.which())
@@ -379,7 +379,7 @@ def migrate_cameraStates(msgs):
     frame_to_encode_id[meta.camera_state][encode_index.frameId] = encode_index.segmentId
 
   for index, msg in msgs:
-    if msg.which() not in ["roadCameraState", "wideRoadCameraState", "driverCameraState"]:
+    if msg.which() not in ["narrowRoadCameraState", "wideRoadCameraState", "cabinCameraState"]:
       continue
 
     camera_state = getattr(msg, msg.which())
@@ -392,7 +392,7 @@ def migrate_cameraStates(msgs):
         del_ops.append(index)
         continue
 
-      # fallback mechanism for logs without encodeIdx (e.g. logs from before 2022 with dcamera recording disabled)
+      # fallback mechanism for logs without encodeIdx (e.g. logs from before 2022 with driver recording disabled)
       # try to fake encode_id by subtracting lowest frameId
       encode_id = camera_state.frameId - min_frame_id[msg.which()]
       print(f"Faking encodeId to {encode_id} for camera feed {msg.which()} with frameId: {camera_state.frameId}")

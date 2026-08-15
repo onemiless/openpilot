@@ -210,7 +210,7 @@ msgid "Download"
 msgstr "ダウンロード"
 
 #: openpilot/selfdrive/ui/layouts/settings/device.py
-msgid "Driver Camera"
+msgid "Cabin Camera"
 msgstr "ドライバーカメラ"
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
@@ -494,7 +494,7 @@ msgid "Prevent large data uploads when on a metered cellular connection"
 msgstr "従量課金の携帯回線接続時は大きなデータのアップロードを抑制"
 
 #: openpilot/selfdrive/ui/layouts/settings/device.py
-msgid "Preview the driver facing camera to ensure that driver monitoring has good visibility. (vehicle must be off)"
+msgid "Preview the cabin camera to ensure that driver monitoring has good visibility. (vehicle must be off)"
 msgstr "ドライバー向きカメラのプレビューでモニタリングの視界を確認します。（車両は停止状態である必要があります）"
 
 #: openpilot/selfdrive/ui/widgets/pairing_dialog.py
@@ -530,7 +530,7 @@ msgid "Reboot and Update"
 msgstr "再起動して更新"
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
-msgid "Record and Upload Driver Camera"
+msgid "Record and Upload Cabin Camera"
 msgstr "ドライバーカメラを記録してアップロード"
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
@@ -686,7 +686,7 @@ msgid "Upgrade Now"
 msgstr "今すぐアップグレード"
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
-msgid "Upload data from the driver facing camera and help improve the driver monitoring algorithm."
+msgid "Upload data from the cabin camera and help improve the driver monitoring algorithm."
 msgstr "ドライバー向きカメラのデータをアップロードしてモニタリングアルゴリズムの改善に協力してください。"
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
@@ -733,7 +733,7 @@ msgstr ""
 msgid "You must accept the Terms of Service to use sunnypilot. Read the latest terms at https://sunnypilot.ai/terms before continuing."
 msgstr ""
 
-#: openpilot/selfdrive/ui/onroad/driver_camera_dialog.py
+#: openpilot/selfdrive/ui/onroad/cabin_camera_dialog.py
 msgid "camera starting"
 msgstr "カメラを起動中"
 

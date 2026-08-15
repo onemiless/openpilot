@@ -89,9 +89,9 @@ def below_steer_speed_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.S
 
 
 def calibration_incomplete_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
-  first_word = '重新校准' if sm['liveCalibration'].calStatus == log.LiveCalibrationData.Status.recalibrating else '自动校准'
+  first_word = '重新校准' if sm['extrinsicsCalibration'].calStatus == log.ExtrinsicsCalibration.Status.recalibrating else '自动校准'
   return Alert(
-    f"{first_word} 进行中: {sm['liveCalibration'].calPerc:.0f}%",
+    f"{first_word} 进行中: {sm['extrinsicsCalibration'].calPerc:.0f}%",
     f"请保持车速高于 {get_display_speed(MIN_SPEED_FILTER, metric)}",
     AlertStatus.normal, AlertSize.mid,
     Priority.LOWEST, VisualAlert.none, AudibleAlert.none, .2)
@@ -139,13 +139,13 @@ def comm_issue_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaste
 
 
 def camera_malfunction_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
-  all_cams = ('roadCameraState', 'driverCameraState', 'wideRoadCameraState')
+  all_cams = ('narrowRoadCameraState', 'cabinCameraState', 'wideRoadCameraState')
   bad_cams = [s.replace('State', '') for s in all_cams if s in sm.data.keys() and not sm.all_checks([s, ])]
   return NormalPermanentAlert("相机故障", ', '.join(bad_cams))
 
 
 def calibration_invalid_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
-  rpy = sm['liveCalibration'].rpyCalib
+  rpy = sm['extrinsicsCalibration'].rpyCalib
   yaw = math.degrees(rpy[2] if len(rpy) == 3 else math.nan)
   pitch = math.degrees(rpy[1] if len(rpy) == 3 else math.nan)
   angles = f"请调整设备安装 (Pitch: {pitch:.1f}°, Yaw: {yaw:.1f}°)"
@@ -153,16 +153,16 @@ def calibration_invalid_alert(CP: car.CarParams, CS: car.CarState, sm: messaging
 
 
 def paramsd_invalid_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
-  if not sm['liveParameters'].angleOffsetValid:
-    angle_offset_deg = sm['liveParameters'].angleOffsetDeg
+  if not sm['vehicleParameters'].angleOffsetValid:
+    angle_offset_deg = sm['vehicleParameters'].angleOffsetDeg
     title = "检测到转向系统未校准"
     text = f"角度偏移过大 (偏移: {angle_offset_deg:.1f}°)"
-  elif not sm['liveParameters'].steerRatioValid:
-    steer_ratio = sm['liveParameters'].steerRatio
+  elif not sm['vehicleParameters'].steerRatioValid:
+    steer_ratio = sm['vehicleParameters'].steerRatio
     title = "转向比不匹配"
     text = f"转向齿条位置可能异常 (比例: {steer_ratio:.1f})"
-  elif not sm['liveParameters'].stiffnessFactorValid:
-    stiffness_factor = sm['liveParameters'].stiffnessFactor
+  elif not sm['vehicleParameters'].stiffnessFactorValid:
+    stiffness_factor = sm['vehicleParameters'].stiffnessFactor
     title = "轮胎刚度异常"
     text = f"请检查轮胎、胎压或四轮定位 (系数: {stiffness_factor:.1f})"
   else:

@@ -10,7 +10,7 @@ from openpilot.cereal.services import SERVICE_LIST
 from opendbc.car.car_helpers import get_demo_car_params
 from openpilot.common.mock import mock_messages
 from openpilot.common.params import Params
-from openpilot.common.hardware.tici.power_monitor import get_power
+from openpilot.common.hardware.comma.power_monitor import get_power
 from openpilot.system.manager.process_config import managed_processes
 from openpilot.system.manager.manager import manager_cleanup
 
@@ -31,7 +31,7 @@ class Proc:
 
 
 PROCS = [
-  Proc(['camerad'], 1.65, atol=0.4, msgs=['roadCameraState', 'wideRoadCameraState', 'driverCameraState']),
+  Proc(['camerad'], 1.65, atol=0.4, msgs=['narrowRoadCameraState', 'wideRoadCameraState', 'cabinCameraState']),
   Proc(['modeld'], 1.5, atol=0.2, msgs=['modelV2']),
   Proc(['dmonitoringmodeld'], 0.65, atol=0.35, msgs=['driverStateV2']),
   Proc(['encoderd'], 0.23, msgs=[]),
@@ -92,7 +92,7 @@ class TestPowerDraw:
 
     return now, msg_counts, time.monotonic() - start_time - SAMPLE_TIME
 
-  @mock_messages(['livePose'])
+  @mock_messages(['deviceMotion'])
   def test_camera_procs(self, subtests):
     baseline = get_power()
 

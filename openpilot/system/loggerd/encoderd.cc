@@ -1,9 +1,8 @@
 #include <cassert>
-
 #include "system/loggerd/loggerd.h"
 #include "system/loggerd/encoder/jpeg_encoder.h"
 
-#ifdef __TICI__
+#ifdef __COMMA_HARDWARE__
 #include "system/loggerd/encoder/v4l_encoder.h"
 #define Encoder V4LEncoder
 #else

@@ -210,7 +210,7 @@ msgid "Download"
 msgstr "Descargar"
 
 #: openpilot/selfdrive/ui/layouts/settings/device.py
-msgid "Driver Camera"
+msgid "Cabin Camera"
 msgstr "Cámara del conductor"
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
@@ -494,7 +494,7 @@ msgid "Prevent large data uploads when on a metered cellular connection"
 msgstr "Evite grandes cargas de datos cuando esté en una conexión celular medida"
 
 #: openpilot/selfdrive/ui/layouts/settings/device.py
-msgid "Preview the driver facing camera to ensure that driver monitoring has good visibility. (vehicle must be off)"
+msgid "Preview the cabin camera to ensure that driver monitoring has good visibility. (vehicle must be off)"
 msgstr "Previsualiza la cámara hacia el conductor para asegurarte de que la supervisión del conductor tenga buena visibilidad. (el vehículo debe estar apagado)"
 
 #: openpilot/selfdrive/ui/widgets/pairing_dialog.py
@@ -530,7 +530,7 @@ msgid "Reboot and Update"
 msgstr "Reiniciar y actualizar"
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
-msgid "Record and Upload Driver Camera"
+msgid "Record and Upload Cabin Camera"
 msgstr "Grabar y subir cámara del conductor"
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
@@ -686,7 +686,7 @@ msgid "Upgrade Now"
 msgstr "Mejorar ahora"
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
-msgid "Upload data from the driver facing camera and help improve the driver monitoring algorithm."
+msgid "Upload data from the cabin camera and help improve the driver monitoring algorithm."
 msgstr "Sube datos de la cámara orientada al conductor y ayuda a mejorar el algoritmo de supervisión del conductor."
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
@@ -733,7 +733,7 @@ msgstr ""
 msgid "You must accept the Terms of Service to use sunnypilot. Read the latest terms at https://sunnypilot.ai/terms before continuing."
 msgstr ""
 
-#: openpilot/selfdrive/ui/onroad/driver_camera_dialog.py
+#: openpilot/selfdrive/ui/onroad/cabin_camera_dialog.py
 msgid "camera starting"
 msgstr "iniciando cámara"
 

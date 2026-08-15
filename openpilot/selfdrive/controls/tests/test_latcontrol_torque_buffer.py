@@ -10,7 +10,7 @@ from openpilot.selfdrive.controls.lib.latcontrol_torque import LatControlTorque,
 
 from openpilot.selfdrive.car.helpers import convert_to_capnp
 from openpilot.selfdrive.locationd.helpers import Pose
-from openpilot.common.mock.generators import generate_livePose
+from openpilot.common.mock.generators import generate_deviceMotion
 from openpilot.sunnypilot.selfdrive.car import interfaces as sunnypilot_interfaces
 
 def get_controller(car_name):
@@ -34,10 +34,10 @@ class TestLatControlTorqueBuffer:
     CS = car.CarState.new_message()
     CS.vEgo = 30
     CS.steeringPressed = False
-    params = log.LiveParametersData.new_message()
+    params = log.VehicleParameters.new_message()
 
-    lp = generate_livePose()
-    pose = Pose.from_live_pose(lp.livePose)
+    lp = generate_deviceMotion()
+    pose = Pose.from_device_motion(lp.deviceMotion)
 
     for _ in range(buffer_steps):
       controller.update(True, CS, VM, params, False, 0.001, pose, False, 0.2)

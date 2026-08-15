@@ -47,12 +47,12 @@ class TestCameraOffset:
 
     sm = MockStruct(
       deviceState=MockStruct(deviceType='mici'),
-      roadCameraState=MockStruct(sensor='os04c10'),
-      liveCalibration=MockStruct(rpyCalib=[0.0, 0.0, 0.0], height=[1.22])
+      narrowRoadCameraState=MockStruct(sensor='os04c10'),
+      extrinsicsCalibration=MockStruct(rpyCalib=[0.0, 0.0, 0.0], height=[1.22])
     )
 
-    intrinsics_main = self.dc.fcam.intrinsics
-    intrinsics_extra = self.dc.ecam.intrinsics
+    intrinsics_main = self.dc.narrow_road.intrinsics
+    intrinsics_extra = self.dc.wide_road.intrinsics
     device_from_calib_euler = np.array([0.0, 0.0, 0.0], dtype=np.float32)
     main_transform = get_warp_matrix(device_from_calib_euler, intrinsics_main, False).astype(np.float32)
     extra_transform = get_warp_matrix(device_from_calib_euler, intrinsics_extra, True).astype(np.float32)
@@ -63,7 +63,7 @@ class TestCameraOffset:
     np.testing.assert_almost_equal(self.camera_offset.actual_camera_offset, 0.038)
 
   def test_camera_offset_(self):
-    intrinsics = self.dc.fcam.intrinsics
+    intrinsics = self.dc.narrow_road.intrinsics
     transform = np.eye(3, dtype=np.float32)
     height = 1.22
     offset = 0.1
@@ -79,11 +79,11 @@ class TestCameraOffset:
   def test_update(self):
     sm = MockStruct(
       deviceState=MockStruct(deviceType='mici'),
-      roadCameraState=MockStruct(sensor='os04c10'),
-      liveCalibration=MockStruct(rpyCalib=[0.0, 0.0, 0.0], height=[1.22])
+      narrowRoadCameraState=MockStruct(sensor='os04c10'),
+      extrinsicsCalibration=MockStruct(rpyCalib=[0.0, 0.0, 0.0], height=[1.22])
     )
-    intrinsics_main = self.dc.fcam.intrinsics
-    intrinsics_extra = self.dc.ecam.intrinsics
+    intrinsics_main = self.dc.narrow_road.intrinsics
+    intrinsics_extra = self.dc.wide_road.intrinsics
     device_from_calib_euler = np.array([0.0, 0.0, 0.0], dtype=np.float32)
     main_transform = get_warp_matrix(device_from_calib_euler, intrinsics_main, False).astype(np.float32)
     extra_transform = get_warp_matrix(device_from_calib_euler, intrinsics_extra, True).astype(np.float32)
@@ -103,13 +103,13 @@ class TestCameraOffset:
   def test_update_uses_main_intrinsics_when_extra_wide_camera_is_unavailable(self):
     sm = MockStruct(
       deviceState=MockStruct(deviceType='mici'),
-      roadCameraState=MockStruct(sensor='os04c10'),
-      liveCalibration=MockStruct(rpyCalib=[0.0, 0.0, 0.0], height=[1.22])
+      narrowRoadCameraState=MockStruct(sensor='os04c10'),
+      extrinsicsCalibration=MockStruct(rpyCalib=[0.0, 0.0, 0.0], height=[1.22])
     )
     transform = np.eye(3, dtype=np.float32)
     self.camera_offset.set_offset(0.2)
 
     _, extra_out = self.camera_offset.update(transform, transform, sm, False, False)
-    expected = CameraOffsetHelper.apply_camera_offset(transform, self.dc.fcam.intrinsics, 1.22, 0.02)
+    expected = CameraOffsetHelper.apply_camera_offset(transform, self.dc.narrow_road.intrinsics, 1.22, 0.02)
 
     np.testing.assert_array_almost_equal(extra_out, expected)

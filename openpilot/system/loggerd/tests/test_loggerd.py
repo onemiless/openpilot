@@ -17,7 +17,7 @@ from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params
 from openpilot.common.timeout import Timeout
 from openpilot.common.hardware.hw import Paths
-from openpilot.common.hardware import TICI
+from openpilot.common.hardware import COMMA_HARDWARE
 from openpilot.system.loggerd.xattr_cache import getxattr
 from openpilot.system.loggerd.deleter import PRESERVE_ATTR_NAME, PRESERVE_ATTR_VALUE
 from openpilot.system.manager.process_config import managed_processes
@@ -111,12 +111,12 @@ class TestLoggerd:
     w, h = 320, 240
     frame_spec = (w, h, w * h * 3 // 2, w, w * h)
     streams = [
-      (VisionStreamType.VISION_STREAM_ROAD, frame_spec, "roadCameraState"),
-      (VisionStreamType.VISION_STREAM_DRIVER, frame_spec, "driverCameraState"),
+      (VisionStreamType.VISION_STREAM_NARROW_ROAD, frame_spec, "narrowRoadCameraState"),
+      (VisionStreamType.VISION_STREAM_CABIN, frame_spec, "cabinCameraState"),
       (VisionStreamType.VISION_STREAM_WIDE_ROAD, frame_spec, "wideRoadCameraState"),
     ]
 
-    sm = messaging.SubMaster(["roadEncodeData"])
+    sm = messaging.SubMaster(["narrowRoadEncodeData"])
     pm = messaging.PubMaster([s for _, _, s in streams] + ["rawAudioData"])
     vipc_server = VisionIpcServer("camerad")
     for stream_type, frame_spec, _ in streams:
@@ -127,7 +127,7 @@ class TestLoggerd:
     os.environ["LOGGERD_SEGMENT_LENGTH"] = str(segment_length)
     managed_processes["loggerd"].start()
     managed_processes["encoderd"].start()
-    assert pm.wait_for_readers_to_update("roadCameraState", timeout=5)
+    assert pm.wait_for_readers_to_update("narrowRoadCameraState", timeout=5)
 
     fps = 20
     for n in range(1, int(num_segs * segment_length * fps) + 1):
@@ -235,7 +235,7 @@ class TestLoggerd:
     assert abs(boot.wallTimeNanos - time.time_ns()) < 5*1e9 # within 5s
     assert boot.launchLog == launch_log
 
-    if TICI:
+    if COMMA_HARDWARE:
       for fn in ["console-ramoops", "pmsg-ramoops-0"]:
         path = Path(os.path.join("/sys/fs/pstore/", fn))
         if path.is_file():
@@ -323,8 +323,8 @@ class TestLoggerd:
 
     self._publish_camera_and_audio_messages()
 
-    dcamera_hevc_exists = os.path.exists(os.path.join(self._get_latest_log_dir(), 'dcamera.hevc'))
-    assert dcamera_hevc_exists == record_front
+    cabin_hevc_exists = os.path.exists(os.path.join(self._get_latest_log_dir(), 'dcamera.hevc'))
+    assert cabin_hevc_exists == record_front
 
   @pytest.mark.xdist_group("camera_encoder_tests")  # setting xdist group ensures tests are run in same worker, prevents encoderd from crashing
   @pytest.mark.parametrize("record_audio", [True, False])
