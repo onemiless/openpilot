@@ -10,14 +10,11 @@ import pyray as rl
 
 from opendbc.sunnypilot.car.tesla.values import MadsScreenButtonType, TeslaFlagsSP
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.vehicle.brands.base import BrandSettings
-from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.modes import (
-  LONGITUDINAL_PLANNER_DEFAULT, get_longitudinal_planner_mode,
-)
 from openpilot.selfdrive.controls.lib.longitudinal_backends.registry import BACKENDS, PARAM_SPECS_BY_ID, BackendId, ordered_backends
 from openpilot.selfdrive.controls.lib.longitudinal_backends.tuning import LEGACY_TO_SEMANTIC, write_backend_overrides
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.tuning_presets import (
-  MPC_TUNING_KEYS, OFFICIAL_MPC_TUNING_KEYS, apply_profile, get_mpc_tuning_profile, get_profile_values,
-  save_profile_values, write_live_values,
+  MPC_PROFILE_CUSTOM, MPC_PROFILE_DEFAULT, MPC_TUNING_KEYS, apply_profile, get_mpc_tuning_profile, get_profile_values,
+  get_selected_backend, save_profile_values, write_live_values,
 )
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app
@@ -64,7 +61,7 @@ MPC_TUNING_PRESENTATION = [
 ]
 
 # Backend labels are data-driven, so mark them explicitly for translation extraction.
-MPC_BACKEND_LABELS = (tr_noop("Default"), tr_noop("CrazyMax"), tr_noop("TN-NoDEC"))
+MPC_BACKEND_LABELS = (tr_noop("Official"), tr_noop("Experimental"), tr_noop("TN-NoDEC"))
 
 MPC_TUNING_ITEMS = [
   (key, title, description,
@@ -86,11 +83,14 @@ class TeslaMpcSettingsLayout(Widget):
     self._scroller = Scroller(self.items, line_separator=True, spacing=0)
 
   def _initialize_items(self):
+    # Migrate the retired four-button profile value before constructing the
+    # three-button control, which reads its selected index directly from Params.
+    current_profile = get_mpc_tuning_profile(ui_state.params)
     self._planner_item = multiple_button_item_sp(
       title=lambda: tr("Longitudinal Planner"),
       description=lambda: tr(
-        "Default follows the current SP lead-based MPC structure. CrazyMax preserves the Moumou cruise-obstacle MPC. " +
-        "TN-NoDEC is experimental. Changes take effect next onroad session."
+        "Official is the default planner. Experimental and TN-NoDEC use separate planner and MPC implementations. " +
+        "Changes take effect next onroad session."
       ),
       buttons=[lambda label=backend.label: tr(label) for backend in ordered_backends()],
       param="LongitudinalPlannerMode",
@@ -100,10 +100,10 @@ class TeslaMpcSettingsLayout(Widget):
     self._profile_item = multiple_button_item_sp(
       title=lambda: tr("MPC Tuning Profile"),
       description=lambda: tr(
-        "Parameter presets are independent from the planner implementation. Default uses current SP values; " +
-        "CrazyMax uses the verified Moumou baseline."
+        "Default uses the selected planner's own parameters. CrazyMax uses the saved dev260628XL parameters. " +
+        "Custom starts from that planner's Default values and saves changes separately."
       ),
-      buttons=[lambda: tr("Default"), lambda: tr("Moumou Baseline"), lambda: tr("Current"), lambda: tr("Custom")],
+      buttons=[lambda: tr("Default"), lambda: tr("CrazyMax"), lambda: tr("Custom")],
       param="MpcTuningProfile",
       callback=self._on_profile_changed,
       inline=False,
@@ -142,59 +142,69 @@ class TeslaMpcSettingsLayout(Widget):
 
     self.items = [self._planner_item, self._profile_item, self._tn_accel_enabled, self._tn_accel_profile,
                   *self.mpc_tuning_options]
-    self._apply_mpc_profile(get_mpc_tuning_profile(ui_state.params), update_profile_storage=False)
+    self._show_mpc_profile(current_profile)
 
   @staticmethod
-  def _profile_values(profile):
-    return get_profile_values(ui_state.params, profile)
+  def _profile_values(profile, backend=None):
+    return get_profile_values(ui_state.params, profile, backend)
 
   @staticmethod
-  def _save_profile_values(profile, values):
-    save_profile_values(ui_state.params, profile, values)
+  def _save_profile_values(profile, values, backend=None):
+    save_profile_values(ui_state.params, profile, values, backend)
 
   @staticmethod
-  def _write_live_mpc_values(values):
-    write_live_values(ui_state.params, values)
+  def _write_live_mpc_values(values, backend=None):
+    write_live_values(ui_state.params, values, backend=backend)
 
-  def _on_planner_changed(self, _mode):
+  def _on_planner_changed(self, mode):
+    backend = BACKENDS[BackendId(mode)]
+    ui_state.params.put("MpcTuningProfile", MPC_PROFILE_DEFAULT, block=True)
+    self._profile_item.action_item.set_selected_button(MPC_PROFILE_DEFAULT)
+    self._apply_mpc_profile(MPC_PROFILE_DEFAULT, backend)
     self._update_tuning_enablement()
 
   def _on_profile_changed(self, profile):
     self._apply_mpc_profile(profile)
+    self._update_tuning_enablement()
 
-  def _apply_mpc_profile(self, profile, update_profile_storage=True):
-    values = apply_profile(ui_state.params, profile)
+  def _show_mpc_profile(self, profile, backend=None):
+    values = self._profile_values(profile, backend)
     self._applying_mpc_profile = True
     try:
       for option in self.mpc_tuning_options:
         value = values[option.action_item.param_key]
         option.action_item.set_value(value)
-      self._write_live_mpc_values(values)
-      if update_profile_storage:
-        self._save_profile_values(profile, values)
     finally:
       self._applying_mpc_profile = False
+
+  def _apply_mpc_profile(self, profile, backend=None):
+    values = apply_profile(ui_state.params, profile, backend)
+    self._show_mpc_profile(profile, backend)
+    return values
 
   def _on_mpc_tuning_changed(self, _value):
     if self._applying_mpc_profile:
       return
 
     profile = get_mpc_tuning_profile(ui_state.params)
-    values = self._profile_values(profile)
+    if profile != MPC_PROFILE_CUSTOM:
+      return
+    backend = get_selected_backend(ui_state.params)
+    values = self._profile_values(profile, backend)
     for option in self.mpc_tuning_options:
       values[option.action_item.param_key] = option.action_item.get_value()
     assert set(values) == set(MPC_TUNING_KEYS)
-    self._write_live_mpc_values(values)
-    self._save_profile_values(profile, values)
+    self._write_live_mpc_values(values, backend)
+    self._save_profile_values(profile, values, backend)
 
   def _update_tuning_enablement(self):
-    official = get_longitudinal_planner_mode(ui_state.params) == LONGITUDINAL_PLANNER_DEFAULT
-    tn = get_longitudinal_planner_mode(ui_state.params) == int(BackendId.TN_NO_DEC)
+    backend = get_selected_backend(ui_state.params)
+    tn = backend.id == BackendId.TN_NO_DEC
+    custom = get_mpc_tuning_profile(ui_state.params) == MPC_PROFILE_CUSTOM
     self._tn_accel_enabled.set_visible(tn)
     self._tn_accel_profile.set_visible(tn)
     for option in self.mpc_tuning_options:
-      supported = not official or option.action_item.param_key in OFFICIAL_MPC_TUNING_KEYS
-      option.action_item.set_enabled(supported)
+      option.action_item.set_enabled(custom)
 
   def _update_state(self):
     super()._update_state()

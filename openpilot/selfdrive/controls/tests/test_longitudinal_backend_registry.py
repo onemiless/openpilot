@@ -48,11 +48,11 @@ class FakeTuning:
 
 def test_registry_has_stable_order_and_fallback():
   assert [backend.id for backend in ordered_backends()] == [0, 1, 2]
-  assert get_backend(0).id == BackendId.DEFAULT
-  assert get_backend(1).id == BackendId.CRAZYMAX
+  assert get_backend(0).id == BackendId.OFFICIAL
+  assert get_backend(1).id == BackendId.EXPERIMENTAL
   assert get_backend(2).id == BackendId.TN_NO_DEC
-  assert get_backend(None).id == BackendId.DEFAULT
-  assert get_backend("bad").id == BackendId.DEFAULT
+  assert get_backend(None).id == BackendId.OFFICIAL
+  assert get_backend("bad").id == BackendId.OFFICIAL
   validate_registry()
 
 
@@ -74,19 +74,19 @@ def test_snapshot_is_written_as_one_atomic_param():
 def test_legacy_defaults_migrate_without_numeric_drift():
   params = FakeParams({"MpcTuningProfile": 0})
   snapshot = snapshot_from_legacy(params)
-  crazymax = resolve_tuning(snapshot, BACKENDS[BackendId.CRAZYMAX]).native_values
-  assert crazymax["x_ego_obstacle_cost"] == MPC_OFFICIAL_VALUES["MpcXObstacleCost"] / 100.0
-  assert crazymax["comfort_brake"] == MPC_OFFICIAL_VALUES["MpcComfortBrake"] / 100.0
-  assert crazymax["stop_distance"] == MPC_OFFICIAL_VALUES["MpcStopDistance"] / 100.0
-  assert crazymax["t_follow_standard"] == MPC_OFFICIAL_VALUES["MpcTFollowStandard"] / 100.0
+  experimental = resolve_tuning(snapshot, BACKENDS[BackendId.EXPERIMENTAL]).native_values
+  assert experimental["x_ego_obstacle_cost"] == MPC_OFFICIAL_VALUES["MpcXObstacleCost"] / 100.0
+  assert experimental["comfort_brake"] == MPC_OFFICIAL_VALUES["MpcComfortBrake"] / 100.0
+  assert experimental["stop_distance"] == MPC_OFFICIAL_VALUES["MpcStopDistance"] / 100.0
+  assert experimental["t_follow_standard"] == MPC_OFFICIAL_VALUES["MpcTFollowStandard"] / 100.0
 
 
 def test_one_shot_migration_preserves_legacy_sp_solver_fixed_values():
   params = FakeParams({"MpcTuningProfile": 2})
   snapshot = migrate_legacy_config(params)
-  default = resolve_tuning(snapshot, BACKENDS[BackendId.DEFAULT]).native_values
-  assert default["comfort_brake"] == 2.5
-  assert default["stop_distance"] == 6.0
+  official = resolve_tuning(snapshot, BACKENDS[BackendId.OFFICIAL]).native_values
+  assert official["comfort_brake"] == 2.5
+  assert official["stop_distance"] == 6.0
   assert params.values[MIGRATION_MARKER_PARAM] is True
   assert migrate_legacy_config(params) == snapshot
 
@@ -119,7 +119,7 @@ def test_active_backend_is_latched_across_process_restarts():
   params = Params()
   params.put("LongitudinalPlannerMode", int(BackendId.TN_NO_DEC), block=True)
   assert latch_active_backend(params) == BackendId.TN_NO_DEC
-  params.put("LongitudinalPlannerMode", int(BackendId.DEFAULT), block=True)
+  params.put("LongitudinalPlannerMode", int(BackendId.OFFICIAL), block=True)
   assert latch_active_backend(params) == BackendId.TN_NO_DEC
   assert params.get(ACTIVE_BACKEND_PARAM) == int(BackendId.TN_NO_DEC)
 

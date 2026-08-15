@@ -15,7 +15,8 @@ from typing import Any
 
 from openpilot.common.params import Params
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.tuning_presets import (
-  apply_profile, get_mpc_tuning_profile, get_profile_values, save_profile_values, write_live_values,
+  MPC_PROFILE_CUSTOM, MPC_PROFILE_DEFAULT, apply_profile, get_mpc_tuning_profile, get_profile_values,
+  get_selected_backend, save_profile_values, write_live_values,
 )
 from openpilot.selfdrive.controls.lib.longitudinal_backends.registry import BACKENDS, BackendId
 from openpilot.selfdrive.controls.lib.longitudinal_backends.registry import PARAM_SPECS_BY_ID
@@ -132,8 +133,8 @@ EXTRA_SETTINGS: tuple[dict[str, Any], ...] = (
   {"key": "TeslaMadsScreenButton", "widget": "toggle", "title": "Tesla MADS 屏幕按钮", "group": "Tesla", "offroad_only": True},
   {"key": "TeslaTouchLongitudinalSwitch", "widget": "toggle", "title": "4指触摸切换原车ACC", "group": "Tesla", "offroad_only": True},
   {"key": "TeslaTurnSignalValidation", "widget": "toggle", "title": "启用 Tesla 转向 CAN 测试", "category": "Developer", "group": "Tesla 测试", "offroad_only": True},
-  {"key": "LongitudinalPlannerMode", "widget": "multiple_button", "title": "纵向规划器", "group": "纵向 MPC", "options": [{"value": 0, "label": "Default（默认）"}, {"value": 1, "label": "CrazyMax（Moumou）"}, {"value": 2, "label": "TN-NoDEC（实验）"}], "offroad_only": True},
-  {"key": "MpcTuningProfile", "widget": "multiple_button", "title": "MPC 参数方案", "group": "纵向 MPC", "options": [{"value": 0, "label": "Default（SP 参数）"}, {"value": 1, "label": "Moumou 基线"}, {"value": 2, "label": "Current"}, {"value": 3, "label": "Custom"}], "offroad_only": False},
+  {"key": "LongitudinalPlannerMode", "widget": "multiple_button", "title": "纵向规划器", "group": "纵向 MPC", "options": [{"value": 0, "label": "官方（默认）"}, {"value": 1, "label": "实验"}, {"value": 2, "label": "TN-NoDEC"}], "offroad_only": True},
+  {"key": "MpcTuningProfile", "widget": "multiple_button", "title": "MPC 参数方案", "group": "纵向 MPC", "options": [{"value": 0, "label": "默认"}, {"value": 1, "label": "CrazyMax"}, {"value": 2, "label": "自定义"}], "offroad_only": False},
   {"key": "AccelPersonalityEnabled", "widget": "toggle", "title": "TN 加速个性控制", "group": "纵向 MPC", "offroad_only": False},
   {"key": "AccelPersonality", "widget": "multiple_button", "title": "TN 加速个性", "group": "纵向 MPC", "options": [{"value": 0, "label": "Eco"}, {"value": 1, "label": "Normal"}, {"value": 2, "label": "Sport"}], "offroad_only": False},
 )
@@ -257,8 +258,13 @@ def _read_value(params: Params, setting: dict[str, Any]) -> bool | int | float |
 def settings_snapshot(params: Params | None = None) -> dict[str, Any]:
   params = params or Params()
   settings = get_settings(_current_brand(params))
-  visible_settings = [{**setting, "value": _read_value(params, setting), "order": order, "enabled": True}
-                      for order, setting in enumerate(settings.values())]
+  mpc_keys = {field[0] for field in MPC_FIELDS}
+  custom = get_mpc_tuning_profile(params) == MPC_PROFILE_CUSTOM
+  visible_settings = [
+    {**setting, "value": _read_value(params, setting), "order": order,
+     "enabled": custom if setting["key"] in mpc_keys else True}
+    for order, setting in enumerate(settings.values())
+  ]
   return {
     "onroad": not params.get_bool("IsOffroad"),
     "menu": [category for category in MENU_ORDER if any(setting["category"] == category for setting in visible_settings)],
@@ -301,14 +307,21 @@ def validate_and_write(key: str, value: Any, params: Params | None = None) -> di
     if step and abs(round(value / step) * step - value) > 1e-9:
       raise ValueError(f"数值必须按 {step} 递增")
     mpc_keys = {field[0] for field in MPC_FIELDS}
-    if key == "MpcTuningProfile":
-      apply_profile(params, int(value))
+    if key == "LongitudinalPlannerMode":
+      backend = BACKENDS[BackendId(int(value))]
+      params.put(key, value, block=True)
+      apply_profile(params, MPC_PROFILE_DEFAULT, backend)
+    elif key == "MpcTuningProfile":
+      apply_profile(params, int(value), get_selected_backend(params))
     elif key in mpc_keys:
       profile = get_mpc_tuning_profile(params)
-      profile_values = get_profile_values(params, profile)
+      if profile != MPC_PROFILE_CUSTOM:
+        raise PermissionError("只有选择自定义参数方案后才能修改 MPC 参数")
+      backend = get_selected_backend(params)
+      profile_values = get_profile_values(params, profile, backend)
       profile_values[key] = int(value)
-      write_live_values(params, profile_values)
-      save_profile_values(params, profile, profile_values)
+      write_live_values(params, profile_values, backend=backend)
+      save_profile_values(params, profile, profile_values, backend)
     elif key == "AccelPersonality":
       write_backend_overrides(params, BACKENDS[BackendId.TN_NO_DEC], {"tn.accel_personality.profile": value})
       params.put(key, value, block=True)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only drift report for the isolated Default and CrazyMax backends."""
+"""Read-only drift report for the isolated Official and Experimental backends."""
 import argparse
 import difflib
 import subprocess
@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_MAPS = {
-  "default": {
+  "official": {
     "source_candidates": {
       "openpilot/selfdrive/controls/lib/longitudinal_planner.py":
         "openpilot/selfdrive/controls/lib/longitudinal_planner_local.py",
@@ -22,7 +22,7 @@ BACKEND_MAPS = {
         "openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py",
     },
   },
-  "crazymax": {
+  "experimental": {
     "source_candidates": {
       "selfdrive/controls/lib/longitudinal_planner.py":
         "openpilot/selfdrive/controls/lib/longitudinal_planner_official.py",
@@ -58,16 +58,16 @@ def source_map(ref: str, backend: str) -> dict[str, str]:
 
 def main() -> int:
   parser = argparse.ArgumentParser(description=__doc__)
-  parser.add_argument("--ref", default="sunnypilot/master", help="already-fetched SP ref for Default")
-  parser.add_argument("--crazymax-ref", default="moumou/dev260628XL-tici",
-                      help="already-fetched Moumou ref for CrazyMax")
-  parser.add_argument("--backend", choices=("all", "default", "crazymax"), default="all")
+  parser.add_argument("--ref", default="sunnypilot/master", help="already-fetched SP ref for Official")
+  parser.add_argument("--experimental-ref", default="moumou/dev260628XL-tici",
+                      help="already-fetched implementation ref for Experimental")
+  parser.add_argument("--backend", choices=("all", "official", "experimental"), default="all")
   parser.add_argument("--diff", action="store_true", help="print the complete source-to-adapter diff")
   args = parser.parse_args()
 
-  backends = ("default", "crazymax") if args.backend == "all" else (args.backend,)
+  backends = ("official", "experimental") if args.backend == "all" else (args.backend,)
   for backend in backends:
-    ref = args.ref if backend == "default" else args.crazymax_ref
+    ref = args.ref if backend == "official" else args.experimental_ref
     print(f"[{backend}] {ref}")
     for source, adapter in source_map(ref, backend).items():
       upstream = git_show(ref, source)

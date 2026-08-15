@@ -261,14 +261,14 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"DynamicAutoStockSpeedLowKph", {PERSISTENT | BACKUP, INT, "70"}},
 
     // MPC tuning
-    {"LongitudinalPlannerMode", {PERSISTENT | BACKUP, INT, "0"}},  // desired: 0=Default, 1=CrazyMax, 2=TN-NoDEC
+    {"LongitudinalPlannerMode", {PERSISTENT | BACKUP, INT, "0"}},  // desired: 0=Official, 1=Experimental, 2=TN-NoDEC
     {"ActiveLongitudinalBackend", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, INT}},
     {"LongitudinalTuningConfig", {PERSISTENT | BACKUP, JSON}},
     {"LongitudinalTuningMigrated", {PERSISTENT, BOOL, "0"}},
     {"LongitudinalTuningState", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON}},
     {"AccelPersonalityEnabled", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"AccelPersonality", {PERSISTENT | BACKUP, INT, "1"}},  // 0=eco, 1=normal, 2=sport
-    {"MpcTuningProfile", {PERSISTENT | BACKUP, INT, "0"}},  // 0=SP defaults, 1=Moumou baseline, 2=current, 3=custom
+    {"MpcTuningProfile", {PERSISTENT | BACKUP, INT, "0"}},  // 0=planner default, 1=CrazyMax, 2=custom
     {"MpcTuningOfficialValues", {PERSISTENT | BACKUP, JSON}},
     {"MpcAccelChangeCost", {PERSISTENT | BACKUP, INT, "20000"}},  // hundredths
     {"MpcComfortBrake", {PERSISTENT | BACKUP, INT, "250"}},  // hundredths of m/s^2
@@ -282,6 +282,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"MpcTFollowStandard", {PERSISTENT | BACKUP, INT, "145"}},  // hundredths of s
     {"MpcTuningCurrentValues", {PERSISTENT | BACKUP, JSON}},
     {"MpcTuningMoumouValues", {PERSISTENT | BACKUP, JSON}},
+    {"MpcTuningCustomValues", {PERSISTENT | BACKUP, JSON}},
     {"MpcXObstacleCost", {PERSISTENT | BACKUP, INT, "300"}},  // hundredths
 
     // Speed limit / stop line (Tesla)

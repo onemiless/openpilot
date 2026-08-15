@@ -50,7 +50,7 @@ class LongControl:
                              (CP.longitudinalTuning.kiBP, CP.longitudinalTuning.kiV),
                              rate=1 / DT_CTRL)
     self.last_output_accel = 0.0
-    self.stopping_policy = create_stopping_policy(backend or get_backend(BackendId.DEFAULT))
+    self.stopping_policy = create_stopping_policy(backend or get_backend(BackendId.OFFICIAL))
 
   def reset(self):
     self.pid.reset()

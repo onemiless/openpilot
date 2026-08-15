@@ -2634,8 +2634,14 @@ msgstr "自定义"
 msgid "Longitudinal Planner"
 msgstr "纵向规划器"
 
-msgid "Default follows the current SP lead-based MPC structure. CrazyMax preserves the Moumou cruise-obstacle MPC. TN-NoDEC is experimental. Changes take effect next onroad session."
-msgstr "Default 使用当前 SP 的前车型 MPC 结构；CrazyMax 保留 Moumou 的巡航障碍物 MPC；TN-NoDEC 为实验模式。更改后下一次行驶生效。"
+msgid "Official is the default planner. Experimental and TN-NoDEC use separate planner and MPC implementations. Changes take effect next onroad session."
+msgstr "官方规划器为默认选择；实验规划器和 TN-NoDEC 分别使用独立的规划器与 MPC 实现。更改后下一次行驶生效。"
+
+msgid "Official"
+msgstr "官方"
+
+msgid "Experimental"
+msgstr "实验"
 
 msgid "TN-NoDEC"
 msgstr "TN-NoDEC"
@@ -2643,14 +2649,11 @@ msgstr "TN-NoDEC"
 msgid "MPC Tuning Profile"
 msgstr "MPC 调校方案"
 
-msgid "Parameter presets are independent from the planner implementation. Default uses current SP values; CrazyMax uses the verified Moumou baseline."
-msgstr "参数方案与规划器实现相互独立；Default 使用当前 SP 参数，CrazyMax 使用已核实的 Moumou 基线。"
+msgid "Default uses the selected planner's own parameters. CrazyMax uses the saved dev260628XL parameters. Custom starts from that planner's Default values and saves changes separately."
+msgstr "默认方案使用当前规划器自身参数；CrazyMax 使用已保存的 dev260628XL 参数；自定义首次读取该规划器的默认值，修改后独立保存。"
 
 msgid "CrazyMax"
 msgstr "CrazyMax"
-
-msgid "Moumou Baseline"
-msgstr "Moumou 基线"
 
 msgid "Current"
 msgstr "当前值"

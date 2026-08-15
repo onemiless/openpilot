@@ -103,7 +103,7 @@ MPC_TUNING_PARAMS = {
 def read_long_mpc_tuning(params=None, last_known_good=None):
   params = params or Params()
   try:
-    resolved = load_resolved_tuning(params, BACKENDS[BackendId.DEFAULT])
+    resolved = load_resolved_tuning(params, BACKENDS[BackendId.OFFICIAL])
   except ValueError:
     return last_known_good or DEFAULT_LONG_MPC_TUNING
   if resolved is not None:
@@ -325,11 +325,11 @@ class LongitudinalMpc:
       self.last_tuning_update_t = t
       polled = True
     self.tuning = ramp_dataclass(
-      self.tuning, self.target_tuning, BACKENDS[BackendId.DEFAULT], t - self.last_tuning_step_t,
+      self.tuning, self.target_tuning, BACKENDS[BackendId.OFFICIAL], t - self.last_tuning_step_t,
     )
     self.last_tuning_step_t = t
     if polled:
-      write_effective_state(self.params_reader, BACKENDS[BackendId.DEFAULT], self.tuning_revision,
+      write_effective_state(self.params_reader, BACKENDS[BackendId.OFFICIAL], self.tuning_revision,
                             self.tuning, self.target_tuning)
 
   def set_cost_weights(self, cost_weights, constraint_cost_weights):

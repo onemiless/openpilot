@@ -3,14 +3,16 @@ from enum import Enum, IntEnum
 
 
 class BackendId(IntEnum):
-  DEFAULT = 0
-  CRAZYMAX = 1
+  OFFICIAL = 0
+  EXPERIMENTAL = 1
   TN_NO_DEC = 2
 
   # Compatibility aliases for integrations written before the implementations
   # were given accurate user-facing names. The integer IDs remain stable.
-  SP_UPSTREAM_TUNABLE = DEFAULT
-  LOCAL = CRAZYMAX
+  DEFAULT = OFFICIAL
+  CRAZYMAX = EXPERIMENTAL
+  SP_UPSTREAM_TUNABLE = OFFICIAL
+  LOCAL = EXPERIMENTAL
 
 
 class ParamLayer(Enum):
@@ -137,34 +139,34 @@ COMMON_MPC_BINDINGS = (
 )
 
 COMMON_RUNTIME_TARGETS = frozenset(binding.native_target for binding in COMMON_MPC_BINDINGS)
-DEFAULT_SOLVER = SolverContract("long", "c_generated_code", "acados_ocp_long.json",
-                                3, 1, 8, 12, COMMON_RUNTIME_TARGETS)
-CRAZYMAX_SOLVER = SolverContract("long_official", "c_generated_code_official", "acados_ocp_long_official.json",
+OFFICIAL_SOLVER = SolverContract("long", "c_generated_code", "acados_ocp_long.json",
                                  3, 1, 8, 12, COMMON_RUNTIME_TARGETS)
+EXPERIMENTAL_SOLVER = SolverContract("long_official", "c_generated_code_official", "acados_ocp_long_official.json",
+                                     3, 1, 8, 12, COMMON_RUNTIME_TARGETS)
 TN_SOLVER = SolverContract("long_tn", "c_generated_code_tn", "acados_ocp_long_tn.json",
                            3, 1, 8, 12, COMMON_RUNTIME_TARGETS | {"accel_personality_enabled", "accel_personality_profile"})
 
 
 BACKENDS = {
-  BackendId.DEFAULT: BackendSpec(
-    id=BackendId.DEFAULT,
+  BackendId.OFFICIAL: BackendSpec(
+    id=BackendId.OFFICIAL,
     slug="sp_upstream_tunable",
-    label="Default",
+    label="Official",
     planner_module="openpilot.selfdrive.controls.lib.longitudinal_planner_local",
     algorithm_family="acados_long_v1",
     bindings=COMMON_MPC_BINDINGS,
     capabilities=frozenset({"lead_mpc", "cruise_limiter", "standard_experimental_mode", "live_tuning"}),
-    solver=DEFAULT_SOLVER,
+    solver=OFFICIAL_SOLVER,
   ),
-  BackendId.CRAZYMAX: BackendSpec(
-    id=BackendId.CRAZYMAX,
+  BackendId.EXPERIMENTAL: BackendSpec(
+    id=BackendId.EXPERIMENTAL,
     slug="local",
-    label="CrazyMax",
+    label="Experimental",
     planner_module="openpilot.selfdrive.controls.lib.longitudinal_planner_official",
     algorithm_family="acados_long_v1",
     bindings=COMMON_MPC_BINDINGS,
     capabilities=frozenset({"cruise_mpc", "standard_experimental_mode", "live_tuning"}),
-    solver=CRAZYMAX_SOLVER,
+    solver=EXPERIMENTAL_SOLVER,
   ),
   BackendId.TN_NO_DEC: BackendSpec(
     id=BackendId.TN_NO_DEC,
@@ -191,7 +193,7 @@ def get_backend(mode: object) -> BackendSpec:
   try:
     backend_id = BackendId(int(mode))
   except (TypeError, ValueError):
-    backend_id = BackendId.DEFAULT
+    backend_id = BackendId.OFFICIAL
   return BACKENDS[backend_id]
 
 

@@ -1,5 +1,5 @@
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.tuning_presets import (
-  MPC_OFFICIAL_VALUES, MPC_PROFILE_CURRENT, MPC_PROFILE_CUSTOM, MPC_PROFILE_DEFAULT, MPC_PROFILES, MPC_TUNING_KEYS,
+  MPC_OFFICIAL_VALUES, MPC_PROFILE_CUSTOM, MPC_PROFILE_DEFAULT, MPC_TUNING_KEYS,
   apply_profile, get_profile_values, save_profile_values,
 )
 from openpilot.selfdrive.controls.lib.longitudinal_backends.tuning import CONFIG_PARAM, default_snapshot
@@ -19,39 +19,32 @@ class FakeParams:
     self.values[key] = value
 
 
-def test_default_profile_is_official_and_can_store_tuning():
+def test_default_profile_is_official_and_immutable():
   params = FakeParams()
   assert get_profile_values(params, MPC_PROFILE_DEFAULT) == MPC_OFFICIAL_VALUES
   tuned = {**MPC_OFFICIAL_VALUES, "MpcJerkCost": 650}
   save_profile_values(params, MPC_PROFILE_DEFAULT, tuned)
-  assert get_profile_values(params, MPC_PROFILE_DEFAULT)["MpcJerkCost"] == 650
+  assert get_profile_values(params, MPC_PROFILE_DEFAULT)["MpcJerkCost"] == MPC_OFFICIAL_VALUES["MpcJerkCost"]
 
 
-def test_apply_current_profile_updates_live_values_and_selector():
+def test_apply_custom_profile_starts_from_default_and_updates_selector():
   params = FakeParams()
-  values = apply_profile(params, MPC_PROFILE_CURRENT)
-  assert values == MPC_PROFILES[MPC_PROFILE_CURRENT]
-  assert params.values["MpcTuningProfile"] == MPC_PROFILE_CURRENT
+  values = apply_profile(params, MPC_PROFILE_CUSTOM)
+  assert values == MPC_OFFICIAL_VALUES
+  assert params.values["MpcTuningProfile"] == MPC_PROFILE_CUSTOM
   assert all(params.values[key] == value for key, value in values.items())
 
 
-def test_custom_profile_reads_live_values():
+def test_custom_profile_saves_a_separate_backend_blob():
   live_values = {key: index + 100 for index, key in enumerate(MPC_TUNING_KEYS)}
   live_values.update({"MpcTFollowRelaxed": 175, "MpcTFollowStandard": 145, "MpcTFollowAggressive": 125})
-  params = FakeParams(live_values.copy())
-  assert apply_profile(params, MPC_PROFILE_CUSTOM) == live_values
-  assert params.values["MpcTuningProfile"] == MPC_PROFILE_CUSTOM
-
-
-def test_custom_profile_has_no_separate_saved_blob():
-  live_values = {key: index + 100 for index, key in enumerate(MPC_TUNING_KEYS)}
   params = FakeParams()
   save_profile_values(params, MPC_PROFILE_CUSTOM, live_values)
-  assert params.values == {}
+  assert get_profile_values(params, MPC_PROFILE_CUSTOM) == live_values
 
 
 def test_atomic_config_overrides_legacy_values_for_local():
-  params = FakeParams({key: value for key, value in MPC_OFFICIAL_VALUES.items()})
+  params = FakeParams(dict(MPC_OFFICIAL_VALUES))
   config = default_snapshot(revision=4).to_dict()
   config["families"]["acados_long_v1"]["mpc.jerk_cost"] = 6.25
   params.values[CONFIG_PARAM] = config
