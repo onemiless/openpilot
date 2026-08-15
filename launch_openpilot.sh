@@ -10,4 +10,9 @@ echo -n "1" > /data/params/d/IsMetric
 
 
 
+
+# Force device timezone to Asia/Shanghai (Beijing)
+sudo ln -sf /usr/share/zoneinfo/Asia/Shanghai /data/etc/localtime
+sudo sh -c 'echo Asia/Shanghai > /data/etc/timezone'
+export TZ="Asia/Shanghai"
 exec ./launch_chffrplus.sh
