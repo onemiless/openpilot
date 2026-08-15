@@ -693,6 +693,10 @@ class GuiApplication(GuiApplicationExt):
       pass
 
   def font(self, font_weight: FontWeight = FontWeight.NORMAL) -> rl.Font:
+    # Use the CJK fallback font for languages that need it so every
+    # draw call renders Chinese/Japanese/Korean/Thai glyphs properly.
+    if multilang.requires_font_fallback():
+      return self.fallback_font()
     return self._fonts[font_weight]
 
   def fallback_font(self) -> rl.Font:
