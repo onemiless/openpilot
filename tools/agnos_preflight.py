@@ -2,7 +2,6 @@
 """Read-only validation for an AGNOS manifest and a tici inactive slot."""
 
 import argparse
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -16,7 +15,6 @@ import urllib.request
 EXPECTED_PARTITIONS = ("xbl", "xbl_config", "abl", "aop", "devcfg", "boot", "system")
 REQUIRED_FIELDS = ("name", "url", "hash", "hash_raw", "size", "sparse", "full_check", "has_ab")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-DEFAULT_APPROVAL_FILE = Path("/data/agnos/approved-manifest.sha256")
 
 
 def load_manifest(path: Path) -> list[dict]:
@@ -142,13 +140,9 @@ def main() -> int:
   parser.add_argument("--check-urls", action="store_true", help="perform read-only HEAD requests for all images")
   parser.add_argument("--timeout", type=float, default=15.0)
   parser.add_argument("--url-retries", type=int, default=3)
-  parser.add_argument("--approve", type=Path, nargs="?", const=DEFAULT_APPROVAL_FILE,
-                      help="after all checks pass, atomically approve this exact manifest for activation")
   args = parser.parse_args()
   if args.url_retries < 1:
     parser.error("--url-retries must be at least 1")
-  if args.approve is not None and (not args.device or not args.check_urls or args.expected_current is None):
-    parser.error("--approve requires --device, --check-urls, and --expected-current")
 
   try:
     manifest = load_manifest(args.manifest)
@@ -171,13 +165,6 @@ def main() -> int:
     print(f"FAIL: {error}")
   if errors:
     return 1
-  if args.approve is not None:
-    manifest_sha256 = hashlib.sha256(args.manifest.read_bytes()).hexdigest()
-    args.approve.parent.mkdir(parents=True, exist_ok=True)
-    temporary = args.approve.with_name(f".{args.approve.name}.tmp")
-    temporary.write_text(f"{manifest_sha256}\n")
-    os.replace(temporary, args.approve)
-    print(f"APPROVED: {args.approve} -> {manifest_sha256}")
   print(f"PASS: {args.manifest} is structurally valid" + (" and the inactive slot is compatible" if args.device else ""))
   return 0
 
