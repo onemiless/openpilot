@@ -26,7 +26,9 @@ ARS408_REQUEST_TTL_MS = 30 * 60 * 1000
 TESLA_LONGITUDINAL_OEM_FRESHNESS_NS = 200_000_000
 TESLA_LONGITUDINAL_HANDOFF_SETTLE_NS = 400_000_000
 TESLA_LONGITUDINAL_ADDRESS = 0x2B9
+TESLA_LONGITUDINAL_TX_PERIOD_NS = 40_000_000
 TESLA_LONGITUDINAL_TX_INTERVAL_WARN_NS = 55_000_000
+TESLA_LONGITUDINAL_TX_LOG_INTERVAL_NS = 10_000_000_000
 PANDA_TX_ECHO_BASE = 0x80
 PANDA_TX_REJECTED_BASE = 0xC0
 
@@ -91,7 +93,7 @@ class CarController(CarControllerBase):
     self.longitudinal_ownership = TeslaLongitudinalOwnership()
     self.longitudinal_counter = None
     self.longitudinal_handoff_nanos = 0
-    self.last_long_control_frame = -4
+    self.next_long_control_nanos = 0
     self._cruise_state_prev = None
     self._cruise_diag_history = deque(maxlen=50)
     self._last_long_tx = {}
@@ -99,6 +101,10 @@ class CarController(CarControllerBase):
     self._last_cp_tx_counter = None
     self._last_long_tx_echo_nanos = 0
     self._last_long_tx_echo = {}
+    self._long_tx_interval_miss_total = 0
+    self._long_tx_interval_miss_window = 0
+    self._long_tx_interval_miss_max_ms = 0.0
+    self._last_long_tx_interval_log_nanos = 0
     log.info("Tesla cooperative steering configured enabled=%d", int(self.coop_steering_enabled))
     radar_log.info("ARS408 motion input configured enabled=%d bus=1 rate_hz=20", int(self.radar_motion_enabled))
 
@@ -129,9 +135,24 @@ class CarController(CarControllerBase):
         echo["echo_interval_ms"] = round((monotonic_nanos - previous_echo_nanos) / 1e6, 3)
       self._last_long_tx_echo_nanos = int(monotonic_nanos)
 
+    long_interval = (echo.get("echo_interval_ms") is not None and
+                     echo["echo_interval_ms"] > TESLA_LONGITUDINAL_TX_INTERVAL_WARN_NS / 1e6)
+    log_interval = False
+    if long_interval:
+      self._long_tx_interval_miss_total += 1
+      self._long_tx_interval_miss_window += 1
+      self._long_tx_interval_miss_max_ms = max(self._long_tx_interval_miss_max_ms, echo["echo_interval_ms"])
+      log_interval = (not self._last_long_tx_interval_log_nanos or
+                      monotonic_nanos - self._last_long_tx_interval_log_nanos >= TESLA_LONGITUDINAL_TX_LOG_INTERVAL_NS)
+      if log_interval:
+        echo["echo_interval_miss_count"] = self._long_tx_interval_miss_window
+        echo["echo_interval_miss_max_ms"] = round(self._long_tx_interval_miss_max_ms, 3)
+        self._long_tx_interval_miss_window = 0
+        self._long_tx_interval_miss_max_ms = 0.0
+        self._last_long_tx_interval_log_nanos = int(monotonic_nanos)
+    echo["echo_interval_miss_total"] = self._long_tx_interval_miss_total
     self._last_long_tx_echo = echo
-    if rejected or (echo.get("echo_interval_ms") is not None and
-                    echo["echo_interval_ms"] > TESLA_LONGITUDINAL_TX_INTERVAL_WARN_NS / 1e6):
+    if rejected or log_interval:
       cloudlog.event("tesla.das_control_returned", error=rejected, **echo)
 
   def set_speed_sync_target(self, speed_mps, valid):
@@ -401,7 +422,7 @@ class CarController(CarControllerBase):
       self._record_longitudinal_tx("cancel", command, now_nanos)
       return [command]
 
-    if self.frame - self.last_long_control_frame < 4:
+    if self.next_long_control_nanos and now_nanos < self.next_long_control_nanos:
       return []
 
     if self.longitudinal_handoff_nanos:
@@ -427,7 +448,7 @@ class CarController(CarControllerBase):
       accel = float(np.clip(CC.actuators.accel, CarControllerParams.ACCEL_MIN, CarControllerParams.ACCEL_MAX))
       command = self.tesla_can.create_longitudinal_command(4, accel, self.longitudinal_counter, CS.out.vEgo, True)
       self._record_longitudinal_tx("control", command, now_nanos)
-      self.last_long_control_frame = self.frame
+      self.next_long_control_nanos = now_nanos + TESLA_LONGITUDINAL_TX_PERIOD_NS
       return [command]
 
     if action == LongitudinalAction.CANCEL:
@@ -435,7 +456,7 @@ class CarController(CarControllerBase):
       self.tesla_can.reset_longitudinal_jerk()
       command = self.tesla_can.create_longitudinal_command(13, 0, self.longitudinal_counter, CS.out.vEgo, False)
       self._record_longitudinal_tx("cancel", command, now_nanos)
-      self.last_long_control_frame = self.frame
+      self.next_long_control_nanos = now_nanos + TESLA_LONGITUDINAL_TX_PERIOD_NS
       return [command]
 
     if action == LongitudinalAction.RELEASE:

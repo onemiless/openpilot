@@ -21,10 +21,14 @@ def controller_fixture(counter=3, long_active=True, fresh=True):
   controller.longitudinal_ownership = TeslaLongitudinalOwnership()
   controller.longitudinal_counter = None
   controller.longitudinal_handoff_nanos = 0
-  controller.last_long_control_frame = -4
+  controller.next_long_control_nanos = 0
   controller._last_long_tx = {}
   controller._last_long_tx_echo_nanos = 0
   controller._last_long_tx_echo = {}
+  controller._long_tx_interval_miss_total = 0
+  controller._long_tx_interval_miss_window = 0
+  controller._long_tx_interval_miss_max_ms = 0.0
+  controller._last_long_tx_interval_log_nanos = 0
   controller.frame = 0
   now_nanos = 1_000_000_000
   das_control = {
@@ -121,17 +125,19 @@ def test_controller_requires_fresh_oem_counter_and_releases_on_brake():
   assert decode_das_control(cancel[0])["DAS_accState"] == 13
 
 
-def test_longitudinal_schedule_reanchors_after_off_phase_send():
+def test_longitudinal_schedule_uses_monotonic_deadline_and_reanchors_after_late_send():
   controller, cc, cs, _, now_nanos = controller_fixture(counter=2)
   controller.frame = 1
-  controller.last_long_control_frame = -3
   assert len(controller.update_longitudinal_control(cc, cs, False, now_nanos)) == 1
-  assert controller.last_long_control_frame == 1
+  assert controller.next_long_control_nanos == now_nanos + 40_000_000
 
-  controller.frame = 4
+  controller.frame = 100
   assert controller.update_longitudinal_control(cc, cs, False, now_nanos + 30_000_000) == []
-  controller.frame = 5
   assert len(controller.update_longitudinal_control(cc, cs, False, now_nanos + 40_000_000)) == 1
+
+  assert len(controller.update_longitudinal_control(cc, cs, False, now_nanos + 100_000_000)) == 1
+  assert controller.next_long_control_nanos == now_nanos + 140_000_000
+  assert controller.update_longitudinal_control(cc, cs, False, now_nanos + 110_000_000) == []
 
 
 def test_longitudinal_returned_echo_records_physical_interval(monkeypatch):
@@ -149,3 +155,22 @@ def test_longitudinal_returned_echo_records_physical_interval(monkeypatch):
   assert controller._last_long_tx_echo["echo_interval_ms"] == 58.0
   assert controller._last_long_tx_echo["echo_matches_last_attempt"] is True
   assert events[-1][0] == "tesla.das_control_returned"
+
+
+def test_longitudinal_returned_echo_rate_limits_interval_logs(monkeypatch):
+  controller, _, _, _, now_nanos = controller_fixture()
+  controller._last_long_tx = {"tx_raw": "d941a4837c7af7e9"}
+  events = []
+  monkeypatch.setattr("opendbc.car.tesla.carcontroller.cloudlog.event", lambda name, **kwargs: events.append((name, kwargs)))
+
+  data = bytes.fromhex("d941a4837c7af7e9")
+  controller._observe_longitudinal_tx_echo(now_nanos, 0x2B9, data, 0x80)
+  for index in range(1, 6):
+    controller._observe_longitudinal_tx_echo(now_nanos + index * 60_000_000, 0x2B9, data, 0x80)
+
+  assert len(events) == 1
+  assert controller._last_long_tx_echo["echo_interval_miss_total"] == 5
+
+  controller._observe_longitudinal_tx_echo(now_nanos + 10_060_000_000, 0x2B9, data, 0x80)
+  assert len(events) == 2
+  assert events[-1][1]["echo_interval_miss_count"] == 5
