@@ -22,7 +22,8 @@ from openpilot.cereal import log
 from opendbc.car.structs import car
 from setproctitle import setproctitle
 from openpilot.cereal.messaging import PubMaster, SubMaster
-from msgq.visionipc import VisionIpcClient, VisionStreamType, VisionBuf
+from openpilot.cereal.visionipc import VisionStreamType
+from msgq.visionipc import VisionIpcClient, VisionBuf
 from opendbc.car.car_helpers import get_demo_car_params
 
 from tinygrad.tensor import Tensor
