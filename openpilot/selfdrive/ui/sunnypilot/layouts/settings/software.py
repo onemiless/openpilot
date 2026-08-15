@@ -8,13 +8,17 @@ import os
 import subprocess
 import threading
 
+import pyray as rl
+
 from openpilot.selfdrive.ui.layouts.settings.software import SoftwareLayout
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.common.hardware import HARDWARE
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.multilang import tr, tr_noop
-from openpilot.system.ui.widgets import DialogResult
+from openpilot.system.ui.widgets import DialogResult, Widget
 from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog, alert_dialog
+from openpilot.system.ui.widgets.network import NavButton
+from openpilot.system.ui.widgets.scroller_tici import Scroller
 
 from openpilot.system.ui.sunnypilot.widgets.input_dialog import InputDialogSP
 from openpilot.system.ui.sunnypilot.widgets.list_view import button_item_sp, toggle_item_sp
@@ -45,6 +49,36 @@ DESCRIPTIONS = {
     "Checks whether GitHub is reachable through the local proxy."
   )
 }
+
+
+class ProxySettingsLayout(Widget):
+  def __init__(self, back_btn_callback, items, update_callback):
+    super().__init__()
+    self._back_button = NavButton(tr("Back"))
+    self._back_button.set_click_callback(back_btn_callback)
+    self._scroller = Scroller(items, line_separator=True, spacing=0)
+    self._update_callback = update_callback
+
+  def _update_state(self):
+    super()._update_state()
+    self._update_callback()
+
+  def _render(self, rect):
+    self._back_button.set_position(self._rect.x, self._rect.y + 20)
+    self._back_button.render()
+    content_rect = rl.Rectangle(
+      rect.x,
+      rect.y + self._back_button.rect.height + 40,
+      rect.width,
+      rect.height - self._back_button.rect.height - 40,
+    )
+    self._scroller.render(content_rect)
+
+  def show_event(self):
+    self._scroller.show_event()
+
+  def hide_event(self):
+    self._scroller.hide_event()
 
 
 class SoftwareLayoutSP(SoftwareLayout):
@@ -89,11 +123,20 @@ class SoftwareLayoutSP(SoftwareLayout):
       callback=self._on_proxy_test,
       enabled=self._proxy_action_enabled,
     )
+    self._proxy_settings_layout = ProxySettingsLayout(
+      lambda: gui_app.pop_widget(),
+      [self._proxy_toggle_btn, self._proxy_url_btn, self._proxy_update_btn, self._proxy_test_btn],
+      self._update_proxy_state,
+    )
+    self._proxy_settings_btn = button_item_sp(
+      lambda: tr("Proxy Settings"),
+      lambda: tr("Open"),
+      description=lambda: tr("Manage the GitHub proxy and proxy subscription."),
+      callback=lambda: gui_app.push_widget(self._proxy_settings_layout),
+      enabled=lambda: ui_state.is_offroad(),
+    )
     self._scroller.add_widget(self.disable_updates_toggle)
-    self._scroller.add_widget(self._proxy_toggle_btn)
-    self._scroller.add_widget(self._proxy_url_btn)
-    self._scroller.add_widget(self._proxy_update_btn)
-    self._scroller.add_widget(self._proxy_test_btn)
+    self._scroller.add_widget(self._proxy_settings_btn)
 
   @staticmethod
   def _proxy_control_path() -> str:
@@ -230,6 +273,13 @@ class SoftwareLayoutSP(SoftwareLayout):
     show_advanced = ui_state.params.get_bool("ShowAdvancedControls")
     self.disable_updates_toggle.action_item.set_enabled(ui_state.is_offroad())
     self.disable_updates_toggle.set_visible(show_advanced)
+    self._proxy_settings_btn.action_item.set_enabled(ui_state.is_offroad())
+    self._proxy_settings_btn.set_visible(True)
+
+    disable_updates_desc = tr(DESCRIPTIONS["disable_updates_offroad"] if ui_state.is_offroad() else DESCRIPTIONS["disable_updates_onroad"])
+    self.disable_updates_toggle.set_description(disable_updates_desc)
+
+  def _update_proxy_state(self):
     self._proxy_toggle_btn.set_visible(True)
     self._proxy_url_btn.set_visible(True)
     self._proxy_update_btn.set_visible(True)
@@ -242,6 +292,3 @@ class SoftwareLayoutSP(SoftwareLayout):
       message = self._proxy_result_dialog_message
       self._proxy_result_dialog_message = None
       gui_app.push_widget(alert_dialog(message))
-
-    disable_updates_desc = tr(DESCRIPTIONS["disable_updates_offroad"] if ui_state.is_offroad() else DESCRIPTIONS["disable_updates_onroad"])
-    self.disable_updates_toggle.set_description(disable_updates_desc)

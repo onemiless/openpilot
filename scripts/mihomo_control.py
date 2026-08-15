@@ -101,9 +101,9 @@ def start(_args: argparse.Namespace) -> int:
   if _is_running():
     print("mihomo already running")
     return 0
-  install_result = install(_args)
-  if install_result != 0:
-    return install_result
+  update_result = update(_args)
+  if update_result != 0:
+    return update_result
   if not BIN.exists():
     print(f"mihomo binary not found: {BIN}", file=sys.stderr)
     return 1

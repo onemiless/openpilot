@@ -1315,6 +1315,12 @@ msgid "Enter Proxy Subscription URL"
 msgstr "输入代理订阅地址"
 msgid "GitHub Proxy"
 msgstr "GitHub 代理"
+
+msgid "Proxy Settings"
+msgstr "代理设置"
+
+msgid "Manage the GitHub proxy and proxy subscription."
+msgstr "管理 GitHub 代理和代理订阅。"
 msgid "Manually starts or stops the local GitHub proxy on 127.0.0.1:7890. This is only for commands that explicitly use the proxy."
 msgstr "手动启动或停止 127.0.0.1:7890 上的本地 GitHub 代理。仅对明确使用该代理的命令生效。"
 msgid "Saved locally on this device only."
