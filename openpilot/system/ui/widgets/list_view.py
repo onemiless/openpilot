@@ -1,3 +1,4 @@
+import math
 import os
 import pyray as rl
 from collections.abc import Callable, Sequence
@@ -104,7 +105,8 @@ class ButtonAction(ItemAction):
     value_text = self.value
     if value_text:
       text_width = measure_text_cached(self._font, value_text, ITEM_TEXT_FONT_SIZE).x
-      return text_width + BUTTON_WIDTH + TEXT_PADDING
+      # round up so float32 rectangle storage can't make the label fractionally too narrow
+      return math.ceil(text_width) + BUTTON_WIDTH + TEXT_PADDING
     else:
       return BUTTON_WIDTH
 
