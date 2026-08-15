@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only SP upstream drift report for the tunable longitudinal adapter."""
+"""Read-only drift report for the isolated Default and CrazyMax backends."""
 import argparse
 import difflib
 import subprocess
@@ -7,11 +7,30 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_MAP = {
-  "selfdrive/controls/lib/longitudinal_planner.py":
-    "openpilot/selfdrive/controls/lib/longitudinal_planner_official.py",
-  "selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py":
-    "openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc_official.py",
+BACKEND_MAPS = {
+  "default": {
+    "source_candidates": {
+      "openpilot/selfdrive/controls/lib/longitudinal_planner.py":
+        "openpilot/selfdrive/controls/lib/longitudinal_planner_local.py",
+      "openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py":
+        "openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py",
+    },
+    "legacy_source_candidates": {
+      "selfdrive/controls/lib/longitudinal_planner.py":
+        "openpilot/selfdrive/controls/lib/longitudinal_planner_local.py",
+      "selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py":
+        "openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py",
+    },
+  },
+  "crazymax": {
+    "source_candidates": {
+      "selfdrive/controls/lib/longitudinal_planner.py":
+        "openpilot/selfdrive/controls/lib/longitudinal_planner_official.py",
+      "selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py":
+        "openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc_official.py",
+    },
+    "legacy_source_candidates": {},
+  },
 }
 
 
@@ -22,21 +41,43 @@ def git_show(ref: str, path: str) -> list[str]:
   return result.stdout.splitlines(keepends=True)
 
 
+def source_map(ref: str, backend: str) -> dict[str, str]:
+  config = BACKEND_MAPS[backend]
+  for candidate in (config["source_candidates"], config["legacy_source_candidates"]):
+    if not candidate:
+      continue
+    first_path = next(iter(candidate))
+    exists = subprocess.run(
+      ["git", "cat-file", "-e", f"{ref}:{first_path}"], cwd=ROOT,
+      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    ).returncode == 0
+    if exists:
+      return candidate
+  raise ValueError(f"{ref} does not contain the expected {backend} planner paths")
+
+
 def main() -> int:
   parser = argparse.ArgumentParser(description=__doc__)
-  parser.add_argument("--ref", default="sunnypilot/dev-c3", help="already-fetched upstream ref")
+  parser.add_argument("--ref", default="sunnypilot/master", help="already-fetched SP ref for Default")
+  parser.add_argument("--crazymax-ref", default="moumou/dev260628XL-tici",
+                      help="already-fetched Moumou ref for CrazyMax")
+  parser.add_argument("--backend", choices=("all", "default", "crazymax"), default="all")
   parser.add_argument("--diff", action="store_true", help="print the complete source-to-adapter diff")
   args = parser.parse_args()
 
-  for source, adapter in SOURCE_MAP.items():
-    upstream = git_show(args.ref, source)
-    downstream = (ROOT / adapter).read_text().splitlines(keepends=True)
-    delta = list(difflib.unified_diff(upstream, downstream, fromfile=f"{args.ref}:{source}", tofile=adapter))
-    print(f"{source} -> {adapter}: {len(delta)} diff lines")
-    if args.diff:
-      print("".join(delta), end="")
+  backends = ("default", "crazymax") if args.backend == "all" else (args.backend,)
+  for backend in backends:
+    ref = args.ref if backend == "default" else args.crazymax_ref
+    print(f"[{backend}] {ref}")
+    for source, adapter in source_map(ref, backend).items():
+      upstream = git_show(ref, source)
+      downstream = (ROOT / adapter).read_text().splitlines(keepends=True)
+      delta = list(difflib.unified_diff(upstream, downstream, fromfile=f"{ref}:{source}", tofile=adapter))
+      print(f"{source} -> {adapter}: {len(delta)} diff lines")
+      if args.diff:
+        print("".join(delta), end="")
 
-  print("Structural solver changes remain in the adapter and require regeneration plus contract tests.")
+  print("Adapter-owned tuning and solver changes require regeneration plus contract tests after any port.")
   return 0
 
 

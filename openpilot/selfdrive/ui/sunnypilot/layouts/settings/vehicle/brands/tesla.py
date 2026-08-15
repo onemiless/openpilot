@@ -11,7 +11,7 @@ import pyray as rl
 from opendbc.sunnypilot.car.tesla.values import MadsScreenButtonType, TeslaFlagsSP
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.vehicle.brands.base import BrandSettings
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.modes import (
-  LONGITUDINAL_PLANNER_OFFICIAL, get_longitudinal_planner_mode,
+  LONGITUDINAL_PLANNER_DEFAULT, get_longitudinal_planner_mode,
 )
 from openpilot.selfdrive.controls.lib.longitudinal_backends.registry import BACKENDS, PARAM_SPECS_BY_ID, BackendId, ordered_backends
 from openpilot.selfdrive.controls.lib.longitudinal_backends.tuning import LEGACY_TO_SEMANTIC, write_backend_overrides
@@ -64,7 +64,7 @@ MPC_TUNING_PRESENTATION = [
 ]
 
 # Backend labels are data-driven, so mark them explicitly for translation extraction.
-MPC_BACKEND_LABELS = (tr_noop("SP Upstream Tunable"), tr_noop("Local"), tr_noop("TN-NoDEC"))
+MPC_BACKEND_LABELS = (tr_noop("Default"), tr_noop("CrazyMax"), tr_noop("TN-NoDEC"))
 
 MPC_TUNING_ITEMS = [
   (key, title, description,
@@ -88,7 +88,7 @@ class TeslaMpcSettingsLayout(Widget):
   def _initialize_items(self):
     self._planner_item = multiple_button_item_sp(
       title=lambda: tr("Longitudinal Planner"),
-      description=lambda: tr("SP Upstream Tunable, Local, and TN-NoDEC are isolated backends. A change takes effect next onroad session."),
+      description=lambda: tr("Default follows the current SP lead-based MPC structure. CrazyMax preserves the Moumou cruise-obstacle MPC. TN-NoDEC is experimental. Changes take effect next onroad session."),
       buttons=[lambda label=backend.label: tr(label) for backend in ordered_backends()],
       param="LongitudinalPlannerMode",
       callback=self._on_planner_changed,
@@ -96,7 +96,7 @@ class TeslaMpcSettingsLayout(Widget):
     )
     self._profile_item = multiple_button_item_sp(
       title=lambda: tr("MPC Tuning Profile"),
-      description=lambda: tr("Both planners read the selected tuning profile. Default starts from official parameters."),
+      description=lambda: tr("Parameter presets are independent from the planner implementation. Default uses current SP values; CrazyMax uses the verified Moumou baseline."),
       buttons=[lambda: tr("Default"), lambda: tr("CrazyMax"), lambda: tr("Current"), lambda: tr("Custom")],
       param="MpcTuningProfile",
       callback=self._on_profile_changed,
@@ -182,7 +182,7 @@ class TeslaMpcSettingsLayout(Widget):
     self._save_profile_values(profile, values)
 
   def _update_tuning_enablement(self):
-    official = get_longitudinal_planner_mode(ui_state.params) == LONGITUDINAL_PLANNER_OFFICIAL
+    official = get_longitudinal_planner_mode(ui_state.params) == LONGITUDINAL_PLANNER_DEFAULT
     tn = get_longitudinal_planner_mode(ui_state.params) == int(BackendId.TN_NO_DEC)
     self._tn_accel_enabled.set_visible(tn)
     self._tn_accel_profile.set_visible(tn)

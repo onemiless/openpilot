@@ -2634,14 +2634,8 @@ msgstr "自定义"
 msgid "Longitudinal Planner"
 msgstr "纵向规划器"
 
-msgid "SP Upstream Tunable, Local, and TN-NoDEC are isolated backends. A change takes effect next onroad session."
-msgstr "SP 官方可调、本地版和 TN-NoDEC 是相互隔离的规划器；更改后下一次行驶生效。"
-
-msgid "SP Upstream Tunable"
-msgstr "SP 官方可调"
-
-msgid "Local"
-msgstr "本地版"
+msgid "Default follows the current SP lead-based MPC structure. CrazyMax preserves the Moumou cruise-obstacle MPC. TN-NoDEC is experimental. Changes take effect next onroad session."
+msgstr "Default 使用当前 SP 的前车型 MPC 结构；CrazyMax 保留 Moumou 的巡航障碍物 MPC；TN-NoDEC 为实验模式。更改后下一次行驶生效。"
 
 msgid "TN-NoDEC"
 msgstr "TN-NoDEC"
@@ -2649,8 +2643,8 @@ msgstr "TN-NoDEC"
 msgid "MPC Tuning Profile"
 msgstr "MPC 调校方案"
 
-msgid "Both planners read the selected tuning profile. Default starts from official parameters."
-msgstr "各规划器均读取所选调校方案；默认方案使用 SP 官方参数。"
+msgid "Parameter presets are independent from the planner implementation. Default uses current SP values; CrazyMax uses the verified Moumou baseline."
+msgstr "参数方案与规划器实现相互独立；Default 使用当前 SP 参数，CrazyMax 使用已核实的 Moumou 基线。"
 
 msgid "CrazyMax"
 msgstr "CrazyMax"

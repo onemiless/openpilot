@@ -132,8 +132,8 @@ EXTRA_SETTINGS: tuple[dict[str, Any], ...] = (
   {"key": "TeslaMadsScreenButton", "widget": "toggle", "title": "Tesla MADS 屏幕按钮", "group": "Tesla", "offroad_only": True},
   {"key": "TeslaTouchLongitudinalSwitch", "widget": "toggle", "title": "4指触摸切换原车ACC", "group": "Tesla", "offroad_only": True},
   {"key": "TeslaTurnSignalValidation", "widget": "toggle", "title": "启用 Tesla 转向 CAN 测试", "category": "Developer", "group": "Tesla 测试", "offroad_only": True},
-  {"key": "LongitudinalPlannerMode", "widget": "multiple_button", "title": "纵向规划器", "group": "纵向 MPC", "options": [{"value": 0, "label": "SP Upstream Tunable（默认）"}, {"value": 1, "label": "Local"}, {"value": 2, "label": "TN-NoDEC"}], "offroad_only": True},
-  {"key": "MpcTuningProfile", "widget": "multiple_button", "title": "MPC 参数方案", "group": "纵向 MPC", "options": [{"value": 0, "label": "Default（官方参数）"}, {"value": 1, "label": "CrazyMax"}, {"value": 2, "label": "Current"}, {"value": 3, "label": "Custom"}], "offroad_only": False},
+  {"key": "LongitudinalPlannerMode", "widget": "multiple_button", "title": "纵向规划器", "group": "纵向 MPC", "options": [{"value": 0, "label": "Default（默认）"}, {"value": 1, "label": "CrazyMax（Moumou）"}, {"value": 2, "label": "TN-NoDEC（实验）"}], "offroad_only": True},
+  {"key": "MpcTuningProfile", "widget": "multiple_button", "title": "MPC 参数方案", "group": "纵向 MPC", "options": [{"value": 0, "label": "Default（SP 参数）"}, {"value": 1, "label": "Moumou 基线"}, {"value": 2, "label": "Current"}, {"value": 3, "label": "Custom"}], "offroad_only": False},
   {"key": "AccelPersonalityEnabled", "widget": "toggle", "title": "TN 加速个性控制", "group": "纵向 MPC", "offroad_only": False},
   {"key": "AccelPersonality", "widget": "multiple_button", "title": "TN 加速个性", "group": "纵向 MPC", "options": [{"value": 0, "label": "Eco"}, {"value": 1, "label": "Normal"}, {"value": 2, "label": "Sport"}], "offroad_only": False},
 )

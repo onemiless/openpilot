@@ -35,9 +35,15 @@ MPC_OFFICIAL_VALUES = {
   "MpcTFollowAggressive": 125,
 }
 
+# Verified against moumou/dev260628XL-tici. The numerical baseline currently
+# matches upstream, but it is intentionally independent: CrazyMax selects a
+# different planner/MPC implementation and must never fall back by aliasing the
+# Default dictionary.
+MPC_CRAZYMAX_VALUES = dict(MPC_OFFICIAL_VALUES)
+
 MPC_PROFILES = {
   MPC_PROFILE_DEFAULT: MPC_OFFICIAL_VALUES,
-  MPC_PROFILE_CRAZYMAX: MPC_OFFICIAL_VALUES,
+  MPC_PROFILE_CRAZYMAX: MPC_CRAZYMAX_VALUES,
   MPC_PROFILE_CURRENT: {
     "MpcXObstacleCost": 500,
     "MpcJerkCost": 300,

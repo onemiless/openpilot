@@ -6,8 +6,8 @@ from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib import long_mpc as lo
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib import long_mpc_official as official_mpc
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib import long_mpc_tn as tn_mpc
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.modes import (
-  LONGITUDINAL_PLANNER_LOCAL,
-  LONGITUDINAL_PLANNER_OFFICIAL,
+  LONGITUDINAL_PLANNER_CRAZYMAX,
+  LONGITUDINAL_PLANNER_DEFAULT,
   LONGITUDINAL_PLANNER_TN,
   get_longitudinal_planner_mode,
 )
@@ -34,7 +34,7 @@ class FakeParams:
 class WritableParams:
   def __init__(self):
     self.values = {"CarPlatformBundle": {"brand": "tesla"}, "IsOffroad": True,
-                   "LongitudinalPlannerMode": LONGITUDINAL_PLANNER_OFFICIAL, "MpcTuningProfile": MPC_PROFILE_DEFAULT}
+                   "LongitudinalPlannerMode": LONGITUDINAL_PLANNER_DEFAULT, "MpcTuningProfile": MPC_PROFILE_DEFAULT}
 
   def get(self, key, return_default=False):
     del return_default
@@ -48,11 +48,11 @@ class WritableParams:
     self.values[key] = value
 
 
-def test_default_and_invalid_planner_modes_use_official():
-  assert get_longitudinal_planner_mode(FakeParams(None)) == LONGITUDINAL_PLANNER_OFFICIAL
-  assert get_longitudinal_planner_mode(FakeParams("invalid")) == LONGITUDINAL_PLANNER_OFFICIAL
-  assert get_longitudinal_planner_mode(FakeParams(99)) == LONGITUDINAL_PLANNER_OFFICIAL
-  assert get_longitudinal_planner_mode(FakeParams(1)) == LONGITUDINAL_PLANNER_LOCAL
+def test_default_and_invalid_planner_modes_use_default():
+  assert get_longitudinal_planner_mode(FakeParams(None)) == LONGITUDINAL_PLANNER_DEFAULT
+  assert get_longitudinal_planner_mode(FakeParams("invalid")) == LONGITUDINAL_PLANNER_DEFAULT
+  assert get_longitudinal_planner_mode(FakeParams(99)) == LONGITUDINAL_PLANNER_DEFAULT
+  assert get_longitudinal_planner_mode(FakeParams(1)) == LONGITUDINAL_PLANNER_CRAZYMAX
   assert get_longitudinal_planner_mode(FakeParams(2)) == LONGITUDINAL_PLANNER_TN
 
 
@@ -82,16 +82,19 @@ def test_selector_lazy_loads_only_the_selected_planner(monkeypatch):
     LongitudinalPlanner = object
 
   monkeypatch.setattr(planner_selector, "import_module", lambda name: loaded.append(name) or FakeModule)
-  assert planner_selector.get_planner_class(LONGITUDINAL_PLANNER_OFFICIAL) is object
-  assert loaded == ["openpilot.selfdrive.controls.lib.longitudinal_planner_official"]
-  loaded.clear()
-  assert planner_selector.get_planner_class(LONGITUDINAL_PLANNER_LOCAL) is object
+  assert planner_selector.get_planner_class(LONGITUDINAL_PLANNER_DEFAULT) is object
   assert loaded == ["openpilot.selfdrive.controls.lib.longitudinal_planner_local"]
+  loaded.clear()
+  assert planner_selector.get_planner_class(LONGITUDINAL_PLANNER_CRAZYMAX) is object
+  assert loaded == ["openpilot.selfdrive.controls.lib.longitudinal_planner_official"]
 
 
 def test_web_exposes_independent_planner_and_tuning_selectors():
   settings = get_settings("tesla")
   assert [option["value"] for option in settings["LongitudinalPlannerMode"]["options"]] == [0, 1, 2]
+  assert [option["label"] for option in settings["LongitudinalPlannerMode"]["options"]] == [
+    "Default（默认）", "CrazyMax（Moumou）", "TN-NoDEC（实验）",
+  ]
   assert [option["value"] for option in settings["MpcTuningProfile"]["options"]] == [
     MPC_PROFILE_DEFAULT, MPC_PROFILE_CRAZYMAX, MPC_PROFILE_CURRENT, MPC_PROFILE_CUSTOM,
   ]
@@ -116,6 +119,6 @@ def test_web_marks_all_runtime_parameters_enabled_for_sp_and_local():
   snapshot = {setting["key"]: setting for setting in settings_snapshot(params)["settings"]}
   assert snapshot["MpcStopDistance"]["enabled"]
   assert snapshot["MpcJerkCost"]["enabled"]
-  params.values["LongitudinalPlannerMode"] = LONGITUDINAL_PLANNER_LOCAL
+  params.values["LongitudinalPlannerMode"] = LONGITUDINAL_PLANNER_CRAZYMAX
   snapshot = {setting["key"]: setting for setting in settings_snapshot(params)["settings"]}
   assert snapshot["MpcStopDistance"]["enabled"]

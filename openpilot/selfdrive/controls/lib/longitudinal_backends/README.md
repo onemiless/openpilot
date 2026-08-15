@@ -3,10 +3,11 @@
 The registry is the single source of truth for stable backend IDs, capability
 declarations, parameter layers, apply lifecycle, and isolated solver contracts.
 
-- `0`: SP Upstream Tunable. Its planner is kept in
-  `longitudinal_planner_official.py`; runtime solver extensions live in
-  `long_mpc_official.py` and do not modify the generic Local solver.
-- `1`: Local. Existing lead-focused behavior and solver remain isolated.
+- `0`: Default. The current SP lead-focused planner and its runtime-tunable
+  `long` solver remain the default implementation.
+- `1`: CrazyMax. The Moumou-derived cruise-obstacle planner is kept in
+  `longitudinal_planner_official.py`; its runtime solver extensions live in
+  `long_mpc_official.py` and remain isolated from Default.
 - `2`: TN-NoDEC. TN planner/acceleration-controller code and the `long_tn`
 solver are vendored under this package. DEC is deliberately unsupported.
 The exact source provenance is recorded in `UPSTREAM_LOCK.json`.
@@ -27,12 +28,15 @@ registry; backend-native HOT values apply directly.
 Fetch the desired SP ref, then run:
 
 ```sh
-python3 tools/longitudinal_backend_sync.py --ref sunnypilot/dev-c3
-python3 tools/longitudinal_backend_sync.py --ref sunnypilot/dev-c3 --diff
+python3 tools/longitudinal_backend_sync.py --ref sunnypilot/master --backend default
+python3 tools/longitudinal_backend_sync.py --crazymax-ref moumou/dev260628XL-tici --backend crazymax
+python3 tools/longitudinal_backend_sync.py --backend all --diff
 ```
 
-Review the upstream planner changes first, then reapply only the adapter-owned
-imports, tuning reader, session telemetry, and eight-parameter solver contract.
-Regenerate `long_official`, verify JSON `np == 8`, build its shared library, and
-run the longitudinal backend tests. The tool is intentionally read-only; it
-does not merge, overwrite, or silently accept upstream changes.
+Default follows SP master; CrazyMax follows the pinned Moumou implementation.
+Review the relevant source changes first, then reapply only adapter-owned
+imports, tuning readers, session telemetry, and eight-parameter solver
+contracts. Regenerate the matching solver, verify JSON `np == 8`, build its
+shared library, and run the longitudinal backend tests. The tool is
+intentionally read-only; it does not merge, overwrite, or silently accept
+upstream changes.
