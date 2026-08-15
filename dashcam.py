@@ -387,10 +387,14 @@ class Handler(BaseHTTPRequestHandler):
     self.send_error(404, "Not found")
 
 
-if __name__ == "__main__":
+def main():
   srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
-  print("Dashcam viewer: http://0.0.0.0:%d/  realdata=%s" % (PORT, REALDATA_DIR))
+  print("Dashcam viewer: http://0.0.0.0:%d/  realdata=%s" % (PORT, REALDATA_DIR), flush=True)
   try:
     srv.serve_forever()
   except KeyboardInterrupt:
     pass
+
+
+if __name__ == "__main__":
+  main()
