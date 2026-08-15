@@ -189,7 +189,8 @@ class HomeLayout(Widget):
     text = "Welcome to MR.ONE"
     tagline = "Drive smarter. Arrive safer."
     # 3xl used 100/54; c3xl-dev adds 1.3x CJK scale, so divide by 1.3 to match
-    font_size = 77
+    # title enlarged 1.3x on user request: 77 -> 100
+    font_size = 100
     tag_font_size = 42
 
     text_size = measure_text_cached(font, text, font_size)
