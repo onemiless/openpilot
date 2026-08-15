@@ -1,34 +1,34 @@
-sunnypilot Version 2026.002.000 (2026-06-28)
+sunnypilot Version 2026.002.000 (2026-06-28) / sunnypilot 版本 2026.002.000（2026-06-28）
 ========================
-* What's Changed (sunnypilot/sunnypilot)
-  * ui: update gates for certain toggles by @sunnyhaibin in https://github.com/sunnypilot/sunnypilot/pull/1830
-  * release: ignore upstream IsReleaseBranch by @sunnyhaibin in https://github.com/sunnypilot/sunnypilot/pull/1831
-  * manager: disable DEVELOPMENT_ONLY reset by @sunnyhaibin in https://github.com/sunnypilot/sunnypilot/pull/1833
-  * sunnylink: fix max time offroad values by @nayan8teen in https://github.com/sunnypilot/sunnypilot/pull/1835
-  * ui: show default model name by @nayan8teen in https://github.com/sunnypilot/sunnypilot/pull/1837
-  * sunnylink: add CarParams fallback for brand-specific capabilities by @sunnyhaibin in https://github.com/sunnypilot/sunnypilot/pull/1839
-  * sunnylink SDUI: tweak DisableUpdate param for clarity by @sunnyhaibin in https://github.com/sunnypilot/sunnypilot/pull/1842
-  * Revert "DM: Lancia Delta HF Integrale model" by @sunnyhaibin in https://github.com/sunnypilot/sunnypilot/pull/1849
-  * modeld_v2: safe model validation by @Discountchubbs in https://github.com/sunnypilot/sunnypilot/pull/1855
-  * Revert "deprecate `carState.brake`" for Honda Gas Interceptor by @mvl-boston in https://github.com/sunnypilot/sunnypilot/pull/1860
-  * sunnylink: deprecate legacy params metadata by @sunnyhaibin in https://github.com/sunnypilot/sunnypilot/pull/1862
-  * ui: reset Enforce Torque Control and NNLC if both are enabled by @sunnyhaibin in https://github.com/sunnypilot/sunnypilot/pull/1863
-* What's Changed (sunnypilot/opendbc)
-  * Rivian: suppress ACM hold-the-wheel warning during MADS-only lateral by @lukasloetkolben in https://github.com/sunnypilot/opendbc/pull/465
-  * Sync: `commaai/opendbc:master` → `sunnypilot/opendbc:master` by @sunnyhaibin in https://github.com/sunnypilot/opendbc/pull/479
-  * safety: add option to ignore frequency check for RX checks by @sunnyhaibin in https://github.com/sunnypilot/opendbc/pull/480
-  * Revert "deprecate carState.brake" for Honda Gas Interceptor by @mvl-boston in https://github.com/sunnypilot/opendbc/pull/481
-* New Contributors (sunnypilot/sunnypilot)
-  * @mvl-boston made their first contribution in https://github.com/sunnypilot/sunnypilot/pull/1860
-* Full Changelog: https://github.com/sunnypilot/sunnypilot/compare/v2026.001.007...v2026.002.000
+* What's Changed (sunnypilot/sunnypilot) / 变更内容（sunnypilot/sunnypilot）
+  * ui: update gates for certain toggles by @sunnyhaibin in PR #1830 / 界面：更新部分开关的启用条件（@sunnyhaibin，PR #1830）
+  * release: ignore upstream IsReleaseBranch by @sunnyhaibin in PR #1831 / 发布：忽略上游 IsReleaseBranch 分支判断（@sunnyhaibin，PR #1831）
+  * manager: disable DEVELOPMENT_ONLY reset by @sunnyhaibin in PR #1833 / 管理器：禁用 DEVELOPMENT_ONLY 参数重置（@sunnyhaibin，PR #1833）
+  * sunnylink: fix max time offroad values by @nayan8teen in PR #1835 / Sunnylink：修复最长非行车时间数值（@nayan8teen，PR #1835）
+  * ui: show default model name by @nayan8teen in PR #1837 / 界面：显示默认模型名称（@nayan8teen，PR #1837）
+  * sunnylink: add CarParams fallback for brand-specific capabilities by @sunnyhaibin in PR #1839 / Sunnylink：为品牌专属能力增加 CarParams 回退（@sunnyhaibin，PR #1839）
+  * sunnylink SDUI: tweak DisableUpdate param for clarity by @sunnyhaibin in PR #1842 / Sunnylink SDUI：优化 DisableUpdate 参数表述（@sunnyhaibin，PR #1842）
+  * Revert "DM: Lancia Delta HF Integrale model" by @sunnyhaibin in PR #1849 / 回退“DM：Lancia Delta HF Integrale 模型”（@sunnyhaibin，PR #1849）
+  * modeld_v2: safe model validation by @Discountchubbs in PR #1855 / modeld_v2：安全的模型校验（@Discountchubbs，PR #1855）
+  * Revert "deprecate carState.brake" for Honda Gas Interceptor by @mvl-boston in PR #1860 / 回退“弃用 carState.brake”（Honda 燃气截断器）（@mvl-boston，PR #1860）
+  * sunnylink: deprecate legacy params metadata by @sunnyhaibin in PR #1862 / Sunnylink：弃用旧版参数元数据（@sunnyhaibin，PR #1862）
+  * ui: reset Enforce Torque Control and NNLC if both are enabled by @sunnyhaibin in PR #1863 / 界面：强制扭矩控制与 NNLC 同时开启时自动重置（@sunnyhaibin，PR #1863）
+* What's Changed (sunnypilot/opendbc) / 变更内容（sunnypilot/opendbc）
+  * Rivian: suppress ACM hold-the-wheel warning during MADS-only lateral by @lukasloetkolben in PR #465 / Rivian：仅 MADS 横向控制时抑制 ACM 握方向盘提示（@lukasloetkolben，PR #465）
+  * Sync: commaai/opendbc:master → sunnypilot/opendbc:master by @sunnyhaibin in PR #479 / 同步：commaai/opendbc → sunnypilot/opendbc（@sunnyhaibin，PR #479）
+  * safety: add option to ignore frequency check for RX checks by @sunnyhaibin in PR #480 / 安全：为 RX 校验增加忽略频率检查选项（@sunnyhaibin，PR #480）
+  * Revert "deprecate carState.brake" for Honda Gas Interceptor by @mvl-boston in PR #481 / 回退“弃用 carState.brake”（Honda 燃气截断器）（@mvl-boston，PR #481）
+* New Contributors (sunnypilot/sunnypilot) / 新贡献者（sunnypilot/sunnypilot）
+  * @mvl-boston made their first contribution in PR #1860 / @mvl-boston 完成了首次贡献（PR #1860）
+* Full Changelog: https://github.com/sunnypilot/sunnypilot/compare/v2026.001.007...v2026.002.000 / 完整变更日志：https://github.com/sunnypilot/sunnypilot/compare/v2026.001.007...v2026.002.000
 ************************
-* Synced with commaai's openpilot (v0.11.1)
-  * master commit 69e2c321e49760e52f7983eaa0a5f77cb95de637 (June 02, 2026)
-* New driver monitoring model
-* Improved image processing pipeline for driver camera
-* Improved thermal policy for comma four
-* Acura MDX 2022-24 support thanks to mvl-boston!
-* Rivian R1S and R1T 2025 support thanks to lukasloetkolben!
+* Synced with commaai's openpilot (v0.11.1) / 同步自 commaai 的 openpilot（v0.11.1）
+  * master commit 69e2c321e49760e52f7983eaa0a5f77cb95de637 (June 02, 2026) / 主分支提交 69e2c321e49760e52f7983eaa0a5f77cb95de637（2026 年 6 月 2 日）
+* New driver monitoring model / 全新驾驶监控模型
+* Improved image processing pipeline for driver camera / 改进驾驶员摄像头图像处理流程
+* Improved thermal policy for comma four / 改进 comma four 散热策略
+* Acura MDX 2022-24 support thanks to mvl-boston! / 新增 Acura MDX 2022-24 支持，感谢 mvl-boston！
+* Rivian R1S and R1T 2025 support thanks to lukasloetkolben! / 新增 Rivian R1S 和 R1T 2025 支持，感谢 lukasloetkolben！
 
 sunnypilot Version 2026.001.000 (2026-05-06)
 ========================
