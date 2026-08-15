@@ -41,9 +41,22 @@ MPC_DEFAULT_VALUES = {
   BackendId.TN_NO_DEC: MPC_TN_DEFAULT_VALUES,
 }
 
-# Verified from the device's retained dev260628XL MpcTuningMoumouValues. This is
-# a fixed parameter preset shared by all planners, not a planner implementation.
-MPC_CRAZYMAX_VALUES = dict(MPC_OFFICIAL_VALUES)
+# Preserve the distinct legacy longitudinal preset that was exposed alongside
+# the dev260628XL preset before the planner/profile UI was simplified. CrazyMax
+# is a fixed parameter profile shared by all planners, not a planner backend.
+MPC_CRAZYMAX_VALUES = {
+  "MpcXObstacleCost": 500,
+  "MpcJerkCost": 300,
+  "MpcAccelChangeCost": 10000,
+  "MpcDangerZoneCost": 8000,
+  "MpcLeadDangerFactor": 35,
+  "MpcComfortBrake": 270,
+  "MpcStopDistance": 450,
+  "MpcJerkFactorStandard": 80,
+  "MpcTFollowRelaxed": 165,
+  "MpcTFollowStandard": 135,
+  "MpcTFollowAggressive": 100,
+}
 
 MPC_PROFILES = {
   MPC_PROFILE_DEFAULT: MPC_OFFICIAL_VALUES,
@@ -109,7 +122,7 @@ def get_profile_values(params: Any, profile: int | None = None,
   if profile == MPC_PROFILE_DEFAULT:
     return dict(MPC_DEFAULT_VALUES[backend.id])
   if profile == MPC_PROFILE_CRAZYMAX:
-    return _validated_values(MPC_CRAZYMAX_VALUES, params.get("MpcTuningMoumouValues"))
+    return dict(MPC_CRAZYMAX_VALUES)
   if profile == MPC_PROFILE_CUSTOM:
     saved = _decode_json_object(params.get(MPC_CUSTOM_VALUES_PARAM))
     return _validated_values(MPC_DEFAULT_VALUES[backend.id], saved.get(backend.slug))

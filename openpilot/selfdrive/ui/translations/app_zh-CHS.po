@@ -2649,8 +2649,8 @@ msgstr "TN-NoDEC"
 msgid "MPC Tuning Profile"
 msgstr "MPC 调校方案"
 
-msgid "Default uses the selected planner's own parameters. CrazyMax uses the saved dev260628XL parameters. Custom starts from that planner's Default values and saves changes separately."
-msgstr "默认方案使用当前规划器自身参数；CrazyMax 使用已保存的 dev260628XL 参数；自定义首次读取该规划器的默认值，修改后独立保存。"
+msgid "Default uses the selected planner's own parameters. CrazyMax uses the fixed legacy tuned parameters. Custom starts from that planner's Default values and saves changes separately."
+msgstr "默认方案使用当前规划器自身参数；CrazyMax 使用固定的旧版调校参数；自定义首次读取该规划器的默认值，修改后独立保存。"
 
 msgid "CrazyMax"
 msgstr "CrazyMax"

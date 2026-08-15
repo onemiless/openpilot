@@ -100,7 +100,7 @@ class TeslaMpcSettingsLayout(Widget):
     self._profile_item = multiple_button_item_sp(
       title=lambda: tr("MPC Tuning Profile"),
       description=lambda: tr(
-        "Default uses the selected planner's own parameters. CrazyMax uses the saved dev260628XL parameters. " +
+        "Default uses the selected planner's own parameters. CrazyMax uses the fixed legacy tuned parameters. " +
         "Custom starts from that planner's Default values and saves changes separately."
       ),
       buttons=[lambda: tr("Default"), lambda: tr("CrazyMax"), lambda: tr("Custom")],

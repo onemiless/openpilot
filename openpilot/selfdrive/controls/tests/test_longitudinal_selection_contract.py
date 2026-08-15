@@ -36,16 +36,31 @@ def test_stable_backend_ids_match_user_facing_implementations():
 
 
 def test_crazymax_defaults_are_an_independent_verified_preset():
-  # The verified Moumou baseline currently uses the same numerical constants as
-  # upstream. It remains a parameter preset, not a planner implementation.
-  assert MPC_CRAZYMAX_VALUES == MPC_OFFICIAL_VALUES
-  assert MPC_CRAZYMAX_VALUES is not MPC_OFFICIAL_VALUES
+  assert MPC_CRAZYMAX_VALUES == {
+    "MpcXObstacleCost": 500,
+    "MpcJerkCost": 300,
+    "MpcAccelChangeCost": 10000,
+    "MpcDangerZoneCost": 8000,
+    "MpcLeadDangerFactor": 35,
+    "MpcComfortBrake": 270,
+    "MpcStopDistance": 450,
+    "MpcJerkFactorStandard": 80,
+    "MpcTFollowRelaxed": 165,
+    "MpcTFollowStandard": 135,
+    "MpcTFollowAggressive": 100,
+  }
+  assert MPC_CRAZYMAX_VALUES != MPC_OFFICIAL_VALUES
   assert MPC_PROFILE_LABELS == {
     MPC_PROFILE_DEFAULT: "Default",
     MPC_PROFILE_CRAZYMAX: "CrazyMax",
     MPC_PROFILE_CUSTOM: "Custom",
   }
   assert MPC_PROFILES[MPC_PROFILE_CRAZYMAX] is MPC_CRAZYMAX_VALUES
+
+
+def test_crazymax_is_fixed_and_ignores_stale_legacy_saved_values():
+  params = FakeParams({"MpcTuningMoumouValues": dict(MPC_OFFICIAL_VALUES)})
+  assert get_profile_values(params, MPC_PROFILE_CRAZYMAX) == MPC_CRAZYMAX_VALUES
 
 
 class FakeParams:

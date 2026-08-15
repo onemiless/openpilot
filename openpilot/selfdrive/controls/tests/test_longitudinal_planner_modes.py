@@ -106,7 +106,7 @@ def test_web_only_writes_runtime_parameters_in_custom_profile():
   params = WritableParams()
   validate_and_write("MpcTuningProfile", MPC_PROFILE_CRAZYMAX, params)
   assert params.values["MpcTuningProfile"] == MPC_PROFILE_CRAZYMAX
-  assert params.values["MpcJerkCost"] == MPC_OFFICIAL_VALUES["MpcJerkCost"]
+  assert params.values["MpcJerkCost"] == 300
   with pytest.raises(PermissionError, match="自定义"):
     validate_and_write("MpcJerkCost", 625, params)
   validate_and_write("MpcTuningProfile", MPC_PROFILE_CUSTOM, params)
