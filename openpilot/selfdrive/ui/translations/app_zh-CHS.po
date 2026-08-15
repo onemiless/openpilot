@@ -1400,6 +1400,9 @@ msgid "Offroad: Device will be in Always Offroad mode after boot/wake-up."
 msgstr "停车：设备开机/唤醒后将处于停车设置模式。"
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/models.py
+msgid "Chunked Model"
+msgstr "分块模型"
+
 msgid "On-Policy Model"
 msgstr "在策略模型"
 

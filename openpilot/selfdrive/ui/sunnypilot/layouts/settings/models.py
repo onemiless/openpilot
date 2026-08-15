@@ -61,6 +61,7 @@ class ModelsLayout(Widget):
     self.policy_label = progress_item(tr("Policy Model"))
     self.off_policy_label = progress_item(tr("Off-Policy Model"))
     self.on_policy_label = progress_item(tr("On-Policy Model"))
+    self.chunked_label = progress_item(tr("Chunked Model"))
 
     self.refresh_item = button_item(tr("Refresh Model List"), tr("REFRESH"), "",
                                     lambda: (ui_state.params.put("ModelManager_LastSyncTime", 0),
@@ -99,7 +100,7 @@ class ModelsLayout(Widget):
                                         lambda v: f"{v / 100:.2f} m")
 
     self.items = [self.current_model_item, self.cancel_download_item, self.supercombo_label, self.vision_label,
-                  self.policy_label, self.off_policy_label, self.on_policy_label, self.refresh_item, self.clear_cache_item,
+                  self.policy_label, self.off_policy_label, self.on_policy_label, self.chunked_label, self.refresh_item, self.clear_cache_item,
                   self.lane_turn_desire_toggle, self.lane_turn_value_control, self.lagd_toggle, self.delay_control, self.camera_offset]
 
   def _update_lagd_description(self, lagd_toggle: bool):
@@ -139,7 +140,8 @@ class ModelsLayout(Widget):
               custom.ModelManagerSP.Model.Type.vision: self.vision_label,
               custom.ModelManagerSP.Model.Type.policy: self.policy_label,
               custom.ModelManagerSP.Model.Type.offPolicy: self.off_policy_label,
-              custom.ModelManagerSP.Model.Type.onPolicy: self.on_policy_label}
+              custom.ModelManagerSP.Model.Type.onPolicy: self.on_policy_label,
+              custom.ModelManagerSP.Model.Type.chunked: self.chunked_label}
     for label in labels.values():
       label.set_visible(False)
     self.cancel_download_item.set_visible(False)
