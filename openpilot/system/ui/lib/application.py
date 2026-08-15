@@ -707,6 +707,8 @@ class GuiApplication(GuiApplicationExt):
       codepoints = sorted(map(ord, chars))
       codepoint_buffer = rl.ffi.new("int[]", codepoints)
       with as_file(FONT_DIR) as fspath:
+        # Load CJK fallback with a smaller base size so every drawn glyph
+        # renders ~1.3x larger (raylib scales by fontSize / baseSize).
         font = rl.load_font_ex((fspath / NOTO_FONTS[language]).as_posix(), 48,
                                rl.ffi.cast("int *", codepoint_buffer), len(codepoints))
       rl.gen_texture_mipmaps(font.texture)
@@ -759,6 +761,9 @@ class GuiApplication(GuiApplicationExt):
 
     def _draw_text_ex_scaled(font, text, position, font_size, spacing, tint):
       font = font_fallback(font)
+      # Enlarge Chinese (CJK fallback) text by 1.3x
+      if multilang.requires_font_fallback():
+        font_size = font_size * 1.3
       return rl._orig_draw_text_ex(font, text, position, font_size * FONT_SCALE, spacing, tint)
 
     rl.draw_text_ex = _draw_text_ex_scaled

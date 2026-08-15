@@ -225,14 +225,15 @@ class Sidebar(Widget, SidebarSP):
     # Draw border
     rl.draw_rectangle_rounded_lines_ex(metric_rect, 0.3, 10, 2, Colors.METRIC_BORDER)
 
-    # Draw label and value
+    # Draw label and value (vertically centered using actual measured heights)
     labels = [tr(metric.label), tr(metric.value)]
-    text_y = metric_rect.y + (metric_rect.height / 2 - len(labels) * FONT_SIZE * FONT_SCALE)
-    for text in labels:
-      text_size = measure_text_cached(self._font_bold, text, FONT_SIZE)
-      text_y += text_size.y
+    text_sizes = [measure_text_cached(self._font_bold, t, FONT_SIZE) for t in labels]
+    total_h = sum(ts.y for ts in text_sizes)
+    text_y = metric_rect.y + (metric_rect.height / 2 - total_h / 2)
+    for text, text_size in zip(labels, text_sizes):
       text_pos = rl.Vector2(
         metric_rect.x + 22 + (metric_rect.width - 22 - text_size.x) / 2,
         text_y
       )
       rl.draw_text_ex(self._font_bold, text, text_pos, FONT_SIZE, 0, Colors.WHITE)
+      text_y += text_size.y
