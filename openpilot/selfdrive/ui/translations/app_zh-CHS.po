@@ -1064,7 +1064,7 @@ msgstr "模型"
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/steering.py
 msgid "Modular Assistive Driving System (MADS)"
-msgstr "模块化辅助驾驶系统 (MADS)"
+msgstr "全时车道居中控制 (MADS)"
 
 #: openpilot/selfdrive/ui/layouts/settings/device.py
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/device.py
