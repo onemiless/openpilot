@@ -80,8 +80,3 @@ def run_migration(_params):
       cloudlog.exception(f"Error migrating OnroadScreenOffTimer: {e}")
 
   _migrate_car_platform_bundle(_params)
-
-  # Automatic Tesla set-speed is now governed exclusively by Cruise ->
-  # Speed Limit -> Assist. Remove the retired standalone setting so stale
-  # device values cannot imply that the feature is independently enabled.
-  _params.remove("TeslaAutoSpeedLimit")
