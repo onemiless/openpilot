@@ -163,7 +163,7 @@ It receives vehicle state from the existing controller. It does not read Params 
 
 ## 5. Initialization and selection sequence
 
-1. `openpilot/sunnypilot/selfdrive/car/interfaces.py` adds `TeslaRadarBackend` to the one-time initialization key list.
+1. `openpilot/sunnypilot/selfdrive/car/interfaces.py` adds the boolean `TeslaARS408Radar` to the one-time initialization key list.
 2. `opendbc/sunnypilot/car/interfaces.py` parses the cached string once and applies Tesla backend policy.
 3. OEM mode leaves current `CP.radarUnavailable` and DBC fingerprint behavior untouched.
 4. ARS408 mode sets `CP.radarUnavailable = False`, sets the existing `CP.deprecated.radarTimeStep = 1/14`, sets `TeslaFlagsSP.ARS408_RADAR`, and sets `TeslaSafetyFlagsSP.ARS408_RADAR`.
@@ -278,14 +278,15 @@ The list below is exhaustive for the proposed first implementation. Any addition
 
 | File | Action | Purpose |
 |---|---|---|
-| `openpilot/common/params_keys.h` | modify | Add typed persistent `TeslaRadarBackend` with default 0. |
-| `openpilot/sunnypilot/selfdrive/car/interfaces.py` | modify | Read `TeslaRadarBackend` once in the existing initialization batch. |
+| `openpilot/common/params_keys.h` | modify | Add typed persistent boolean `TeslaARS408Radar`, disabled by default. |
+| `openpilot/sunnypilot/selfdrive/car/interfaces.py` | modify | Read `TeslaARS408Radar` once in the existing initialization batch. |
+| `openpilot/selfdrive/ui/sunnypilot/layouts/settings/vehicle/brands/tesla.py` | modify | Add an offroad-only ARS408 switch to Settings → Vehicle. |
 | `opendbc_repo/opendbc/sunnypilot/car/interfaces.py` | modify | Convert cached selection into CP/CP_SP/safety flags; no runtime Params. |
 | `opendbc_repo/opendbc/sunnypilot/car/tesla/values.py` | modify | Add ARS408 backend and safety flag bits. |
 | `opendbc_repo/opendbc/sunnypilot/car/tesla/ars408/selector.py` | add | Thin OEM/ARS408/Off factory. |
 | `opendbc_repo/opendbc/car/tesla/interface.py` | modify | Replace only the radar-interface import with the selector import. |
 
-No settings UI is planned in v1. This avoids expanding the production touch surface before replay validation. The Param can be set offroad and requires restart.
+The switch is available only while offroad. Its value is startup-latched, so a vehicle-interface restart is required and no parser or Panda policy changes during a drive.
 
 ### 9.6 Transmitter
 
@@ -315,6 +316,7 @@ No settings UI is planned in v1. This avoids expanding the production touch surf
 | `opendbc_repo/opendbc/sunnypilot/car/tesla/tests/test_radar_selector.py` | add | OEM returns the existing implementation; ARS/Off selection and invalid fail-closed behavior. |
 | `opendbc_repo/opendbc/sunnypilot/car/tesla/tests/__init__.py` | add | Explicit test-package boundary for lint and collection. |
 | `openpilot/sunnypilot/selfdrive/car/tests/test_tesla_ars408_params.py` | add | One-time Param initialization, flags, and restart-latched semantics. |
+| `openpilot/selfdrive/ui/tests/test_tesla_ars408_setting.py` | add | Vehicle-page toggle wiring and offroad gating. |
 | `opendbc_repo/opendbc/car/tesla/tests/test_tesla.py` | modify | Preserve existing OEM fingerprint/radarUnavailable assertions and add explicit default-backend regression. |
 
 ### 9.9 Explicitly unchanged files

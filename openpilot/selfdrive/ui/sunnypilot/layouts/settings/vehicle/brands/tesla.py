@@ -361,6 +361,13 @@ class TeslaSettings(BrandSettings):
       # Legacy 5-finger value from when the 4-finger option existed.
       ui_state.params.put("TeslaMadsScreenButton", MadsScreenButtonType.FIVE_FINGER, block=True)
 
+    self.ars408_radar_toggle = toggle_item_sp(
+      title=tr("Continental ARS408 Radar"),
+      description=tr("Enable the external ARS408 radar backend and its bus 1 vehicle-motion messages. " +
+                     "Changes take effect after the vehicle interface restarts."),
+      param="TeslaARS408Radar",
+      enabled=ui_state.is_offroad,
+    )
     self.coop_steering_toggle = toggle_item_sp(
       tr("Cooperative Steering"), "", param="TeslaCoopSteering",
     )
@@ -378,7 +385,7 @@ class TeslaSettings(BrandSettings):
       description=tr("Configure Tesla-specific steering, MADS screen controls, longitudinal handoff, and stop-line behavior."),
       callback=self._show_settings,
     )
-    self.items = [self.coop_steering_toggle, self.mads_screen_button, self._settings_button]
+    self.items = [self.ars408_radar_toggle, self.coop_steering_toggle, self.mads_screen_button, self._settings_button]
 
   def _show_settings(self):
     gui_app.push_widget(self._settings_layout)
@@ -386,6 +393,7 @@ class TeslaSettings(BrandSettings):
   def update_settings(self):
     offroad = ui_state.is_offroad()
     enable_offroad_msg = tr("Enable \"Always Offroad\" in Device panel, or turn vehicle off to toggle.")
+    self.ars408_radar_toggle.action_item.set_enabled(offroad)
     coop_steering_desc = (
       f"{tr('Converts light steering input into steering-wheel rotation.')}<br>" +
       f"{tr('The faster you go, the stiffer the steering gets.')}"

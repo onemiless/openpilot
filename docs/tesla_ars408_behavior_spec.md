@@ -71,16 +71,15 @@ The statement that Panda safety might not need changes is also resolved: the cur
 
 ## 4. Backend selection contract
 
-`TeslaRadarBackend` is read once during car initialization and cached in `CarParamsSP` flags. It is never read in a per-frame path.
+The boolean `TeslaARS408Radar` is read once during car initialization and cached in `CarParamsSP` flags. It is never read in a per-frame path.
 
-Proposed values:
+Selection behavior:
 
-| Value | Backend | Behavior |
-|---:|---|---|
-| 0 | OEM | Preserve current SP fingerprint/DBC gating and instantiate the existing Tesla OEM Continental interface unchanged. This is the default. |
-| 1 | ARS408 | Ignore OEM radar fingerprint absence, instantiate the external ARS408 backend, set the ARS408 safety flag, and enable the ARS408 motion transmitter. |
-| 2 | Off | Report radar unavailable and emit no radar TX. |
-| other | Off | Fail closed as Off and log one initialization error. |
+| Switch | Backend | Behavior |
+|---|---|---|
+| Off | OEM | Preserve current SP fingerprint/DBC gating and instantiate the existing Tesla OEM Continental interface unchanged. This is the default. |
+| On | ARS408 | Ignore OEM radar fingerprint absence, instantiate the external ARS408 backend, set the ARS408 safety flag, and enable the ARS408 motion transmitter. |
+| malformed | Off | Fail closed, report radar unavailable, and emit no radar TX. |
 
 Changing the Param while onroad does not change the active backend. A car/card restart is required. This avoids parser, tracker, and Panda policy changes during a drive.
 
