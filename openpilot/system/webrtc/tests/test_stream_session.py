@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import asdict
 import json
 import time
 
@@ -8,6 +9,7 @@ from teleoprtc.tracks import VIDEO_CLOCK_RATE
 
 from openpilot.system.webrtc.webrtcd import CerealOutgoingMessageProxy, CerealIncomingMessageProxy
 from openpilot.system.webrtc.device.video import LiveStreamVideoStreamTrack
+from openpilot.system.webrtc.helpers import StreamRequestBody
 
 
 class TestStreamSession:
@@ -17,6 +19,11 @@ class TestStreamSession:
   def teardown_method(self):
     self.loop.stop()
     self.loop.close()
+
+  def test_multitrack_request_schema(self):
+    body = StreamRequestBody("offer", ["wideRoad", "driver"], True)
+    assert asdict(body)["cameras"] == ["wideRoad", "driver"]
+    assert "init_camera" not in asdict(body)
 
   def test_outgoing_proxy(self, mocker):
     test_msg = log.Event.new_message()
