@@ -75,6 +75,8 @@ class Sidebar(Widget, SidebarSP):
     self._panda_status = MetricData(tr_noop("VEHICLE"), tr_noop("ONLINE"), Colors.GOOD)
     self._connect_status = MetricData(tr_noop("CONNECT"), tr_noop("OFFLINE"), Colors.WARNING)
     self._recording_audio = False
+    self._ip = ""
+    self._ip_last = 0.0
 
     self._home_img = gui_app.texture("images/button_home.png", HOME_BTN.width, HOME_BTN.height)
     self._flag_img = gui_app.texture("images/button_flag.png", HOME_BTN.width, HOME_BTN.height)
@@ -121,14 +123,33 @@ class Sidebar(Widget, SidebarSP):
     self._net_type = NETWORK_TYPES.get(device_state.networkType.raw, tr_noop("Unknown"))
     strength = device_state.networkStrength
     self._net_strength = max(0, min(5, strength.raw + 1)) if strength.raw > 0 else 0
+    self._get_ip()
+
+  def _get_ip(self):
+    # refresh at most every 5s
+    now = time.monotonic()
+    if now - getattr(self, "_ip_last", 0.0) < 5.0:
+      return getattr(self, "_ip", "")
+    self._ip_last = now
+    try:
+      import subprocess
+      out = subprocess.check_output(["hostname", "-I"], text=True, timeout=2).strip()
+      self._ip = out.split()[0] if out else ""
+    except Exception:
+      self._ip = ""
+    return self._ip
 
   def _update_temperature_status(self, device_state):
+    # Show the max CPU temperature value instead of just GOOD/HIGH.
+    cpu_temps = device_state.cpuTempC
+    max_temp = max(cpu_temps) if cpu_temps else 0.0
+    temp_str = "{:.0f}°C".format(max_temp)
     thermal_status = device_state.thermalStatus
 
     if thermal_status == ThermalStatus.ok:
-      self._temp_status.update(tr_noop("TEMP"), tr_noop("GOOD"), Colors.GOOD)
+      self._temp_status.update(tr_noop("TEMP"), temp_str, Colors.GOOD)
     else:
-      self._temp_status.update(tr_noop("TEMP"), tr_noop("HIGH"), Colors.DANGER)
+      self._temp_status.update(tr_noop("TEMP"), temp_str, Colors.DANGER)
 
   def _update_connection_status(self, device_state):
     last_ping = device_state.lastAthenaPingTime
@@ -196,10 +217,14 @@ class Sidebar(Widget, SidebarSP):
       y = int(y_pos + dot_size // 2)
       rl.draw_circle(x, y, dot_size // 2, color)
 
-    # Network type text
+    # IP address (replaces network type text)
+    ip = self._get_ip()
     text_y = rect.y + 247
     text_pos = rl.Vector2(rect.x + 58, text_y)
-    rl.draw_text_ex(self._font_regular, tr(self._net_type), text_pos, FONT_SIZE, 0, Colors.WHITE)
+    if ip:
+      rl.draw_text_ex(self._font_regular, ip, text_pos, FONT_SIZE, 0, Colors.WHITE)
+    else:
+      rl.draw_text_ex(self._font_regular, tr(self._net_type), text_pos, FONT_SIZE, 0, Colors.WHITE)
 
   def _draw_metrics(self, rect: rl.Rectangle):
     if gui_app.sunnypilot_ui():
