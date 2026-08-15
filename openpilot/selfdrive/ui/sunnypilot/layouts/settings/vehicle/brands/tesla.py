@@ -88,7 +88,10 @@ class TeslaMpcSettingsLayout(Widget):
   def _initialize_items(self):
     self._planner_item = multiple_button_item_sp(
       title=lambda: tr("Longitudinal Planner"),
-      description=lambda: tr("Default follows the current SP lead-based MPC structure. CrazyMax preserves the Moumou cruise-obstacle MPC. TN-NoDEC is experimental. Changes take effect next onroad session."),
+      description=lambda: tr(
+        "Default follows the current SP lead-based MPC structure. CrazyMax preserves the Moumou cruise-obstacle MPC. " +
+        "TN-NoDEC is experimental. Changes take effect next onroad session."
+      ),
       buttons=[lambda label=backend.label: tr(label) for backend in ordered_backends()],
       param="LongitudinalPlannerMode",
       callback=self._on_planner_changed,
@@ -96,8 +99,11 @@ class TeslaMpcSettingsLayout(Widget):
     )
     self._profile_item = multiple_button_item_sp(
       title=lambda: tr("MPC Tuning Profile"),
-      description=lambda: tr("Parameter presets are independent from the planner implementation. Default uses current SP values; CrazyMax uses the verified Moumou baseline."),
-      buttons=[lambda: tr("Default"), lambda: tr("CrazyMax"), lambda: tr("Current"), lambda: tr("Custom")],
+      description=lambda: tr(
+        "Parameter presets are independent from the planner implementation. Default uses current SP values; " +
+        "CrazyMax uses the verified Moumou baseline."
+      ),
+      buttons=[lambda: tr("Default"), lambda: tr("Moumou Baseline"), lambda: tr("Current"), lambda: tr("Custom")],
       param="MpcTuningProfile",
       callback=self._on_profile_changed,
       inline=False,

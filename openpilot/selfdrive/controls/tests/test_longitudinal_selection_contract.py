@@ -7,6 +7,7 @@ from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.modes import (
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.tuning_presets import (
   MPC_CRAZYMAX_VALUES,
   MPC_OFFICIAL_VALUES,
+  MPC_PROFILE_LABELS,
   MPC_PROFILES,
   MPC_PROFILE_CRAZYMAX,
 )
@@ -33,4 +34,5 @@ def test_crazymax_defaults_are_an_independent_verified_preset():
   # silently falling back to the other profile.
   assert MPC_CRAZYMAX_VALUES == MPC_OFFICIAL_VALUES
   assert MPC_CRAZYMAX_VALUES is not MPC_OFFICIAL_VALUES
+  assert MPC_PROFILE_LABELS[MPC_PROFILE_CRAZYMAX] == "Moumou Baseline"
   assert MPC_PROFILES[MPC_PROFILE_CRAZYMAX] is MPC_CRAZYMAX_VALUES

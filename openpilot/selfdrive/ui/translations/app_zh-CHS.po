@@ -2649,6 +2649,9 @@ msgstr "参数方案与规划器实现相互独立；Default 使用当前 SP 参
 msgid "CrazyMax"
 msgstr "CrazyMax"
 
+msgid "Moumou Baseline"
+msgstr "Moumou 基线"
+
 msgid "Current"
 msgstr "当前值"
 
