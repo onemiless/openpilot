@@ -721,6 +721,10 @@ msgstr "正在下载地图"
 msgid "Downloading Maps..."
 msgstr "正在下载地图..."
 
+#: openpilot/selfdrive/selfdrived/events.py
+msgid "Drive Above"
+msgstr "高于"
+
 #: openpilot/selfdrive/ui/layouts/settings/device.py
 msgid "Driver Camera"
 msgstr "车内摄像头"
@@ -1659,6 +1663,10 @@ msgstr "重启设备"
 #: openpilot/selfdrive/ui/widgets/offroad_alerts.py
 msgid "Reboot and Update"
 msgstr "重启并更新"
+
+#: openpilot/selfdrive/selfdrived/events.py
+msgid "Recalibrating"
+msgstr "重新标定"
 
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
 msgid "Record and Upload Driver Camera"

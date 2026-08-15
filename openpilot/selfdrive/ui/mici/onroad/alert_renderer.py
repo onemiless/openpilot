@@ -148,7 +148,7 @@ class AlertRenderer(Widget, SpeedLimitAlertRenderer):
       return None
 
     # Return current alert
-    ret = Alert(text1=tr(ss.alertText1), text2=tr(ss.alertText2), size=ss.alertSize.raw, status=ss.alertStatus.raw,
+    ret = Alert(text1=self._tr_alert_text(ss.alertText1), text2=self._tr_alert_text(ss.alertText2), size=ss.alertSize.raw, status=ss.alertStatus.raw,
                 visual_alert=ss.alertHudVisual, alert_type=ss.alertType)
     self._prev_alert = ret
     return ret
@@ -223,6 +223,23 @@ class AlertRenderer(Widget, SpeedLimitAlertRenderer):
     )
     icon_layout = IconLayout(txt_icon, icon_side, icon_margin_x, icon_margin_y, icon_alpha) if txt_icon is not None and icon_side is not None else None
     return AlertLayout(text_rect, icon_layout)
+
+  def _tr_alert_text(self, text: str) -> str:
+    t = tr(text)
+    if t != text:
+      return t
+    if ': ' in text:
+      head, _, tail = text.partition(': ')
+      ht = tr(head)
+      if ht != head:
+        return f"{ht}: {tail}"
+    parts = text.split(' ', 2)
+    if len(parts) >= 3:
+      head = parts[0] + ' ' + parts[1]
+      ht = tr(head)
+      if ht != head:
+        return f"{ht} {' '.join(parts[2:])}"
+    return text
 
   def _render(self, rect: rl.Rectangle) -> bool:
     alert = self.get_alert(ui_state.sm)

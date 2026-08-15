@@ -2391,6 +2391,14 @@ msgid "WARNING: This branch is not tested"
 msgstr ""
 
 #: openpilot/selfdrive/selfdrived/events.py
+msgid "Recalibrating"
+msgstr ""
+
+#: openpilot/selfdrive/selfdrived/events.py
+msgid "Calibrating"
+msgstr ""
+
+#: openpilot/selfdrive/selfdrived/events.py
 msgid "Pay Attention to Engage"
 msgstr ""
 
@@ -2761,6 +2769,10 @@ msgid "Bookmark Saved"
 msgstr ""
 
 #: openpilot/selfdrive/selfdrived/events.py
+msgid "Drive Above"
+msgstr ""
+
+#: openpilot/selfdrive/selfdrived/events.py
 msgid "Disable your car's stock LKAS to engage"
 msgstr ""
 
@@ -2786,10 +2798,6 @@ msgstr ""
 
 #: openpilot/selfdrive/selfdrived/events.py
 msgid "take control"
-msgstr ""
-
-#: openpilot/selfdrive/selfdrived/events.py
-msgid "Calibrating"
 msgstr ""
 
 #: openpilot/selfdrive/selfdrived/events.py
