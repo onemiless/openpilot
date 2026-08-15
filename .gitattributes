@@ -38,6 +38,20 @@ openpilot/selfdrive/assets/training/step18.png -filter=lfs -diff=lfs -merge=lfs
 openpilot/sunnypilot/selfdrive/assets/images/lead_depart.png -filter=lfs -diff=lfs -merge=lfs
 openpilot/sunnypilot/selfdrive/assets/images/spinner_sunnypilot.png -filter=lfs -diff=lfs -merge=lfs
 
+# These branch-local UI resources are intentionally stored in Git so devices
+# can fetch them without write access to sunnypilot's shared GitLab LFS store.
+openpilot/selfdrive/assets/fonts/NotoSansCJKjp-Regular.otf -filter=lfs -diff=lfs -merge=lfs
+openpilot/selfdrive/assets/fonts/NotoSansCJKkr-Regular.otf -filter=lfs -diff=lfs -merge=lfs
+openpilot/selfdrive/assets/fonts/NotoSansCJKsc-Regular.otf -filter=lfs -diff=lfs -merge=lfs
+openpilot/selfdrive/assets/fonts/NotoSansCJKtc-Regular.otf -filter=lfs -diff=lfs -merge=lfs
+openpilot/selfdrive/assets/fonts/NotoSansThai-Regular.ttf -filter=lfs -diff=lfs -merge=lfs
+openpilot/selfdrive/assets/icons/fire.png -filter=lfs -diff=lfs -merge=lfs
+openpilot/selfdrive/assets/icons/yellow_warning.png -filter=lfs -diff=lfs -merge=lfs
+openpilot/selfdrive/assets/icons_mici/egpu.png -filter=lfs -diff=lfs -merge=lfs
+openpilot/selfdrive/assets/icons_mici/egpu_crossed.png -filter=lfs -diff=lfs -merge=lfs
+openpilot/selfdrive/assets/icons_mici/egpu_green.png -filter=lfs -diff=lfs -merge=lfs
+openpilot/selfdrive/assets/icons_mici/egpu_orange.png -filter=lfs -diff=lfs -merge=lfs
+
 # mihomo runtime assets are opaque binary databases/executables. Never run
 # text normalization or textual overlay/diff handling on them.
 third_party/mihomo/linux-arm64/mihomo binary

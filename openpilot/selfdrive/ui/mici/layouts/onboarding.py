@@ -1,9 +1,9 @@
 import math
 import numpy as np
-import qrcode
 import pyray as rl
 from collections.abc import Callable
 from openpilot.common.filter_simple import FirstOrderFilter
+from openpilot.common.qrcode import make_texture
 from openpilot.system.ui.lib.application import FontWeight, gui_app
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.button import SmallCircleIconButton
@@ -21,7 +21,7 @@ from openpilot.selfdrive.ui.mici.onroad.cabin_camera_dialog import BaseCabinCame
 from openpilot.selfdrive.ui.sunnypilot.mici.layouts.onboarding import SunnylinkConsentPage
 
 
-class CabinCameraSetupDialog(BaseCabinCameraDialog):
+class DriverCameraSetupDialog(BaseCabinCameraDialog):
   def __init__(self):
     super().__init__()
     self.driver_state_renderer = DriverStateRenderer(inset=True)
@@ -106,7 +106,7 @@ class TrainingGuideDMTutorial(NavWidget):
     self._good_button.set_enabled(False)
 
     self._progress = FirstOrderFilter(0.0, 0.5, 1 / gui_app.target_fps)
-    self._dialog = CabinCameraSetupDialog()
+    self._dialog = DriverCameraSetupDialog()
     self._bad_face_page = DMBadFaceDetected()
 
     # Disable driver monitoring model when device times out for inactivity
@@ -233,7 +233,7 @@ class TrainingGuideRecordFront(NavScroller):
                                                        exit_on_confirm=False)
 
     self._scroller.add_widgets([
-      GreyBigButton("cabin camera data", "do you want to share video data for training?",
+      GreyBigButton("driver camera data", "do you want to share video data for training?",
                     gui_app.texture("icons_mici/setup/green_dm.png", 64, 64)),
       GreyBigButton("", "Sharing your data with comma helps improve openpilot and sunnypilot for everyone."),
       self._accept_button,
@@ -282,25 +282,7 @@ class QRCodeWidget(Widget):
     super().__init__()
     self.set_rect(rl.Rectangle(0, 0, size, size))
     self._size = size
-    self._qr_texture: rl.Texture | None = None
-    self._generate_qr(url)
-
-  def _generate_qr(self, url: str):
-    qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=0)
-    qr.add_data(url)
-    qr.make(fit=True)
-
-    pil_img = qr.make_image(fill_color="white", back_color="black").convert('RGBA')
-    img_array = np.array(pil_img, dtype=np.uint8)
-
-    rl_image = rl.Image()
-    rl_image.data = rl.ffi.cast("void *", img_array.ctypes.data)
-    rl_image.width = pil_img.width
-    rl_image.height = pil_img.height
-    rl_image.mipmaps = 1
-    rl_image.format = rl.PixelFormat.PIXELFORMAT_UNCOMPRESSED_R8G8B8A8
-
-    self._qr_texture = rl.load_texture_from_image(rl_image)
+    self._qr_texture = make_texture(url, inverted=True)
 
   def _render(self, _):
     if self._qr_texture:

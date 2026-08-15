@@ -32,6 +32,11 @@ class ToggleSP(Toggle):
     if self._enabled and self.param_key:
       self.params.put_bool(self.param_key, self._state)
 
+  def show_event(self):
+    super().show_event()
+    if self.param_key:
+      self.set_state(self.params.get_bool(self.param_key))
+
   def _render(self, rect: rl.Rectangle):
     self.update()
     self._rect.y -= style.ITEM_PADDING / 2

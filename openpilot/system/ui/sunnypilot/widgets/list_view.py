@@ -40,6 +40,14 @@ class ToggleActionSP(ToggleAction):
     ToggleAction.__init__(self, initial_state, width, enabled, callback)
     self.toggle = ToggleSP(initial_state=initial_state, callback=callback, param=param)
 
+  def show_event(self):
+    super().show_event()
+    self.toggle.show_event()
+
+  def hide_event(self):
+    super().hide_event()
+    self.toggle.hide_event()
+
 
 class ButtonSP(Button):
   def _update_state(self):
@@ -136,6 +144,11 @@ class MultipleButtonActionSP(MultipleButtonAction):
     self._anim_x: float | None = None
     self.enabled_buttons: set[int] | None = None
 
+  def show_event(self):
+    super().show_event()
+    if self.param_key:
+      self.set_selected_button(int(self.params.get(self.param_key, return_default=True)))
+
   def set_enabled_buttons(self, indices: set[int] | None):
     self.enabled_buttons = indices
 
@@ -216,6 +229,16 @@ class ListItemSP(ListItem):
     self._right_value_source: str | Callable[[], str] | None = None
     self._right_value_font = gui_app.font(FontWeight.NORMAL)
     self._right_value_color: rl.Color = style.ITEM_TEXT_VALUE_COLOR
+
+  def show_event(self):
+    super().show_event()
+    if self.action_item:
+      self.action_item.show_event()
+
+  def hide_event(self):
+    super().hide_event()
+    if self.action_item:
+      self.action_item.hide_event()
 
   def set_title(self, title: str | Callable[[], str] = ""):
     self._title = title

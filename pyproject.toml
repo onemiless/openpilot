@@ -49,7 +49,6 @@ dependencies = [
 
   # ui
   "comma-deps-raylib",
-  "qrcode",
   "jeepney",
   "pillow",
 ]

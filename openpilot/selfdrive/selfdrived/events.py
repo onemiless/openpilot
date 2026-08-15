@@ -243,6 +243,14 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
                                        "请确认前方道路畅通"),
   },
 
+  EventName.bigModelLoading: {
+    ET.NO_ENTRY: NoEntryAlert("大模型正在加载"),
+  },
+
+  EventName.bigModelFailed: {
+    ET.PERMANENT: NormalPermanentAlert("大模型运行失败", "请重新启动车辆后重试\n当前已降级为小模型", duration=20.),
+  },
+
   EventName.lateralManeuver: {
     ET.WARNING: longitudinal_maneuver_alert,
     ET.PERMANENT: NormalPermanentAlert("Lateral Maneuver Mode"),
