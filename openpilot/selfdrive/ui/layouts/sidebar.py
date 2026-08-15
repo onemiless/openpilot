@@ -72,8 +72,8 @@ class Sidebar(Widget, SidebarSP):
     self._net_strength = 0
 
     self._temp_status = MetricData(tr_noop("TEMP"), tr_noop("GOOD"), Colors.GOOD)
-    self._panda_status = MetricData(tr_noop("VEHICLE"), tr_noop("ONLINE"), Colors.GOOD)
-    self._connect_status = MetricData(tr_noop("CONNECT"), tr_noop("OFFLINE"), Colors.WARNING)
+    self._panda_status = MetricData(tr_noop("VI"), tr_noop("ONLINE"), Colors.GOOD)
+    self._connect_status = MetricData(tr_noop("RA"), tr_noop("OFFLINE"), Colors.WARNING)
     self._recording_audio = False
     self._ip = ""
     self._ip_last = 0.0
@@ -154,17 +154,17 @@ class Sidebar(Widget, SidebarSP):
   def _update_connection_status(self, device_state):
     last_ping = device_state.lastAthenaPingTime
     if last_ping == 0:
-      self._connect_status.update(tr_noop("CONNECT"), tr_noop("OFFLINE"), Colors.WARNING)
+      self._connect_status.update(tr_noop("RA"), tr_noop("OFFLINE"), Colors.WARNING)
     elif time.monotonic_ns() - last_ping < 80_000_000_000:  # 80 seconds in nanoseconds
-      self._connect_status.update(tr_noop("CONNECT"), tr_noop("ONLINE"), Colors.GOOD)
+      self._connect_status.update(tr_noop("RA"), tr_noop("ONLINE"), Colors.GOOD)
     else:
-      self._connect_status.update(tr_noop("CONNECT"), tr_noop("ERROR"), Colors.DANGER)
+      self._connect_status.update(tr_noop("RA"), tr_noop("ERROR"), Colors.DANGER)
 
   def _update_panda_status(self):
     if ui_state.panda_type == log.PandaState.PandaType.unknown:
       self._panda_status.update(tr_noop("NO"), tr_noop("PANDA"), Colors.DANGER)
     else:
-      self._panda_status.update(tr_noop("VEHICLE"), tr_noop("ONLINE"), Colors.GOOD)
+      self._panda_status.update(tr_noop("VI"), tr_noop("ONLINE"), Colors.GOOD)
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
     if rl.check_collision_point_rec(mouse_pos, SETTINGS_BTN):

@@ -278,6 +278,10 @@ msgstr "清除"
 msgid "CONNECT"
 msgstr "连接"
 
+#: openpilot/selfdrive/ui/layouts/sidebar.py
+msgid "RA"
+msgstr "远程协助"
+
 #: openpilot/system/ui/widgets/network.py
 msgid "CONNECTING..."
 msgstr "连接中..."
@@ -1932,6 +1936,10 @@ msgstr "使用视觉路径预测估算前方转弯的合适速度。"
 #: openpilot/selfdrive/ui/layouts/sidebar.py
 msgid "VEHICLE"
 msgstr "车辆"
+
+#: openpilot/selfdrive/ui/layouts/sidebar.py
+msgid "VI"
+msgstr "车辆接口"
 
 #: openpilot/selfdrive/ui/layouts/settings/device.py
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/developer.py
