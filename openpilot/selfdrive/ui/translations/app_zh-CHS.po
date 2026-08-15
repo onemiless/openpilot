@@ -2549,3 +2549,213 @@ msgid ""
 msgstr ""
 "sunnypilot不会接管油门和刹车的控制权。 "
 "系统将使用丰田原厂的纵向控制功能。"
+
+msgid "Tesla Settings"
+msgstr "Tesla 专用设置"
+
+msgid "Configure Tesla-specific steering, MADS screen controls, longitudinal handoff, and stop-line behavior."
+msgstr "集中配置 Tesla 专用转向、MADS 屏幕控制、纵向控制切换和停止线行为。"
+
+msgid "MADS Screen Activation"
+msgstr "MADS 屏幕触控"
+
+msgid "Use a multi-finger press on the infotainment screen to toggle MADS."
+msgstr "使用多指触摸中控屏开启或关闭 MADS。"
+
+msgid "This allows the use of full MADS functionality when enabled."
+msgstr "启用后可使用完整的 MADS 功能。"
+
+msgid "Selecting a higher finger count may reduce accidental activations."
+msgstr "选择更多手指可减少误触。"
+
+msgid "Note: Setting this to Off will reset your MADS settings to default."
+msgstr "注意：设为关闭会将 MADS 设置恢复为默认值。"
+
+msgid "3-Finger"
+msgstr "三指"
+
+msgid "5-Finger"
+msgstr "五指"
+
+msgid "4-Finger Longitudinal Switch"
+msgstr "四指切换纵向控制"
+
+msgid "Dynamic Auto Stock ACC"
+msgstr "动态切换原车 ACC"
+
+msgid "Auto switch to stock ACC when above speed, close to lead, and ego not decelerating."
+msgstr "车速达到阈值、接近前车且本车未减速时，自动切换到 Tesla 原车 ACC。"
+
+msgid "Turn Signal → SP Longitudinal"
+msgstr "打转向灯时切回 SP 纵向"
+
+msgid "When Dynamic ACC is using Tesla ACC, switch longitudinal control to sunnypilot after a confirmed turn signal."
+msgstr "动态 ACC 正在使用 Tesla 原车 ACC 时，确认转向灯后将纵向控制切回 sunnypilot。"
+
+msgid "Curve → SP Longitudinal"
+msgstr "进入弯道时切回 SP 纵向"
+
+msgid "When Dynamic ACC is using Tesla ACC, switch longitudinal control to sunnypilot when vision or map curve control becomes active."
+msgstr "动态 ACC 正在使用 Tesla 原车 ACC 时，视觉或地图弯道控制生效后将纵向控制切回 sunnypilot。"
+
+msgid "AP Hybrid Control (Experimental)"
+msgstr "AP 混合控制（实验）"
+
+msgid "Dynamic AP Control (Experimental)"
+msgstr "动态 AP 控制（实验）"
+
+msgid "Speed Threshold High"
+msgstr "切入 Tesla 控制速度"
+
+msgid "Switch to Tesla control above this speed in Dynamic ACC or Dynamic AP mode."
+msgstr "动态 ACC 或动态 AP 模式下，高于此速度时切入 Tesla 原车控制。"
+
+msgid "Speed Threshold Low"
+msgstr "切回 SP 控制速度"
+
+msgid "Switch back to sunnypilot control below this speed in Dynamic ACC or Dynamic AP mode."
+msgstr "动态 ACC 或动态 AP 模式下，低于此速度时切回 sunnypilot 控制。"
+
+msgid "Stop Line Deceleration"
+msgstr "停止线附加减速度"
+
+msgid "Extra deceleration at traffic light and stop sign stops. Higher values stop earlier; 0 disables the extra deceleration."
+msgstr "在红绿灯或停止标志停车时增加减速度；数值越大越早减速，设为 0 则关闭附加减速。"
+
+msgid "MPC Params"
+msgstr "纵向 MPC 参数"
+
+msgid "Adjust longitudinal MPC presets and detailed tuning parameters."
+msgstr "选择纵向 MPC 预设并调整详细参数。"
+
+msgid "Customize"
+msgstr "自定义"
+
+msgid "Longitudinal Planner"
+msgstr "纵向规划器"
+
+msgid "SP Upstream Tunable, Local, and TN-NoDEC are isolated backends. A change takes effect next onroad session."
+msgstr "SP 官方可调、本地版和 TN-NoDEC 是相互隔离的规划器；更改后下一次行驶生效。"
+
+msgid "SP Upstream Tunable"
+msgstr "SP 官方可调"
+
+msgid "Local"
+msgstr "本地版"
+
+msgid "TN-NoDEC"
+msgstr "TN-NoDEC"
+
+msgid "MPC Tuning Profile"
+msgstr "MPC 调校方案"
+
+msgid "Both planners read the selected tuning profile. Default starts from official parameters."
+msgstr "各规划器均读取所选调校方案；默认方案使用 SP 官方参数。"
+
+msgid "CrazyMax"
+msgstr "CrazyMax"
+
+msgid "Current"
+msgstr "当前值"
+
+msgid "Custom"
+msgstr "自定义"
+
+msgid "TN Accel Personality"
+msgstr "TN 加速风格"
+
+msgid "Enable the TN backend-native acceleration profile controller."
+msgstr "启用 TN 规划器原生的加速风格控制。"
+
+msgid "TN Accel Profile"
+msgstr "TN 加速方案"
+
+msgid "Backend-native Eco, Normal, or Sport acceleration limits."
+msgstr "选择 TN 规划器原生的节能、标准或运动加速度限制。"
+
+msgid "Eco"
+msgstr "节能"
+
+msgid "Normal"
+msgstr "标准"
+
+msgid "Sport"
+msgstr "运动"
+
+msgid "Stop Distance"
+msgstr "停车距离"
+
+msgid "Higher values make the car target a farther stop and brake earlier. Lower values stop closer to the lead and can feel later."
+msgstr "数值越大，目标停车距离越远且制动更早；数值越小，停车位置更靠近前车且制动感觉更晚。"
+
+msgid "Comfort Brake"
+msgstr "舒适制动强度"
+
+msgid "Higher values assume stronger comfortable braking and can allow closer, later braking. Lower values reserve more distance and feel gentler."
+msgstr "数值越大，允许更强的舒适制动和更晚的刹车；数值越小，预留距离更多且制动更柔和。"
+
+msgid "Lead Danger Factor"
+msgstr "前车危险系数"
+
+msgid "Higher values add more safety pressure near a lead and brake sooner. Lower values allow following closer before the danger cost rises."
+msgstr "数值越大，接近前车时越早制动；数值越小，危险代价上升前允许更近的跟车距离。"
+
+msgid "T Follow Relaxed"
+msgstr "舒缓跟车时距"
+
+msgid "Higher values increase the relaxed following gap. Lower values reduce the relaxed gap and follow closer."
+msgstr "数值越大，舒缓模式的跟车距离越远；数值越小，跟车越近。"
+
+msgid "T Follow Standard"
+msgstr "标准跟车时距"
+
+msgid "Higher values increase the standard following gap. Lower values reduce the standard gap and follow closer."
+msgstr "数值越大，标准模式的跟车距离越远；数值越小，跟车越近。"
+
+msgid "T Follow Aggressive"
+msgstr "激进跟车时距"
+
+msgid "Higher values increase the aggressive following gap. Lower values reduce the aggressive gap and follow closer."
+msgstr "数值越大，激进模式的跟车距离越远；数值越小，跟车越近。"
+
+msgid "Obstacle Cost"
+msgstr "障碍物代价"
+
+msgid "Higher values prioritize keeping the desired obstacle distance. Lower values allow smoother speed tracking but may hold a closer gap."
+msgstr "数值越大，越优先保持目标障碍物距离；数值越小，速度跟随更平滑，但跟车距离可能更近。"
+
+msgid "Jerk Cost"
+msgstr "加加速度代价"
+
+msgid "Higher values make acceleration and braking smoother but slower to react. Lower values react faster and can feel sharper."
+msgstr "数值越大，加减速更平滑但反应更慢；数值越小，反应更快但体感可能更突兀。"
+
+msgid "Relaxed Jerk Factor"
+msgstr "舒缓模式平顺系数"
+
+msgid "Higher values make relaxed mode smoother and less eager to change acceleration. Lower values make relaxed mode more responsive."
+msgstr "数值越大，舒缓模式越平顺且不易改变加速度；数值越小，响应越快。"
+
+msgid "Accel Change Cost"
+msgstr "加速度变化代价"
+
+msgid "Higher values resist acceleration changes and smooth the plan. Lower values let the car change acceleration more quickly."
+msgstr "数值越大，越抑制加速度变化并使规划更平滑；数值越小，加速度变化更快。"
+
+msgid "Danger Zone Cost"
+msgstr "危险区域代价"
+
+msgid "Higher values strongly avoid getting too close to a lead. Lower values reduce that penalty and can allow closer following."
+msgstr "数值越大，越强烈避免接近前车；数值越小，惩罚越低并可能允许更近跟车。"
+
+msgid "Tesla: Assist also synchronizes the vehicle's set speed one wheel tick at a time. Turning Assist off stops all automatic Tesla set-speed requests."
+msgstr "Tesla：开启辅助调节后，还会逐格同步原车设定速度；关闭辅助调节会立即停止所有自动设速请求。"
+
+msgid "Enable \"Always Offroad\" in Device panel, or turn vehicle off to change."
+msgstr "请在设备设置中启用“始终离线”，或关闭车辆后再修改。"
+
+msgid "Disable Offset At or Above"
+msgstr "达到此速度后禁用偏移"
+
+msgid "Do not apply the fixed or percentage offset when the resulting offset speed reaches this value. Set to 0 to disable."
+msgstr "偏移后的速度达到此值时，不再应用固定或百分比偏移；设为 0 表示不限制。"

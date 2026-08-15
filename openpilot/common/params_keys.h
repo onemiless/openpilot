@@ -226,9 +226,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"SubaruStopAndGoManualParkingBrake", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaCoopSteering", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaMadsScreenButton", {PERSISTENT | BACKUP, INT, "0"}},
-    {"TeslaTouchLongitudinalSwitch", {PERSISTENT | BACKUP, BOOL, "1"}},  // 4-finger touch toggles SP/stock longitudinal
+    {"TeslaTouchLongitudinalSwitch", {PERSISTENT | BACKUP, BOOL, "0"}},  // 4-finger touch toggles SP/stock longitudinal
     {"TeslaApHybrid", {PERSISTENT | BACKUP, BOOL, "0"}},
-    {"TeslaAutoSpeedLimit", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaCanValidationLogging", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaDynamicApLongitudinal", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaSpeedButtonValidation", {PERSISTENT | BACKUP, BOOL, "0"}},
@@ -256,8 +255,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
 
     // Dynamic auto stock / AP hybrid (Tesla)
     {"DynamicAutoStock", {PERSISTENT | BACKUP, BOOL, "0"}},
-    {"DynamicAutoStockBlinkerToSP", {PERSISTENT | BACKUP, BOOL, "1"}},
-    {"DynamicAutoStockCurveToSP", {PERSISTENT | BACKUP, BOOL, "1"}},
+    {"DynamicAutoStockBlinkerToSP", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"DynamicAutoStockCurveToSP", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"DynamicAutoStockSpeedKph", {PERSISTENT | BACKUP, INT, "80"}},
     {"DynamicAutoStockSpeedLowKph", {PERSISTENT | BACKUP, INT, "70"}},
 
@@ -287,7 +286,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
 
     // Speed limit / stop line (Tesla)
     {"SpeedLimitOffsetMaxSpeed", {PERSISTENT | BACKUP, INT, "0"}},
-    {"StopLineDeceleration", {PERSISTENT | BACKUP, INT, "5"}},  // tenths of m/s^2
+    {"StopLineDeceleration", {PERSISTENT | BACKUP, INT, "0"}},  // tenths of m/s^2; 0 disables extra stop-line braking
 
     // Panda / device startup
     {"GpsTimeSyncDone", {CLEAR_ON_MANAGER_START, BOOL}},

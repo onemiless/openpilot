@@ -114,7 +114,15 @@ class SpeedLimitSettingsLayout(Widget):
 
   @staticmethod
   def _get_mode_description():
-    return get_highlighted_description(ui_state.params, "SpeedLimitMode", SPEED_LIMIT_MODE_DESCRIPTIONS)
+    description = get_highlighted_description(ui_state.params, "SpeedLimitMode", SPEED_LIMIT_MODE_DESCRIPTIONS)
+    if (ui_state.CP is not None and ui_state.CP.brand == "tesla" and
+        ui_state.params.get("SpeedLimitMode", return_default=True) == int(SpeedLimitMode.assist)):
+      tesla_description = tr(
+        "Tesla: Assist also synchronizes the vehicle's set speed one wheel tick at a time. Turning Assist off stops all automatic Tesla " +
+        "set-speed requests."
+      )
+      description = f"{description}<br><br>{tesla_description}"
+    return description
 
   @staticmethod
   def _get_offset_description():

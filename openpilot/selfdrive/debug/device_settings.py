@@ -125,7 +125,6 @@ def _translate_option(text: str, key: str) -> str:
 EXTRA_SETTINGS: tuple[dict[str, Any], ...] = (
   {"key": "TeslaApHybrid", "widget": "toggle", "title": "Tesla AP 混合控制", "category": "Tesla", "group": "Tesla", "offroad_only": True},
   {"key": "TeslaDynamicApLongitudinal", "widget": "toggle", "title": "Tesla 动态 AP 纵向", "group": "Tesla", "offroad_only": True},
-  {"key": "TeslaAutoSpeedLimit", "widget": "toggle", "title": "Tesla 自动限速", "group": "Tesla", "offroad_only": False},
   {"key": "DynamicAutoStockBlinkerToSP", "widget": "toggle", "title": "动态原车：转向灯切换 SP", "group": "Tesla", "offroad_only": True},
   {"key": "DynamicAutoStockCurveToSP", "widget": "toggle", "title": "动态原车：弯道切换 SP", "group": "Tesla", "offroad_only": True},
   {"key": "DynamicAutoStockSpeedKph", "widget": "option", "title": "动态原车切换速度", "group": "Tesla", "min": 0, "max": 200, "step": 1, "unit": "km/h", "offroad_only": True},

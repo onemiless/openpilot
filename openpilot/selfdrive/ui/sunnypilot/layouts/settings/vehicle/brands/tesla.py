@@ -21,47 +21,50 @@ from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.tuning_presets import
 )
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app
-from openpilot.system.ui.lib.multilang import tr
+from openpilot.system.ui.lib.multilang import tr, tr_noop
 from openpilot.system.ui.sunnypilot.widgets.list_view import button_item_sp, multiple_button_item_sp, option_item_sp, toggle_item_sp
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.network import NavButton
 from openpilot.system.ui.widgets.scroller_tici import Scroller
 
 MPC_TUNING_PRESENTATION = [
-  ("MpcStopDistance", "Stop Distance",
-   "Higher values make the car target a farther stop and brake earlier. Lower values stop closer to the lead and can feel later.",
+  ("MpcStopDistance", tr_noop("Stop Distance"),
+   tr_noop("Higher values make the car target a farther stop and brake earlier. Lower values stop closer to the lead and can feel later."),
    lambda v: f"{v / 100.0:.2f} m"),
-  ("MpcComfortBrake", "Comfort Brake",
-   "Higher values assume stronger comfortable braking and can allow closer, later braking. Lower values reserve more distance and feel gentler.",
+  ("MpcComfortBrake", tr_noop("Comfort Brake"),
+   tr_noop("Higher values assume stronger comfortable braking and can allow closer, later braking. Lower values reserve more distance and feel gentler."),
    lambda v: f"{v / 100.0:.2f} m/s^2"),
-  ("MpcLeadDangerFactor", "Lead Danger Factor",
-   "Higher values add more safety pressure near a lead and brake sooner. Lower values allow following closer before the danger cost rises.",
+  ("MpcLeadDangerFactor", tr_noop("Lead Danger Factor"),
+   tr_noop("Higher values add more safety pressure near a lead and brake sooner. Lower values allow following closer before the danger cost rises."),
    lambda v: f"{v / 100.0:.2f}"),
-  ("MpcTFollowRelaxed", "T Follow Relaxed",
-   "Higher values increase the relaxed following gap. Lower values reduce the relaxed gap and follow closer.",
+  ("MpcTFollowRelaxed", tr_noop("T Follow Relaxed"),
+   tr_noop("Higher values increase the relaxed following gap. Lower values reduce the relaxed gap and follow closer."),
    lambda v: f"{v / 100.0:.2f} s"),
-  ("MpcTFollowStandard", "T Follow Standard",
-   "Higher values increase the standard following gap. Lower values reduce the standard gap and follow closer.",
+  ("MpcTFollowStandard", tr_noop("T Follow Standard"),
+   tr_noop("Higher values increase the standard following gap. Lower values reduce the standard gap and follow closer."),
    lambda v: f"{v / 100.0:.2f} s"),
-  ("MpcTFollowAggressive", "T Follow Aggressive",
-   "Higher values increase the aggressive following gap. Lower values reduce the aggressive gap and follow closer.",
+  ("MpcTFollowAggressive", tr_noop("T Follow Aggressive"),
+   tr_noop("Higher values increase the aggressive following gap. Lower values reduce the aggressive gap and follow closer."),
    lambda v: f"{v / 100.0:.2f} s"),
-  ("MpcXObstacleCost", "Obstacle Cost",
-   "Higher values prioritize keeping the desired obstacle distance. Lower values allow smoother speed tracking but may hold a closer gap.",
+  ("MpcXObstacleCost", tr_noop("Obstacle Cost"),
+   tr_noop("Higher values prioritize keeping the desired obstacle distance. Lower values allow smoother speed tracking but may hold a closer gap."),
    lambda v: f"{v / 100.0:.2f}"),
-  ("MpcJerkCost", "Jerk Cost",
-   "Higher values make acceleration and braking smoother but slower to react. Lower values react faster and can feel sharper.",
+  ("MpcJerkCost", tr_noop("Jerk Cost"),
+   tr_noop("Higher values make acceleration and braking smoother but slower to react. Lower values react faster and can feel sharper."),
    lambda v: f"{v / 100.0:.2f}"),
-  ("MpcJerkFactorStandard", "Relaxed Jerk Factor",
-   "Higher values make relaxed mode smoother and less eager to change acceleration. Lower values make relaxed mode more responsive.",
+  ("MpcJerkFactorStandard", tr_noop("Relaxed Jerk Factor"),
+   tr_noop("Higher values make relaxed mode smoother and less eager to change acceleration. Lower values make relaxed mode more responsive."),
    lambda v: f"{v / 100.0:.2f}"),
-  ("MpcAccelChangeCost", "Accel Change Cost",
-   "Higher values resist acceleration changes and smooth the plan. Lower values let the car change acceleration more quickly.",
+  ("MpcAccelChangeCost", tr_noop("Accel Change Cost"),
+   tr_noop("Higher values resist acceleration changes and smooth the plan. Lower values let the car change acceleration more quickly."),
    lambda v: f"{v / 100.0:.0f}"),
-  ("MpcDangerZoneCost", "Danger Zone Cost",
-   "Higher values strongly avoid getting too close to a lead. Lower values reduce that penalty and can allow closer following.",
+  ("MpcDangerZoneCost", tr_noop("Danger Zone Cost"),
+   tr_noop("Higher values strongly avoid getting too close to a lead. Lower values reduce that penalty and can allow closer following."),
    lambda v: f"{v / 100.0:.0f}"),
 ]
+
+# Backend labels are data-driven, so mark them explicitly for translation extraction.
+MPC_BACKEND_LABELS = (tr_noop("SP Upstream Tunable"), tr_noop("Local"), tr_noop("TN-NoDEC"))
 
 MPC_TUNING_ITEMS = [
   (key, title, description,
@@ -208,9 +211,11 @@ class TeslaMpcSettingsLayout(Widget):
     self._scroller.show_event()
 
 
-class TeslaSettings(BrandSettings):
-  def __init__(self):
+class TeslaFeatureSettingsLayout(Widget):
+  def __init__(self, back_btn_callback: Callable):
     super().__init__()
+    self._back_button = NavButton(tr("Back"))
+    self._back_button.set_click_callback(back_btn_callback)
     self.coop_steering_toggle = toggle_item_sp(tr("Cooperative Steering"), "", param="TeslaCoopSteering")
     self.mads_screen_button = multiple_button_item_sp(
       title=lambda: tr("MADS Screen Activation"),
@@ -260,26 +265,6 @@ class TeslaSettings(BrandSettings):
       callback=self._on_dynamic_ap_longitudinal_toggle,
       enabled=ui_state.is_offroad,
     )
-    # Lane Center Offset / Reset moved to Models -> Adjust Camera Offset (same CameraOffset param).
-    # self.camera_offset = option_item_sp(
-    #   title=tr("Lane Center Offset"),
-    #   param="CameraOffset",
-    #   min_value=-20, max_value=20, value_change_step=1,
-    #   use_float_scaling=True,
-    #   label_callback=lambda value: f"{value / 100.0:+.2f} m",
-    #   description=tr("Virtually shifts the camera model: positive moves the planned center left and negative moves it right. " +
-    #                  "Changes fade in gradually and can take up to about 10 seconds. Adjust only while parked, then verify on a straight road " +
-    #                  "with clear lane lines. Curves and lane changes may not behave like a simple path translation."),
-    #   enabled=ui_state.is_offroad,
-    #   inline=True,
-    # )
-    # self.reset_camera_offset = button_item_sp(
-    #   title=tr("Reset Lane Center Offset"),
-    #   button_text=tr("RESET"),
-    #   description=tr("Restore the camera model offset to 0.00 m."),
-    #   callback=lambda: self.camera_offset.action_item.set_value(0),
-    #   enabled=ui_state.is_offroad,
-    # )
     self.dyn_auto_speed = option_item_sp(
       title=tr("Speed Threshold High"), param="DynamicAutoStockSpeedKph",
       min_value=40, max_value=120, value_change_step=5,
@@ -300,14 +285,6 @@ class TeslaSettings(BrandSettings):
       label_callback=lambda value: f"{value / 10.0:.1f} m/s^2",
       inline=True,
     )
-    self.auto_speed_limit = toggle_item_sp(
-      title=tr("Automatic Tesla Set Speed"),
-      param="TeslaAutoSpeedLimit",
-      description=tr("While sunnypilot is engaged, adjust Tesla's set speed one wheel tick at a time until it reaches " +
-                     "the resolved Speed Limit target from Cruise settings, including the configured fixed or percentage offset. " +
-                     "Restart after changing this option."),
-      enabled=ui_state.is_offroad,
-    )
     self.mpc_settings = button_item_sp(
       title=tr("MPC Params"),
       button_text=tr("Customize"),
@@ -316,14 +293,14 @@ class TeslaSettings(BrandSettings):
       enabled=ui_state.is_offroad,
     )
     self.items = [self.coop_steering_toggle, self.mads_screen_button, self.touch_longitudinal_switch_toggle,
-                  # self.camera_offset, self.reset_camera_offset,  # moved to Models -> Adjust Camera Offset
                   self.ap_hybrid_toggle, self.dynamic_ap_longitudinal_toggle,
                   self.dynamic_auto_stock_toggle,
                   self.dynamic_auto_stock_blinker_to_sp_toggle,
                   self.dynamic_auto_stock_curve_to_sp_toggle,
                   self.dyn_auto_speed,
                   self.dyn_auto_speed_low, self.stop_line_deceleration,
-                  self.auto_speed_limit, self.mpc_settings]
+                  self.mpc_settings]
+    self._scroller = Scroller(self.items, line_separator=True, spacing=0)
 
   def _on_dyn_auto_stock_toggle(self, state):
     self._update_dynamic_speed_visibility()
@@ -343,7 +320,8 @@ class TeslaSettings(BrandSettings):
   def _show_mpc_settings(self):
     gui_app.push_widget(TeslaMpcSettingsLayout(lambda: gui_app.pop_widget()))
 
-  def update_settings(self):
+  def _update_state(self):
+    super()._update_state()
     coop_steering_desc = (
       f"{tr('Converts light steering input into steering-wheel rotation.')}<br>" +
       f"{tr('The faster you go, the stiffer the steering gets.')}"
@@ -357,8 +335,6 @@ class TeslaSettings(BrandSettings):
 
     self.coop_steering_toggle.action_item.set_enabled(ui_state.is_offroad())
     self.touch_longitudinal_switch_toggle.action_item.set_enabled(ui_state.is_offroad())
-    # self.camera_offset.action_item.set_enabled(ui_state.is_offroad())
-    # self.reset_camera_offset.action_item.set_enabled(ui_state.is_offroad())
     self.ap_hybrid_toggle.action_item.set_enabled(ui_state.is_offroad() and ui_state.has_longitudinal_control)
     self.dynamic_ap_longitudinal_toggle.action_item.set_enabled(
       ui_state.is_offroad() and ui_state.has_longitudinal_control and ui_state.params.get_bool("TeslaApHybrid")
@@ -366,7 +342,6 @@ class TeslaSettings(BrandSettings):
     self._update_dynamic_speed_visibility()
 
     has_vehicle_bus = ui_state.CP_SP is not None and bool(ui_state.CP_SP.flags & TeslaFlagsSP.HAS_VEHICLE_BUS)
-    self.auto_speed_limit.set_visible(has_vehicle_bus)
     self.mads_screen_button.set_visible(has_vehicle_bus)
 
     mads_screen_button_desc = (
@@ -382,7 +357,39 @@ class TeslaSettings(BrandSettings):
     self.mads_screen_button.action_item.set_enabled(ui_state.is_offroad())
 
     self.stop_line_deceleration.action_item.set_enabled(ui_state.has_longitudinal_control)
-    self.auto_speed_limit.action_item.set_enabled(ui_state.is_offroad() and ui_state.has_longitudinal_control)
     self.mpc_settings.action_item.set_enabled(ui_state.is_offroad())
 
     self._on_dyn_auto_stock_toggle(self.dynamic_auto_stock_toggle.action_item.get_state())
+
+  def _render(self, rect):
+    self._back_button.set_position(self._rect.x, self._rect.y + 20)
+    self._back_button.render()
+    content_rect = rl.Rectangle(
+      rect.x,
+      rect.y + self._back_button.rect.height + 40,
+      rect.width,
+      rect.height - self._back_button.rect.height - 40,
+    )
+    self._scroller.render(content_rect)
+
+  def show_event(self):
+    self._scroller.show_event()
+
+
+class TeslaSettings(BrandSettings):
+  def __init__(self):
+    super().__init__()
+    self._settings_layout = TeslaFeatureSettingsLayout(lambda: gui_app.pop_widget())
+    self._settings_button = button_item_sp(
+      title=tr("Tesla Settings"),
+      button_text=tr("Customize"),
+      description=tr("Configure Tesla-specific steering, MADS screen controls, longitudinal handoff, and stop-line behavior."),
+      callback=self._show_settings,
+    )
+    self.items = [self._settings_button]
+
+  def _show_settings(self):
+    gui_app.push_widget(self._settings_layout)
+
+  def update_settings(self):
+    self._settings_button.action_item.set_enabled(True)

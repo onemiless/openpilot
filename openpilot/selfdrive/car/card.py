@@ -67,9 +67,10 @@ def get_tesla_speed_limit_context(sm: messaging.SubMaster, now: float) -> tuple[
   plan_valid = (sm.seen['longitudinalPlanSP'] and sm.valid['longitudinalPlanSP'] and
                 now - plan_recv_time <= TESLA_LONGITUDINAL_CONTEXT_STALE_S)
   resolver = plan.speedLimit.resolver
+  assist_enabled = bool(plan.speedLimit.assist.enabled)
   limit_valid = bool(resolver.speedLimitValid or resolver.speedLimitLastValid)
   target = float(resolver.speedLimitFinalLast)
-  valid = plan_valid and limit_valid and target > 0.0
+  valid = plan_valid and assist_enabled and limit_valid and target > 0.0
   return (target if valid else 0.0, valid, plan_recv_time)
 
 
