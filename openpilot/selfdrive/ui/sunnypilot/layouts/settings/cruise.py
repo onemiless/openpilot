@@ -94,7 +94,6 @@ class CruiseLayout(Widget):
       self._toggles_layout._toggles["LongitudinalPersonality"],
       self._toggles_layout._toggles["IsLdwEnabled"],
       self._toggles_layout._toggles["IsMetric"],
-      LineSeparatorSP(40),
       self.dec_toggle,
       self.scc_v_toggle,
       self.custom_acc_toggle,
