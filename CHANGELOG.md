@@ -1,4 +1,4 @@
-sunnypilot Version MR.ONE-2026 (2026-08-15) / sunnypilot 版本 MR.ONE-2026（2026-08-15）
+sunnypilot Version MR.ONE-2026 (2026-08-15) 
 ========================
 * MR.ONE Custom Features / MR.ONE 个性化功能
   * Complete Simplified Chinese UI (575 strings) / 完整简体中文界面（575 条翻译）
@@ -31,15 +31,7 @@ sunnypilot Version MR.ONE-2026 (2026-08-15) / sunnypilot 版本 MR.ONE-2026（20
   * Revert "deprecate carState.brake" for Honda Gas Interceptor by @mvl-boston in PR #481 / 回退“弃用 carState.brake”（Honda 燃气截断器）（@mvl-boston，PR #481）
 * New Contributors (sunnypilot/sunnypilot) / 新贡献者（sunnypilot/sunnypilot）
   * @mvl-boston made their first contribution in PR #1860 / @mvl-boston 完成了首次贡献（PR #1860）
-* Full Changelog: https://github.com/sunnypilot/sunnypilot/compare/v2026.001.007...v2026.002.000 / 完整变更日志：https://github.com/sunnypilot/sunnypilot/compare/v2026.001.007...v2026.002.000
-************************
-* Synced with commaai's openpilot (v0.11.1) / 同步自 commaai 的 openpilot（v0.11.1）
-  * master commit 69e2c321e49760e52f7983eaa0a5f77cb95de637 (June 02, 2026) / 主分支提交 69e2c321e49760e52f7983eaa0a5f77cb95de637（2026 年 6 月 2 日）
-* New driver monitoring model / 全新驾驶监控模型
-* Improved image processing pipeline for driver camera / 改进驾驶员摄像头图像处理流程
-* Improved thermal policy for comma four / 改进 comma four 散热策略
-* Acura MDX 2022-24 support thanks to mvl-boston! / 新增 Acura MDX 2022-24 支持，感谢 mvl-boston！
-* Rivian R1S and R1T 2025 support thanks to lukasloetkolben! / 新增 Rivian R1S 和 R1T 2025 支持，感谢 lukasloetkolben！
+* Full Changelog: https://github.com/sunnypilot/sunnypilot/compare/v2026.001.007...v2026.002.000 / 完整变更日志：https://github.com/
 
 sunnypilot Version 2026.001.000 (2026-05-06)
 ========================
