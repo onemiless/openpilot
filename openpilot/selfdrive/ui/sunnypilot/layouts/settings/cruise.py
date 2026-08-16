@@ -92,7 +92,6 @@ class CruiseLayout(Widget):
     items = [
       self._toggles_layout._toggles["ExperimentalMode"],
       self._toggles_layout._toggles["LongitudinalPersonality"],
-      self._toggles_layout._toggles["IsLdwEnabled"],
       self._toggles_layout._toggles["IsMetric"],
       self.dec_toggle,
       self.scc_v_toggle,
