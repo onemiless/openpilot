@@ -1,3 +1,9 @@
+msgid "Enable if your vehicle uses an aftermarket blind spot monitoring (BSM) system. Factory BSM enablement will be disabled."
+msgstr "如果您的车辆使用副厂盲区监测（BSM）系统，请开启此开关。开启后将禁用原厂 BSM 功能。"
+
+msgid "Aftermarket BSM"
+msgstr "是否副厂BSM"
+
 msgid ""
 msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"

@@ -20,6 +20,9 @@ DESCRIPTIONS = {
   'enforce_stock_longitudinal': tr_noop(
     'sunnypilot will not take over control of gas and brakes. Factory Toyota longitudinal control will be used.'
   ),
+  'aftermarket_bsm': tr_noop(
+    'Enable if your vehicle uses an aftermarket blind spot monitoring (BSM) system. Factory BSM enablement will be disabled.'
+  ),
   'stop_and_go_hack': tr_noop(
     'sunnypilot will allow some Toyota/Lexus cars to auto resume during stop and go traffic. ' +
     'This feature is only applicable to certain models that are able to use longitudinal control. This is an alpha feature. Use at your own risk.'
@@ -47,9 +50,18 @@ class ToyotaSettings(BrandSettings):
       enabled=lambda: not ui_state.engaged,
     )
 
+    self.aftermarket_bsm = toggle_item_sp(
+      lambda: tr("Aftermarket BSM"),
+      description=lambda: tr(DESCRIPTIONS["aftermarket_bsm"]),
+      initial_state=ui_state.params.get_bool("ToyotaAftermarketBsm"),
+      callback=self._on_enable_aftermarket_bsm,
+      enabled=lambda: not ui_state.engaged,
+    )
+
     self.items = [
       self.enforce_stock_longitudinal,
       self.stop_and_go_hack,
+      self.aftermarket_bsm,
     ]
 
   def _on_enable_enforce_stock_longitudinal(self, state: bool):
@@ -93,6 +105,10 @@ class ToyotaSettings(BrandSettings):
     else:
       ui_state.params.put_bool("ToyotaStopAndGoHack", False)
       ui_state.params.put_bool("OnroadCycleRequested", True)
+
+  def _on_enable_aftermarket_bsm(self, state: bool):
+    ui_state.params.put_bool("ToyotaAftermarketBsm", state, block=True)
+    ui_state.params.put_bool("OnroadCycleRequested", True)
 
   def update_settings(self):
     if ui_state.CP is not None:
