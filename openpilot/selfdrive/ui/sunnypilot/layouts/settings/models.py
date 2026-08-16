@@ -52,29 +52,29 @@ class ModelsLayout(Widget):
     self.current_model_item = ListItemSP(
       title=lambda: tr("Current Model"),
       description="",
-      action_item=NoElideButtonAction(tr("SELECT")),
+      action_item=NoElideButtonAction(lambda: tr("SELECT")),
       callback=self._handle_current_model_clicked
     )
 
-    self.supercombo_label = progress_item(tr("Driving Model"))
-    self.vision_label = progress_item(tr("Vision Model"))
-    self.policy_label = progress_item(tr("Policy Model"))
-    self.off_policy_label = progress_item(tr("Off-Policy Model"))
-    self.on_policy_label = progress_item(tr("On-Policy Model"))
-    self.chunked_label = progress_item(tr("Chunked Model"))
+    self.supercombo_label = progress_item(lambda: tr("Driving Model"))
+    self.vision_label = progress_item(lambda: tr("Vision Model"))
+    self.policy_label = progress_item(lambda: tr("Policy Model"))
+    self.off_policy_label = progress_item(lambda: tr("Off-Policy Model"))
+    self.on_policy_label = progress_item(lambda: tr("On-Policy Model"))
+    self.chunked_label = progress_item(lambda: tr("Chunked Model"))
 
-    self.refresh_item = button_item(tr("Refresh Model List"), tr("REFRESH"), "",
+    self.refresh_item = button_item(lambda: tr("Refresh Model List"), lambda: tr("REFRESH"), "",
                                     lambda: (ui_state.params.put("ModelManager_LastSyncTime", 0),
                                              gui_app.push_widget(alert_dialog(tr("Fetching Latest Models")))))
 
     self.clear_cache_item = ListItemSP(
       title=lambda: tr("Clear Model Cache"),
       description="",
-      action_item=NoElideButtonAction(tr("CLEAR")),
+      action_item=NoElideButtonAction(lambda: tr("CLEAR")),
       callback=self._clear_cache
     )
 
-    self.cancel_download_item = button_item(tr("Cancel Download"), tr("Cancel"), "", lambda: ui_state.params.remove("ModelManager_DownloadIndex"))
+    self.cancel_download_item = button_item(lambda: tr("Cancel Download"), lambda: tr("Cancel"), "", lambda: ui_state.params.remove("ModelManager_DownloadIndex"))
 
     self.lane_turn_value_control = option_item_sp(tr("Adjust Lane Turn Speed"), "LaneTurnValue", 500, 2000,
                                                   tr("Set the maximum speed for lane turn desires. Default is 19 mph."),

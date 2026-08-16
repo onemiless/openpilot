@@ -16,8 +16,8 @@ class HyundaiSettings(BrandSettings):
     super().__init__()
     self.alpha_long_available = False
 
-    tuning_texts = [tr("Off"), tr("Dynamic"), tr("Predictive")]
-    self.longitudinal_tuning_item = multiple_button_item_sp(tr("Custom Longitudinal Tuning"), "", tuning_texts,
+    tuning_texts = [lambda: tr("Off"), lambda: tr("Dynamic"), lambda: tr("Predictive")]
+    self.longitudinal_tuning_item = multiple_button_item_sp(lambda: tr("Custom Longitudinal Tuning"), "", tuning_texts,
                                                             button_width=300, callback=self._on_tuning_selected,
                                                             param="HyundaiLongitudinalTuning", inline=False)
     self.items = [self.longitudinal_tuning_item]

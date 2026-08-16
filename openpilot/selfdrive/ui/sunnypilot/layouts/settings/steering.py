@@ -8,7 +8,7 @@ from opendbc.car.structs import car
 from enum import IntEnum
 
 from openpilot.selfdrive.ui.ui_state import ui_state
-from openpilot.system.ui.lib.multilang import tr
+from openpilot.system.ui.lib.multilang import tr, tr_noop
 from openpilot.system.ui.sunnypilot.widgets.list_view import toggle_item_sp, simple_button_item_sp, option_item_sp, LineSeparatorSP
 from openpilot.system.ui.widgets.scroller_tici import Scroller
 from openpilot.system.ui.widgets import Widget
@@ -38,11 +38,11 @@ class SteeringLayout(Widget):
     self._scroller = Scroller(items, line_separator=False, spacing=0)
 
   def _initialize_items(self):
-    self._mads_base_desc = tr("Enable the beloved MADS feature. " +
-                              "Disable toggle to revert back to stock sunnypilot engagement/disengagement.")
-    self._mads_limited_desc = tr("This platform supports limited MADS settings.")
-    self._mads_full_desc = tr("This platform supports all MADS settings.")
-    self._mads_check_compat_desc = tr("Start the vehicle to check vehicle compatibility.")
+    self._mads_base_desc = tr_noop("Enable the beloved MADS feature. " +
+                                   "Disable toggle to revert back to stock sunnypilot engagement/disengagement.")
+    self._mads_limited_desc = tr_noop("This platform supports limited MADS settings.")
+    self._mads_full_desc = tr_noop("This platform supports all MADS settings.")
+    self._mads_check_compat_desc = tr_noop("Start the vehicle to check vehicle compatibility.")
 
     self._mads_toggle = toggle_item_sp(
       param="Mads",
@@ -126,10 +126,10 @@ class SteeringLayout(Widget):
 
     torque_allowed = ui_state.CP is not None and ui_state.CP.steerControlType != car.CarParams.SteerControlType.angle
     if ui_state.CP is not None:
-      mads_main_desc = self._mads_limited_desc if self._mads_settings_layout._mads_limited_settings() else self._mads_full_desc
-      self._mads_toggle.set_description(f"<b>{mads_main_desc}</b><br><br>{self._mads_base_desc}")
+      mads_main_desc = tr(self._mads_limited_desc) if self._mads_settings_layout._mads_limited_settings() else tr(self._mads_full_desc)
+      self._mads_toggle.set_description(f"<b>{mads_main_desc}</b><br><br>{tr(self._mads_base_desc)}")
     else:
-      self._mads_toggle.set_description(f"<b>{self._mads_check_compat_desc}</b><br><br>{self._mads_base_desc}")
+      self._mads_toggle.set_description(f"<b>{tr(self._mads_check_compat_desc)}</b><br><br>{tr(self._mads_base_desc)}")
 
     self._mads_toggle.action_item.set_enabled(ui_state.is_offroad())
     self._mads_settings_button.action_item.set_enabled(ui_state.is_offroad() and self._mads_toggle.action_item.get_state())
