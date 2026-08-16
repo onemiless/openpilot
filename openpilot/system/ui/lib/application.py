@@ -704,6 +704,9 @@ class GuiApplication(GuiApplicationExt):
     if language not in self._fallback_fonts:
       chars = set(map(chr, range(32, 127))) | set(EXTRA_FONT_CHARS)
       chars.update(TRANSLATIONS_DIR.joinpath(f"app_{language}.po").read_text(encoding="utf-8"))
+      # language display names may contain chars not present in the po (e.g. 文/简)
+      for lang_name in multilang.languages:
+        chars.update(lang_name)
       codepoints = sorted(map(ord, chars))
       codepoint_buffer = rl.ffi.new("int[]", codepoints)
       with as_file(FONT_DIR) as fspath:
