@@ -88,14 +88,11 @@ class CruiseLayout(Widget):
       param="DynamicExperimentalControl")
 
     items = [
-      self.icbm_toggle,
       self.dec_toggle,
       self.scc_v_toggle,
-      self.scc_m_toggle,
       self.custom_acc_toggle,
       self.custom_acc_short_increment,
       self.custom_acc_long_increment,
-      self.sla_settings_button,
     ]
     return items
 
