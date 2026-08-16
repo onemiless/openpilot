@@ -46,12 +46,6 @@ class TogglesLayout(Widget):
 
     # param, title, desc, icon, needs_restart
     self._toggle_defs = {
-      "OpenpilotEnabledToggle": (
-        lambda: tr("Enable sunnypilot"),
-        DESCRIPTIONS["OpenpilotEnabledToggle"],
-        "chffr_wheel.png",
-        True,
-      ),
       "ExperimentalMode": (
         lambda: tr("Experimental Mode"),
         "",
