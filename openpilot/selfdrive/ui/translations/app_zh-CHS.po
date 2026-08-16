@@ -1947,7 +1947,7 @@ msgstr "延后更新"
 #: openpilot/selfdrive/ui/layouts/settings/settings.py
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/settings.py
 msgid "Software"
-msgstr "软件"
+msgstr "更新"
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/models.py
 msgid "Software Delay:"
