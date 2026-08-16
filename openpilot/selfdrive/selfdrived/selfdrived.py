@@ -169,8 +169,9 @@ class SelfdriveD(CruiseHelper):
       self.startup_event = EventName.startupNoSecOcKey
 
     if not car_recognized:
-      self.events.add(EventName.carUnrecognized, static=True)
-      set_offroad_alert("Offroad_CarUnrecognized", True)
+      pass  # MR.ONE: disable car-unrecognized alert
+      # self.events.add(EventName.carUnrecognized, static=True)
+      # set_offroad_alert("Offroad_CarUnrecognized", True)
     elif self.CP.passive:
       self.events.add(EventName.dashcamMode, static=True)
 
