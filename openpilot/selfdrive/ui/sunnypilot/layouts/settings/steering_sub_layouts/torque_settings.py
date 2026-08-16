@@ -48,7 +48,7 @@ class TorqueSettingsLayout(Widget):
                              "Thanks to @twilsonco for the implementation."),
     )
     self._torque_control_versions = ListItemSP(
-      title=tr("Torque Control Tune Version"),
+      title=lambda: tr("Torque Control Tune Version"),
       description="Select the version of Torque Control Tune to use.",
       action_item=NoElideButtonAction(tr("SELECT")),
       callback=self._show_torque_version_dialog,

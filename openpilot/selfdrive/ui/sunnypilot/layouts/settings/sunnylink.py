@@ -151,8 +151,8 @@ class SunnylinkLayout(Widget):
 
   def _initialize_items(self):
     self._sunnylink_toggle = toggle_item_sp(
-      title=tr("Enable sunnylink"),
-      description=tr("This is the master switch, it will allow you to cutoff any sunnylink requests should you want to do that."),
+      title=lambda: tr("Enable sunnylink"),
+      description=lambda: tr("This is the master switch, it will allow you to cutoff any sunnylink requests should you want to do that."),
       param="SunnylinkEnabled",
       callback=self._sunnylink_toggle_callback
     )
@@ -161,29 +161,29 @@ class SunnylinkLayout(Widget):
     self._sunnylink_description.set_visible(False)
 
     self._sponsor_btn = button_item_sp(
-      title=tr("Sponsor Status"),
-      button_text=tr("SPONSOR"),
-      description=tr(
+      title=lambda: tr("Sponsor Status"),
+      button_text=lambda: tr("SPONSOR"),
+      description=lambda: tr(
         "Become a sponsor of sunnypilot to get early access to sunnylink features when they become available."),
       callback=lambda: self._handle_pair_btn(False)
     )
     self._pair_btn = button_item_sp(
-      title=tr("Pair GitHub Account"),
-      button_text=tr("Not Paired"),
-      description=tr(
+      title=lambda: tr("Pair GitHub Account"),
+      button_text=lambda: tr("Not Paired"),
+      description=lambda: tr(
         "Pair your GitHub account to grant your device sponsor benefits, including API access on sunnylink."),
       callback=lambda: self._handle_pair_btn(True)
     )
     self._sunnylink_uploader_toggle = toggle_item_sp(
-      title=tr("Enable sunnylink uploader (infrastructure test)"),
-      description=tr("Enable sunnylink uploader to allow sunnypilot to upload your driving data to sunnypilot servers. ") +
+      title=lambda: tr("Enable sunnylink uploader (infrastructure test)"),
+      description=lambda: tr("Enable sunnylink uploader to allow sunnypilot to upload your driving data to sunnypilot servers. ") +
                   tr("(Only for highest tiers, and does NOT bring ANY benefit to you yet. We are just testing data volume.)"),
       param="EnableSunnylinkUploader"
     )
     self._sunnylink_backup_restore_buttons = dual_button_item(
       description="",
-      left_text=tr("Backup Settings"),
-      right_text=tr("Restore Settings"),
+      left_text=lambda: tr("Backup Settings"),
+      right_text=lambda: tr("Restore Settings"),
       left_callback=self._handle_backup_btn,
       right_callback=self._handle_restore_btn
     )

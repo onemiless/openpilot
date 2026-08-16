@@ -50,7 +50,7 @@ class ModelsLayout(Widget):
 
   def _initialize_items(self):
     self.current_model_item = ListItemSP(
-      title=tr("Current Model"),
+      title=lambda: tr("Current Model"),
       description="",
       action_item=NoElideButtonAction(tr("SELECT")),
       callback=self._handle_current_model_clicked
@@ -68,7 +68,7 @@ class ModelsLayout(Widget):
                                              gui_app.push_widget(alert_dialog(tr("Fetching Latest Models")))))
 
     self.clear_cache_item = ListItemSP(
-      title=tr("Clear Model Cache"),
+      title=lambda: tr("Clear Model Cache"),
       description="",
       action_item=NoElideButtonAction(tr("CLEAR")),
       callback=self._clear_cache

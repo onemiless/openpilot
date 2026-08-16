@@ -43,34 +43,34 @@ class CruiseLayout(Widget):
   def _initialize_items(self):
 
     self.icbm_toggle = toggle_item_sp(
-      title=tr("Intelligent Cruise Button Management (ICBM) (Alpha)"),
+      title=lambda: tr("Intelligent Cruise Button Management (ICBM) (Alpha)"),
       description="",
       param="IntelligentCruiseButtonManagement")
 
     self.scc_v_toggle = toggle_item_sp(
-      title=tr("Smart Cruise Control - Vision"),
-      description=tr("Use vision path predictions to estimate the appropriate speed to drive through turns ahead."),
+      title=lambda: tr("Smart Cruise Control - Vision"),
+      description=lambda: tr("Use vision path predictions to estimate the appropriate speed to drive through turns ahead."),
       param="SmartCruiseControlVision")
 
     self.scc_m_toggle = toggle_item_sp(
-      title=tr("Smart Cruise Control - Map"),
-      description=tr("Use map data to estimate the appropriate speed to drive through turns ahead."),
+      title=lambda: tr("Smart Cruise Control - Map"),
+      description=lambda: tr("Use map data to estimate the appropriate speed to drive through turns ahead."),
       param="SmartCruiseControlMap")
 
     self.custom_acc_toggle = toggle_item_sp(
-      title=tr("Custom ACC Speed Increments"),
+      title=lambda: tr("Custom ACC Speed Increments"),
       description="",
       param="CustomAccIncrementsEnabled",
       callback=self._on_custom_acc_toggle)
 
     self.custom_acc_short_increment = option_item_sp(
-      title=tr("Short Press Increment"),
+      title=lambda: tr("Short Press Increment"),
       param="CustomAccShortPressIncrement",
       min_value=1, max_value=10, value_change_step=1,
       inline=True)
 
     self.custom_acc_long_increment = option_item_sp(
-      title=tr("Long Press Increment"),
+      title=lambda: tr("Long Press Increment"),
       param="CustomAccLongPressIncrement",
       value_map={1: 1, 2: 5, 3: 10},
       min_value=1, max_value=3, value_change_step=1,
@@ -83,8 +83,8 @@ class CruiseLayout(Widget):
     )
 
     self.dec_toggle = toggle_item_sp(
-      title=tr("Enable Dynamic Experimental Control"),
-      description=tr("Enable toggle to allow the model to determine when to use sunnypilot ACC or sunnypilot End to End Longitudinal."),
+      title=lambda: tr("Enable Dynamic Experimental Control"),
+      description=lambda: tr("Enable toggle to allow the model to determine when to use sunnypilot ACC or sunnypilot End to End Longitudinal."),
       param="DynamicExperimentalControl")
 
     items = [
