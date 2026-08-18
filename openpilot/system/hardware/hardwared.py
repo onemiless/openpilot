@@ -447,10 +447,10 @@ def hardware_thread(end_event, hw_queue) -> None:
     statlog.sample("som_power_draw", som_power_draw)
     msg.deviceState.somPowerDrawW = som_power_draw
 
-    # Check if we need to shut down
-    if power_monitor.should_shutdown(onroad_conditions["ignition"], in_car, off_ts, started_seen):
-      cloudlog.warning(f"shutting device down, offroad since {off_ts}")
-      params.put_bool("DoShutdown", True, block=True)
+    # Automatic shutdown is temporarily disabled to avoid unexpected device reboots.
+    # if power_monitor.should_shutdown(onroad_conditions["ignition"], in_car, off_ts, started_seen):
+    #   cloudlog.warning(f"shutting device down, offroad since {off_ts}")
+    #   params.put_bool("DoShutdown", True, block=True)
 
     msg.deviceState.started = started_ts is not None and not offroad_mode
     msg.deviceState.startedMonoTime = int(1e9*(started_ts or 0))
