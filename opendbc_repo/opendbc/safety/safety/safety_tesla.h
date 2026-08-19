@@ -4,6 +4,7 @@
 
 static bool tesla_longitudinal = false;
 static bool tesla_stock_aeb = false;
+static bool tesla_ars408 = false;
 
 // FSD 14 support: flips ANGLE_CONTROL and LANE_KEEP_ASSIST control types
 static bool tesla_fsd_14 = false;
@@ -144,6 +145,11 @@ static bool tesla_tx_hook(const CANPacket_t *to_send) {
   int addr = GET_ADDR(to_send);
   bool violation = false;
 
+  const bool ars408_msg = (addr == 0x200) || (addr == 0x202) || (addr == 0x300) || (addr == 0x301);
+  if (ars408_msg && !tesla_ars408) {
+    violation = true;
+  }
+
   // Don't send any messages when Summon is active
   if (tesla_summon) {
     violation = true;
@@ -217,6 +223,81 @@ static bool tesla_tx_hook(const CANPacket_t *to_send) {
     }
   }
 
+  // ARS408 RadarConfiguration: permit exactly one reviewed field per frame.
+  // This prevents a software error from changing sensor ID, power, quality,
+  // sort order, relay, or RCS threshold as an unintended side effect.
+  if (addr == 0x200) {
+    const uint8_t valid = GET_BYTE(to_send, 0);
+    bool valid_config = false;
+    if (valid == 0x01U) {  // MaxDistance: 200..250 m in 2 m increments
+      const int raw_distance = (GET_BYTE(to_send, 1) << 2) | (GET_BYTE(to_send, 2) >> 6);
+      valid_config = (raw_distance >= 100) && (raw_distance <= 125) &&
+                     ((GET_BYTE(to_send, 2) & 0x3FU) == 0U) &&
+                     (GET_BYTE(to_send, 3) == 0U) && (GET_BYTE(to_send, 4) == 0U) &&
+                     (GET_BYTE(to_send, 5) == 0U) && (GET_BYTE(to_send, 6) == 0U) &&
+                     (GET_BYTE(to_send, 7) == 0U);
+    } else if (valid == 0x08U) {  // OutputType: disabled or Objects only
+      valid_config = (GET_BYTE(to_send, 1) == 0U) && (GET_BYTE(to_send, 2) == 0U) &&
+                     (GET_BYTE(to_send, 3) == 0U) &&
+                     ((GET_BYTE(to_send, 4) == 0U) || (GET_BYTE(to_send, 4) == 0x08U)) &&
+                     (GET_BYTE(to_send, 5) == 0U) && (GET_BYTE(to_send, 6) == 0U) &&
+                     (GET_BYTE(to_send, 7) == 0U);
+    } else if (valid == 0x20U) {  // Extended information: disabled or enabled
+      valid_config = (GET_BYTE(to_send, 1) == 0U) && (GET_BYTE(to_send, 2) == 0U) &&
+                     (GET_BYTE(to_send, 3) == 0U) && (GET_BYTE(to_send, 4) == 0U) &&
+                     ((GET_BYTE(to_send, 5) == 0U) || (GET_BYTE(to_send, 5) == 0x08U)) &&
+                     (GET_BYTE(to_send, 6) == 0U) &&
+                     (GET_BYTE(to_send, 7) == 0U);
+    } else if (valid == 0x80U) {  // Store current configuration in NVM
+      valid_config = (GET_BYTE(to_send, 1) == 0U) && (GET_BYTE(to_send, 2) == 0U) &&
+                     (GET_BYTE(to_send, 3) == 0U) && (GET_BYTE(to_send, 4) == 0U) &&
+                     (GET_BYTE(to_send, 5) == 0x80U) && (GET_BYTE(to_send, 6) == 0U) &&
+                     (GET_BYTE(to_send, 7) == 0U);
+    }
+    if (controls_allowed) {
+      valid_config = false;
+    }
+    violation |= !valid_config;
+  }
+
+  // Object FilterCfg only. Valid=0 is a read-only query and must carry no
+  // payload; Valid=1 writes one complete record. Reject reserved index 15.
+  if (addr == 0x202) {
+    const uint8_t header = GET_BYTE(to_send, 0);
+    const int index = (header >> 3) & 0x0FU;
+    const bool write = (header & 0x83U) == 0x82U;
+    const bool query = ((header & 0x87U) == 0x80U) && (GET_BYTE(to_send, 1) == 0U) &&
+                       (GET_BYTE(to_send, 2) == 0U) && (GET_BYTE(to_send, 3) == 0U) &&
+                       (GET_BYTE(to_send, 4) == 0U);
+    bool valid_write = write && (index <= 14);
+    if (valid_write) {
+      const bool thirteen_bit = index == 10;
+      const uint8_t reserved_mask = thirteen_bit ? 0xE0U : 0xF0U;
+      const int value_mask = thirteen_bit ? 0x1FU : 0x0FU;
+      const int minimum = ((GET_BYTE(to_send, 1) & value_mask) << 8) | GET_BYTE(to_send, 2);
+      const int maximum = ((GET_BYTE(to_send, 3) & value_mask) << 8) | GET_BYTE(to_send, 4);
+      valid_write = ((GET_BYTE(to_send, 1) & reserved_mask) == 0U) &&
+                    ((GET_BYTE(to_send, 3) & reserved_mask) == 0U) &&
+                    (minimum <= maximum);
+      if (index == 0) {
+        valid_write = valid_write && (minimum == 0) && (maximum <= 100);
+      } else if (index == 8) {
+        valid_write = valid_write && (maximum <= 7);
+      }
+      if (controls_allowed) {
+        valid_write = false;
+      }
+    }
+    violation |= (!valid_write && !query) || (index > 14);
+  }
+
+  if (addr == 0x300) {
+    const int direction = GET_BYTE(to_send, 0) >> 6;
+    const int speed_raw = ((GET_BYTE(to_send, 0) & 0x1FU) << 8) | GET_BYTE(to_send, 1);
+    const bool reserved_clear = (GET_BYTE(to_send, 0) & 0x20U) == 0U;
+    violation |= (direction > 2) || !reserved_clear || (speed_raw > 8190);
+  }
+
   if (violation) {
     tx = false;
   }
@@ -270,10 +351,16 @@ static safety_config tesla_init(uint16_t param) {
     {0x2b9, 0, 8},  // DAS_control
     {0x27D, 0, 3},  // APS_eacMonitor
     {0x3E9, 1, 8},  // DAS_bodyControls (blinker on vehicle bus)
+    {0x200, 1, 8},  // ARS408 RadarConfiguration
+    {0x202, 1, 5},  // ARS408 Object FilterCfg
+    {0x300, 1, 2},  // ARS408 SpeedInformation
+    {0x301, 1, 2},  // ARS408 YawRateInformation
   };
 
   const uint16_t TESLA_FLAG_FSD_14 = 2;
+  const uint16_t TESLA_FLAG_ARS408 = 4;
   tesla_fsd_14 = GET_FLAG(param, TESLA_FLAG_FSD_14);
+  tesla_ars408 = GET_FLAG(param, TESLA_FLAG_ARS408);
 
 #ifdef ALLOW_DEBUG
   const int TESLA_FLAG_LONGITUDINAL_CONTROL = 1;
