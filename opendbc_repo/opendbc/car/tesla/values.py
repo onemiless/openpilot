@@ -140,6 +140,7 @@ class CarControllerParams:
 class TeslaSafetyFlags(IntFlag):
   LONG_CONTROL = 1
   FSD_14 = 2
+  ARS408 = 4
 
 
 class TeslaFlags(IntFlag):
@@ -148,6 +149,7 @@ class TeslaFlags(IntFlag):
   MISSING_DAS_SETTINGS = 4
   HAS_VEHICLE_BUS = 8
   HAS_DAS_BODY_CONTROLS = 16
+  ARS408_RADAR = 32
 
 
 DBC = CAR.create_dbc_map()

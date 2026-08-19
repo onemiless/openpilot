@@ -1,7 +1,8 @@
 from opendbc.can import CANParser
 from opendbc.car import Bus, structs
 from opendbc.car.interfaces import RadarInterfaceBase
-from opendbc.car.tesla.values import DBC
+from opendbc.car.tesla.ars408_radar_interface import ARS408RadarInterface
+from opendbc.car.tesla.values import DBC, TeslaFlags
 
 RADAR_START_ADDR = 0x410
 RADAR_MSG_COUNT = 80  # 40 points * 2 messages each
@@ -23,6 +24,10 @@ def get_radar_can_parser(CP):
 
 class RadarInterface(RadarInterfaceBase):
   def __init__(self, CP):
+    self.ars408 = ARS408RadarInterface(CP) if CP.flags & TeslaFlags.ARS408_RADAR else None
+    if self.ars408 is not None:
+      return
+
     super().__init__(CP)
     self.updated_messages = set()
     self.trigger_msg = RADAR_START_ADDR + RADAR_MSG_COUNT - 1
@@ -31,7 +36,15 @@ class RadarInterface(RadarInterfaceBase):
     self.radar_off_can = CP.radarUnavailable
     self.rcp = get_radar_can_parser(CP)
 
+  def update_carrot(self, v_ego, a_ego, rcv_time, can_packets):
+    if self.ars408 is not None:
+      return self.ars408.update_carrot(v_ego, a_ego, rcv_time, can_packets)
+    return super().update_carrot(v_ego, a_ego, rcv_time, can_packets)
+
   def update(self, can_strings):
+    if self.ars408 is not None:
+      return self.ars408.update(can_strings)
+
     if self.radar_off_can or self.rcp is None:
       return super().update(None)
 
@@ -47,6 +60,9 @@ class RadarInterface(RadarInterfaceBase):
     return rr
 
   def _update(self, updated_messages):
+    if self.ars408 is not None:
+      raise RuntimeError("factory Tesla radar update called while ARS408 is selected")
+
     ret = structs.RadarData()
     if self.rcp is None:
       return ret

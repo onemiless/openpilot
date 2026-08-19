@@ -1,11 +1,13 @@
 import numpy as np
 from opendbc.can import CANPacker
-from opendbc.car import Bus, apply_steer_angle_limits_vm, structs
+from opendbc.car import Bus, apply_steer_angle_limits_vm
 from opendbc.car.interfaces import CarControllerBase
+from opendbc.car.tesla.ars408_controller import ARS408Controller
 from opendbc.car.tesla.teslacan import TeslaCAN
 from opendbc.car.tesla.values import CarControllerParams, TeslaFlags
 from opendbc.car.tesla.coop_steering import CoopSteeringCarController
 from opendbc.car.vehicle_model import VehicleModel
+from openpilot.common.params import Params
 
 
 def get_safety_CP():
@@ -23,6 +25,12 @@ class CarController(CarControllerBase):
     self.tesla_can = TeslaCAN(CP, self.packer)
     self.coop_steering = True
     self.coop_steer = CoopSteeringCarController()
+    self.ars408 = ARS408Controller(CP) if CP.flags & TeslaFlags.ARS408_RADAR else None
+    self.params = Params()
+    active_radar_mode = self.params.get_int("TeslaRadarMode") if self.ars408 is not None else 0
+    self.params.put_bool_nonblocking("TeslaRadarVehicleDetected", True)
+    self.params.put_bool_nonblocking("TeslaRadarControllerActive", self.ars408 is not None)
+    self.params.put_int_nonblocking("TeslaRadarActiveMode", active_radar_mode)
 
     # Vehicle model used for lateral limiting
     self.VM = VehicleModel(get_safety_CP())
@@ -36,6 +44,9 @@ class CarController(CarControllerBase):
   def update(self, CC, CS, now_nanos):
     actuators = CC.actuators
     can_sends = []
+
+    if self.ars408 is not None:
+      can_sends.extend(self.ars408.update(CC, CS, self.frame))
 
     # Tesla EPS enforces disabling steering on heavy lateral override force.
     # When enabling in a tight curve, we wait until user reduces steering force to start steering.

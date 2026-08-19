@@ -4,6 +4,7 @@ from opendbc.car.tesla.carcontroller import CarController
 from opendbc.car.tesla.carstate import CarState
 from opendbc.car.tesla.values import TeslaSafetyFlags, TeslaFlags, CANBUS, CAR, DBC, FSD_14_FW, Ecu
 from opendbc.car.tesla.radar_interface import RadarInterface, RADAR_START_ADDR
+from openpilot.common.params import Params
 
 
 class CarInterface(CarInterfaceBase):
@@ -27,12 +28,23 @@ class CarInterface(CarInterfaceBase):
     if 0x293 not in fingerprint[CANBUS.autopilot_party]:
       ret.flags |= TeslaFlags.MISSING_DAS_SETTINGS.value
 
-    # Radar support is intended to work for:
+    # An explicitly selected external ARS408 takes precedence over Tesla's
+    # factory Continental radar. Keeping the selection parameter-gated avoids
+    # changing radar behavior for every Tesla on this general Carrot branch.
+    radar_mode = Params().get_int("TeslaRadarMode")
+    if radar_mode in (1, 2, 3):
+      ret.flags |= TeslaFlags.ARS408_RADAR.value
+      ret.safetyConfigs[0].safetyParam |= TeslaSafetyFlags.ARS408.value
+      ret.radarUnavailable = False
+      ret.radarTimeStep = 1.0 / 14.0
+
+    # Factory radar support is intended to work for:
     # - Tesla Model 3 vehicles built approximately mid-2017 through early-2021
     # - Tesla Model Y vehicles built approximately mid-2020 through early-2021
     # - Vehicles equipped with the Continental ARS4-B radar (used on HW2 / HW2.5 / early HW3)
     # - Radar CAN lines must be tapped and connected to CAN bus 1 (normally not used for tesla vehicles)
-    ret.radarUnavailable = RADAR_START_ADDR not in fingerprint[1] or Bus.radar not in DBC[candidate]
+    else:
+      ret.radarUnavailable = RADAR_START_ADDR not in fingerprint[1] or Bus.radar not in DBC[candidate]
 
     ret.alphaLongitudinalAvailable = True
     if alpha_long:
