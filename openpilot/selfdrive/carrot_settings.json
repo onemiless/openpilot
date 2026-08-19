@@ -403,7 +403,9 @@
             "EnableRadarTracks",
             "EnableCornerRadar",
             "CarrotRadarMode",
-            "CarrotRadarCutInSensitivity"
+            "CarrotRadarCutInSensitivity",
+            "TeslaRadarMode",
+            "TeslaRadarMotionInput"
           ]
         },
         {
@@ -1935,6 +1937,41 @@
       "cgroup": "系统",
       "ctitle": "使用广角前置摄像头",
       "cdescr": "默认开启。仅在广角前置摄像头故障的设备上关闭。关闭后，camerad 会将广角摄像头排除在同步之外，modeld 会将普通前置摄像头画面复用于两个模型输入。摄像范围和模型性能可能会变化。更改后请重启设备。",
+      "min": 0,
+      "max": 1,
+      "default": 1,
+      "unit": 1,
+      "control": "toggle",
+      "risk": "high"
+    },
+    {
+      "group": "레이더설정",
+      "name": "TeslaRadarMode",
+      "title": "Tesla ARS408 레이더 모드",
+      "descr": "0: 끔/순정 레이더, 1: 모니터링(트랙 미사용), 2: 퓨전, 3: 디버그. Panda bus 1, Sensor ID 0, Objects Quality 1 조건을 충족하는 외장 ARS408 Tesla에서만 사용하세요. 변경 후 차량 또는 장치를 다시 시작해야 합니다.",
+      "egroup": "RADAR",
+      "etitle": "Tesla ARS408 Radar Mode",
+      "edescr": "0: Off/factory radar, 1: Monitor without feeding tracks, 2: Fusion, 3: Debug. Use only on a Tesla ARS408 setup with Panda bus 1, Sensor ID 0, and Quality 1 in Objects mode. Restart the vehicle or device after changing.",
+      "cgroup": "雷达设置",
+      "ctitle": "Tesla ARS408 雷达模式",
+      "cdescr": "0：关闭/原厂雷达，1：仅监控（不输出目标），2：融合，3：调试。仅用于外接 ARS408 已接入 Panda bus 1、Sensor ID 为 0，且 Objects 模式 Quality 为 1 的 Tesla。更改后需重新启动车辆或设备。",
+      "min": 0,
+      "max": 3,
+      "default": 0,
+      "unit": 1,
+      "risk": "high"
+    },
+    {
+      "group": "레이더설정",
+      "name": "TeslaRadarMotionInput",
+      "title": "ARS408 차량 운동 입력",
+      "descr": "ARS408에 차량 속도와 요레이트를 20 Hz로 전송합니다. ARS408 모드에서만 적용됩니다.",
+      "egroup": "RADAR",
+      "etitle": "ARS408 Vehicle Motion Input",
+      "edescr": "Send vehicle speed and yaw rate to the ARS408 at 20 Hz. Used only while ARS408 mode is selected.",
+      "cgroup": "雷达设置",
+      "ctitle": "ARS408 车辆运动输入",
+      "cdescr": "以 20 Hz 向 ARS408 发送车速和横摆角速度，仅在选择 ARS408 模式时生效。",
       "min": 0,
       "max": 1,
       "default": 1,

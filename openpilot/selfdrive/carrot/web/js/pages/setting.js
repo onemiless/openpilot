@@ -2877,6 +2877,7 @@ async function renderItems(group, options = {}) {
   scheduleSettingOverflowSync(itemsBox);
   window.CarrotMapboxTokenSettings?.sync?.();
   window.CarrotYouTubeLiveSettings?.sync?.();
+  window.CarrotARS408Settings?.sync?.();
   syncSettingLiveRefresh();
 
   if (pendingSettingFocus?.group === group) {

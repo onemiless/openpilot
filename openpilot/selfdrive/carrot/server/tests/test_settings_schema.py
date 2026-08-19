@@ -188,7 +188,15 @@ def test_carrot_radar_mode_replaces_removed_model_mode(settings, params):
     "EnableCornerRadar",
     "CarrotRadarMode",
     "CarrotRadarCutInSensitivity",
+    "TeslaRadarMode",
+    "TeslaRadarMotionInput",
   ]
+  tesla_mode = by_name["TeslaRadarMode"]
+  assert (tesla_mode["min"], tesla_mode["max"], tesla_mode["default"]) == (0, 3, 0)
+  assert tesla_mode["risk"] == "high"
+  tesla_motion = by_name["TeslaRadarMotionInput"]
+  assert (tesla_motion["min"], tesla_motion["max"], tesla_motion["default"]) == (0, 1, 1)
+  assert tesla_motion["control"] == "toggle"
 
 
 def test_parameter_names_are_unique(params):
