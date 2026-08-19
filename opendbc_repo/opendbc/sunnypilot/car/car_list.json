@@ -3927,6 +3927,16 @@
     ],
     "package": "All"
   },
+  "Toyota Sienna 2026 PRC": {
+    "platform": "TOYOTA_SIENNA_2026_PRC",
+    "make": "Toyota",
+    "brand": "toyota",
+    "model": "Sienna",
+    "year": [
+      "2026"
+    ],
+    "package": "All"
+  },
   "Toyota Yaris (Non-US only) 2020, 2023": {
     "platform": "TOYOTA_YARIS",
     "make": "Toyota",

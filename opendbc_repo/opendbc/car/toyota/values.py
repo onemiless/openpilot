@@ -74,6 +74,9 @@ class ToyotaFlags(IntFlag):
   # these cars can utilize 2.0 m/s^2
   RAISED_ACCEL_LIMIT = 1024
   SECOC = 2048
+  # The EPS firmware accepts dummy SecOC MACs for lateral frames. Longitudinal
+  # control remains entirely stock on this platform.
+  EPS_BRIDGED_SECOC = 4096
 
   # deprecated flags
   # these cars are speculated to allow stop and go when the DSU is unplugged or disabled with sDSU
@@ -100,6 +103,15 @@ class ToyotaCarDocs(CarDocs):
 class ToyotaSecOcCarDocs(ToyotaCarDocs):
   support_type: SupportType = SupportType.CUSTOM
   support_link: str = "#secoc-cars-with-recoverable-keys"
+
+
+@dataclass
+class ToyotaSienna2026PRCCarDocs(ToyotaSecOcCarDocs):
+  def __post_init__(self):
+    super().__post_init__()
+    self.model = "Sienna"
+    self.years = "2026"
+    self.year_list = ["2026"]
 
 
 @dataclass
@@ -309,6 +321,11 @@ class CAR(Platforms):
   TOYOTA_SIENNA_4TH_GEN = ToyotaSecOCPlatformConfig(
     [ToyotaSecOcCarDocs("Toyota Sienna 2021-23", min_enable_speed=MIN_ACC_SPEED)],
     CarSpecs(mass=4625. * CV.LB_TO_KG, wheelbase=3.06, steerRatio=17.8, tireStiffnessFactor=0.444),
+  )
+  TOYOTA_SIENNA_2026_PRC = ToyotaSecOCPlatformConfig(
+    [ToyotaSienna2026PRCCarDocs("Toyota Sienna 2026 PRC", min_enable_speed=MIN_ACC_SPEED)],
+    CarSpecs(mass=4625. * CV.LB_TO_KG, wheelbase=3.06, steerRatio=17.8, tireStiffnessFactor=0.444),
+    flags=ToyotaFlags.EPS_BRIDGED_SECOC,
   )
 
   # Lexus
