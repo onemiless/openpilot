@@ -10,10 +10,11 @@ import time
 from openpilot.common.parameterized import parameterized
 
 from openpilot.cereal import custom
+from opendbc.car.common.conversions import Conversions as CV
 from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit import LIMIT_MAX_MAP_DATA_AGE
 
 from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.speed_limit_resolver import SpeedLimitResolver, ALL_SOURCES
-from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.common import Policy
+from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.common import OffsetType, Policy
 from openpilot.common.test import OpenpilotTestCase
 
 SpeedLimitSource = custom.LongitudinalPlanSP.SpeedLimit.Source
@@ -74,6 +75,22 @@ def resolver_class():
 
 
 class TestSpeedLimitResolverValidation(OpenpilotTestCase):
+
+  def test_offset_is_disabled_at_or_above_result_threshold(self, resolver_class):
+    resolver = resolver_class()
+    resolver.is_metric = True
+    resolver.offset_type = OffsetType.fixed
+    resolver.offset_value = 10
+    resolver.offset_max_speed = 100
+
+    resolver.speed_limit = 89 * CV.KPH_TO_MS
+    assert resolver._get_speed_limit_offset() == 10 * CV.KPH_TO_MS
+
+    resolver.speed_limit = 90 * CV.KPH_TO_MS
+    assert resolver._get_speed_limit_offset() == 0.
+
+    resolver.offset_max_speed = 0
+    assert resolver._get_speed_limit_offset() == 10 * CV.KPH_TO_MS
 
   @parameterized.expand(list(Policy), names=["policy"])
   def test_initial_state(self, resolver_class, policy):

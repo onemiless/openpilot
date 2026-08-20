@@ -32,6 +32,21 @@ EventName = log.OnroadEvent.EventName
 # forward
 carlog.addHandler(ForwardingHandler(cloudlog))
 
+TESLA_SPEED_LIMIT_CONTEXT_STALE_S = 0.2
+
+
+def get_tesla_speed_limit_context(sm: messaging.SubMaster, now: float) -> tuple[float, bool, float]:
+  # 仅采用新鲜且已启用“限速辅助”的最终目标；信息/警告模式不得改动原车设定速度。
+  plan = sm['longitudinalPlanSP']
+  plan_recv_time = float(sm.recv_time['longitudinalPlanSP'])
+  plan_valid = (sm.seen['longitudinalPlanSP'] and sm.valid['longitudinalPlanSP'] and
+                now - plan_recv_time <= TESLA_SPEED_LIMIT_CONTEXT_STALE_S)
+  resolver = plan.speedLimit.resolver
+  limit_valid = bool(resolver.speedLimitValid or resolver.speedLimitLastValid)
+  target = float(resolver.speedLimitFinalLast)
+  valid = plan_valid and bool(plan.speedLimit.assist.enabled) and limit_valid and target > 0.0
+  return (target if valid else 0.0, valid, plan_recv_time)
+
 
 def obd_callback(params: Params) -> ObdCallback:
   def set_obd_multiplexing(obd_multiplexing: bool):
@@ -195,6 +210,13 @@ class Car:
     can_strs = messaging.drain_sock_raw(self.can_sock, wait_for_one=True)
     can_list = can_capnp_to_list(can_strs)
 
+    # 保存原车空闲滚轮帧，后续发送时只改动速度滚轮字段，避免伪造其他未知位。
+    if self.CP.brand == 'tesla' and hasattr(self.CI.CS, "update_speed_button_template"):
+      for mono_time, frames in can_list:
+        for address, data, source in frames:
+          if source == 1 and address == 0x3C2:
+            self.CI.CS.update_speed_button_template(data, mono_time)
+
     # Update carState from CAN
     CS, CS_SP = self.CI.update(can_list)
     CS_SP = convert_to_capnp(CS_SP)
@@ -203,6 +225,11 @@ class Car:
     RD: structs.RadarDataT | None = self.RI.update(can_list)
 
     self.sm.update(0)
+
+    # 将解析后的最终限速目标送到 Tesla 控制器；过期或无效目标会立即撤销自动调整。
+    if self.CP.brand == 'tesla' and hasattr(self.CI.CS, "update_speed_limit_target"):
+      target, valid, _ = get_tesla_speed_limit_context(self.sm, time.monotonic())
+      self.CI.CS.update_speed_limit_target(target, valid)
 
     can_rcv_valid = len(can_strs) > 0
 
