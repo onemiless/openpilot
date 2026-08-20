@@ -14,10 +14,10 @@ PCM_LONG_REQUIRED_MAX_SET_SPEED = {
 }
 
 # Tesla 使用仪表显示的巡航设定速度确认限速辅助。
-# 公制按照 10 km/h 档位处理，英制按照 5 mph 档位处理。
+# 速度滚轮每次变化一个显示单位，因此保留 1 km/h 或 1 mph 的目标精度。
 TESLA_PCM_LONG_REQUIRED_MAX_SET_SPEED = {
-  True: tuple((speed, speed / 3.6) for speed in range(20, 131, 10)),
-  False: tuple((speed, speed * 0.44704) for speed in range(15, 91, 5)),
+  True: tuple((speed, speed / 3.6) for speed in range(20, 131)),
+  False: tuple((speed, speed * 0.44704) for speed in range(15, 91)),
 }
 
 CONFIRM_SPEED_THRESHOLD = {
