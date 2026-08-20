@@ -4,13 +4,15 @@ Copyright (c) 2021-, Haibin Wen, sunnypilot, and a number of other contributors.
 This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
+import math
+
 import openpilot.cereal.messaging as messaging
 from openpilot.cereal import log, custom
 from opendbc.car.structs import car
 from openpilot.common.constants import CV
 from openpilot.sunnypilot.selfdrive.selfdrived.events_base import EventsBase, Priority, ET, Alert, \
   NoEntryAlert, ImmediateDisableAlert, EngagementAlert, NormalPermanentAlert, AlertCallbackType, wrong_car_mode_alert
-from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit import PCM_LONG_REQUIRED_MAX_SET_SPEED, CONFIRM_SPEED_THRESHOLD
+from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit import resolve_pcm_long_required_max
 from openpilot.common.hardware import HARDWARE
 
 AlertSize = log.SelfdriveState.AlertSize
@@ -50,13 +52,19 @@ def speed_limit_pre_active_alert(CP: car.CarParams, CS: car.CarState, sm: messag
   alert_size = AlertSize.small
 
   if CP.openpilotLongitudinalControl and CP.pcmCruise:
-    # PCM long
-    cst_low, cst_high = PCM_LONG_REQUIRED_MAX_SET_SPEED[metric]
-    pcm_long_required_max = cst_low if speed_limit_final_last_conv < CONFIRM_SPEED_THRESHOLD[metric] else cst_high
+    # 与状态机使用同一个目标，避免提示速度和实际控制目标不一致。
+    limit_floor_conv = math.floor(speed_limit_final_last * speed_conv)
+    pcm_long_required_max = resolve_pcm_long_required_max(
+      metric, limit_floor_conv, speed_limit_final_last > 0, brand=CP.brand,
+    )
     pcm_long_required_max_set_speed_conv = round(pcm_long_required_max * speed_conv)
     speed_unit = "km/h" if metric else "mph"
 
-    alert_1_str = f"限速辅助：手动将设定速度更改为 {pcm_long_required_max_set_speed_conv} {speed_unit} 以激活"
+    if CP.brand == "tesla":
+      # Tesla 已由控制器自动调整设定速度，不再提示驾驶员手动设置。
+      alert_1_str = f"限速辅助：正在自动将设定速度调整为 {pcm_long_required_max_set_speed_conv} {speed_unit}"
+    else:
+      alert_1_str = f"限速辅助：手动将设定速度更改为 {pcm_long_required_max_set_speed_conv} {speed_unit} 以激活"
   else:
     if IS_MICI:
       if set_speed_conv < speed_limit_final_last_conv:

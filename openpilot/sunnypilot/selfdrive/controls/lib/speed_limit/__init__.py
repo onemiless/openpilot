@@ -13,7 +13,29 @@ PCM_LONG_REQUIRED_MAX_SET_SPEED = {
   False: (31.2928, 35.7632),  # mph, (70, 80)
 }
 
+# Tesla 使用仪表显示的巡航设定速度确认限速辅助。
+# 公制按照 10 km/h 档位处理，英制按照 5 mph 档位处理。
+TESLA_PCM_LONG_REQUIRED_MAX_SET_SPEED = {
+  True: tuple((speed, speed / 3.6) for speed in range(20, 131, 10)),
+  False: tuple((speed, speed * 0.44704) for speed in range(15, 91, 5)),
+}
+
 CONFIRM_SPEED_THRESHOLD = {
   True: 80,   # km/h
   False: 50,  # mph
 }
+
+
+def resolve_pcm_long_required_max(metric: bool, limit_conv: int, has_speed_limit: bool, *, brand: str) -> float:
+  if brand != "tesla":
+    # 非 Tesla 车型保持原有逻辑，避免改变现有行为。
+    cst_low, cst_high = PCM_LONG_REQUIRED_MAX_SET_SPEED[metric]
+    return cst_low if has_speed_limit and limit_conv < CONFIRM_SPEED_THRESHOLD[metric] else cst_high
+
+  segments = TESLA_PCM_LONG_REQUIRED_MAX_SET_SPEED[metric]
+  if not has_speed_limit:
+    # 没有有效限速时使用最高目标，避免把无效的零限速作为设定速度。
+    return segments[-1][1]
+
+  # Tesla 的目标跟随实际限速，并向上匹配到仪表支持的速度档位。
+  return next((value for threshold, value in segments if limit_conv <= threshold), segments[-1][1])
