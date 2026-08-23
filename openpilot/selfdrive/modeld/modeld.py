@@ -451,6 +451,10 @@ def main(demo=False):
       mdv2sp_send = messaging.new_message('modelDataV2SP')
       left_edge, right_edge = RELC.update_and_fill(modelv2_send.modelV2, mdv2sp_send.modelDataV2SP, v_ego)
       mdv2sp_send.modelDataV2SP.laneTurnDirection = DH.lane_turn_direction
+      mdv2sp_send.modelDataV2SP.navLateralRequest = int(DH.nav_output.request)
+      mdv2sp_send.modelDataV2SP.navWouldLateralRequest = int(DH.nav_output.would_request)
+      mdv2sp_send.modelDataV2SP.navLateralReason = DH.nav_output.reason
+      mdv2sp_send.modelDataV2SP.navManeuverId = DH.nav_maneuver_id
 
       fill_driving_model_data(drivingdata_send, modelv2_send)
       fill_pose_msg(posenet_send, model_output, meta_main.frame_id, vipc_dropped_frames, meta_main.timestamp_eof, extrinsics_calibration_seen)

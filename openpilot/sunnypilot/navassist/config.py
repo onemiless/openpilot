@@ -24,7 +24,7 @@ class NavAssistParams:
   turn_control: bool
   lane_change_control: bool
   route_speed_control: bool
-  require_turn_signal: bool
+  require_turn_signal: bool  # Retained for config compatibility; stage-one control always requires confirmation.
   message_timeout_s: float
   turn_max_speed_mps: float
 

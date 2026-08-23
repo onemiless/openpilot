@@ -19,7 +19,9 @@ class NavDesireController:
   def __init__(self) -> None:
     self._consumed: tuple[str, int] | None = None
 
-  def update(self, nav, nav_valid: bool, params: NavAssistParams, carstate, lateral_active: bool) -> NavDesireOutput:
+  def update(self, nav, nav_valid: bool, params: NavAssistParams, carstate, lateral_active: bool,
+             *, left_edge_detected: bool = False, right_edge_detected: bool = False,
+             controller_turn_max_mps: float | None = None) -> NavDesireOutput:
     raw_maneuver = getattr(nav.maneuver, "raw", nav.maneuver) if nav_valid else 0
     maneuver = Maneuver(int(raw_maneuver))
     request = {
@@ -38,10 +40,24 @@ class NavDesireController:
       return NavDesireOutput(reason="invalid")
     if self._consumed == key:
       return NavDesireOutput(reason="consumed")
-    if not lateral_active or carstate.brakePressed or carstate.trailerConnected:
+    if not lateral_active or carstate.brakePressed:
       self._consumed = key if carstate.brakePressed else self._consumed
       return NavDesireOutput(would_request=request, reason="driver_gate")
-    if carstate.vEgo > params.turn_max_speed_mps:
+    blocked_side = (
+      request == LateralRequest.TURN_LEFT and (carstate.leftBlindspot or left_edge_detected)
+      or request == LateralRequest.TURN_RIGHT and (carstate.rightBlindspot or right_edge_detected)
+    )
+    opposite_torque = carstate.steeringPressed and (
+      request == LateralRequest.TURN_LEFT and carstate.steeringTorque < 0
+      or request == LateralRequest.TURN_RIGHT and carstate.steeringTorque > 0
+    )
+    if blocked_side or opposite_torque:
+      self._consumed = key
+      return NavDesireOutput(would_request=request, reason="safety_gate")
+    turn_max_mps = params.turn_max_speed_mps
+    if controller_turn_max_mps is not None:
+      turn_max_mps = min(turn_max_mps, controller_turn_max_mps)
+    if carstate.vEgo > turn_max_mps:
       return NavDesireOutput(would_request=request, reason="speed")
     distance = float(nav.distanceToManeuverM)
     time_to_maneuver = distance / max(float(carstate.vEgo), 3.0)
@@ -51,7 +67,7 @@ class NavDesireController:
       request == LateralRequest.TURN_LEFT and carstate.leftBlinker and not carstate.rightBlinker
       or request == LateralRequest.TURN_RIGHT and carstate.rightBlinker and not carstate.leftBlinker
     )
-    if params.require_turn_signal and not confirmed:
+    if not confirmed:
       if carstate.leftBlinker or carstate.rightBlinker:
         self._consumed = key
       return NavDesireOutput(would_request=request, reason="turn_signal")

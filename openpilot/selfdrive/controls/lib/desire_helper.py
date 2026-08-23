@@ -5,7 +5,7 @@ from openpilot.common.realtime import DT_MDL
 from openpilot.sunnypilot.selfdrive.controls.lib.auto_lane_change import AutoLaneChangeController, AutoLaneChangeMode
 from openpilot.sunnypilot.selfdrive.controls.lib.lane_turn_desire import LaneTurnController
 from openpilot.sunnypilot.navassist.config import NavAssistParams
-from openpilot.sunnypilot.navassist.desire_controller import NavDesireController
+from openpilot.sunnypilot.navassist.desire_controller import NavDesireController, NavDesireOutput
 from openpilot.sunnypilot.navassist.types import LateralRequest
 
 LaneChangeState = log.LaneChangeState
@@ -36,6 +36,8 @@ class DesireHelper:
     self.nav_params_store = Params()
     self.nav_params = NavAssistParams.read(self.nav_params_store)
     self.nav_param_frame = 0
+    self.nav_output = NavDesireOutput()
+    self.nav_maneuver_id = 0
 
   @staticmethod
   def get_lane_change_direction(CS):
@@ -56,11 +58,25 @@ class DesireHelper:
     self.lane_turn_controller.update_lane_turn(blindspot_left=carstate.leftBlindspot, blindspot_right=carstate.rightBlindspot,
                                                left_blinker=carstate.leftBlinker, right_blinker=carstate.rightBlinker, v_ego=v_ego)
     self.lane_turn_direction = self.lane_turn_controller.get_turn_direction()
+    self.nav_output = NavDesireOutput()
+    self.nav_maneuver_id = 0
     if nav_assist is not None:
-      nav_output = self.nav_desire_controller.update(nav_assist, nav_assist_valid, self.nav_params, carstate, lateral_active)
-      if nav_output.request == LateralRequest.TURN_LEFT and carstate.leftBlinker and not carstate.rightBlinker:
+      raw_maneuver = int(getattr(nav_assist.maneuver, "raw", nav_assist.maneuver)) if nav_assist_valid else 0
+      nav_owns_turn = (self.nav_params.enabled and self.nav_params.turn_control and not self.nav_params.shadow_mode
+                       and nav_assist_valid and nav_assist.dataValid and raw_maneuver in (1, 2))
+      if nav_owns_turn:
+        self.lane_turn_direction = TurnDirection.none
+      self.nav_output = self.nav_desire_controller.update(
+        nav_assist, nav_assist_valid, self.nav_params, carstate, lateral_active,
+        left_edge_detected=left_edge_detected, right_edge_detected=right_edge_detected,
+        controller_turn_max_mps=self.lane_turn_controller.lane_turn_value,
+      )
+      self.nav_maneuver_id = int(nav_assist.maneuverId) if nav_assist_valid else 0
+      if (self.nav_output.request == LateralRequest.TURN_LEFT
+          and self.lane_turn_controller.turn_direction == TurnDirection.turnLeft and not left_edge_detected):
         self.lane_turn_direction = TurnDirection.turnLeft
-      elif nav_output.request == LateralRequest.TURN_RIGHT and carstate.rightBlinker and not carstate.leftBlinker:
+      elif (self.nav_output.request == LateralRequest.TURN_RIGHT
+            and self.lane_turn_controller.turn_direction == TurnDirection.turnRight and not right_edge_detected):
         self.lane_turn_direction = TurnDirection.turnRight
 
     if not lateral_active or self.lane_change_timer > LANE_CHANGE_TIME_MAX or self.alc.lane_change_set_timer == AutoLaneChangeMode.OFF:

@@ -15,6 +15,7 @@ from openpilot.common.realtime import DT_MDL
 from openpilot.sunnypilot import PARAMS_UPDATE_PERIOD, get_sanitize_int_param
 from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit import LIMIT_MAX_MAP_DATA_AGE, LIMIT_ADAPT_ACC
 from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.common import Policy, OffsetType
+from openpilot.sunnypilot.navassist.control_policy import nav_longitudinal_allowed
 
 SpeedLimitSource = custom.LongitudinalPlanSP.SpeedLimit.Source
 
@@ -33,9 +34,10 @@ class SpeedLimitResolver:
   source: custom.LongitudinalPlanSP.SpeedLimit.Source
   speed_limit_offset: float
 
-  def __init__(self):
+  def __init__(self, is_tesla: bool = False):
     self.params = Params()
     self.frame = -1
+    self.is_tesla = is_tesla
 
     self._gps_location_service = get_gps_location_service(self.params)
     self.limit_solutions = {}  # Store for speed limit solutions from different sources
@@ -133,7 +135,8 @@ class SpeedLimitResolver:
   def _get_from_navigation(self, sm: messaging.SubMaster) -> None:
     self._reset_limit_sources(SpeedLimitSource.navigation)
     healthy = bool(sm.seen['navAssistSP'] and sm.alive['navAssistSP'] and sm.valid['navAssistSP'])
-    if not healthy or not self.nav_assist_enabled or self.nav_assist_shadow or not self.nav_assist_speed_control:
+    if (not healthy or not self.nav_assist_enabled or self.nav_assist_shadow or not self.nav_assist_speed_control
+        or not nav_longitudinal_allowed(sm, self.is_tesla)):
       return
     nav = sm['navAssistSP']
     if nav.dataValid and nav.speedValid and not nav.stale and not nav.offRoute and nav.roadLimitMps > 0:

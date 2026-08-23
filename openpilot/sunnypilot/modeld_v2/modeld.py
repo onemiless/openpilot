@@ -554,6 +554,10 @@ def main(demo=False):
       modelv2_send.modelV2.meta.laneChangeState = DH.lane_change_state
       modelv2_send.modelV2.meta.laneChangeDirection = DH.lane_change_direction
       mdv2sp_send.modelDataV2SP.laneTurnDirection = DH.lane_turn_direction
+      mdv2sp_send.modelDataV2SP.navLateralRequest = int(DH.nav_output.request)
+      mdv2sp_send.modelDataV2SP.navWouldLateralRequest = int(DH.nav_output.would_request)
+      mdv2sp_send.modelDataV2SP.navLateralReason = DH.nav_output.reason
+      mdv2sp_send.modelDataV2SP.navManeuverId = DH.nav_maneuver_id
       drivingdata_send.drivingModelData.meta.laneChangeState = DH.lane_change_state
       drivingdata_send.drivingModelData.meta.laneChangeDirection = DH.lane_change_direction
 

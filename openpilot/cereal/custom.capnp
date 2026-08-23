@@ -543,6 +543,10 @@ struct ModelDataV2SP @0xa1680744031fdb2d {
   laneTurnDirection @0 :TurnDirection;
   leftLaneChangeEdgeBlock @1 :Bool;
   rightLaneChangeEdgeBlock @2 :Bool;
+  navLateralRequest @3 :UInt8;
+  navWouldLateralRequest @4 :UInt8;
+  navLateralReason @5 :Text;
+  navManeuverId @6 :UInt64;
 
   enum TurnDirection {
     none @0;

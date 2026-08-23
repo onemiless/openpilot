@@ -22,8 +22,7 @@ from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.speed_limit_resolve
 from openpilot.sunnypilot.selfdrive.selfdrived.events import EventsSP
 from openpilot.sunnypilot.models.helpers import get_active_bundle
 from openpilot.sunnypilot.navassist.config import NavAssistParams
-from openpilot.sunnypilot.selfdrive.car.tesla.control_runtime import TeslaControlState, state_is_fresh
-from opendbc.sunnypilot.car.tesla.values import TeslaFlagsSP
+from openpilot.sunnypilot.navassist.control_policy import nav_longitudinal_allowed
 
 DecState = custom.LongitudinalPlanSP.DynamicExperimentalControl.DynamicExperimentalControlState
 LongitudinalPlanSource = custom.LongitudinalPlanSP.LongitudinalPlanSource
@@ -32,10 +31,10 @@ LongitudinalPlanSource = custom.LongitudinalPlanSP.LongitudinalPlanSource
 class LongitudinalPlannerSP:
   def __init__(self, CP: structs.CarParams, CP_SP: structs.CarParamsSP, mpc, *, enable_dec: bool = True):
     self.events_sp = EventsSP()
-    self.resolver = SpeedLimitResolver()
+    self.resolver = SpeedLimitResolver(CP.brand == "tesla")
     self.dec = DynamicExperimentalController(CP, mpc) if enable_dec else None
     self.scc = SmartCruiseControl()
-    self.resolver = SpeedLimitResolver()
+    self.resolver = SpeedLimitResolver(CP.brand == "tesla")
     self.sla = SpeedLimitAssist(CP, CP_SP)
     self.generation = int(model_bundle.generation) if (model_bundle := get_active_bundle()) else None
     self.source = LongitudinalPlanSource.cruise
@@ -97,18 +96,10 @@ class LongitudinalPlannerSP:
                              v_cruise: float) -> tuple[float, float] | None:
     p = self.nav_params
     if (not p.enabled or p.shadow_mode or not p.speed_control or not self.openpilot_longitudinal_control
-        or not sm['carControl'].enabled or not sm['carControl'].longActive
-        or sm['carControl'].cruiseControl.override or sm['carState'].gasPressed or sm['carState'].brakePressed):
+        or not nav_longitudinal_allowed(sm, self.is_tesla)):
       return None
     if not (sm.seen['navAssistSP'] and sm.alive['navAssistSP'] and sm.valid['navAssistSP']):
       return None
-    if self.is_tesla:
-      if not (sm.seen['carStateSP'] and sm.valid['carStateSP'] and
-              state_is_fresh(sm.logMonoTime['carState'], sm.logMonoTime['carStateSP'])):
-        return None
-      state = TeslaControlState(TeslaFlagsSP(int(sm['carStateSP'].flags)))
-      if state.stock_longitudinal or state.exit_recovery:
-        return None
     nav = sm['navAssistSP']
     target = float(nav.desiredSpeedMps)
     distance = float(nav.speedControlDistanceM)
