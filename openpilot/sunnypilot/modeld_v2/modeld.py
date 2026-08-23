@@ -390,7 +390,9 @@ def main(demo=False):
   # messaging
   pub_socks = ["modelV2", "drivingModelData", "cameraOdometry", "modelDataV2SP"] + (["chestnutState"] if USBGPU else [])
   pm = PubMaster(pub_socks)
-  sm = SubMaster(["deviceState", "carState", "narrowRoadCameraState", "extrinsicsCalibration", "driverMonitoringState", "carControl", "lateralDelay"])
+  sm = SubMaster(["deviceState", "carState", "narrowRoadCameraState", "extrinsicsCalibration", "driverMonitoringState",
+                  "carControl", "lateralDelay", "navAssistSP"],
+                 ignore_alive=["navAssistSP"], ignore_avg_freq=["navAssistSP"], ignore_valid=["navAssistSP"])
 
   publish_state = PublishState()
   chestnut_state = ChestnutState(pm, USBGPU) if USBGPU else None
@@ -546,7 +548,9 @@ def main(demo=False):
       r_lane_change_prob = desire_state[log.Desire.laneChangeRight]
       lane_change_prob = l_lane_change_prob + r_lane_change_prob
       left_edge, right_edge = RELC.update_and_fill(modelv2_send.modelV2, mdv2sp_send.modelDataV2SP, v_ego)
-      DH.update(sm['carState'], sm['carControl'].latActive, lane_change_prob, left_edge, right_edge)
+      nav_valid = bool(sm.seen['navAssistSP'] and sm.alive['navAssistSP'] and sm.valid['navAssistSP'])
+      DH.update(sm['carState'], sm['carControl'].latActive, lane_change_prob, left_edge, right_edge,
+                nav_assist=sm['navAssistSP'] if sm.seen['navAssistSP'] else None, nav_assist_valid=nav_valid)
       modelv2_send.modelV2.meta.laneChangeState = DH.lane_change_state
       modelv2_send.modelV2.meta.laneChangeDirection = DH.lane_change_direction
       mdv2sp_send.modelDataV2SP.laneTurnDirection = DH.lane_turn_direction

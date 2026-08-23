@@ -5,9 +5,14 @@ This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
 
+import math
+
+import numpy as np
+
 from openpilot.cereal import messaging, custom
 from opendbc.car import structs
 from openpilot.common.constants import CV
+from openpilot.common.params import Params
 from openpilot.selfdrive.car.cruise import V_CRUISE_MAX
 from openpilot.sunnypilot.selfdrive.controls.lib.dec.dec import DynamicExperimentalController
 from openpilot.sunnypilot.selfdrive.controls.lib.e2e_alerts_helper import E2EAlertsHelper
@@ -16,6 +21,9 @@ from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.speed_limit_assist 
 from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.speed_limit_resolver import SpeedLimitResolver
 from openpilot.sunnypilot.selfdrive.selfdrived.events import EventsSP
 from openpilot.sunnypilot.models.helpers import get_active_bundle
+from openpilot.sunnypilot.navassist.config import NavAssistParams
+from openpilot.sunnypilot.selfdrive.car.tesla.control_runtime import TeslaControlState, state_is_fresh
+from opendbc.sunnypilot.car.tesla.values import TeslaFlagsSP
 
 DecState = custom.LongitudinalPlanSP.DynamicExperimentalControl.DynamicExperimentalControlState
 LongitudinalPlanSource = custom.LongitudinalPlanSP.LongitudinalPlanSource
@@ -32,6 +40,11 @@ class LongitudinalPlannerSP:
     self.generation = int(model_bundle.generation) if (model_bundle := get_active_bundle()) else None
     self.source = LongitudinalPlanSource.cruise
     self.e2e_alerts_helper = E2EAlertsHelper()
+    self.params = Params()
+    self.nav_params = NavAssistParams.read(self.params)
+    self.nav_param_frame = 0
+    self.is_tesla = CP.brand == "tesla"
+    self.openpilot_longitudinal_control = bool(CP.openpilotLongitudinalControl)
 
     self.output_v_target = 0.
     self.output_a_target = 0.
@@ -69,9 +82,43 @@ class LongitudinalPlannerSP:
       LongitudinalPlanSource.speedLimitAssist: (self.sla.output_v_target, self.sla.output_a_target),
     }
 
+    if self.nav_param_frame % 20 == 0:
+      self.nav_params = NavAssistParams.read(self.params)
+    self.nav_param_frame += 1
+    nav_target = self._get_nav_assist_target(sm, v_ego, a_ego, v_cruise)
+    if nav_target is not None:
+      targets[LongitudinalPlanSource.navAssist] = nav_target
+
     self.source = min(targets, key=lambda k: targets[k][0])
     self.output_v_target, self.output_a_target = targets[self.source]
     return self.output_v_target, self.output_a_target
+
+  def _get_nav_assist_target(self, sm: messaging.SubMaster, v_ego: float, a_ego: float,
+                             v_cruise: float) -> tuple[float, float] | None:
+    p = self.nav_params
+    if (not p.enabled or p.shadow_mode or not p.speed_control or not self.openpilot_longitudinal_control
+        or not sm['carControl'].enabled or not sm['carControl'].longActive
+        or sm['carControl'].cruiseControl.override or sm['carState'].gasPressed or sm['carState'].brakePressed):
+      return None
+    if not (sm.seen['navAssistSP'] and sm.alive['navAssistSP'] and sm.valid['navAssistSP']):
+      return None
+    if self.is_tesla:
+      if not (sm.seen['carStateSP'] and sm.valid['carStateSP'] and
+              state_is_fresh(sm.logMonoTime['carState'], sm.logMonoTime['carStateSP'])):
+        return None
+      state = TeslaControlState(TeslaFlagsSP(int(sm['carStateSP'].flags)))
+      if state.stock_longitudinal or state.exit_recovery:
+        return None
+    nav = sm['navAssistSP']
+    target = float(nav.desiredSpeedMps)
+    distance = float(nav.speedControlDistanceM)
+    if (not nav.dataValid or nav.stale or nav.offRoute or nav.speedSource == "none"
+        or not math.isfinite(target) or not math.isfinite(distance)
+        or target <= 0.0 or target >= v_cruise - 0.1 or distance < 0.0):
+      return None
+    distance = max(distance, 5.0)
+    accel = float(np.clip((target ** 2 - v_ego ** 2) / (2.0 * distance), -2.5, 0.0))
+    return min(target, v_cruise), min(a_ego, accel)
 
   def update(self, sm: messaging.SubMaster) -> None:
     self.events_sp.clear()

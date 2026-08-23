@@ -51,9 +51,9 @@ class SpeedLimitResolver:
     self._policy_to_sources_map = {
       Policy.car_state_only: [SpeedLimitSource.car],
       Policy.map_data_only: [SpeedLimitSource.map],
-      Policy.car_state_priority: [SpeedLimitSource.car, SpeedLimitSource.map],
-      Policy.map_data_priority: [SpeedLimitSource.map, SpeedLimitSource.car],
-      Policy.combined: [SpeedLimitSource.car, SpeedLimitSource.map],
+      Policy.car_state_priority: [SpeedLimitSource.car, SpeedLimitSource.map, SpeedLimitSource.navigation],
+      Policy.map_data_priority: [SpeedLimitSource.map, SpeedLimitSource.car, SpeedLimitSource.navigation],
+      Policy.combined: [SpeedLimitSource.car, SpeedLimitSource.map, SpeedLimitSource.navigation],
     }
     self.source = SpeedLimitSource.none
     for source in ALL_SOURCES:
@@ -68,6 +68,9 @@ class SpeedLimitResolver:
     )
     self.offset_value = self.params.get("SpeedLimitValueOffset", return_default=True)
     self.offset_max_speed = self.params.get("SpeedLimitOffsetMaxSpeed", return_default=True)
+    self.nav_assist_enabled = self.params.get_bool("NavAssistEnabled")
+    self.nav_assist_shadow = self.params.get_bool("NavAssistShadowMode")
+    self.nav_assist_speed_control = self.params.get_bool("NavAssistSpeedControl")
 
     self.speed_limit = 0.
     self.speed_limit_last = 0.
@@ -97,6 +100,9 @@ class SpeedLimitResolver:
       self.offset_type = self.params.get("SpeedLimitOffsetType", return_default=True)
       self.offset_value = self.params.get("SpeedLimitValueOffset", return_default=True)
       self.offset_max_speed = self.params.get("SpeedLimitOffsetMaxSpeed", return_default=True)
+      self.nav_assist_enabled = self.params.get_bool("NavAssistEnabled")
+      self.nav_assist_shadow = self.params.get_bool("NavAssistShadowMode")
+      self.nav_assist_speed_control = self.params.get_bool("NavAssistSpeedControl")
 
   def _get_speed_limit_offset(self) -> float:
     if self.offset_type == OffsetType.off:
@@ -123,6 +129,16 @@ class SpeedLimitResolver:
   def _get_from_map_data(self, sm: messaging.SubMaster) -> None:
     self._reset_limit_sources(SpeedLimitSource.map)
     self._process_map_data(sm)
+
+  def _get_from_navigation(self, sm: messaging.SubMaster) -> None:
+    self._reset_limit_sources(SpeedLimitSource.navigation)
+    healthy = bool(sm.seen['navAssistSP'] and sm.alive['navAssistSP'] and sm.valid['navAssistSP'])
+    if not healthy or not self.nav_assist_enabled or self.nav_assist_shadow or not self.nav_assist_speed_control:
+      return
+    nav = sm['navAssistSP']
+    if nav.dataValid and nav.speedValid and not nav.stale and not nav.offRoute and nav.roadLimitMps > 0:
+      self.limit_solutions[SpeedLimitSource.navigation] = float(nav.roadLimitMps)
+      self.distance_solutions[SpeedLimitSource.navigation] = 0.0
 
   def _process_map_data(self, sm: messaging.SubMaster) -> None:
     gps_data = sm[self._gps_location_service]
@@ -176,6 +192,7 @@ class SpeedLimitResolver:
     """Get limit solutions from each data source"""
     self._get_from_car_state(sm)
     self._get_from_map_data(sm)
+    self._get_from_navigation(sm)
 
     source = self._get_source_solution_according_to_policy()
     speed_limit = self.limit_solutions[source] if source else 0.
