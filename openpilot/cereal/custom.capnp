@@ -284,6 +284,7 @@ struct LongitudinalPlanSP @0xf35cc4560bbf6ec2 {
       none @0;
       car @1;
       map @2;
+      navigation @3;
     }
 
     enum AssistState {
@@ -301,6 +302,7 @@ struct LongitudinalPlanSP @0xf35cc4560bbf6ec2 {
     sccVision @1;
     sccMap @2;
     speedLimitAssist @3;
+    navAssist @4;
   }
 
   struct E2eAlerts {
@@ -577,7 +579,72 @@ struct TrafficRadarState @0xcb9fd56c7057593a {
   observationAgeMs @23 :Float32;
 }
 
-struct CustomReserved11 @0xc2243c65e0340384 {
+struct NavAssistSP @0xc2243c65e0340384 {
+  schemaVersion @0 :UInt16;
+  sessionId @1 :Text;
+  generation @2 :UInt64;
+  publishMonoTimeNanos @3 :UInt64;
+  connected @4 :Bool;
+  dataValid @5 :Bool;
+  guidanceValid @6 :Bool;
+  speedValid @7 :Bool;
+  routeValid @8 :Bool;
+  guidanceActive @9 :Bool;
+  offRoute @10 :Bool;
+  stale @11 :Bool;
+  maneuver @12 :Maneuver;
+  maneuverId @13 :UInt64;
+  rawTurnType @14 :Int32;
+  distanceToManeuverM @15 :Float32;
+  maneuverTargetSpeedMps @16 :Float32;
+  nextManeuver @17 :Maneuver;
+  nextManeuverId @18 :UInt64;
+  rawNextTurnType @19 :Int32;
+  distanceToNextManeuverM @20 :Float32;
+  roadLimitMps @21 :Float32;
+  routeSpeedMps @22 :Float32;
+  speedCameraMps @23 :Float32;
+  speedCameraDistanceM @24 :Float32;
+  sectionSpeedMps @25 :Float32;
+  sectionDistanceM @26 :Float32;
+  desiredSpeedMps @27 :Float32;
+  speedControlDistanceM @28 :Float32;
+  speedSource @29 :SpeedSource;
+  routeDeviationM @30 :Float32;
+  invalidReason @31 :InvalidReason;
+
+  enum Maneuver {
+    none @0;
+    turnLeft @1;
+    turnRight @2;
+    forkLeft @3;
+    forkRight @4;
+    roundabout @5;
+    uturn @6;
+    arrive @7;
+    tollgate @8;
+  }
+
+  enum SpeedSource {
+    none @0;
+    maneuver @1;
+    nextManeuver @2;
+    speedCamera @3;
+    section @4;
+    routeCurve @5;
+  }
+
+  enum InvalidReason {
+    none @0;
+    disabled @1;
+    disconnected @2;
+    staleMessage @3;
+    protocolError @4;
+    sequenceError @5;
+    navigationInactive @6;
+    offRoute @7;
+    locationInvalid @8;
+  }
 }
 
 struct CustomReserved12 @0x9ccdc8676701b412 {
