@@ -5,10 +5,14 @@ Protocol contract verified against jixiexiaoge/openpilot Carrot commit
 only structured navigation streams; media, render, cluster and terminal paths
 are not part of NavAssist.
 """
+# Copyright (c) 2018, Comma.ai, Inc.
+# Receiver contract adapted from jixiexiaoge/openpilot under the repository MIT license.
 from __future__ import annotations
 
 import copy
+import errno
 import json
+import math
 import secrets
 import socket
 import threading
@@ -40,6 +44,89 @@ CATALOG = tuple([("json", name) for name in JSON_NAMES] +
                 [("render", name) for name in RENDER_NAMES])
 CATALOG_SET = frozenset(CATALOG)
 ENABLED_JSON = frozenset(("vehicle", "guidance_current", "guidance_next", "speed", "route", "navigation_status"))
+
+
+def _validate_number(value: object, field: str, minimum: float, maximum: float) -> None:
+  if value is None:
+    return
+  if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+    raise ValueError(f"{field} must be finite")
+  if not minimum <= float(value) <= maximum:
+    raise ValueError(f"{field} out of range")
+
+
+def _validate_text(value: object, field: str, maximum: int) -> None:
+  if value is not None and (not isinstance(value, str) or len(value) > maximum):
+    raise ValueError(f"{field} text is invalid")
+
+
+def _validate_point(value: object, field: str, *, required: bool = False) -> None:
+  if value is None:
+    return
+  if not isinstance(value, dict):
+    raise ValueError(f"{field} must be an object")
+  if required and (value.get("lat") is None or value.get("lon") is None):
+    raise ValueError(f"{field} coordinates are required")
+  _validate_number(value.get("lat"), f"{field} latitude", -90.0, 90.0)
+  _validate_number(value.get("lon"), f"{field} longitude", -180.0, 180.0)
+
+
+def _validate_guidance(value: dict[str, Any], field: str) -> None:
+  _validate_number(value.get("distance_m"), f"{field} distance", 0.0, 2_000_000.0)
+  _validate_number(value.get("time_sec"), f"{field} time", 0.0, 604_800.0)
+  _validate_number(value.get("turn_type"), f"{field} turn type", -1.0, 100_000.0)
+  _validate_point(value.get("point"), f"{field} point")
+  _validate_text(value.get("road_name"), f"{field} road name", 96)
+  _validate_text(value.get("main_text"), f"{field} main", 160)
+
+
+def _validate_speed(value: dict[str, Any]) -> None:
+  _validate_number(value.get("current_kph"), "current speed", 0.0, 300.0)
+  _validate_number(value.get("road_limit_kph"), "road limit", 0.0, 200.0)
+  for name in ("sdi", "sdi_secondary"):
+    item = value.get(name)
+    if item is None:
+      continue
+    if not isinstance(item, dict):
+      raise ValueError(f"{name} must be an object")
+    _validate_number(item.get("distance_m"), f"{name} distance", 0.0, 2_000_000.0)
+    _validate_number(item.get("speed_limit_kph"), f"{name} speed", 0.0, 300.0)
+    _validate_number(item.get("block_distance_m"), f"{name} block distance", 0.0, 2_000_000.0)
+    _validate_number(item.get("block_speed_kph"), f"{name} block speed", 0.0, 300.0)
+    _validate_point(item.get("point"), f"{name} point")
+  section = value.get("section")
+  if section is not None:
+    if not isinstance(section, dict):
+      raise ValueError("section must be an object")
+    _validate_number(section.get("speed_limit_kph"), "section speed", 0.0, 300.0)
+    _validate_number(section.get("remaining_distance_m"), "section distance", 0.0, 2_000_000.0)
+
+
+def _validate_json_value(name: str, value: dict[str, Any]) -> None:
+  if name == "vehicle":
+    _validate_number(value.get("lat"), "vehicle latitude", -90.0, 90.0)
+    _validate_number(value.get("lon"), "vehicle longitude", -180.0, 180.0)
+    _validate_number(value.get("heading_deg"), "vehicle heading", 0.0, 360.0)
+    _validate_number(value.get("speed_kph"), "vehicle speed", 0.0, 300.0)
+    _validate_text(value.get("road_name"), "vehicle road name", 96)
+  elif name in ("guidance_current", "guidance_next"):
+    _validate_guidance(value, name)
+  elif name == "speed":
+    _validate_speed(value)
+  elif name == "route":
+    polyline = value.get("polyline", [])
+    if not isinstance(polyline, list) or len(polyline) > 256:
+      raise ValueError("route exceeds 256 points")
+    for index, point in enumerate(polyline):
+      _validate_point(point, f"route point {index}", required=True)
+    _validate_number(value.get("remain_distance_m"), "route distance", 0.0, 2_000_000.0)
+    _validate_number(value.get("remain_time_sec"), "route time", 0.0, 604_800.0)
+  elif name == "navigation_status":
+    for field in ("guidance_active", "off_route", "route_present"):
+      if field in value and not isinstance(value[field], bool):
+        raise ValueError(f"navigation status {field} must be boolean")
+    if (mode := value.get("mode")) is not None and mode not in ("idle", "guiding", "off_route"):
+      raise ValueError("navigation status mode is invalid")
 
 
 def _stream_params(kind: str) -> dict[str, Any]:
@@ -149,7 +236,14 @@ class CarrotV2Receiver:
         raise ValueError("invalid v2 sequence")
       previous = self._records.get(name)
       if previous is not None and sequence == previous.sequence:
-        return
+        same = (previous.present == envelope.get("present") and previous.value == envelope.get("value")
+                and previous.reason == str(envelope.get("reason", ""))
+                and previous.source_timestamp_ms == envelope.get("source_timestamp_ms")
+                and previous.sent_at_ms == envelope.get("sent_at_ms"))
+        if same:
+          return
+        self._sequence_error = True
+        raise ValueError("duplicate sequence changed payload")
       if previous is not None and sequence < previous.sequence:
         self._sequence_error = True
         raise ValueError("v2 sequence moved backwards")
@@ -164,11 +258,16 @@ class CarrotV2Receiver:
       reason = envelope.get("reason", "")
       if not present and (not isinstance(reason, str) or not reason or len(reason) > 64):
         raise ValueError("absent JSON item requires reason")
-      if name == "route" and present:
-        polyline = value.get("polyline", [])
-        if not isinstance(polyline, list) or len(polyline) > 256:
-          raise ValueError("route exceeds 256 points")
-      self._records[name] = StreamRecord(present, sequence, time.monotonic_ns(), copy.deepcopy(value), str(reason))
+      for timestamp_name in ("source_timestamp_ms", "sent_at_ms"):
+        timestamp = envelope.get(timestamp_name)
+        if isinstance(timestamp, bool) or not isinstance(timestamp, int) or timestamp < 0:
+          raise ValueError(f"{timestamp_name} timestamp is invalid")
+      if present:
+        _validate_json_value(name, value)
+      self._records[name] = StreamRecord(
+        present, sequence, time.monotonic_ns(), copy.deepcopy(value), str(reason),
+        envelope["source_timestamp_ms"], envelope["sent_at_ms"],
+      )
 
   def snapshot(self) -> ProtocolSnapshot:
     with self._lock:
@@ -264,12 +363,12 @@ class DiscoveryBroadcaster:
     self._stop.set()
 
   def _run(self) -> None:
-    payload = json.dumps({"ip": detect_advertise_ip(), "navi_debug": 0}).encode()
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     try:
       while not self._stop.wait(1.0):
         try:
+          payload = json.dumps({"ip": detect_advertise_ip(), "navi_debug": 0}).encode()
           sock.sendto(payload, ("255.255.255.255", DISCOVERY_PORT))
         except OSError:
           pass
@@ -278,17 +377,38 @@ class DiscoveryBroadcaster:
 
 
 class CarrotV2Server:
-  def __init__(self, receiver: CarrotV2Receiver, port: int = DEFAULT_PORT) -> None:
+  def __init__(self, receiver: CarrotV2Receiver, port: int = DEFAULT_PORT, *, bind_host: str = "0.0.0.0",
+               retry_count: int = 5, retry_interval_s: float = 0.5) -> None:
     self.receiver = receiver
     self.port = port
+    self.bind_host = bind_host
+    self.retry_count = retry_count
+    self.retry_interval_s = retry_interval_s
     self.discovery = DiscoveryBroadcaster()
     self._thread: threading.Thread | None = None
+    self._socket: socket.socket | None = None
 
   def start(self) -> None:
     from aiohttp import web
 
+    app = create_app(self.receiver)
+
+    for retry in range(self.retry_count + 1):
+      sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+      try:
+        sock.bind((self.bind_host, self.port))
+        sock.listen(128)
+        self._socket = sock
+        break
+      except OSError as exc:
+        sock.close()
+        if exc.errno != errno.EADDRINUSE or retry >= self.retry_count:
+          raise
+        time.sleep(self.retry_interval_s)
+
     def run() -> None:
-      web.run_app(create_app(self.receiver), host="0.0.0.0", port=self.port, access_log=None, handle_signals=False)
+      web.run_app(app, sock=self._socket, access_log=None, handle_signals=False)
 
     self.discovery.start()
     self._thread = threading.Thread(target=run, name="navassist-websocket", daemon=True)

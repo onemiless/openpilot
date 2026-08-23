@@ -62,6 +62,7 @@ class ManeuverIdentity:
     self._signature = ""
     self._distance_m = 0.0
     self._id = 0
+    self._generation = -1
 
   def update(self, session_id: str, maneuver: Maneuver, guidance: dict, generation: int) -> int:
     if maneuver == Maneuver.NONE:
@@ -73,7 +74,7 @@ class ManeuverIdentity:
     signature = f"{int(maneuver)}|{stable_text}|{_finite(point.get('lat'), 999):.5f}|{_finite(point.get('lon'), 999):.5f}"
     distance_m = max(0.0, _finite(guidance.get("distance_m")))
     new_action = (
-      session_id != self._session_id or signature != self._signature
+      session_id != self._session_id or generation != self._generation or signature != self._signature
       or (self._distance_m <= 30.0 and distance_m > self._distance_m + 30.0)
     )
     if new_action:
@@ -82,6 +83,7 @@ class ManeuverIdentity:
     self._session_id = session_id
     self._signature = signature
     self._distance_m = distance_m
+    self._generation = generation
     return self._id
 
 
@@ -89,6 +91,21 @@ class NavStateMachine:
   def __init__(self) -> None:
     self._current_identity = ManeuverIdentity()
     self._next_identity = ManeuverIdentity()
+    self._route_signature: tuple | None = None
+    self._route_generation = 0
+
+  def _update_route_generation(self, route_record: StreamRecord) -> int:
+    route = _dict(route_record.value) if route_record.present else {}
+    points = route.get("polyline", ())
+    signature = tuple(
+      (round(_finite(_dict(point).get("lat"), 999.0), 5), round(_finite(_dict(point).get("lon"), 999.0), 5))
+      for point in points if isinstance(point, dict)
+    ) if isinstance(points, (list, tuple)) else ()
+    if signature and self._route_signature is not None and signature != self._route_signature:
+      self._route_generation += 1
+    if signature:
+      self._route_signature = signature
+    return self._route_generation
 
   def update(self, snapshot: ProtocolSnapshot, params: NavAssistParams, now_ns: int) -> NavAssistState:
     if not params.enabled:
@@ -130,6 +147,8 @@ class NavStateMachine:
     next_valid = _fresh(next_record, now_ns, timeout_ns)
     speed_valid = _fresh(speed_record, now_ns, timeout_ns)
     route_valid = _fresh(route_record, now_ns, timeout_ns) and _fresh(vehicle_record, now_ns, timeout_ns)
+    route_generation = self._update_route_generation(route_record)
+    maneuver_generation = (snapshot.generation << 32) | route_generation
 
     current = _dict(current_record.value) if guidance_valid else {}
     following = _dict(next_record.value) if next_valid else {}
@@ -144,34 +163,50 @@ class NavStateMachine:
     road_limit_kph = _finite(speed.get("road_limit_kph"))
     road_limit_mps = road_limit_kph * CV.KPH_TO_MS if 0 < road_limit_kph <= 200 and road_limit_kph % 10 == 0 else 0.0
     maneuver_speed = _maneuver_speed(maneuver, road_limit_mps)
+    next_maneuver_speed = _maneuver_speed(next_maneuver, road_limit_mps)
+    cumulative_next_distance_m = next_distance_m + (distance_m if guidance_valid else 0.0)
     candidates: list[SpeedCandidate] = []
     if guidance_valid and maneuver_speed > 0:
       candidates.append(SpeedCandidate(SpeedSource.MANEUVER, maneuver_speed, distance_m))
+    if next_valid and next_maneuver_speed > 0:
+      candidates.append(SpeedCandidate(SpeedSource.NEXT_MANEUVER, next_maneuver_speed, cumulative_next_distance_m))
 
-    sdi = _dict(speed.get("sdi"))
-    camera_speed = _finite(sdi.get("speed_limit_kph")) * CV.KPH_TO_MS
-    camera_distance = max(0.0, _finite(sdi.get("distance_m")))
-    if speed_valid and camera_speed > 0 and camera_distance > 0:
-      candidates.append(SpeedCandidate(SpeedSource.SPEED_CAMERA, camera_speed, camera_distance))
+    camera_candidates = []
+    for camera_name in ("sdi", "sdi_secondary"):
+      sdi = _dict(speed.get(camera_name))
+      candidate_speed = _finite(sdi.get("speed_limit_kph")) * CV.KPH_TO_MS
+      candidate_distance = max(0.0, _finite(sdi.get("distance_m")))
+      if speed_valid and candidate_speed > 0 and candidate_distance > 0:
+        camera_candidates.append(SpeedCandidate(SpeedSource.SPEED_CAMERA, candidate_speed, candidate_distance))
+    selected_camera = select_speed_candidate(camera_candidates)
+    camera_speed = selected_camera.target_speed_mps if selected_camera else 0.0
+    camera_distance = selected_camera.control_distance_m if selected_camera else 0.0
+    candidates.extend(camera_candidates)
 
     section = _dict(speed.get("section"))
-    section_active = bool(section.get("active", False)) and not bool(section.get("suspended", False))
+    section_active = (bool(section.get("active", False)) and not bool(section.get("suspended", False))
+                      and not bool(section.get("off_route", False)))
     section_speed = _finite(section.get("speed_limit_kph")) * CV.KPH_TO_MS
     section_distance = max(0.0, _finite(section.get("remaining_distance_m")))
     if speed_valid and section_active and section_speed > 0:
       candidates.append(SpeedCandidate(SpeedSource.SECTION, section_speed, section_distance))
 
     selected = select_speed_candidate(candidates)
-    data_valid = guidance_valid or speed_valid
+    data_valid = guidance_valid or speed_valid or route_valid
+    if not data_valid:
+      return NavAssistState(
+        connected=True, session_id=snapshot.session_id, generation=snapshot.generation,
+        guidance_active=True, stale=True, invalid_reason=InvalidReason.STALE_MESSAGE,
+      )
     return NavAssistState(
       connected=True, session_id=snapshot.session_id, generation=snapshot.generation,
       data_valid=data_valid, guidance_valid=guidance_valid, speed_valid=speed_valid, route_valid=route_valid,
       guidance_active=True, stale=False, invalid_reason=InvalidReason.NONE,
-      maneuver=maneuver, maneuver_id=self._current_identity.update(snapshot.session_id, maneuver, current, snapshot.generation),
+      maneuver=maneuver, maneuver_id=self._current_identity.update(snapshot.session_id, maneuver, current, maneuver_generation),
       raw_turn_type=raw_turn, distance_to_maneuver_m=distance_m, maneuver_target_speed_mps=maneuver_speed,
       next_maneuver=next_maneuver,
-      next_maneuver_id=self._next_identity.update(snapshot.session_id, next_maneuver, following, snapshot.generation),
-      raw_next_turn_type=raw_next, distance_to_next_maneuver_m=next_distance_m,
+      next_maneuver_id=self._next_identity.update(snapshot.session_id, next_maneuver, following, maneuver_generation),
+      raw_next_turn_type=raw_next, distance_to_next_maneuver_m=cumulative_next_distance_m,
       road_limit_mps=road_limit_mps,
       speed_camera_mps=camera_speed if speed_valid else 0.0,
       speed_camera_distance_m=camera_distance if speed_valid else 0.0,

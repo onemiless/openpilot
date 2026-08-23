@@ -52,6 +52,8 @@ class StreamRecord:
   received_mono_ns: int = 0
   value: object | None = None
   reason: str = ""
+  source_timestamp_ms: int = 0
+  sent_at_ms: int = 0
 
 
 @dataclass(frozen=True)

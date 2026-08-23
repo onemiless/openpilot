@@ -12,7 +12,7 @@ from openpilot.common.swaglog import cloudlog
 from openpilot.sunnypilot.navassist.config import NavAssistParams, PUBLISH_HZ, ROUTE_CALC_HZ
 from openpilot.sunnypilot.navassist.nav_state import NavStateMachine
 from openpilot.sunnypilot.navassist.protocol.carrot_v2 import CarrotV2Receiver, CarrotV2Server
-from openpilot.sunnypilot.navassist.route_speed import RouteSpeedResult, calculate_route_speed
+from openpilot.sunnypilot.navassist.route_speed import RouteSpeedPlanner, RouteSpeedResult
 from openpilot.sunnypilot.navassist.speed_planner import select_speed_candidate
 from openpilot.sunnypilot.navassist.types import NavAssistState, SpeedCandidate, SpeedSource
 
@@ -94,6 +94,7 @@ def main() -> None:
   last_route_calc = 0.0
   last_route_key: tuple[str, int, int] | None = None
   route_result = RouteSpeedResult()
+  route_planner = RouteSpeedPlanner()
   cloudlog.info("navassistd started: Carrot V2 TCP 7714, discovery UDP 7705")
 
   while True:
@@ -114,7 +115,7 @@ def main() -> None:
         try:
           location = (float(vehicle["lat"]), float(vehicle["lon"]))
           points = tuple((float(p["lat"]), float(p["lon"])) for p in route.get("polyline", ()))
-          route_result = calculate_route_speed(location, points)
+          route_result = route_planner.calculate(location, points)
         except (KeyError, TypeError, ValueError, OverflowError):
           route_result = RouteSpeedResult()
       last_route_calc = now

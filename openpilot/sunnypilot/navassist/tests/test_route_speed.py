@@ -1,6 +1,6 @@
 import math
 
-from openpilot.sunnypilot.navassist.route_speed import calculate_route_speed
+from openpilot.sunnypilot.navassist.route_speed import RouteSpeedPlanner, calculate_route_speed
 
 
 def offset(lat, lon, east_m, north_m):
@@ -32,3 +32,24 @@ def test_far_route_fails_closed():
   result = calculate_route_speed(origin, route)
   assert not result.valid
   assert result.speed_mps == 0
+
+
+def test_dateline_route_uses_short_longitude_delta():
+  vehicle = (0.0, 179.9999)
+  route = ((0.0, 179.9999), (0.0, -179.9999), (0.0, -179.9997))
+  assert calculate_route_speed(vehicle, route).valid
+
+
+def test_stable_route_index_has_bounded_rollback():
+  origin = (37.0, 127.0)
+  route = tuple(offset(*origin, east, 0) for east in range(0, 301, 5))
+  planner = RouteSpeedPlanner()
+  planner.calculate(offset(*origin, 150, 0), route)
+  previous = planner.nearest_index
+  planner.calculate(offset(*origin, 130, 0), route)
+  assert planner.nearest_index >= previous - 3
+
+
+def test_invalid_route_coordinate_fails_closed():
+  result = calculate_route_speed((37.0, 127.0), ((37.0, 127.0), (91.0, 127.1), (37.2, 127.2)))
+  assert not result.valid

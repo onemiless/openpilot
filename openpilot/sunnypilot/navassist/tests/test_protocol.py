@@ -58,3 +58,25 @@ def test_protocol_error_remains_fail_closed_until_new_session():
   assert receiver.snapshot().protocol_error == "malformed stream"
   receiver.negotiate(requirements())
   assert receiver.snapshot().protocol_error == ""
+
+
+def test_duplicate_sequence_requires_identical_payload():
+  receiver = CarrotV2Receiver()
+  receiver.control_connected()
+  manifest = receiver.negotiate(requirements())
+  receiver.record_json(manifest["session_id"], "vehicle", envelope(manifest, "vehicle", 1, {"lat": 1.0, "lon": 2.0}))
+  with pytest.raises(ValueError, match="duplicate"):
+    receiver.record_json(manifest["session_id"], "vehicle", envelope(manifest, "vehicle", 1, {"lat": 3.0, "lon": 4.0}))
+
+
+def test_rejects_invalid_coordinates_and_timestamps():
+  receiver = CarrotV2Receiver()
+  receiver.control_connected()
+  manifest = receiver.negotiate(requirements())
+  bad = envelope(manifest, "vehicle", 1, {"lat": 91.0, "lon": 2.0})
+  with pytest.raises(ValueError, match="latitude"):
+    receiver.record_json(manifest["session_id"], "vehicle", bad)
+  bad = envelope(manifest, "vehicle", 2, {"lat": 1.0, "lon": 2.0})
+  bad["source_timestamp_ms"] = -1
+  with pytest.raises(ValueError, match="timestamp"):
+    receiver.record_json(manifest["session_id"], "vehicle", bad)
