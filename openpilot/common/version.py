@@ -18,7 +18,7 @@ TESTED_BRANCHES = RELEASE_BRANCHES + ['devel-staging', 'nightly-dev'] + RELEASE_
 
 # Published local branches that carry the isolated C3XL/TICI compatibility
 # profile without adopting sunnypilot's upstream ``-tici`` naming convention.
-TICI_COMPATIBLE_BRANCHES = frozenset({"dev-sp-egpu"})
+TICI_COMPATIBLE_BRANCHES = frozenset({"dev-sp-egpu", "dev-sp-egpu-nva"})
 
 SP_BRANCH_MIGRATIONS = {
   ("tici", "staging-c3-new"): "staging-tici",

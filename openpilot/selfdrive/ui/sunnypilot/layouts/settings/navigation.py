@@ -5,8 +5,9 @@ This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
 from openpilot.common.params import Params
+from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.multilang import tr
-from openpilot.system.ui.sunnypilot.widgets.list_view import toggle_item_sp
+from openpilot.system.ui.sunnypilot.widgets.list_view import button_item_sp, toggle_item_sp
 from openpilot.system.ui.widgets.scroller_tici import Scroller
 from openpilot.system.ui.widgets import Widget
 
@@ -20,7 +21,13 @@ class NavigationLayout(Widget):
     self._scroller = Scroller(items, line_separator=True, spacing=0)
 
   def _initialize_items(self):
+    self.status_item = button_item_sp(
+      title=tr("NavAssist Status"),
+      button_text=tr("Status"),
+      description=tr("Shows the current Carrot/CP connection and control-data state."),
+      enabled=False)
     items = [
+      self.status_item,
       toggle_item_sp(
         title=tr("NavAssist (Experimental)"),
         description=tr("Receive Carrot/CP navigation guidance. Control remains disabled unless its individual switches are enabled."),
@@ -49,3 +56,17 @@ class NavigationLayout(Widget):
 
   def show_event(self):
     self._scroller.show_event()
+
+  def _update_state(self):
+    super()._update_state()
+    if not ui_state.sm.seen["navAssistSP"]:
+      status = tr("Not running")
+    else:
+      nav = ui_state.sm["navAssistSP"]
+      if not nav.connected:
+        status = tr("Waiting for phone")
+      elif nav.dataValid:
+        status = tr("Navigation active")
+      else:
+        status = tr("Connected, no valid guidance")
+    self.status_item.action_item.set_value(status)

@@ -28,3 +28,13 @@ Planner Backend, Plan Constraint, and Device Query/Device Command.
   Simplified Chinese on this local build).
 - eGPU/model routing remains out of scope until these source-mode Modules pass
   device validation.
+
+## NavAssist protocol dependency exception
+
+The supervised NavAssist prototype uses the Carrot WebSocket V2 protocol whose
+audited server implementation is based on `aiohttp`. A pinned `aiohttp` runtime
+dependency is permitted only for this isolated process, provided that the
+feature is inert when disabled and the Python 3.12 Linux/aarch64 wheel passes
+C3XL import, bind, restart, and resource validation before maintained-channel
+publication. This is a narrow exception, not permission to add general-purpose
+HTTP dependencies to core driving processes.

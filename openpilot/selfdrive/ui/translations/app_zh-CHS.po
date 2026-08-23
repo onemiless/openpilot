@@ -2645,3 +2645,71 @@ msgstr[0] "{} 分钟前"
 #: openpilot/selfdrive/ui/widgets/prime.py
 msgid "✓ SUBSCRIBED"
 msgstr "✓ 已订阅"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
+msgid "NavAssist (Experimental)"
+msgstr "导航辅助（实验性）"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
+msgid "Receive Carrot/CP navigation guidance. Control remains disabled unless its individual switches are enabled."
+msgstr "接收 Carrot/CP 导航指引。只有打开对应的独立开关后才会进入控制。"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
+msgid "NavAssist Shadow Mode"
+msgstr "导航辅助影子模式"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
+msgid "Receive and calculate navigation actions without changing vehicle control."
+msgstr "接收并计算导航动作，但不改变车辆控制。"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
+msgid "NavAssist Speed Control"
+msgstr "导航辅助速度控制"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
+msgid "Apply validated maneuver, speed-camera and section-speed targets through the existing longitudinal planner."
+msgstr "通过现有纵向规划器应用已验证的路口、测速点和区间测速目标。"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
+msgid "NavAssist Route Curve Speed"
+msgstr "导航路线弯道限速"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
+msgid "Use the navigation route only to reduce speed for curves. It never directly controls steering."
+msgstr "导航路线只用于弯道减速，绝不直接控制方向盘。"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
+msgid "NavAssist Driver-Confirmed Turns"
+msgstr "驾驶员确认的导航转弯"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
+msgid "At low speed, send one model turn request only after the driver activates the matching turn signal."
+msgstr "低速时，仅在驾驶员打开同方向真实转向灯后发送一次模型转弯请求。"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
+msgid "NavAssist Status"
+msgstr "导航辅助状态"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
+msgid "Status"
+msgstr "状态"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
+msgid "Shows the current Carrot/CP connection and control-data state."
+msgstr "显示当前 Carrot/CP 连接和控制数据状态。"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
+msgid "Not running"
+msgstr "未运行"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
+msgid "Waiting for phone"
+msgstr "等待手机连接"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
+msgid "Navigation active"
+msgstr "导航数据有效"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
+msgid "Connected, no valid guidance"
+msgstr "已连接，暂无有效导航指引"

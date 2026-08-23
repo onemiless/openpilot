@@ -8,3 +8,9 @@ development branches remain rejected by the upstream hardware/channel check.
 A future prebuilt artifact must preserve the same source commit and channel
 identity instead of renaming the maintained branch or globally bypassing the
 check.
+
+`dev-sp-egpu-nva` is the explicitly named, supervised NavAssist vehicle-test
+channel. It may carry the same isolated C3XL profile while the feature is being
+validated, but it is not a replacement maintained channel and must not broaden
+the allowlist to arbitrary `dev-*` branches. Accepted NavAssist work returns to
+`dev-sp-egpu` before the next maintained Prebuilt Snapshot is published.

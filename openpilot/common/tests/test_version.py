@@ -18,5 +18,11 @@ def test_published_c3xl_branch_is_tici_compatible(openpilot_metadata):
   assert metadata.channel_type == "tici"
 
 
+def test_navassist_c3xl_test_branch_is_tici_compatible(openpilot_metadata):
+  metadata = BuildMetadata("dev-sp-egpu-nva", openpilot_metadata)
+  assert metadata.development_channel
+  assert metadata.channel_type == "tici"
+
+
 def test_other_development_branches_remain_unsupported_on_tici(openpilot_metadata):
   assert BuildMetadata("dev-unverified", openpilot_metadata).channel_type == "development"

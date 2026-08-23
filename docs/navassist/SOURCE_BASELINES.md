@@ -3,7 +3,8 @@
 ## Target
 
 - Branch: `dev-sp-egpu-nva`
-- eGPU source baseline: `bd2966b712f9e61e10efd87383502f3b033068dd`
+- Original eGPU source baseline: `bd2966b712f9e61e10efd87383502f3b033068dd`
+- Synchronized eGPU maintenance head: `2cde5ceee1bfad91e681ef20b86964552684865f`
 - Carrot protocol source: `jixiexiaoge/openpilot:Carrot`
 - Carrot protocol commit: `3fb1121ecb7837e47f5edf12c5882e38c57c05bd`
 - Protocol: Carrot Navi WebSocket v2, catalog revision 1
@@ -21,6 +22,10 @@
 The upstream protocol currently uses unauthenticated plain local-network
 WebSockets. This branch accepts that limitation only for supervised prototype
 testing. It is not evidence of public-road readiness.
+
+`dev-sp-egpu-nva` is explicitly allowlisted as a supervised C3XL/TICI test
+channel. Accepted changes must return to the maintained `dev-sp-egpu` channel;
+the allowlist is not generalized to other development branches.
 
 ## Cereal allocation
 
@@ -48,3 +53,14 @@ The eGPU baseline already uses reserved slot 10 / Event `@136` for
 All control switches default off. Shadow defaults on. Stream freshness is
 checked independently so unrelated heartbeats cannot keep an old maneuver or
 speed target alive.
+
+The current CarState contracts do not expose a reliable trailer-connected
+signal. NavAssist therefore cannot enforce a trailer gate in this stage and
+must not be tested with a trailer attached. It does enforce the existing
+blindspot, road-edge, LaneTurn speed, brake, opposite steering-torque, lateral
+active, and matching real-turn-signal gates.
+
+The TICI Navigation settings panel exposes the feature toggles plus a read-only
+connection/data-validity status. Shadow lateral decisions are recorded on
+`modelDataV2SP` as the actual request, would-request, suppression reason, and
+maneuver ID for replay inspection.

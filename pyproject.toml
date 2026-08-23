@@ -9,7 +9,8 @@ authors = [
 ]
 
 # ------------------------------------------
-# > this dependencies list *only* goes down.
+# > this dependencies list only goes down, except for a documented
+# > isolated-process ADR with target-platform validation.
 # ------------------------------------------
 # Linux and Python is all we need, otherwise
 # we write and own the lines ourselves.
