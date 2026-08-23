@@ -47,3 +47,14 @@ def test_disconnect_clears_records_and_control_validity():
   receiver.control_disconnected()
   assert not receiver.snapshot().connected
   assert not receiver.snapshot().record("vehicle").present
+
+
+def test_protocol_error_remains_fail_closed_until_new_session():
+  receiver = CarrotV2Receiver()
+  receiver.control_connected()
+  manifest = receiver.negotiate(requirements())
+  receiver.fail("malformed stream")
+  receiver.record_json(manifest["session_id"], "vehicle", envelope(manifest, "vehicle", 1, {}))
+  assert receiver.snapshot().protocol_error == "malformed stream"
+  receiver.negotiate(requirements())
+  assert receiver.snapshot().protocol_error == ""

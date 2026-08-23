@@ -169,7 +169,6 @@ class CarrotV2Receiver:
         if not isinstance(polyline, list) or len(polyline) > 256:
           raise ValueError("route exceeds 256 points")
       self._records[name] = StreamRecord(present, sequence, time.monotonic_ns(), copy.deepcopy(value), str(reason))
-      self._protocol_error = ""
 
   def snapshot(self) -> ProtocolSnapshot:
     with self._lock:
