@@ -16,6 +16,8 @@ from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.sunnypilot.models.constants import Meta, MetaSimPose, MetaTombRaider
 from openpilot.common.hardware.hw import Paths
+from openpilot.selfdrive.modeld.helpers import usbgpu_compiled
+from openpilot.sunnypilot.models.artifact_status import bundle_artifacts_ready
 
 # SET ME TO THE EXACT JSON VERSION WE SET IN SUNNYPILOT_MODELS REPO
 REQUIRED_JSON_VERSION = 17
@@ -94,18 +96,17 @@ def _bundle_needs_reset(active_bundle: custom.ModelManagerSP.ModelBundle, availa
         matching_bundle = bundle
         break
 
-    if matching_bundle is None:
-      return True
-    if active_bundle.minimumSelectorVersion != matching_bundle.minimumSelectorVersion:
-      return True
-
-    active_runner = getattr(active_bundle, 'runner', None)
-    matching_runner = getattr(matching_bundle, 'runner', None)
-    if active_runner is not None and matching_runner is not None:
-      if getattr(active_runner, 'raw', active_runner) != getattr(matching_runner, 'raw', matching_runner):
+    if matching_bundle is not None:
+      if active_bundle.minimumSelectorVersion != matching_bundle.minimumSelectorVersion:
         return True
-    if set(_bundle_artifacts(active_bundle)) != set(_bundle_artifacts(matching_bundle)):
-      return True
+
+      active_runner = getattr(active_bundle, 'runner', None)
+      matching_runner = getattr(matching_bundle, 'runner', None)
+      if active_runner is not None and matching_runner is not None:
+        if getattr(active_runner, 'raw', active_runner) != getattr(matching_runner, 'raw', matching_runner):
+          return True
+      if set(_bundle_artifacts(active_bundle)) != set(_bundle_artifacts(matching_bundle)):
+        return True
 
   return not _bundle_is_valid_locally(active_bundle)
 
@@ -124,6 +125,7 @@ def validate_active_bundle(params: Params, available_bundles: list[custom.ModelM
   if active_bundle is None or _bundle_needs_reset(active_bundle, available_bundles):
     cloudlog.warning("Active model bundle invalid; resetting to default")
     params.remove("ModelManager_ActiveBundle")
+    params.remove("ModelManager_ActiveBundleRequiresUsbGpu")
     params.put("ModelRunnerTypeCache", int(custom.ModelManagerSP.Runner.stock), block=True)
     _LAST_VALIDATED_RAW = None
   else:
@@ -141,14 +143,29 @@ def get_active_bundle(params: Params | None = None, raw_bundle_dict: dict | byte
   return None
 
 
-def get_active_model_runner(params: Params | None = None, force_check: bool = False) -> int:
+def usbgpu_model_ready(params: Params | None = None) -> bool:
+  if usbgpu_compiled():
+    return True
+  params = params or Params()
+  bundle = get_active_bundle(params)
+  return bool(bundle is not None and bundle.runner == custom.ModelManagerSP.Runner.tinygrad and
+              bundle_artifacts_ready(bundle, Paths.model_root()))
+
+
+def get_active_model_runner(params: Params | None = None, force_check: bool = False,
+                            usbgpu_connected: bool | None = None) -> int:
   params = params or Params()
   cached_runner_type = params.get("ModelRunnerTypeCache")
   if cached_runner_type is not None and not force_check:
     return cached_runner_type
   runner_type = custom.ModelManagerSP.Runner.stock
   if active_bundle := get_active_bundle(params):
-    runner_type = active_bundle.runner.raw
+    requires_usbgpu = params.get_bool("ModelManager_ActiveBundleRequiresUsbGpu")
+    if usbgpu_connected is None:
+      from openpilot.selfdrive.modeld.helpers import usbgpu_present
+      usbgpu_connected = usbgpu_present()
+    if not requires_usbgpu or usbgpu_connected:
+      runner_type = active_bundle.runner.raw
 
   if cached_runner_type != runner_type:
     params.put("ModelRunnerTypeCache", int(runner_type), block=True)
@@ -161,6 +178,7 @@ def select_default_model(params: Params | None = None) -> None:
   params = params or Params()
   params.remove("ModelManager_DownloadIndex")
   params.remove("ModelManager_ActiveBundle")
+  params.remove("ModelManager_ActiveBundleRequiresUsbGpu")
   params.put("ModelRunnerTypeCache", int(custom.ModelManagerSP.Runner.stock), block=True)
 
 
