@@ -190,6 +190,25 @@ class TestManagerDownload(ManagerDownloadTestBase):
       assert max(self.reported) <= 99.0, f"chunked progress must stay <=99 until verify, got {max(self.reported)}"
     self.run_with_server(body)
 
+  def test_cached_chunk_verification_reports_progress_without_network(self):
+    def body():
+      artifact = self.make_artifact(chunked=True)
+      base_path = os.path.join(self.dest, artifact.fileName)
+      for path, data in zip(self.chunk_paths(base_path), CHUNK_BODIES, strict=True):
+        with open(path, 'wb') as f:
+          f.write(data)
+
+      asyncio.run(self.manager._process_artifact(artifact, self.dest))
+
+      assert any(0.0 < progress < 100.0 for progress in self.reported)
+      assert self.reported[-1] == 100.0
+      assert artifact.downloadProgress.status == custom.ModelManagerSP.DownloadStatus.cached
+      assert DownloadHandler.request_paths == []
+      with open(get_manifest_path(base_path)) as f:
+        assert f.read() == str(len(CHUNK_BODIES))
+
+    self.run_with_server(body)
+
   def test_session_is_reused_across_chunks(self):
     """One connection pool shared across every chunk."""
     def body():
@@ -260,8 +279,10 @@ class TestManagerDownload(ManagerDownloadTestBase):
     bundle = custom.ModelManagerSP.ModelBundle.new_message()
     bundle.index = 0
     bundle.init('models', 1)
+    bundle.init('overrides', 1)
+    bundle.overrides[0].key = "model_platform"
+    bundle.overrides[0].value = "usbgpu"
     bundle.models[0].artifact.fileName = 'already_cached.pkl'
-    self.manager.model_fetcher.is_usbgpu = True
 
     async def cached(*args, **kwargs):
       return None
@@ -270,6 +291,47 @@ class TestManagerDownload(ManagerDownloadTestBase):
     asyncio.run(self.manager._download_bundle(bundle, self.dest))
 
     self.manager.params.put_bool.assert_any_call("ModelManager_ActiveBundleRequiresUsbGpu", True, block=True)
+
+  def test_bundle_marks_artifacts_downloading_before_cache_verification(self):
+    bundle = custom.ModelManagerSP.ModelBundle.new_message()
+    bundle.index = 0
+    bundle.init('models', 1)
+    bundle.models[0].artifact.fileName = 'already_cached.pkl'
+    statuses = []
+
+    async def inspect_status(artifact, *args, **kwargs):
+      statuses.append(artifact.downloadProgress.status)
+
+    self.manager._process_artifact = inspect_status
+    asyncio.run(self.manager._download_bundle(bundle, self.dest))
+
+    assert statuses == [custom.ModelManagerSP.DownloadStatus.downloading]
+
+  def test_selecting_active_bundle_clears_request_without_downloading(self):
+    class StopLoop(BaseException):
+      pass
+
+    class OneLoopRatekeeper:
+      def __init__(self, *args, **kwargs):
+        pass
+
+      def keep_time(self):
+        raise StopLoop
+
+    bundle = custom.ModelManagerSP.ModelBundle.new_message()
+    bundle.index = 4
+    self.manager.model_fetcher.get_available_bundles.return_value = [bundle]
+    self.manager.download = mock.MagicMock()
+    self.manager.params.get.side_effect = lambda key: 4 if key == "ModelManager_DownloadIndex" else None
+
+    with mock.patch.object(manager_module, "Ratekeeper", OneLoopRatekeeper), \
+         mock.patch.object(manager_module, "validate_active_bundle"), \
+         mock.patch.object(manager_module, "get_active_bundle", return_value=bundle), \
+         self.assertRaises(StopLoop):
+      self.manager.main_thread()
+
+    self.manager.params.remove.assert_any_call("ModelManager_DownloadIndex")
+    self.manager.download.assert_not_called()
 
   def test_repeat_downloads_are_stable(self):
     """Back-to-back runs must produce identical bytes and leak no start-time state."""

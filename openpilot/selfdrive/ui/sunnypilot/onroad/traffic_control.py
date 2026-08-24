@@ -6,8 +6,10 @@ import math
 import pyray as rl
 
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.selfdrive.ui.onroad.hud_renderer import UI_CONFIG
 from openpilot.sunnypilot.selfdrive.traffic_control.controller import TrafficControlPhase
 from openpilot.system.ui.lib.application import FontWeight, gui_app
+from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.widgets import Widget
 
 
@@ -15,10 +17,28 @@ RED = rl.Color(255, 72, 72, 255)
 AMBER = rl.Color(255, 190, 50, 255)
 GREEN = rl.Color(53, 220, 118, 255)
 LAMP_OFF = rl.Color(65, 69, 76, 220)
-CARD = rl.Color(12, 15, 19, 210)
+CARD = rl.Color(12, 15, 19, 160)
 BORDER = rl.Color(255, 255, 255, 38)
 TEXT = rl.Color(245, 247, 250, 255)
 MUTED = rl.Color(190, 197, 205, 255)
+TRAFFIC_CARD_WIDTH = 940.0
+TRAFFIC_CARD_HEIGHT = 240.0
+TRAFFIC_CARD_TOP_OFFSET = 47.0
+TRAFFIC_DISTANCE_FONT_SIZE = 82
+TRAFFIC_DETAIL_FONT_SIZE = 52
+TRAFFIC_LIGHT_HOUSING_WIDTH = 92.0
+TRAFFIC_LIGHT_HOUSING_HEIGHT = 192.0
+TRAFFIC_LIGHT_RADIUS = 22.0
+TRAFFIC_TEXT_X_OFFSET = 140.0
+
+
+def traffic_card_rect(rect: rl.Rectangle) -> rl.Rectangle:
+  return rl.Rectangle(
+    rect.x + 46.0,
+    rect.y + UI_CONFIG.header_height + TRAFFIC_CARD_TOP_OFFSET,
+    TRAFFIC_CARD_WIDTH,
+    TRAFFIC_CARD_HEIGHT,
+  )
 
 
 @dataclass(frozen=True)
@@ -28,10 +48,15 @@ class TrafficSignalDisplayState:
   control_active: bool = False
   direction_unknown: bool = False
   driver_override_active: bool = False
+  stop_control_allowed: bool = False
+  raw_observation_fresh: bool = False
+  stop_direction_unknown: bool = False
   light_state: int = 0
   distance_m: float = 0.0
   phase: int = int(TrafficControlPhase.off)
   flashing: bool = False
+  action: int = 0
+  should_stop: bool = False
 
   @classmethod
   def from_plan(cls, target, *, valid: bool = True) -> TrafficSignalDisplayState:
@@ -53,6 +78,9 @@ class TrafficSignalDisplayState:
       control_active=bool(target.applied),
       direction_unknown=bool(target.directionUnknown),
       driver_override_active=bool(target.driverOverrideActive),
+      stop_control_allowed=bool(target.stopControlAllowed),
+      raw_observation_fresh=bool(target.rawObservationFresh),
+      stop_direction_unknown=bool(target.stopDirectionUnknown),
       light_state=light,
       distance_m=raw_distance if has_signal else 0.0,
       phase=phase,
@@ -60,7 +88,50 @@ class TrafficSignalDisplayState:
         int(TrafficControlPhase.greenFlashCandidate),
         int(TrafficControlPhase.flashingGreenStop),
       ),
+      action=int(target.action),
+      should_stop=bool(target.shouldStop),
     )
+
+
+def traffic_action_text(state: TrafficSignalDisplayState) -> tuple[str, rl.Color]:
+  if state.has_signal and not state.raw_observation_fresh:
+    if state.action == 1:
+      return tr("Signal lost · slowing continues"), AMBER
+    if state.action == 2 or state.should_stop:
+      return tr("Signal lost · holding stop"), AMBER
+    if state.action == 3:
+      return tr("Green · auto start"), GREEN
+    if state.action == 4:
+      return tr("Green · releasing brakes"), GREEN
+    if state.action == 5:
+      return tr("Green · continuing"), GREEN
+    return tr("Signal expired · control idle"), AMBER
+  if state.driver_override_active:
+    return tr("Driver override · paused"), MUTED
+  if not state.has_signal:
+    return tr("No traffic signal"), MUTED
+  if state.action == 1:
+    if state.flashing or state.light_state == 3:
+      return tr("Signal changing · stopping"), AMBER
+    return tr("Red · slowing to stop"), RED
+  if state.action == 2 or state.should_stop:
+    return tr("Red · holding"), RED
+  if state.action == 3:
+    return tr("Green · auto start"), GREEN
+  if state.action == 4:
+    return tr("Green · releasing brakes"), GREEN
+  if state.action == 5:
+    return tr("Green · continuing"), GREEN
+  if state.stop_direction_unknown:
+    return tr("Direction unclear · monitoring"), AMBER
+  if state.light_state == 1:
+    return (tr("Red detected · waiting") if state.stop_control_allowed
+            else tr("Red detected · brake pending")), RED
+  if state.light_state == 2:
+    return tr("Green · planner control"), GREEN
+  if state.light_state == 3:
+    return tr("Signal detected · monitoring"), AMBER
+  return tr("Traffic signals · monitoring"), MUTED
 
 
 class TrafficControlRenderer(Widget):
@@ -87,61 +158,32 @@ class TrafficControlRenderer(Widget):
     if not self.state.visible:
       return
 
-    width, height = 250.0, 112.0
-    x = rect.x + rect.width / 2 + 155.0
-    y = rect.y + rect.height / 4 - 158.0
-    card = rl.Rectangle(x, y, width, height)
+    # Keep the signal card close to the header so it remains visible above the
+    # expanded eGPU diagnostics on the left side.
+    card = traffic_card_rect(rect)
+    x, y = card.x, card.y
     rl.draw_rectangle_rounded(card, 0.28, 12, CARD)
     rl.draw_rectangle_rounded_lines_ex(card, 0.28, 12, 2, BORDER)
 
-    housing = rl.Rectangle(x + 14, y + 13, 40, 86)
-    rl.draw_rectangle_rounded(housing, 0.45, 10, rl.Color(0, 0, 0, 210))
+    housing = rl.Rectangle(x + 22, y + 24, TRAFFIC_LIGHT_HOUSING_WIDTH, TRAFFIC_LIGHT_HOUSING_HEIGHT)
+    rl.draw_rectangle_rounded(housing, 0.45, 10, rl.Color(0, 0, 0, 190))
     colors = (RED, AMBER, GREEN)
     states = (1, 3, 2)
     for index, (color, state) in enumerate(zip(colors, states, strict=True)):
-      center = rl.Vector2(housing.x + housing.width / 2, housing.y + 17 + index * 26)
+      center = rl.Vector2(housing.x + housing.width / 2, housing.y + 40 + index * 56)
       active = self.state.has_signal and self.state.light_state == state
       if self.state.has_signal and self.state.flashing and state == 2:
         active = int(gui_app.frame / max(1, gui_app.target_fps // 2)) % 2 == 0
       if active:
-        glow = 3.0 + 2.0 * math.sin(gui_app.frame / max(1, gui_app.target_fps) * math.pi)
-        rl.draw_circle_v(center, 10.0 + glow, rl.Color(color.r, color.g, color.b, 42))
-      rl.draw_circle_v(center, 9.0, color if active else LAMP_OFF)
+        glow = 6.0 + 4.0 * math.sin(gui_app.frame / max(1, gui_app.target_fps) * math.pi)
+        rl.draw_circle_v(center, 20.0 + glow, rl.Color(color.r, color.g, color.b, 42))
+      rl.draw_circle_v(center, TRAFFIC_LIGHT_RADIUS, color if active else LAMP_OFF)
 
     distance_text = f"{self.state.distance_m:.0f} m" if self.state.has_signal else "-- m"
-    distance_size = 46
-    distance_pos = rl.Vector2(x + 70, y + 19)
+    distance_size = TRAFFIC_DISTANCE_FONT_SIZE
+    distance_pos = rl.Vector2(x + TRAFFIC_TEXT_X_OFFSET, y + 22)
     rl.draw_text_ex(self.font, distance_text, distance_pos, distance_size, 0, TEXT)
 
-    if self.state.driver_override_active:
-      detail = "DRIVER OVERRIDE"
-      detail_color = MUTED
-    elif self.state.direction_unknown:
-      detail = "DIRECTION · SHADOW"
-      detail_color = AMBER
-    elif not self.state.has_signal:
-      detail = "NO SIGNAL"
-      detail_color = MUTED
-    elif self.state.flashing:
-      detail = "FLASH · STOP"
-      detail_color = AMBER
-    elif self.state.control_active and self.state.phase in (
-      int(TrafficControlPhase.approachRed), int(TrafficControlPhase.braking),
-      int(TrafficControlPhase.hold), int(TrafficControlPhase.yellowStop),
-    ):
-      detail = "STOP"
-      detail_color = RED if self.state.light_state == 1 else AMBER
-    elif self.state.light_state == 2:
-      detail = "GO"
-      detail_color = GREEN
-    elif self.state.light_state == 1:
-      detail = "RED · TRACKING"
-      detail_color = RED
-    elif self.state.light_state == 3:
-      detail = "YELLOW"
-      detail_color = AMBER
-    else:
-      detail = "SIGNAL"
-      detail_color = MUTED
-    detail_size = 24
-    rl.draw_text_ex(self.font_regular, detail, rl.Vector2(x + 70, y + 76), detail_size, 0, detail_color)
+    detail, detail_color = traffic_action_text(self.state)
+    detail_size = TRAFFIC_DETAIL_FONT_SIZE
+    rl.draw_text_ex(self.font_regular, detail, rl.Vector2(x + TRAFFIC_TEXT_X_OFFSET, y + 154), detail_size, 0, detail_color)

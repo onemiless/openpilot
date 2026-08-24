@@ -20,6 +20,7 @@ START_MAX_ACCEL = 1.6
 START_MAX_SPEED = 2.5
 START_MAX_DURATION_NS = 3_000_000_000
 START_JERK_LIMIT = 1.0
+MOVING_GREEN_SPEED = 0.3
 TERMINAL_MAX_SPEED = 1.5
 TERMINAL_LOOKAHEAD_S = 0.05
 PLANNER_TRAFFIC_STALE_NS = 350_000_000
@@ -68,6 +69,11 @@ class TrafficPlanDiagnostics:
   driver_override_active: bool = False
   can_remaining: float = 0.0
   station_innovation: float = 0.0
+  stop_control_allowed: bool = False
+  stop_safety_allowed: bool = False
+  raw_observation_fresh: bool = False
+  raw_observation_age_ms: float = 0.0
+  stop_direction_unknown: bool = False
   phase: int = int(TrafficControlPhase.off)
   light_state: int = 0
   remaining_distance: float = 0.0
@@ -119,9 +125,7 @@ class FinalPlanArbitrator:
     self._was_stopping = False
     self._hold_latched = False
     self._hold_latched_should_stop = False
-    self._lead_release_session_id = 0
-    self._lead_release_cycles = 0
-    self._armed_stop_event_id = 0
+    self._armed_stop_session_id = 0
     self.diagnostics = TrafficPlanDiagnostics()
 
   def publisher(self, pm, sm, now_ns: int | None = None):
@@ -137,33 +141,6 @@ class FinalPlanArbitrator:
     traffic = sm["trafficRadarState"]
     age_ns = now_ns - int(traffic.publishMonoTime)
     return traffic if 0 <= age_ns <= PLANNER_TRAFFIC_STALE_NS else None
-
-  def _physical_radar_clear(self, sm) -> bool:
-    if not self._healthy(sm, "radarState"):
-      return False
-    radar = sm["radarState"]
-    return not (radar.leadOne.present or radar.leadTwo.present)
-
-  def _moving_lead_release_ready(self, plan, sm, traffic) -> bool:
-    """Confirm a moving lead for two planner cycles without adding acceleration."""
-    session_id = int(traffic.stopSessionId)
-    if session_id != self._lead_release_session_id:
-      self._lead_release_session_id = session_id
-      self._lead_release_cycles = 0
-    if not self._healthy(sm, "radarState") or not self._driver_allows_start(sm):
-      self._lead_release_cycles = 0
-      return False
-    radar = sm["radarState"]
-    v_ego = max(0.0, float(sm["carState"].vEgo))
-    moving_lead = any(
-      lead.present and float(lead.dRel) > 1.0 and v_ego + float(lead.vRel) > 0.5
-      for lead in (radar.leadOne, radar.leadTwo)
-    )
-    speeds = np.asarray(plan.speeds, dtype=float)
-    base_rising = len(speeds) >= 2 and float(speeds[-1]) > float(speeds[0]) + 0.05
-    eligible = moving_lead and float(plan.aTarget) > 0.0 and base_rising
-    self._lead_release_cycles = self._lead_release_cycles + 1 if eligible else 0
-    return self._lead_release_cycles >= 2
 
   @staticmethod
   def _driver_allows_stop(sm) -> bool:
@@ -202,6 +179,11 @@ class FinalPlanArbitrator:
     self.diagnostics.driver_override_active = bool(traffic.driverOverrideActive)
     self.diagnostics.can_remaining = float(traffic.canRemaining)
     self.diagnostics.station_innovation = float(traffic.stationInnovation)
+    self.diagnostics.stop_control_allowed = bool(traffic.stopControlAllowed)
+    self.diagnostics.stop_safety_allowed = bool(traffic.stopSafetyAllowed)
+    self.diagnostics.raw_observation_fresh = bool(traffic.rawObservationFresh)
+    self.diagnostics.raw_observation_age_ms = float(traffic.observationAgeMs)
+    self.diagnostics.stop_direction_unknown = bool(traffic.stopDirectionUnknown)
     self.diagnostics.mode = int(traffic.mode)
     self.diagnostics.phase = int(traffic.phase)
     self.diagnostics.light_state = int(traffic.lightState)
@@ -257,15 +239,21 @@ class FinalPlanArbitrator:
     """Speed/personality-aware horizon that separates tracking from braking."""
     personality = sm["selfdriveState"].personality
     if personality == log.LongitudinalPersonality.relaxed:
-      activation_brake = 1.8
+      activation_brake = 1.3
     elif personality == log.LongitudinalPersonality.aggressive:
-      activation_brake = 2.6
+      activation_brake = 1.9
     else:
-      activation_brake = 2.2
+      activation_brake = 1.6
     v_ego = max(0.0, float(sm["carState"].vEgo))
     delay_distance = v_ego * (self._actuator_delay + 0.8)
     braking_distance = v_ego ** 2 / (2.0 * activation_brake)
-    return float(np.clip(braking_distance + delay_distance + 8.0, 20.0, 120.0))
+    return float(np.clip(braking_distance + delay_distance + 8.0, 20.0, 200.0))
+
+  def _traffic_stop_feasible(self, sm, remaining_distance: float) -> bool:
+    v_ego = max(0.0, float(sm["carState"].vEgo))
+    effective_distance = max(remaining_distance - v_ego * (self._actuator_delay + 0.8), 0.5)
+    required_brake = v_ego ** 2 / (2.0 * effective_distance)
+    return required_brake <= MAX_TRAFFIC_STOP_BRAKE
 
   def _apply_stop_constraint(self, plan, sm, *, remaining_distance: float,
                              hold: bool, terminal: bool) -> float:
@@ -335,7 +323,7 @@ class FinalPlanArbitrator:
     self.diagnostics.traffic_a_target = traffic_a_target
     self.diagnostics.terminal_catch_active = bool(terminal_stop or (hold and v_ego > 0.01))
 
-  def _start_block_reason(self, sm, traffic) -> TrafficStartBlockReason:
+  def _start_block_reason(self, plan, sm, traffic) -> TrafficStartBlockReason:
     session_id = int(traffic.stopSessionId)
     if session_id == 0:
       return TrafficStartBlockReason.noPreviousHold
@@ -345,11 +333,13 @@ class FinalPlanArbitrator:
       return TrafficStartBlockReason.alreadyStarted
     if not self._driver_allows_start(sm):
       return TrafficStartBlockReason.driverOverride
-    if not self._physical_radar_clear(sm):
+    # All longitudinal backends publish this common planner result. When a
+    # lead is present, leave GO entirely to the base follow/stop controller.
+    if bool(plan.hasLead):
       return TrafficStartBlockReason.physicalLead
     # A same-event OEM CAN green is authoritative over a model/base-plan
     # traffic-stop residue, matching CP's e2eStopped -> e2eCruise transition.
-    # Physical context and driver gates above remain absolute vetoes.
+    # Session, driver, direction, cruise, speed, and duration gates remain.
     v_cruise = float(sm["carState"].vCruise)
     if not 0.0 < v_cruise < V_CRUISE_UNSET:
       return TrafficStartBlockReason.invalidCruise
@@ -363,13 +353,9 @@ class FinalPlanArbitrator:
   def _apply_start(self, plan, sm, traffic, now_ns: int) -> bool:
     self.diagnostics.start_requested = True
     session_id = int(traffic.stopSessionId)
-    block_reason = self._start_block_reason(sm, traffic)
+    block_reason = self._start_block_reason(plan, sm, traffic)
     self.diagnostics.start_block_reason = block_reason
     if block_reason != TrafficStartBlockReason.none:
-      # A physical lead is still an absolute veto for this cycle, but a single
-      # 50 ms radar blip must not permanently complete the same-event green
-      # start. Keep the bounded start window alive and resume when radar is
-      # positively clear again.
       if (block_reason != TrafficStartBlockReason.physicalLead
           and self._active_start_session_id == session_id):
         self._finish_start(session_id)
@@ -415,46 +401,6 @@ class FinalPlanArbitrator:
     self.diagnostics.applied = True
     self.diagnostics.start_applied = True
     self.diagnostics.traffic_a_target = start_a_target
-    return True
-
-  def _apply_rolling_release(self, plan, sm, traffic, now_ns: int) -> bool:
-    self.diagnostics.start_requested = True
-    block_reason = self._start_block_reason(sm, traffic)
-    self.diagnostics.start_block_reason = block_reason
-    if block_reason != TrafficStartBlockReason.none:
-      return False
-    session_id = int(traffic.stopSessionId)
-    if self._active_start_session_id == 0:
-      self._active_start_session_id = session_id
-      self._start_started_ns = now_ns
-    elif self._active_start_session_id != session_id:
-      return False
-    if now_ns - self._start_started_ns > START_MAX_DURATION_NS:
-      self._finish_start(session_id)
-      return False
-
-    base_speeds = np.asarray(plan.speeds, dtype=float)
-    base_accels = np.asarray(plan.accels, dtype=float)
-    times = self._times(len(base_speeds))
-    release_speeds, release_accels, _ = self._profile.build_release(
-      v_ego=float(sm["carState"].vEgo), base_accel=max(0.0, float(plan.aTarget)),
-      times=times, preserve_positive_accel=True,
-    )
-    final_speeds = np.maximum(base_speeds, release_speeds)
-    final_accels = np.maximum(base_accels, release_accels)
-    release_a_target = float(np.interp(self._actuator_delay + 0.05, times, release_accels))
-    plan.speeds = final_speeds.tolist()
-    plan.accels = final_accels.tolist()
-    plan.jerks = self._padded_jerks(final_accels, times, len(plan.jerks)).tolist()
-    plan.aTarget = float(np.clip(max(float(plan.aTarget), release_a_target, 0.0), 0.0, START_MAX_ACCEL))
-    plan.shouldStop = False
-    self._hold_latched = False
-    self._hold_latched_should_stop = False
-    self._was_stopping = False
-    self.diagnostics.action = TrafficPlanAction.rollingRelease
-    self.diagnostics.applied = True
-    self.diagnostics.start_applied = True
-    self.diagnostics.traffic_a_target = release_a_target
     return True
 
   def _apply_latched_hold(self, plan, sm) -> None:
@@ -511,7 +457,26 @@ class FinalPlanArbitrator:
     traffic = self._traffic(sm, now_ns)
     self._set_diagnostics_from_traffic(traffic)
 
-    physical_clear = self._physical_radar_clear(sm)
+    event_passed = bool(
+      traffic is not None and int(traffic.phase) == int(TrafficControlPhase.passed)
+    )
+    if event_passed:
+      self._held_event_id = 0
+      self._held_session_id = 0
+      self._seen_stop_session_id = 0
+      self._owned_stop_session_id = 0
+      self._active_start_session_id = 0
+      self._completed_start_session_id = 0
+      self._start_started_ns = 0
+      self._was_stopping = False
+      self._hold_latched = False
+      self._hold_latched_should_stop = False
+      self._armed_stop_session_id = 0
+      self._profile.reset()
+      self.diagnostics.final_a_target = float(plan.aTarget)
+      self.diagnostics.should_stop = bool(plan.shouldStop)
+      return
+
     driver_allows_stop = self._driver_allows_stop(sm)
     signal_release = bool(
       traffic is not None and int(traffic.stopSessionId) > 0
@@ -527,7 +492,7 @@ class FinalPlanArbitrator:
       if self._active_start_session_id != 0:
         self._finish_start(self._active_start_session_id)
       self._was_stopping = False
-      self._armed_stop_event_id = 0
+      self._armed_stop_session_id = 0
       self._profile.reset()
       self.diagnostics.final_a_target = float(plan.aTarget)
       self.diagnostics.should_stop = bool(plan.shouldStop)
@@ -541,21 +506,28 @@ class FinalPlanArbitrator:
       and int(traffic.phase) in stop_phases
     )
     if trackable_stop:
-      event_id = int(traffic.eventId)
+      session_id = int(traffic.stopSessionId)
       self._seen_stop_session_id = int(traffic.stopSessionId)
       inside_horizon = bool(
         int(traffic.phase) == int(TrafficControlPhase.hold)
         or float(traffic.distanceToStopPoint) <= self._traffic_activation_distance(sm)
       )
-      if event_id != self._armed_stop_event_id:
-        self._armed_stop_event_id = event_id if inside_horizon else 0
-      elif inside_horizon:
-        self._armed_stop_event_id = event_id
+      feasible = self._traffic_stop_feasible(sm, float(traffic.distanceToStopPoint))
+      if session_id != self._armed_stop_session_id:
+        self._armed_stop_session_id = session_id if inside_horizon and feasible and traffic.stopControlAllowed else 0
+      elif inside_horizon and feasible:
+        self._armed_stop_session_id = session_id
     else:
-      self._armed_stop_event_id = 0
+      self._armed_stop_session_id = 0
+    stale_armed_grace = bool(
+      trackable_stop and int(traffic.stopSessionId) == self._armed_stop_session_id
+      and traffic.stopSafetyAllowed and not traffic.rawObservationFresh
+      and 0.0 <= float(traffic.observationAgeMs) <= 2000.0
+      and float(traffic.rawDistance) < 255.0
+    )
     active_stop = bool(
-      trackable_stop and int(traffic.eventId) == self._armed_stop_event_id
-      and traffic.controlAllowed and physical_clear and driver_allows_stop
+      trackable_stop and int(traffic.stopSessionId) == self._armed_stop_session_id
+      and (traffic.stopControlAllowed or stale_armed_grace) and driver_allows_stop
     )
     if active_stop:
       self._apply_stop(plan, sm, traffic)
@@ -563,8 +535,16 @@ class FinalPlanArbitrator:
       if bool(traffic.directionUnknown):
         self.diagnostics.start_requested = True
         self.diagnostics.start_block_reason = TrafficStartBlockReason.driverOverride
-      elif float(sm["carState"].vEgo) > START_MAX_SPEED:
-        self._apply_rolling_release(plan, sm, traffic, now_ns)
+      elif float(sm["carState"].vEgo) > MOVING_GREEN_SPEED:
+        self.diagnostics.start_requested = True
+        if bool(plan.hasLead):
+          self.diagnostics.start_block_reason = TrafficStartBlockReason.physicalLead
+        self._finish_start(int(traffic.stopSessionId))
+        self._hold_latched = False
+        self._hold_latched_should_stop = False
+        self._was_stopping = False
+        self._armed_stop_session_id = 0
+        self._profile.reset()
       elif not self._apply_start(plan, sm, traffic, now_ns):
         self._profile.reset()
         self._was_stopping = False
@@ -573,17 +553,8 @@ class FinalPlanArbitrator:
       self._hold_latched_should_stop = False
       self._was_stopping = False
       self._profile.reset()
-    elif signal_release and not physical_clear:
-      # The lead planner owns every numeric trajectory field. Two healthy
-      # moving-lead cycles may clear only the stale traffic shouldStop latch.
-      if self._moving_lead_release_ready(plan, sm, traffic):
-        plan.shouldStop = False
-        self._was_stopping = False
-        self._profile.reset()
-        self.diagnostics.action = TrafficPlanAction.release
-        self.diagnostics.applied = True
     elif (self._hold_latched and float(sm["carState"].vEgo) <= TERMINAL_MAX_SPEED
-          and physical_clear and driver_allows_stop):
+          and driver_allows_stop):
       self._apply_latched_hold(plan, sm)
     else:
       same_release_start = bool(
@@ -627,6 +598,11 @@ class FinalPlanArbitrator:
     target.driverOverrideActive = diagnostics.driver_override_active
     target.canRemaining = diagnostics.can_remaining
     target.stationInnovation = diagnostics.station_innovation
+    target.stopControlAllowed = diagnostics.stop_control_allowed
+    target.stopSafetyAllowed = diagnostics.stop_safety_allowed
+    target.rawObservationFresh = diagnostics.raw_observation_fresh
+    target.rawObservationAgeMs = diagnostics.raw_observation_age_ms
+    target.stopDirectionUnknown = diagnostics.stop_direction_unknown
 
 
 def create_final_plan_arbitrator(CP, params) -> FinalPlanArbitrator | None:

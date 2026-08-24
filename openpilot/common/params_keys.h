@@ -59,7 +59,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"IsDriverViewEnabled", {CLEAR_ON_MANAGER_START, BOOL}},
     {"IsEngaged", {PERSISTENT, BOOL}},
     {"IsLdwEnabled", {PERSISTENT | BACKUP, BOOL}},
-    {"IsLiveStreaming", {CLEAR_ON_MANAGER_START, BOOL}},
+    {"IsLiveStreaming", {CLEAR_ON_MANAGER_START | CLEAR_ON_IGNITION_ON, BOOL}},
     {"IsMetric", {PERSISTENT | BACKUP, BOOL}},
     {"IsOffroad", {CLEAR_ON_MANAGER_START, BOOL}},
     {"IsRhdDetected", {PERSISTENT, BOOL}},
@@ -137,6 +137,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"UsbGpuEjectRequest", {CLEAR_ON_MANAGER_START | CLEAR_ON_IGNITION_ON, BOOL}},
     {"UsbGpuEjectStatus", {CLEAR_ON_MANAGER_START | CLEAR_ON_IGNITION_ON, STRING}},
     {"UsbGpuLoading", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | CLEAR_ON_IGNITION_ON, BOOL}},
+    {"UsbGpuLoadingProgress", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | CLEAR_ON_IGNITION_ON, INT, "0"}},
     {"Version", {PERSISTENT, STRING}},
 
     // --- sunnypilot params --- //
@@ -272,13 +273,9 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     // The private-LAN console is directly accessible; its opt-in Bash terminal has separate authentication.
     {"WebTerminalEnabled", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"WebTerminalPassword", {PERSISTENT | DONT_LOG | BACKUP, STRING, "123456"}},
-    {"TeslaTrafficControlMode", {PERSISTENT | BACKUP, INT, "1"}},
     {"TeslaTrafficSignalControlEnabled", {PERSISTENT | BACKUP, BOOL, "0"}},
-    {"TeslaTrafficControlStrategy", {PERSISTENT | BACKUP, INT, "0"}},
-    {"TeslaTrafficObstacleGoPolicy", {PERSISTENT | BACKUP, INT, "0"}},
     {"TeslaTrafficStopReference", {PERSISTENT | BACKUP, INT, "50"}},  // decimeters
     {"TeslaTrafficControlMaxSpeed", {PERSISTENT | BACKUP, INT, "60"}},  // km/h
-    {"TeslaTrafficAdaptiveReference", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"NavAssistEnabled", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"NavAssistShadowMode", {PERSISTENT | BACKUP, BOOL, "1"}},
     {"NavAssistSpeedControl", {PERSISTENT | BACKUP, BOOL, "0"}},

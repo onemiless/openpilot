@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+from pathlib import Path
 import unittest
 import signal
 import time
@@ -9,6 +10,7 @@ from opendbc.car.structs import car
 from openpilot.common.test import OpenpilotTestCase
 from openpilot.common.params import Params
 import openpilot.system.manager.manager as manager
+import openpilot.system.manager.process_config as process_config
 from openpilot.system.manager.process import ensure_running
 from openpilot.system.manager.process_config import managed_processes, procs
 from openpilot.common.hardware import HARDWARE
@@ -61,6 +63,26 @@ class TestManager(OpenpilotTestCase):
     assert params.get_bool("RecordRoadVideo")
     assert managed_processes["encoderd"].should_run(True, params, car.CarParams.new_message())
     assert not managed_processes["encoderd"].should_run(False, params, car.CarParams.new_message())
+
+  def test_livestream_processes_follow_livestream_param_until_ignition_clear(self):
+    params = Params()
+    params.put_bool("IsLiveStreaming", True, block=True)
+    CP = car.CarParams.new_message()
+    CP.notCar = False
+
+    assert managed_processes["stream_encoderd"].should_run(True, params, CP)
+    assert managed_processes["webrtcd"].should_run(True, params, CP)
+
+  def test_local_process_seams_remain_registered(self):
+    for name in ("device_console", "alert_output", "chestnut_statusd", "trafficcontrold"):
+      assert name in managed_processes
+
+  def test_github_runner_process_is_retired(self):
+    assert "github_runner_start" not in managed_processes
+    repo_root = Path(process_config.__file__).parents[3]
+    assert not (Path(process_config.__file__).parent / "github_runner.sh").exists()
+    assert not (repo_root / "release/ci/install_github_runner.sh").exists()
+    assert not (repo_root / "release/ci/uninstall_github_runner.sh").exists()
 
   @unittest.skip("this test is flaky the way it's currently written, should be moved to test_onroad")
   def test_clean_exit(self, subtests):

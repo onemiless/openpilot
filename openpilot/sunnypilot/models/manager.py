@@ -17,7 +17,8 @@ from openpilot.common.hardware.hw import Paths
 
 from openpilot.cereal import messaging, custom
 from openpilot.sunnypilot.models.fetcher import ModelFetcher
-from openpilot.sunnypilot.models.helpers import get_active_bundle, validate_active_bundle, verify_file
+from openpilot.sunnypilot.models.helpers import (bundle_requires_usbgpu, get_active_bundle,
+                                                  migrate_active_bundle_metadata, validate_active_bundle, verify_file)
 
 # (connect, read) seconds. read is per-request inactivity, not a total cap
 DOWNLOAD_TIMEOUT = (30, 30)
@@ -154,19 +155,27 @@ class ModelManagerSP:
       is_cached = False
       if len(artifact.chunks) > 0:
         from openpilot.common.file_chunker import get_chunk_name
+        num_chunks = len(artifact.chunks)
         chunks_valid = True
         for i, chunk in enumerate(artifact.chunks):
-          chunk_path = get_chunk_name(full_path, i, len(artifact.chunks))
+          chunk_path = get_chunk_name(full_path, i, num_chunks)
           if not await verify_file(chunk_path, chunk.sha256):
             chunks_valid = False
             break
-        if chunks_valid and len(artifact.chunks) > 0:
+          artifact.downloadProgress.progress = ((i + 1) / num_chunks) * 100
+          self._sync_artifact_progress(artifact)
+          self._report_status()
+        if chunks_valid and num_chunks > 0:
           is_cached = True
       else:
         if await verify_file(full_path, expected_hash):
           is_cached = True
 
       if is_cached:
+        if len(artifact.chunks) > 0:
+          from openpilot.common.file_chunker import get_manifest_path
+          with open(get_manifest_path(full_path), 'w') as f:  # noqa: ASYNC230
+            f.write(str(len(artifact.chunks)))
         artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.cached
         artifact.downloadProgress.progress = 100
         artifact.downloadProgress.eta = 0
@@ -227,6 +236,9 @@ class ModelManagerSP:
     """Downloads all models in a bundle"""
     self.selected_bundle = model_bundle
     self.selected_bundle.status = custom.ModelManagerSP.DownloadStatus.downloading
+    for model in self.selected_bundle.models:
+      model.artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.downloading
+    self._report_status()
     os.makedirs(destination_path, exist_ok=True)
 
     try:
@@ -250,7 +262,7 @@ class ModelManagerSP:
 
       self.active_bundle = self.selected_bundle
       self.active_bundle.status = custom.ModelManagerSP.DownloadStatus.downloaded
-      self.params.put_bool("ModelManager_ActiveBundleRequiresUsbGpu", self.model_fetcher.is_usbgpu, block=True)
+      self.params.put_bool("ModelManager_ActiveBundleRequiresUsbGpu", bundle_requires_usbgpu(self.active_bundle), block=True)
       self.params.put("ModelManager_ActiveBundle", self.active_bundle.to_dict(), block=True)
       self.selected_bundle = None
 
@@ -273,11 +285,16 @@ class ModelManagerSP:
     while True:
       try:
         self.available_models = self.model_fetcher.get_available_bundles()
+        migrate_active_bundle_metadata(self.params, self.available_models)
         validate_active_bundle(self.params, self.available_models)
         self.active_bundle = get_active_bundle(self.params)
 
         if (index_to_download := self.params.get("ModelManager_DownloadIndex")) is not None:
-          if model_to_download := next((model for model in self.available_models if model.index == index_to_download), None):
+          if self.active_bundle is not None and int(self.active_bundle.index) == int(index_to_download):
+            current_index = self.params.get("ModelManager_DownloadIndex")
+            if current_index is not None and int(current_index) == int(index_to_download):
+              self.params.remove("ModelManager_DownloadIndex")
+          elif model_to_download := next((model for model in self.available_models if model.index == index_to_download), None):
             try:
               self.download(model_to_download, Paths.model_root())
             except Exception as e:
