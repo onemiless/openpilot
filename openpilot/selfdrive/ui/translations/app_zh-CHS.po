@@ -2714,6 +2714,10 @@ msgstr "导航数据有效"
 msgid "Connected, no valid guidance"
 msgstr "已连接，暂无有效导航指引"
 
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/settings.py
+msgid "Navigation"
+msgstr "导航"
+
 #: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
 msgid "No traffic signal"
 msgstr "未检测到红绿灯"

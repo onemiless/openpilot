@@ -2810,3 +2810,7 @@ msgstr ""
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
 msgid "Connected, no valid guidance"
 msgstr ""
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/settings.py
+msgid "Navigation"
+msgstr ""
