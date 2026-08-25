@@ -66,6 +66,15 @@ void ignition_can_hook(const CANPacket_t *msg) {
       }
       prev_counter_vw_meb = counter;
     }
+  } else if (msg->bus == 2U) {
+    int len = GET_LEN(msg);
+
+    // GM exception: SDGM cars send SystemPowerMode on bus 2
+    if ((msg->addr == 0x1F1U) && (len == 8)) {
+      // SystemPowerMode (2=Run, 3=Crank Request)
+      ignition_can = (msg->data[0] & 0x2U) != 0U;
+      ignition_can_cnt = 0U;
+    }
   }
 
   // TODO: this is too loose, Teslas have 0x222
