@@ -112,7 +112,7 @@ def test_far_low_urgency_replacement_requires_half_second_continuous_evidence():
   original_session = c.stop_session_id
 
   update(c, 2.0, observation(190.0, 1, 2.0), v_ego=10.0)
-  early = update(c, 2.1, observation(189.0, 1, 2.1), v_ego=10.0)
+  update(c, 2.1, observation(189.0, 1, 2.1), v_ego=10.0)
   assert c.event_id == original_event
   assert c.stop_session_id == original_session
 
