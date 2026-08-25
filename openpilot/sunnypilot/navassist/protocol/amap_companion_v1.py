@@ -120,6 +120,7 @@ class AMapCompanionReceiver:
     maneuver_distance = _number(payload.get("maneuver_distance_m"), "maneuver distance", 0.0, 2_000_000.0)
     current_speed = _number(payload.get("current_speed_kph"), "current speed", 0.0, 300.0)
     limit_speed = _number(payload.get("limit_speed_kph"), "limit speed", 0.0, 200.0)
+    camera_speed = _number(payload.get("camera_speed_kph"), "camera speed", 0.0, 200.0)
     camera_distance = _number(payload.get("camera_distance_m"), "camera distance", 0.0, 2_000_000.0)
     camera_type = int(_number(payload.get("camera_type"), "camera type", -1.0, 100_000.0, -1.0))
     road_name = _text(payload.get("road_name"), "road_name", 96)
@@ -163,9 +164,9 @@ class AMapCompanionReceiver:
       speed_value: dict[str, Any] = {"current_kph": current_speed}
       if limit_speed > 0:
         speed_value["road_limit_kph"] = limit_speed
-      if camera_distance > 0 and limit_speed > 0:
+      if camera_distance > 0 and camera_speed > 0:
         speed_value["sdi"] = {"type": camera_type, "distance_m": camera_distance,
-                              "speed_limit_kph": limit_speed}
+                              "speed_limit_kph": camera_speed}
       records["speed"] = StreamRecord(True, sequence, received_ns, speed_value, "", sent_at_ms, sent_at_ms)
       self._records = records
       self._sequence = sequence

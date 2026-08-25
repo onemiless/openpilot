@@ -10,11 +10,13 @@
 - Protocol: Carrot Navi WebSocket v2, catalog revision 1
 - AMap Companion source: `zuo-qirun/amap-companion`
 - AMap Companion audited commit: `f7cc42d44a27588c67264657983c0e75ed739f42`
-- AMap NavAssist bridge commit: `d87df0b` (`navassist-v1`)
+- AMap NavAssist bridge commit: `0556291` (`navassist-v1`)
+- AMap NavAssist APK version: `1.0.1-navassist` (versionCode `2`)
 
 ## Network contract
 
-- The openpilot device is the TCP/WebSocket server on port `7714`.
+- The openpilot device is the Carrot TCP/WebSocket server on port `7714` and
+  the AMap Companion newline-JSON TCP server on port `7715`.
 - The device broadcasts discovery JSON to UDP port `7705`.
 - The Android app is the client.
 - NavAssist enables only `vehicle`, `guidance_current`, `guidance_next`,
@@ -22,9 +24,9 @@
 - Media, image, render, cluster, terminal, command, and Web UI capabilities are
   not exposed by NavAssist.
 
-The upstream protocol currently uses unauthenticated plain local-network
-WebSockets. This branch accepts that limitation only for supervised prototype
-testing. It is not evidence of public-road readiness.
+The current protocols use unauthenticated plain local-network sockets. This
+branch accepts that limitation only for supervised prototype testing. It is
+not evidence of public-road readiness.
 
 `dev-sp-egpu-nva` is explicitly allowlisted as a supervised C3XL/TICI test
 channel. Accepted changes must return to the maintained `dev-sp-egpu` channel;

@@ -22,6 +22,9 @@ wire contract.
 - Each message is one UTF-8 JSON object followed by `\n`.
 - Maximum encoded line size is 64 KiB.
 - The app sends the latest snapshot every 500 ms.
+- App `1.0.1-navassist` independently expires navigation, maneuver, road-limit,
+  and camera source timestamps before each heartbeat. A live TCP connection
+  therefore cannot keep stale AMap control fields valid.
 
 ## Snapshot schema
 
@@ -40,6 +43,7 @@ wire contract.
   "maneuver_road": "下一道路",
   "current_speed_kph": 45,
   "limit_speed_kph": 60,
+  "camera_speed_kph": 40,
   "camera_type": 0,
   "camera_distance_m": 300
 }
@@ -47,6 +51,9 @@ wire contract.
 
 The receiver validates types, ranges, session changes, monotonic sequence,
 exact duplicates, and line length before producing a `ProtocolSnapshot`.
+`limit_speed_kph` is the current road limit (`LIMITED_SPEED`), while
+`camera_speed_kph` is the upcoming camera limit (`CAMERA_SPEED`); they are
+kept separate because AMap may report different values.
 
 ## Maneuver mapping
 

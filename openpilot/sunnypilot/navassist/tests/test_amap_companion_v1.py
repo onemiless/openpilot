@@ -16,7 +16,7 @@ def payload(sequence=1, **overrides):
     "sequence": sequence, "sent_at_ms": 1000, "navigation_active": True, "cruise_mode": False,
     "road_name": "当前道路", "maneuver_icon": 2, "maneuver_distance_m": 80,
     "maneuver_road": "下一道路", "current_speed_kph": 45, "limit_speed_kph": 60,
-    "camera_type": 0, "camera_distance_m": 300,
+    "camera_speed_kph": 40, "camera_type": 0, "camera_distance_m": 300,
   }
   value.update(overrides)
   return value
@@ -35,8 +35,18 @@ def test_receiver_normalizes_amap_snapshot():
   assert snapshot.connected and snapshot.source == NavSource.AMAP_COMPANION_V1
   assert snapshot.record("guidance_current").value["turn_type"] == 12
   assert snapshot.record("speed").value["road_limit_kph"] == 60
+  assert snapshot.record("speed").value["sdi"]["speed_limit_kph"] == 40
   assert snapshot.record("speed").value["sdi"]["distance_m"] == 300
   assert not snapshot.record("route").present
+
+
+def test_road_limit_is_not_reused_as_camera_limit():
+  receiver = AMapCompanionReceiver()
+  token = receiver.connect()
+  receiver.record(token, payload(camera_speed_kph=0))
+  speed = receiver.snapshot().record("speed").value
+  assert speed["road_limit_kph"] == 60
+  assert "sdi" not in speed
 
 
 def test_sequence_and_disconnect_fail_closed():
