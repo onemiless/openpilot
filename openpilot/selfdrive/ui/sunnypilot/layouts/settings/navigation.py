@@ -63,10 +63,17 @@ class NavigationLayout(Widget):
       status = tr("Not running")
     else:
       nav = ui_state.sm["navAssistSP"]
+      if nav.source == "amapCompanionV1":
+        source = tr("AMap Companion")
+      elif nav.source == "carrotV2":
+        source = tr("Carrot V2")
+      else:
+        source = tr("Navigation")
       if not nav.connected:
         status = tr("Waiting for phone")
       elif nav.dataValid:
         status = tr("Navigation active")
       else:
         status = tr("Connected, no valid guidance")
+      status = f"{source} · {status}"
     self.status_item.action_item.set_value(status)

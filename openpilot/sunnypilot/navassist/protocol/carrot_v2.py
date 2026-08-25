@@ -19,7 +19,7 @@ import threading
 import time
 from typing import Any
 
-from openpilot.sunnypilot.navassist.types import ProtocolSnapshot, StreamRecord
+from openpilot.sunnypilot.navassist.types import NavSource, ProtocolSnapshot, StreamRecord
 
 
 PROTOCOL_VERSION = 2
@@ -44,6 +44,11 @@ CATALOG = tuple([("json", name) for name in JSON_NAMES] +
                 [("render", name) for name in RENDER_NAMES])
 CATALOG_SET = frozenset(CATALOG)
 ENABLED_JSON = frozenset(("vehicle", "guidance_current", "guidance_next", "speed", "route", "navigation_status"))
+
+
+def discovery_payload(ip: str) -> bytes:
+  return json.dumps({"ip": ip, "navi_debug": 0, "amap_companion_protocol": 1,
+                     "amap_companion_port": 7715}).encode()
 
 
 def _validate_number(value: object, field: str, minimum: float, maximum: float) -> None:
@@ -278,6 +283,7 @@ class CarrotV2Receiver:
         records=copy.deepcopy(self._records),
         protocol_error=self._protocol_error,
         sequence_error=self._sequence_error,
+        source=NavSource.CARROT_V2,
       )
 
 
@@ -368,7 +374,7 @@ class DiscoveryBroadcaster:
     try:
       while not self._stop.wait(1.0):
         try:
-          payload = json.dumps({"ip": detect_advertise_ip(), "navi_debug": 0}).encode()
+          payload = discovery_payload(detect_advertise_ip())
           sock.sendto(payload, ("255.255.255.255", DISCOVERY_PORT))
         except OSError:
           pass

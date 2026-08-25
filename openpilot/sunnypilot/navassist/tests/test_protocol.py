@@ -1,6 +1,8 @@
+import json
+
 import pytest
 
-from openpilot.sunnypilot.navassist.protocol.carrot_v2 import CATALOG, CarrotV2Receiver
+from openpilot.sunnypilot.navassist.protocol.carrot_v2 import CATALOG, CarrotV2Receiver, discovery_payload
 
 
 def requirements():
@@ -58,6 +60,12 @@ def test_protocol_error_remains_fail_closed_until_new_session():
   assert receiver.snapshot().protocol_error == "malformed stream"
   receiver.negotiate(requirements())
   assert receiver.snapshot().protocol_error == ""
+
+
+def test_discovery_advertises_amap_bridge():
+  payload = json.loads(discovery_payload("192.168.1.2"))
+  assert payload["amap_companion_protocol"] == 1
+  assert payload["amap_companion_port"] == 7715
 
 
 def test_duplicate_sequence_requires_identical_payload():

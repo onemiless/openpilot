@@ -110,16 +110,16 @@ class NavStateMachine:
   def update(self, snapshot: ProtocolSnapshot, params: NavAssistParams, now_ns: int) -> NavAssistState:
     if not params.enabled:
       return NavAssistState(connected=snapshot.connected, session_id=snapshot.session_id,
-                            generation=snapshot.generation, invalid_reason=InvalidReason.DISABLED)
+                            generation=snapshot.generation, invalid_reason=InvalidReason.DISABLED, source=snapshot.source)
     if not snapshot.connected:
       return NavAssistState(session_id=snapshot.session_id, generation=snapshot.generation,
-                            invalid_reason=InvalidReason.DISCONNECTED)
+                            invalid_reason=InvalidReason.DISCONNECTED, source=snapshot.source)
     if snapshot.protocol_error:
       return NavAssistState(connected=True, session_id=snapshot.session_id, generation=snapshot.generation,
-                            invalid_reason=InvalidReason.PROTOCOL_ERROR)
+                            invalid_reason=InvalidReason.PROTOCOL_ERROR, source=snapshot.source)
     if snapshot.sequence_error:
       return NavAssistState(connected=True, session_id=snapshot.session_id, generation=snapshot.generation,
-                            invalid_reason=InvalidReason.SEQUENCE_ERROR)
+                            invalid_reason=InvalidReason.SEQUENCE_ERROR, source=snapshot.source)
 
     timeout_ns = int(params.message_timeout_s * 1e9)
     status_record = snapshot.record("navigation_status")
@@ -127,16 +127,16 @@ class NavStateMachine:
     status = _dict(status_record.value)
     if not status_fresh:
       return NavAssistState(connected=True, session_id=snapshot.session_id, generation=snapshot.generation,
-                            invalid_reason=InvalidReason.STALE_MESSAGE)
+                            invalid_reason=InvalidReason.STALE_MESSAGE, source=snapshot.source)
     guidance_active = bool(status.get("guidance_active", False))
     off_route = bool(status.get("off_route", False)) or status.get("mode") == "off_route"
     if off_route:
       return NavAssistState(connected=True, session_id=snapshot.session_id, generation=snapshot.generation,
                             guidance_active=guidance_active, off_route=True, stale=False,
-                            invalid_reason=InvalidReason.OFF_ROUTE)
+                            invalid_reason=InvalidReason.OFF_ROUTE, source=snapshot.source)
     if not guidance_active:
       return NavAssistState(connected=True, session_id=snapshot.session_id, generation=snapshot.generation,
-                            stale=False, invalid_reason=InvalidReason.NAVIGATION_INACTIVE)
+                            stale=False, invalid_reason=InvalidReason.NAVIGATION_INACTIVE, source=snapshot.source)
 
     current_record = snapshot.record("guidance_current")
     next_record = snapshot.record("guidance_next")
@@ -196,12 +196,12 @@ class NavStateMachine:
     if not data_valid:
       return NavAssistState(
         connected=True, session_id=snapshot.session_id, generation=snapshot.generation,
-        guidance_active=True, stale=True, invalid_reason=InvalidReason.STALE_MESSAGE,
+        guidance_active=True, stale=True, invalid_reason=InvalidReason.STALE_MESSAGE, source=snapshot.source,
       )
     return NavAssistState(
       connected=True, session_id=snapshot.session_id, generation=snapshot.generation,
       data_valid=data_valid, guidance_valid=guidance_valid, speed_valid=speed_valid, route_valid=route_valid,
-      guidance_active=True, stale=False, invalid_reason=InvalidReason.NONE,
+      guidance_active=True, stale=False, invalid_reason=InvalidReason.NONE, source=snapshot.source,
       maneuver=maneuver, maneuver_id=self._current_identity.update(snapshot.session_id, maneuver, current, maneuver_generation),
       raw_turn_type=raw_turn, distance_to_maneuver_m=distance_m, maneuver_target_speed_mps=maneuver_speed,
       next_maneuver=next_maneuver,

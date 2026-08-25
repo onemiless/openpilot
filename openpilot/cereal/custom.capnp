@@ -637,6 +637,7 @@ struct NavAssistSP @0xc2243c65e0340384 {
   speedSource @29 :SpeedSource;
   routeDeviationM @30 :Float32;
   invalidReason @31 :InvalidReason;
+  source @32 :Source;
 
   enum Maneuver {
     none @0;
@@ -669,6 +670,12 @@ struct NavAssistSP @0xc2243c65e0340384 {
     navigationInactive @6;
     offRoute @7;
     locationInvalid @8;
+  }
+
+  enum Source {
+    none @0;
+    carrotV2 @1;
+    amapCompanionV1 @2;
   }
 }
 

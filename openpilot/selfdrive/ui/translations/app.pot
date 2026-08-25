@@ -2814,3 +2814,11 @@ msgstr ""
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/settings.py
 msgid "Navigation"
 msgstr ""
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
+msgid "AMap Companion"
+msgstr ""
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
+msgid "Carrot V2"
+msgstr ""

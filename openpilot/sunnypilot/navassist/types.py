@@ -37,6 +37,12 @@ class InvalidReason(IntEnum):
   LOCATION_INVALID = 8
 
 
+class NavSource(IntEnum):
+  NONE = 0
+  CARROT_V2 = 1
+  AMAP_COMPANION_V1 = 2
+
+
 class LateralRequest(IntEnum):
   NONE = 0
   TURN_LEFT = 1
@@ -64,6 +70,7 @@ class ProtocolSnapshot:
   records: dict[str, StreamRecord] | None = None
   protocol_error: str = ""
   sequence_error: bool = False
+  source: NavSource = NavSource.NONE
 
   def record(self, name: str) -> StreamRecord:
     return (self.records or {}).get(name, StreamRecord())
@@ -108,3 +115,4 @@ class NavAssistState:
   speed_control_distance_m: float = 0.0
   speed_source: SpeedSource = SpeedSource.NONE
   route_deviation_m: float = 0.0
+  source: NavSource = NavSource.NONE
