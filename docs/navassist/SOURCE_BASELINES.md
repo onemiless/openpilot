@@ -8,6 +8,8 @@
 - Carrot protocol source: `jixiexiaoge/openpilot:Carrot`
 - Carrot protocol commit: `3fb1121ecb7837e47f5edf12c5882e38c57c05bd`
 - Protocol: Carrot Navi WebSocket v2, catalog revision 1
+- NaviPilot Android source: `jixiexiaoge/navipilot:Amapauto`
+- NaviPilot audited commit: `3f1af5f50bfb3c414aa40b9ab48a2fe6cf5afbda`
 - AMap Companion source: `zuo-qirun/amap-companion`
 - AMap Companion audited commit: `f7cc42d44a27588c67264657983c0e75ed739f42`
 - AMap NavAssist bridge commit: `66989cb` (`navassist-v1`)

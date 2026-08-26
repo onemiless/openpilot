@@ -71,6 +71,7 @@ class ProtocolSnapshot:
   protocol_error: str = ""
   sequence_error: bool = False
   source: NavSource = NavSource.NONE
+  client_version: str = ""
 
   def record(self, name: str) -> StreamRecord:
     return (self.records or {}).get(name, StreamRecord())

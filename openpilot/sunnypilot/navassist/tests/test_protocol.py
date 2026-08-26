@@ -8,6 +8,7 @@ from openpilot.sunnypilot.navassist.protocol.carrot_v2 import CATALOG, CarrotV2R
 def requirements():
   return {
     "type": "requirements_query", "protocol_version": 2, "catalog_revision": 1,
+    "app_version": "amap_auto_1.0",
     "streams": [{"kind": kind, "name": name, "schema_version": 1} for kind, name in CATALOG],
   }
 
@@ -27,6 +28,7 @@ def test_manifest_contains_all_catalog_items_but_only_control_json_enabled():
   manifest = receiver.negotiate(requirements())
   assert len(manifest["streams"]) == 28
   assert all(not s["enabled"] for s in manifest["streams"] if s["kind"] != "json")
+  assert receiver.snapshot().client_version == "amap_auto_1.0"
 
 
 def test_duplicate_is_ignored_but_backward_sequence_fails_closed():

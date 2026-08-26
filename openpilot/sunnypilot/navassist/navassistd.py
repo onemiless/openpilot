@@ -11,8 +11,9 @@ from openpilot.common.realtime import Ratekeeper
 from openpilot.common.swaglog import cloudlog
 from openpilot.sunnypilot.navassist.config import NavAssistParams, PUBLISH_HZ, ROUTE_CALC_HZ
 from openpilot.sunnypilot.navassist.nav_state import NavStateMachine
-from openpilot.sunnypilot.navassist.protocol.amap_companion_v1 import AMapCompanionReceiver, AMapCompanionServer, newest_snapshot
+from openpilot.sunnypilot.navassist.protocol.amap_companion_v1 import AMapCompanionReceiver, AMapCompanionServer
 from openpilot.sunnypilot.navassist.protocol.carrot_v2 import CarrotV2Receiver, CarrotV2Server
+from openpilot.sunnypilot.navassist.protocol.source_mux import StickySourceMux
 from openpilot.sunnypilot.navassist.route_speed import RouteSpeedPlanner, RouteSpeedResult
 from openpilot.sunnypilot.navassist.speed_planner import select_speed_candidate
 from openpilot.sunnypilot.navassist.types import NavAssistState, SpeedCandidate, SpeedSource
@@ -101,6 +102,7 @@ def main() -> None:
   last_route_key: tuple[str, int, int] | None = None
   route_result = RouteSpeedResult()
   route_planner = RouteSpeedPlanner()
+  source_mux = StickySourceMux()
   cloudlog.info("navassistd started: Carrot V2 TCP 7714, AMap Companion TCP 7715, discovery UDP 7705")
 
   while True:
@@ -109,7 +111,7 @@ def main() -> None:
     if now - last_params_read >= 1.0:
       params = NavAssistParams.read(params_store)
       last_params_read = now
-    snapshot = newest_snapshot(carrot_receiver.snapshot(), amap_receiver.snapshot())
+    snapshot = source_mux.select((carrot_receiver.snapshot(), amap_receiver.snapshot()), now_ns, params.message_timeout_s)
     state = state_machine.update(snapshot, params, now_ns)
 
     route_key = (snapshot.session_id, snapshot.record("route").sequence, snapshot.record("vehicle").sequence)

@@ -146,7 +146,10 @@ class NavStateMachine:
     guidance_valid = _fresh(current_record, now_ns, timeout_ns)
     next_valid = _fresh(next_record, now_ns, timeout_ns)
     speed_valid = _fresh(speed_record, now_ns, timeout_ns)
-    route_valid = _fresh(route_record, now_ns, timeout_ns) and _fresh(vehicle_record, now_ns, timeout_ns)
+    route_value = _dict(route_record.value) if route_record.present else {}
+    route_points = route_value.get("polyline", ())
+    route_valid = (_fresh(route_record, now_ns, timeout_ns) and _fresh(vehicle_record, now_ns, timeout_ns)
+                   and isinstance(route_points, (list, tuple)) and len(route_points) >= 3)
     route_generation = self._update_route_generation(route_record)
     maneuver_generation = (snapshot.generation << 32) | route_generation
 

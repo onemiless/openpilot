@@ -175,12 +175,16 @@ class CarrotV2Receiver:
     self._control_connections = 0
     self._protocol_error = ""
     self._sequence_error = False
+    self._client_version = ""
 
   def negotiate(self, requirements: dict[str, Any]) -> dict[str, Any]:
     if requirements.get("type") != "requirements_query" or requirements.get("protocol_version") != PROTOCOL_VERSION:
       raise ValueError("invalid v2 requirements query")
     if isinstance(requirements.get("catalog_revision"), bool) or requirements.get("catalog_revision") != CATALOG_REVISION:
       raise ValueError("unsupported v2 catalog revision")
+    app_version = requirements.get("app_version", "")
+    if not isinstance(app_version, str) or len(app_version) > 64:
+      raise ValueError("invalid v2 app version")
     offered_streams = requirements.get("streams")
     if not isinstance(offered_streams, list) or len(offered_streams) != len(CATALOG):
       raise ValueError("app v2 catalog does not contain exactly 28 items")
@@ -200,6 +204,7 @@ class CarrotV2Receiver:
       self._records.clear()
       self._protocol_error = ""
       self._sequence_error = False
+      self._client_version = app_version
       return copy.deepcopy(self._manifest)
 
   def control_connected(self) -> None:
@@ -284,6 +289,7 @@ class CarrotV2Receiver:
         protocol_error=self._protocol_error,
         sequence_error=self._sequence_error,
         source=NavSource.CARROT_V2,
+        client_version=self._client_version,
       )
 
 

@@ -2836,5 +2836,5 @@ msgid "AMap Companion"
 msgstr ""
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
-msgid "Carrot V2"
+msgid "NaviPilot / Carrot V2"
 msgstr ""

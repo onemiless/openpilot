@@ -66,7 +66,7 @@ class NavigationLayout(Widget):
       if nav.source == "amapCompanionV1":
         source = tr("AMap Companion")
       elif nav.source == "carrotV2":
-        source = tr("Carrot V2")
+        source = tr("NaviPilot / Carrot V2")
       else:
         source = tr("Navigation")
       if not nav.connected:

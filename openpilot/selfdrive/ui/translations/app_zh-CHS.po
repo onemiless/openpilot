@@ -2723,8 +2723,8 @@ msgid "AMap Companion"
 msgstr "高德搭子"
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
-msgid "Carrot V2"
-msgstr "Carrot V2"
+msgid "NaviPilot / Carrot V2"
+msgstr "NaviPilot / Carrot V2"
 
 #: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
 msgid "No traffic signal"
