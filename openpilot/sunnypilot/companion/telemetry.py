@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import queue
 import threading
+import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -160,15 +161,30 @@ class TelemetryBroker:
       }
 
   def _run(self) -> None:
-    sm = messaging.SubMaster(list(SUBSCRIBED_SERVICES), ignore_alive=list(SUBSCRIBED_SERVICES))
+    poller = messaging.Poller()
+    sockets = {service: messaging.sub_sock(service, poller=poller, conflate=True) for service in SUBSCRIBED_SERVICES}
+    socket_services = {sock: service for service, sock in sockets.items()}
+    messages: dict[str, object] = {}
+    received_at = dict.fromkeys(SUBSCRIBED_SERVICES, 0.0)
     while True:
-      sm.update(100)
       changed = False
-      for service in SUBSCRIBED_SERVICES:
-        if sm.updated[service]:
-          self.publish(service, bytes(sm[service].to_bytes()))
-          changed = True
+      for sock in poller.poll(100):
+        raw = sock.receive(non_blocking=True)
+        if raw is None:
+          continue
+        service = socket_services[sock]
+        event = messaging.log_from_bytes(raw)
+        if event.which() != service:
+          continue
+        self.publish(service, bytes(raw))
+        messages[service] = getattr(event, service)
+        received_at[service] = time.monotonic()
+        changed = True
       if changed:
-        messages = {service: sm[service] for service in SUBSCRIBED_SERVICES if sm.seen[service]}
+        now = time.monotonic()
+        alive = {
+          service: received_at[service] > 0 and now - received_at[service] < 10.0 / SERVICE_LIST[service].frequency
+          for service in SUBSCRIBED_SERVICES
+        }
         with self._lock:
-          self._legacy_data = legacy_snapshot(messages, sm.alive)
+          self._legacy_data = legacy_snapshot(messages, alive)
