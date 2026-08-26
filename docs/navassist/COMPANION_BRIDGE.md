@@ -10,6 +10,7 @@
 - `POST :7000/api/param_set` writes an explicit boolean allowlist while offroad only.
 - `WS :7000/ws/raw_multiplex?services=...` sends length-prefixed service names followed by native Cap'n Proto payloads.
 - `TCP :7711` sends legacy four-byte-length-prefixed JSON vehicle snapshots.
+- `UDP :7706` accepts CP companion's validated legacy navigation snapshots when its v2 sockets only emit ping frames.
 
 Only private, loopback, or link-local clients are accepted. The supported telemetry allowlist is `carState`, `modelV2`,
 `controlsState`, `selfdriveState`, `deviceState`, `carrotMan`, and `gpsLocationExternal`; unavailable services are ignored.
