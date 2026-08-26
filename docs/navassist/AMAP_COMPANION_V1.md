@@ -22,7 +22,9 @@ wire contract.
 - Each message is one UTF-8 JSON object followed by `\n`.
 - Maximum encoded line size is 64 KiB.
 - The app sends the latest snapshot every 500 ms.
-- App `1.0.1-navassist` independently expires navigation, maneuver, road-limit,
+- App `1.0.2-navassist` starts its foreground bridge when the app opens and
+  reports discovery, connection, and AMap-data freshness on its home screen.
+  It independently expires navigation, maneuver, road-limit,
   and camera source timestamps before each heartbeat. A live TCP connection
   therefore cannot keep stale AMap control fields valid.
 
