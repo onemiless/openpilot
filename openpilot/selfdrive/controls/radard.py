@@ -12,10 +12,12 @@ from openpilot.common.params import Params
 from openpilot.common.realtime import DT_MDL, Priority, config_realtime_process
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.simple_kalman import KF1D
+from openpilot.selfdrive.controls.lib.radar_helpers import is_radar_velocity_sane
 
 from opendbc.car import structs
 from opendbc.car.hyundai.values import HyundaiFlags
 from opendbc.sunnypilot.car.hyundai.values import HyundaiFlagsSP
+from opendbc.sunnypilot.car.tesla.values import TeslaFlagsSP
 
 
 # Default lead acceleration decay set to 50% at 1s
@@ -114,7 +116,8 @@ def laplacian_pdf(x: float, mu: float, b: float):
   return math.exp(-abs(x-mu)/b)
 
 
-def match_vision_to_track(v_ego: float, lead: capnp._DynamicStructReader, tracks: dict[int, Track]):
+def match_vision_to_track(v_ego: float, lead: capnp._DynamicStructReader, tracks: dict[int, Track],
+                          ars408_stationary_conflict_guard: bool = False):
   offset_vision_dist = lead.x[0] - RADAR_TO_CAMERA
 
   def prob(c):
@@ -130,7 +133,9 @@ def match_vision_to_track(v_ego: float, lead: capnp._DynamicStructReader, tracks
   # if no 'sane' match is found return -1
   # stationary radar points can be false positives
   dist_sane = abs(track.dRel - offset_vision_dist) < max([(offset_vision_dist)*.25, 5.0])
-  vel_sane = (abs(track.vRel + v_ego - lead.v[0]) < 10) or (v_ego + track.vRel > 3)
+  vel_sane = is_radar_velocity_sane(
+    v_ego, track.vRel, lead.v[0], ars408_stationary_conflict_guard,
+  )
   if dist_sane and vel_sane:
     return track
   else:
@@ -159,7 +164,10 @@ def get_lead(v_ego: float, ready: bool, tracks: dict[int, Track], lead_msg: capn
              low_speed_override: bool = True) -> dict[str, Any]:
   # Determine leads, this is where the essential logic happens
   if len(tracks) > 0 and ready and lead_prob > .5:
-    track = match_vision_to_track(v_ego, lead_msg, tracks)
+    ars408_stationary_conflict_guard = bool(
+      CP.brand == "tesla" and CP_SP.flags & TeslaFlagsSP.ARS408_RADAR
+    )
+    track = match_vision_to_track(v_ego, lead_msg, tracks, ars408_stationary_conflict_guard)
   else:
     track = None
 
