@@ -4,7 +4,7 @@
 
 - Branch: `dev-sp-egpu-nva`
 - Original eGPU source baseline: `bd2966b712f9e61e10efd87383502f3b033068dd`
-- Synchronized eGPU maintenance head: `4376dbb166700e3829c32de6fd5bf89f7e4515e7`
+- Synchronized eGPU maintenance head: `49bbb58ddb6a113932c0fa5c066220e2070bcdb5`
 - Carrot protocol source: `jixiexiaoge/openpilot:Carrot`
 - Carrot protocol commit: `3fb1121ecb7837e47f5edf12c5882e38c57c05bd`
 - Protocol: Carrot Navi WebSocket v2, catalog revision 1
