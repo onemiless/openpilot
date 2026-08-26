@@ -19,7 +19,7 @@ class FakeParams:
 def test_disabled_process_is_inert():
   assert not navassist(True, FakeParams(False), ns())
   assert navassist(True, FakeParams(True), ns())
-  assert not navassist(False, FakeParams(True), ns())
+  assert navassist(False, FakeParams(True), ns())
 
 
 def test_server_bind_failure_is_synchronous():

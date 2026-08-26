@@ -58,7 +58,7 @@ def not_long_maneuver(started: bool, params: Params, CP: car.CarParams) -> bool:
   return started and not params.get_bool("LongitudinalManeuverMode")
 
 def navassist(started: bool, params: Params, CP: car.CarParams) -> bool:
-  return started and params.get_bool("NavAssistEnabled")
+  return params.get_bool("NavAssistEnabled")
 
 def qcomgps(started: bool, params: Params, CP: car.CarParams) -> bool:
   return started and not ublox_available()
@@ -167,6 +167,7 @@ procs = [
   PythonProcess("plannerd", "openpilot.selfdrive.controls.plannerd", not_long_maneuver),
   PythonProcess("trafficcontrold", "openpilot.sunnypilot.selfdrive.traffic_control.trafficcontrold", only_onroad),
   PythonProcess("navassistd", "openpilot.sunnypilot.navassist.navassistd", navassist),
+  PythonProcess("companiond", "openpilot.sunnypilot.companion.companiond", navassist),
   PythonProcess("maneuversd", "openpilot.tools.longitudinal_maneuvers.maneuversd", long_maneuver),
   PythonProcess("lateral_maneuversd", "openpilot.tools.lateral_maneuvers.lateral_maneuversd", lat_maneuver),
   PythonProcess("radard", "openpilot.selfdrive.controls.radard", only_onroad),

@@ -26,9 +26,6 @@ dependencies = [
   "pycapnp==2.1.0",  # 2.2 introduces a memory leak due to cyclic references
   "numpy >=2.0",
 
-  # navassist
-  "aiohttp==3.13.3",  # matches the audited Carrot protocol source
-
   # vendored native dependencies
   "comma-deps-capnproto",
   "comma-deps-acados",

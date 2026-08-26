@@ -10,15 +10,18 @@ are not part of NavAssist.
 from __future__ import annotations
 
 import copy
-import errno
 import json
 import math
 import secrets
 import socket
 import threading
 import time
+from http.server import BaseHTTPRequestHandler
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
+from openpilot.sunnypilot.companion.http_ws import ReusableThreadingHTTPServer, WebSocketClosed, accept_websocket, \
+  send_json, send_websocket_frame, trusted_local_address, websocket_receive_loop
 from openpilot.sunnypilot.navassist.types import NavSource, ProtocolSnapshot, StreamRecord
 
 
@@ -293,62 +296,90 @@ class CarrotV2Receiver:
       )
 
 
-def _peer(request) -> str:
-  return request.remote or "-"
+def make_request_handler(receiver: CarrotV2Receiver) -> type[BaseHTTPRequestHandler]:
+  class CarrotV2RequestHandler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
 
+    def log_message(self, _format: str, *_args: object) -> None:
+      pass
 
-def create_app(receiver: CarrotV2Receiver):
-  from aiohttp import WSMsgType, web
-
-  async def control(request):
-    ws = web.WebSocketResponse(heartbeat=5.0, max_msg_size=MAX_MESSAGE_BYTES, compress=False)
-    await ws.prepare(request)
-    receiver.control_connected()
-    try:
-      async for message in ws:
-        if message.type != WSMsgType.TEXT:
-          raise ValueError("control accepts JSON text only")
-        payload = json.loads(message.data)
-        if not isinstance(payload, dict):
-          raise ValueError("control message must be object")
-        if payload.get("type") == "requirements_query":
-          await ws.send_json(receiver.negotiate(payload))
-    except (json.JSONDecodeError, TypeError, ValueError) as exc:
-      receiver.fail(str(exc))
-      await ws.close(code=1008, message=b"invalid control message")
-    finally:
-      receiver.control_disconnected()
-    return ws
-
-  async def json_stream(request):
-    session_id = request.match_info["session_id"]
-    name = request.match_info["name"]
-    ws = web.WebSocketResponse(heartbeat=10.0, max_msg_size=MAX_MESSAGE_BYTES, compress=False)
-    await ws.prepare(request)
-    try:
-      receiver.stream_config(session_id, name)
-      async for message in ws:
-        if message.type != WSMsgType.TEXT:
-          raise ValueError("JSON item stream accepts text only")
-        payload = json.loads(message.data)
-        if not isinstance(payload, dict):
-          raise ValueError("JSON item must be object")
-        receiver.record_json(session_id, name, payload)
-    except (json.JSONDecodeError, TypeError, ValueError) as exc:
-      receiver.fail(str(exc))
-      await ws.close(code=1008, message=b"invalid JSON stream")
-    return ws
-
-  async def health(_request):
-    snapshot = receiver.snapshot()
-    return web.json_response({"connected": snapshot.connected, "session_id": snapshot.session_id,
+    def do_GET(self) -> None:
+      if not trusted_local_address(self.client_address[0]):
+        send_json(self, 403, {"error": "local network access only"})
+        return
+      path = urlsplit(self.path).path
+      if path == "/health":
+        snapshot = receiver.snapshot()
+        send_json(self, 200, {"connected": snapshot.connected, "session_id": snapshot.session_id,
                               "generation": snapshot.generation, "error": snapshot.protocol_error})
+        return
+      if path.startswith("/api/navi/ws/v2/control/"):
+        self._control()
+        return
+      prefix = "/api/navi/ws/v2/json/"
+      if path.startswith(prefix):
+        parts = path[len(prefix):].split("/", 1)
+        if len(parts) == 2:
+          self._json_stream(unquote(parts[0]), unquote(parts[1]))
+          return
+      send_json(self, 404, {"error": "not found"})
 
-  app = web.Application(client_max_size=MAX_MESSAGE_BYTES)
-  app.router.add_get("/health", health)
-  app.router.add_get("/api/navi/ws/v2/control/{version}", control)
-  app.router.add_get("/api/navi/ws/v2/json/{session_id}/{name}", json_stream)
-  return app
+    def _control(self) -> None:
+      try:
+        accept_websocket(self)
+      except ValueError as exc:
+        send_json(self, 400, {"error": str(exc)})
+        return
+      receiver.control_connected()
+      try:
+        for opcode, raw in websocket_receive_loop(self):
+          if opcode != 0x1:
+            raise ValueError("control accepts JSON text only")
+          payload = json.loads(raw)
+          if not isinstance(payload, dict):
+            raise ValueError("control message must be object")
+          if payload.get("type") == "requirements_query":
+            response = json.dumps(receiver.negotiate(payload), ensure_ascii=False, separators=(",", ":")).encode()
+            send_websocket_frame(self, 0x1, response)
+      except (WebSocketClosed, BrokenPipeError, ConnectionResetError):
+        pass
+      except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        receiver.fail(str(exc))
+        try:
+          send_websocket_frame(self, 0x8, b"\x03\xf0invalid control message")
+        except OSError:
+          pass
+      finally:
+        receiver.control_disconnected()
+        self.close_connection = True
+
+    def _json_stream(self, session_id: str, name: str) -> None:
+      try:
+        receiver.stream_config(session_id, name)
+        accept_websocket(self)
+      except ValueError as exc:
+        send_json(self, 400, {"error": str(exc)})
+        return
+      try:
+        for opcode, raw in websocket_receive_loop(self):
+          if opcode != 0x1:
+            raise ValueError("JSON item stream accepts text only")
+          payload = json.loads(raw)
+          if not isinstance(payload, dict):
+            raise ValueError("JSON item must be object")
+          receiver.record_json(session_id, name, payload)
+      except (WebSocketClosed, BrokenPipeError, ConnectionResetError):
+        pass
+      except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        receiver.fail(str(exc))
+        try:
+          send_websocket_frame(self, 0x8, b"\x03\xf0invalid JSON stream")
+        except OSError:
+          pass
+      finally:
+        self.close_connection = True
+
+  return CarrotV2RequestHandler
 
 
 def detect_advertise_ip() -> str:
@@ -398,30 +429,29 @@ class CarrotV2Server:
     self.retry_interval_s = retry_interval_s
     self.discovery = DiscoveryBroadcaster()
     self._thread: threading.Thread | None = None
-    self._socket: socket.socket | None = None
+    self._server: ReusableThreadingHTTPServer | None = None
 
   def start(self) -> None:
-    from aiohttp import web
-
-    app = create_app(self.receiver)
-
     for retry in range(self.retry_count + 1):
-      sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-      sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
       try:
-        sock.bind((self.bind_host, self.port))
-        sock.listen(128)
-        self._socket = sock
+        self._server = ReusableThreadingHTTPServer((self.bind_host, self.port), make_request_handler(self.receiver))
         break
-      except OSError as exc:
-        sock.close()
-        if exc.errno != errno.EADDRINUSE or retry >= self.retry_count:
+      except OSError:
+        if retry >= self.retry_count:
           raise
         time.sleep(self.retry_interval_s)
-
-    def run() -> None:
-      web.run_app(app, sock=self._socket, access_log=None, handle_signals=False)
-
     self.discovery.start()
-    self._thread = threading.Thread(target=run, name="navassist-websocket", daemon=True)
-    self._thread.start()
+    assert self._server is not None
+    self._thread = self._server.start_in_thread("navassist-websocket")
+
+  @property
+  def bound_port(self) -> int:
+    if self._server is None:
+      raise RuntimeError("server has not started")
+    return int(self._server.server_address[1])
+
+  def close(self) -> None:
+    self.discovery.stop()
+    if self._server is not None:
+      self._server.shutdown()
+      self._server.server_close()
