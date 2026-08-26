@@ -14,16 +14,17 @@ fallback while NaviPilot completes device validation.
 - `route`
 - `navigation_status`
 
-Media, images, render output, camera preview, terminal, remote Params, commands,
-automatic overtake, and legacy Carrot transports are not enabled by NavAssist.
+CP UDP `7706` is accepted as a validated navigation fallback, and the companion
+bridge exposes allowlisted vehicle telemetry and offroad-only Params on `7000`
+plus legacy vehicle telemetry on `7711`. Media, camera preview, terminal,
+arbitrary Params, commands, and direct route steering are not enabled.
 
 ## Source selection
 
-The source mux is session-sticky. A healthy Carrot v2/NaviPilot source is
-preferred even when an AMap Companion packet arrived more recently. AMap is
-selected only after the preferred source disconnects, errors, or exceeds the
-local message timeout. Recovery to NaviPilot requires one second of healthy
-data to avoid packet-by-packet oscillation.
+Carrot v2 and CP UDP `7706` are normalized as the preferred NaviPilot source;
+the freshest connected Carrot snapshot is used. AMap Companion is selected only
+after the preferred source disconnects, errors, or exceeds the local message
+timeout. Recovery from AMap to NaviPilot requires one second of healthy data.
 
 ## Capability boundary
 
@@ -41,4 +42,3 @@ Its README claims MIT, but that tree has no LICENSE/COPYING file and GitHub does
 not identify a license. Local interoperability work is permitted for testing;
 do not publish a derivative source tree or APK until the maintainer provides a
 license or written authorization.
-

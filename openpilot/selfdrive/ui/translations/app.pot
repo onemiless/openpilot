@@ -2792,11 +2792,11 @@ msgid "Use the navigation route only to reduce speed for curves. It never direct
 msgstr ""
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
-msgid "NavAssist Driver-Confirmed Turns"
+msgid "NavAssist Tesla Turn Signals"
 msgstr ""
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
-msgid "At low speed, send one model turn request only after the driver activates the matching turn signal."
+msgid "Request the matching Tesla turn signal near a maneuver. Existing SP logic decides whether a lane change is safe."
 msgstr ""
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py

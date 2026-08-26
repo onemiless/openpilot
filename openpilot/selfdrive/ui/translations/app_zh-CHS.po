@@ -2679,12 +2679,12 @@ msgid "Use the navigation route only to reduce speed for curves. It never direct
 msgstr "导航路线只用于弯道减速，绝不直接控制方向盘。"
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
-msgid "NavAssist Driver-Confirmed Turns"
-msgstr "驾驶员确认的导航转弯"
+msgid "NavAssist Tesla Turn Signals"
+msgstr "导航控制 Tesla 转向灯"
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
-msgid "At low speed, send one model turn request only after the driver activates the matching turn signal."
-msgstr "低速时，仅在驾驶员打开同方向真实转向灯后发送一次模型转弯请求。"
+msgid "Request the matching Tesla turn signal near a maneuver. Existing SP logic decides whether a lane change is safe."
+msgstr "接近导航动作时请求对应的 Tesla 转向灯，是否安全变道仍由现有 SP 逻辑判断。"
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
 msgid "NavAssist Status"

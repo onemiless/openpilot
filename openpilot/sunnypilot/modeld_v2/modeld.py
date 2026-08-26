@@ -417,9 +417,7 @@ def main(demo=False):
   # messaging
   pub_socks = ["modelV2", "drivingModelData", "cameraOdometry", "modelDataV2SP"] + (["chestnutState"] if USBGPU else [])
   pm = PubMaster(pub_socks)
-  sm = SubMaster(["deviceState", "carState", "narrowRoadCameraState", "extrinsicsCalibration", "driverMonitoringState",
-                  "carControl", "lateralDelay", "navAssistSP"],
-                 ignore_alive=["navAssistSP"], ignore_avg_freq=["navAssistSP"], ignore_valid=["navAssistSP"])
+  sm = SubMaster(["deviceState", "carState", "narrowRoadCameraState", "extrinsicsCalibration", "driverMonitoringState", "carControl", "lateralDelay"])
 
   publish_state = PublishState()
   chestnut_state = ChestnutState(pm, USBGPU) if USBGPU else None
@@ -575,16 +573,10 @@ def main(demo=False):
       r_lane_change_prob = desire_state[log.Desire.laneChangeRight]
       lane_change_prob = l_lane_change_prob + r_lane_change_prob
       left_edge, right_edge = RELC.update_and_fill(modelv2_send.modelV2, mdv2sp_send.modelDataV2SP, v_ego)
-      nav_valid = bool(sm.seen['navAssistSP'] and sm.alive['navAssistSP'] and sm.valid['navAssistSP'])
-      DH.update(sm['carState'], sm['carControl'].latActive, lane_change_prob, left_edge, right_edge,
-                nav_assist=sm['navAssistSP'] if sm.seen['navAssistSP'] else None, nav_assist_valid=nav_valid)
+      DH.update(sm['carState'], sm['carControl'].latActive, lane_change_prob, left_edge, right_edge)
       modelv2_send.modelV2.meta.laneChangeState = DH.lane_change_state
       modelv2_send.modelV2.meta.laneChangeDirection = DH.lane_change_direction
       mdv2sp_send.modelDataV2SP.laneTurnDirection = DH.lane_turn_direction
-      mdv2sp_send.modelDataV2SP.navLateralRequest = int(DH.nav_output.request)
-      mdv2sp_send.modelDataV2SP.navWouldLateralRequest = int(DH.nav_output.would_request)
-      mdv2sp_send.modelDataV2SP.navLateralReason = DH.nav_output.reason
-      mdv2sp_send.modelDataV2SP.navManeuverId = DH.nav_maneuver_id
       drivingdata_send.drivingModelData.meta.laneChangeState = DH.lane_change_state
       drivingdata_send.drivingModelData.meta.laneChangeDirection = DH.lane_change_direction
 

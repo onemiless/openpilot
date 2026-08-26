@@ -45,8 +45,8 @@ class NavigationLayout(Widget):
         description=tr("Use the navigation route only to reduce speed for curves. It never directly controls steering."),
         param="NavAssistRouteSpeedControl"),
       toggle_item_sp(
-        title=tr("NavAssist Driver-Confirmed Turns"),
-        description=tr("At low speed, send one model turn request only after the driver activates the matching turn signal."),
+        title=tr("NavAssist Tesla Turn Signals"),
+        description=tr("Request the matching Tesla turn signal near a maneuver. Existing SP logic decides whether a lane change is safe."),
         param="NavAssistTurnControl"),
     ]
     return items

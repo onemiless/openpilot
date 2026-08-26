@@ -15,7 +15,7 @@ class FakeSM(dict):
 
 def planner(shadow=False):
   result = object.__new__(LongitudinalPlannerSP)
-  result.nav_params = NavAssistParams(True, shadow, True, False, False, False, True, 1.2, 30 / 3.6)
+  result.nav_params = NavAssistParams(True, shadow, True, False, False, 1.2)
   result.openpilot_longitudinal_control = True
   result.is_tesla = False
   return result

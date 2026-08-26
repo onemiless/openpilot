@@ -3,7 +3,7 @@ from openpilot.sunnypilot.navassist.nav_state import NavStateMachine
 from openpilot.sunnypilot.navassist.types import InvalidReason, Maneuver, ProtocolSnapshot, StreamRecord
 
 
-PARAMS = NavAssistParams(True, False, True, True, False, False, True, 1.2, 30 / 3.6)
+PARAMS = NavAssistParams(True, False, True, True, False, 1.2)
 NOW = 2_000_000_000
 
 

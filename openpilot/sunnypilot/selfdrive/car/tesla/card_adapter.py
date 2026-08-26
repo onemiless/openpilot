@@ -9,8 +9,11 @@ import time
 from typing import Any
 
 from opendbc.sunnypilot.car.tesla.values import TeslaSafetyFlagsSP
+from openpilot.common.params import Params
 from openpilot.sunnypilot.selfdrive.car.tesla.validation_controller import TeslaTurnSignalRealtimeController
 from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.common import Mode
+from openpilot.sunnypilot.navassist.config import NavAssistParams
+from openpilot.sunnypilot.navassist.turn_signal_policy import NavigationTurnSignalPolicy, TurnSignalAction
 
 from openpilot.sunnypilot.selfdrive.traffic_control.tesla_observer import (
   TeslaTrafficControlObserver, publish_tesla_traffic_control,
@@ -18,7 +21,7 @@ from openpilot.sunnypilot.selfdrive.traffic_control.tesla_observer import (
 
 
 CONTEXT_STALE_S = 0.2
-CONTEXT_SERVICES = ("selfdriveStateSP", "modelV2")
+CONTEXT_SERVICES = ("selfdriveStateSP", "modelV2", "navAssistSP")
 
 
 def longitudinal_context(sm, now: float) -> tuple[int, bool, bool, float, bool, bool, bool, float, bool, float, bool]:
@@ -71,6 +74,8 @@ class TeslaCardAdapter:
     configured = bool(getattr(car_interface, "CP_SP", None) and
                       car_interface.CP_SP.safetyParam & TeslaSafetyFlagsSP.TURN_SIGNAL_VALIDATION)
     self.validation = TeslaTurnSignalRealtimeController(configured) if self.enabled else None
+    self.nav_turn_signal = NavigationTurnSignalPolicy() if self.enabled else None
+    self.nav_params = NavAssistParams.read(Params())
 
   def _create_road_context_parser(self):
     try:
@@ -113,6 +118,20 @@ class TeslaCardAdapter:
     if self.validation is None:
       return []
     now = time.monotonic()
+    nav_seen = self.sm.seen.get("navAssistSP", False)
+    nav_valid = bool(nav_seen and self.sm.valid.get("navAssistSP", False)
+                     and now - self.sm.recv_time.get("navAssistSP", 0.0) <= CONTEXT_STALE_S)
+    nav = self.sm["navAssistSP"] if nav_seen else None
+    if self.nav_turn_signal is not None and nav is not None and self.validation.configured:
+      decision = self.nav_turn_signal.update(
+        nav, nav_valid, self.nav_params, car_state, car_control, self.validation.status(),
+      )
+      if decision.action == TurnSignalAction.REQUEST:
+        if self.validation.submit_request(decision.request_id, decision.direction, now_nanos, origin="navigation"):
+          self.nav_turn_signal.mark_submitted(nav)
+      elif decision.action == TurnSignalAction.CANCEL:
+        self.validation.request_cancel(decision.request_id, now_nanos)
+
     model_valid = (self.sm.seen["modelV2"] and self.sm.valid["modelV2"] and
                    now - self.sm.recv_time["modelV2"] <= CONTEXT_STALE_S)
     lane_change = self.sm["modelV2"].meta
@@ -128,6 +147,7 @@ class TeslaCardAdapter:
 
   def service_params(self, params) -> None:
     self.speed_limit_assist_configured = params.get("SpeedLimitMode", return_default=True) == Mode.assist
+    self.nav_params = NavAssistParams.read(params)
     if self.validation is not None:
       self.validation.service_params(params)
 

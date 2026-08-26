@@ -1,6 +1,12 @@
+import time
 from types import SimpleNamespace
 
+from opendbc.sunnypilot.car.tesla.values import TeslaSafetyFlagsSP
 from openpilot.sunnypilot.selfdrive.car.tesla.card_adapter import CONTEXT_STALE_S, TeslaCardAdapter, speed_limit_context
+from openpilot.sunnypilot.selfdrive.car.tesla.validation_controller import (
+  DAS_BODY_CONTROLS_ADDRESS, decode_body_controls, tesla_body_controls_checksum,
+)
+from openpilot.sunnypilot.navassist.config import NavAssistParams
 
 
 class FakeState:
@@ -98,3 +104,40 @@ def test_non_tesla_adapter_is_inert():
   assert not state.templates
   assert not state.longitudinal
   assert not state.speed_limit
+
+
+def test_navigation_requests_tesla_turn_signal_without_direct_model_desire():
+  now = time.monotonic()
+  sm = FakeSubMaster(now)
+  sm.data["modelV2"] = SimpleNamespace(meta=SimpleNamespace(
+    laneChangeState=SimpleNamespace(raw=0), laneChangeDirection=SimpleNamespace(raw=0),
+  ))
+  sm.data["navAssistSP"] = SimpleNamespace(
+    sessionId="session", maneuverId=7, maneuver=SimpleNamespace(raw=1), distanceToManeuverM=100.0,
+    dataValid=True, guidanceValid=True, guidanceActive=True, stale=False, offRoute=False,
+  )
+  sm.recv_time.update(modelV2=now, navAssistSP=now)
+  sm.seen.update(modelV2=True, navAssistSP=True)
+  sm.valid.update(modelV2=True, navAssistSP=True)
+  sm.updated.update(modelV2=True, navAssistSP=True)
+
+  state = FakeState()
+  interface = SimpleNamespace(
+    CS=state,
+    CP_SP=SimpleNamespace(safetyParam=int(TeslaSafetyFlagsSP.TURN_SIGNAL_VALIDATION)),
+  )
+  adapter = TeslaCardAdapter("tesla", interface, sm)
+  adapter.nav_params = NavAssistParams(True, False, True, True, False, 1.2)
+
+  template = bytearray([0xA5, 0x8C, 0x61, 0xB4, 0x5A, 0xC3, 0x47, 0])
+  template[7] = tesla_body_controls_checksum(template)
+  now_ns = time.monotonic_ns()
+  adapter.validation.observe_frame(now_ns, DAS_BODY_CONTROLS_ADDRESS, bytes(template), 1)
+  car_state = SimpleNamespace(vEgo=20.0, leftBlinker=False, rightBlinker=False, brakePressed=False)
+  car_control = SimpleNamespace(latActive=True)
+
+  sends = adapter.control_sends(car_state, car_control, now_ns)
+
+  assert len(sends) == 1
+  assert decode_body_controls(sends[0].dat)["turn_request"] == 1
+  assert adapter.validation.status()["origin"] == "navigation"

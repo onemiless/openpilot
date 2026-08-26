@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from openpilot.common.constants import CV
 from openpilot.common.params import Params
 
 
@@ -22,24 +21,17 @@ class NavAssistParams:
   shadow_mode: bool
   speed_control: bool
   turn_control: bool
-  lane_change_control: bool
   route_speed_control: bool
-  require_turn_signal: bool  # Retained for config compatibility; stage-one control always requires confirmation.
   message_timeout_s: float
-  turn_max_speed_mps: float
 
   @classmethod
   def read(cls, params: Params) -> NavAssistParams:
     timeout_ms = int(params.get("NavAssistMessageTimeoutMs", return_default=True))
-    turn_max_kph = int(params.get("NavAssistTurnMaxSpeedKph", return_default=True))
     return cls(
       enabled=params.get_bool("NavAssistEnabled"),
       shadow_mode=params.get_bool("NavAssistShadowMode"),
       speed_control=params.get_bool("NavAssistSpeedControl"),
       turn_control=params.get_bool("NavAssistTurnControl"),
-      lane_change_control=params.get_bool("NavAssistLaneChangeControl"),
       route_speed_control=params.get_bool("NavAssistRouteSpeedControl"),
-      require_turn_signal=params.get_bool("NavAssistRequireTurnSignal"),
       message_timeout_s=max(0.2, min(timeout_ms / 1000.0, 10.0)),
-      turn_max_speed_mps=max(5.0, min(turn_max_kph, 50)) * CV.KPH_TO_MS,
     )

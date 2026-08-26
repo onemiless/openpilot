@@ -50,10 +50,11 @@ The eGPU baseline already uses reserved slot 10 / Event `@136` for
   and Tesla runtime-owner gates pass.
 - Navigation road limits enter the existing SpeedLimitResolver as a separate
   source, preserving the configured policy and offset.
-- Ordinary left/right turns can emit one model desire pulse only at low speed
-  after the driver activates the matching real turn signal.
-- Fork/lane-change, roundabout, U-turn, arrival, tollgate, traffic-light, direct
-  route steering, vehicle CAN, panda, and safety changes are outside this stage.
+- Left/right turns and forks can request the existing validated Tesla turn-signal
+  CAN path near a maneuver. Existing SP blindspot and lane-change logic decides
+  whether any lateral maneuver is safe; navigation never injects a model desire.
+- Roundabout, U-turn, arrival, tollgate, traffic-light, and direct route steering
+  remain outside this stage.
 
 ## Safety defaults
 

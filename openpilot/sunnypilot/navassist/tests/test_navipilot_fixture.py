@@ -5,7 +5,7 @@ from openpilot.sunnypilot.navassist.types import Maneuver, SpeedSource
 
 
 NOW = 20_000_000_000
-PARAMS = NavAssistParams(True, False, True, True, False, True, True, 1.2, 30 / 3.6)
+PARAMS = NavAssistParams(True, False, True, True, True, 1.2)
 
 
 def requirements():

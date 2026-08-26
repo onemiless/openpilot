@@ -157,6 +157,7 @@ class TeslaTurnSignalRealtimeController:
     session = self._active
     payload = {
       "test_id": session["test_id"],
+      "origin": session["origin"],
       "direction": session["direction"],
       "result": result,
       "feedback": session["feedback"],
@@ -173,9 +174,11 @@ class TeslaTurnSignalRealtimeController:
     self._completed.append((payload, session["records"]))
     self._active = None
 
-  def submit_request(self, test_id: str, direction: str, now_nanos: int) -> bool:
+  def submit_request(self, test_id: str, direction: str, now_nanos: int, *, origin: str = "validation") -> bool:
     if direction not in ("left", "right"):
       raise ValueError(f"unsupported turn request: {direction}")
+    if origin not in ("validation", "navigation"):
+      raise ValueError(f"unsupported turn request origin: {origin}")
     with self._lock:
       if not self.configured:
         records = [{
@@ -189,14 +192,14 @@ class TeslaTurnSignalRealtimeController:
           "error": "TeslaTurnSignalValidation was not enabled when card initialized",
         }]
         result = {
-          "test_id": test_id, "direction": direction, "result": "BLOCKED", "feedback": False,
+          "test_id": test_id, "origin": origin, "direction": direction, "result": "BLOCKED", "feedback": False,
           "tx_echo": False, "rejected": False, "action_frames_sent": 0, "cancel_sent": False,
         }
         self._completed.append((result, records))
         return False
       if self._active is not None:
         result = {
-          "test_id": test_id, "direction": direction, "result": "BUSY", "feedback": False,
+          "test_id": test_id, "origin": origin, "direction": direction, "result": "BUSY", "feedback": False,
           "tx_echo": False, "rejected": False, "action_frames_sent": 0, "cancel_sent": False,
         }
         self._completed.append((result, []))
@@ -204,6 +207,7 @@ class TeslaTurnSignalRealtimeController:
 
       self._active = {
         "test_id": test_id,
+        "origin": origin,
         "direction": direction,
         "started_nanos": int(now_nanos),
         "used_template_generation": -1,
@@ -447,6 +451,7 @@ class TeslaTurnSignalRealtimeController:
         return None
       return {
         "test_id": self._active["test_id"],
+        "origin": self._active["origin"],
         "direction": self._active["direction"],
         "phase": self._active["phase"],
         "feedback": self._active["feedback"],
@@ -474,13 +479,15 @@ class TeslaTurnSignalRealtimeController:
                           now_nanos)
 
     status = self.status()
-    if status is not None and status != self._last_published_status:
-      params.put(STATUS_PARAM, status)
-      self._last_published_status = status
-    elif status is None and self._last_published_status is not None:
+    validation_status = status if status is not None and status.get("origin") == "validation" else None
+    if validation_status is not None and validation_status != self._last_published_status:
+      params.put(STATUS_PARAM, validation_status)
+      self._last_published_status = validation_status
+    elif validation_status is None and self._last_published_status is not None:
       params.remove(STATUS_PARAM)
       self._last_published_status = None
 
     for result, records in self.drain_completed():
       persist_validation_records(records, log_path)
-      params.put(RESULT_PARAM, result)
+      if result.get("origin") == "validation":
+        params.put(RESULT_PARAM, result)

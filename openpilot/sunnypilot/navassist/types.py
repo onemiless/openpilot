@@ -43,14 +43,6 @@ class NavSource(IntEnum):
   AMAP_COMPANION_V1 = 2
 
 
-class LateralRequest(IntEnum):
-  NONE = 0
-  TURN_LEFT = 1
-  TURN_RIGHT = 2
-  FORK_LEFT = 3
-  FORK_RIGHT = 4
-
-
 @dataclass(frozen=True)
 class StreamRecord:
   present: bool = False

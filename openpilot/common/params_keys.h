@@ -282,11 +282,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"NavAssistShadowMode", {PERSISTENT | BACKUP, BOOL, "1"}},
     {"NavAssistSpeedControl", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"NavAssistTurnControl", {PERSISTENT | BACKUP, BOOL, "0"}},
-    {"NavAssistLaneChangeControl", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"NavAssistRouteSpeedControl", {PERSISTENT | BACKUP, BOOL, "0"}},
-    {"NavAssistRequireTurnSignal", {PERSISTENT | BACKUP, BOOL, "1"}},
     {"NavAssistMessageTimeoutMs", {PERSISTENT | BACKUP, INT, "1200"}},
-    {"NavAssistTurnMaxSpeedKph", {PERSISTENT | BACKUP, INT, "30"}},
     {"ToyotaEnforceStockLongitudinal", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"ToyotaStopAndGoHack", {PERSISTENT | BACKUP, BOOL, "0"}},
 

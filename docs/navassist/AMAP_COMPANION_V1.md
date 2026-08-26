@@ -79,7 +79,8 @@ Therefore:
 - current maneuver speed: supported;
 - road-limit source: supported;
 - speed-camera target: supported when AMap supplies distance and limit;
-- driver-confirmed ordinary turns: supported;
+- Tesla turn-signal requests for ordinary turns: supported when the validated
+  Tesla body-control path is configured;
 - next-maneuver planning: unavailable for this source;
 - route-curve speed: unavailable for this source;
 - location/route deviation: unavailable for this source.

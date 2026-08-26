@@ -49,3 +49,9 @@ def test_enabled_controller_requires_fresh_original_template():
   assert sends[0].src == 1
   assert decode_body_controls(sends[0].dat)["turn_request"] == 2
   assert decode_body_controls(sends[0].dat)["counter"] == 10
+
+
+def test_navigation_origin_is_tracked_without_using_validation_result_channel():
+  controller = TeslaTurnSignalRealtimeController(configured=True)
+  assert controller.submit_request("nav:session:1", "left", 100, origin="navigation")
+  assert controller.status()["origin"] == "navigation"
