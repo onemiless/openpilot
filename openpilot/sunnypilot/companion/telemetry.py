@@ -162,8 +162,7 @@ class TelemetryBroker:
 
   def _run(self) -> None:
     poller = messaging.Poller()
-    sockets = {service: messaging.sub_sock(service, poller=poller, conflate=True) for service in SUBSCRIBED_SERVICES}
-    socket_services = {sock: service for service, sock in sockets.items()}
+    _sockets = [messaging.sub_sock(service, poller=poller, conflate=True) for service in SUBSCRIBED_SERVICES]
     messages: dict[str, object] = {}
     received_at = dict.fromkeys(SUBSCRIBED_SERVICES, 0.0)
     while True:
@@ -172,9 +171,9 @@ class TelemetryBroker:
         raw = sock.receive(non_blocking=True)
         if raw is None:
           continue
-        service = socket_services[sock]
         event = messaging.log_from_bytes(raw)
-        if event.which() != service:
+        service = event.which()
+        if service not in received_at:
           continue
         self.publish(service, bytes(raw))
         messages[service] = getattr(event, service)
