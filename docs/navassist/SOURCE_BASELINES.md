@@ -10,8 +10,8 @@
 - Protocol: Carrot Navi WebSocket v2, catalog revision 1
 - AMap Companion source: `zuo-qirun/amap-companion`
 - AMap Companion audited commit: `f7cc42d44a27588c67264657983c0e75ed739f42`
-- AMap NavAssist bridge commit: `86215b4` (`navassist-v1`)
-- AMap NavAssist APK version: `1.0.2-navassist` (versionCode `3`)
+- AMap NavAssist bridge commit: `66989cb` (`navassist-v1`)
+- AMap NavAssist APK version: `1.0.2-navassist` (versionCode `1787720682`)
 
 ## Network contract
 
