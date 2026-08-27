@@ -131,6 +131,7 @@ class TeslaTurnSignalRealtimeController:
     self._lock = threading.Lock()
     self._active = None
     self._completed: list[tuple[dict, list[dict]]] = []
+    self._navigation_completed: list[tuple[dict, list[dict]]] = []
     self._template = None
     self._template_nanos = 0
     self._template_generation = 0
@@ -150,6 +151,12 @@ class TeslaTurnSignalRealtimeController:
       "event": event,
       **values,
     })
+
+  def _queue_completed_locked(self, payload: dict, records: list[dict]) -> None:
+    if payload.get("origin") == "navigation":
+      self._navigation_completed.append((payload, records))
+    else:
+      self._completed.append((payload, records))
 
   def _finish_locked(self, result: str, now_nanos: int, **extra) -> None:
     if self._active is None:
@@ -171,7 +178,7 @@ class TeslaTurnSignalRealtimeController:
       **extra,
     }
     self._record_locked("test_finished", now_nanos, **{key: value for key, value in payload.items() if key != "test_id"})
-    self._completed.append((payload, session["records"]))
+    self._queue_completed_locked(payload, session["records"])
     self._active = None
 
   def submit_request(self, test_id: str, direction: str, now_nanos: int, *, origin: str = "validation") -> bool:
@@ -195,14 +202,14 @@ class TeslaTurnSignalRealtimeController:
           "test_id": test_id, "origin": origin, "direction": direction, "result": "BLOCKED", "feedback": False,
           "tx_echo": False, "rejected": False, "action_frames_sent": 0, "cancel_sent": False,
         }
-        self._completed.append((result, records))
+        self._queue_completed_locked(result, records)
         return False
       if self._active is not None:
         result = {
           "test_id": test_id, "origin": origin, "direction": direction, "result": "BUSY", "feedback": False,
           "tx_echo": False, "rejected": False, "action_frames_sent": 0, "cancel_sent": False,
         }
-        self._completed.append((result, []))
+        self._queue_completed_locked(result, [])
         return False
 
       self._active = {
@@ -443,6 +450,12 @@ class TeslaTurnSignalRealtimeController:
     with self._lock:
       completed = self._completed
       self._completed = []
+      return completed
+
+  def drain_navigation_completed(self) -> list[tuple[dict, list[dict]]]:
+    with self._lock:
+      completed = self._navigation_completed
+      self._navigation_completed = []
       return completed
 
   def status(self) -> dict | None:

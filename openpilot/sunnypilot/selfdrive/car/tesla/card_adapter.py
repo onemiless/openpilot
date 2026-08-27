@@ -5,6 +5,7 @@ planner/control context and observes the original speed-wheel template without
 adding Tesla branches throughout generic card.
 """
 
+import threading
 import time
 from typing import Any
 
@@ -60,6 +61,14 @@ def speed_limit_context(sm, now: float, assist_configured: bool | None = None) -
   return (target if valid else 0.0, valid)
 
 
+def navigation_lateral_ready(sm, car_control, now: float) -> bool:
+  if bool(car_control.latActive):
+    return True
+  mads_valid = (sm.seen.get("selfdriveStateSP", False) and sm.valid.get("selfdriveStateSP", False)
+                and now - sm.recv_time.get("selfdriveStateSP", 0.0) <= CONTEXT_STALE_S)
+  return bool(mads_valid and sm["selfdriveStateSP"].mads.active)
+
+
 class TeslaCardAdapter:
   SPEED_BUTTON_ADDRESS = 0x3C2
   VEHICLE_BUS = 1
@@ -76,6 +85,11 @@ class TeslaCardAdapter:
     self.validation = TeslaTurnSignalRealtimeController(configured) if self.enabled else None
     self.nav_turn_signal = NavigationTurnSignalPolicy() if self.enabled else None
     self.nav_params = NavAssistParams.read(Params())
+    self._nav_status_lock = threading.Lock()
+    self._nav_status: dict[str, object] = {}
+    self._last_nav_status_published: dict[str, object] = {}
+    self._last_nav_status_publish_s = 0.0
+    self._last_nav_result: dict[str, object] = {}
 
   def _create_road_context_parser(self):
     try:
@@ -122,13 +136,18 @@ class TeslaCardAdapter:
     nav_valid = bool(nav_seen and self.sm.valid.get("navAssistSP", False)
                      and now - self.sm.recv_time.get("navAssistSP", 0.0) <= CONTEXT_STALE_S)
     nav = self.sm["navAssistSP"] if nav_seen else None
+    lateral_ready = navigation_lateral_ready(self.sm, car_control, now)
+    decision = None
     if self.nav_turn_signal is not None and nav is not None and self.validation.configured:
+      for result, _records in self.validation.drain_navigation_completed():
+        self.nav_turn_signal.complete(result, now_nanos)
+        self._last_nav_result = dict(result)
       decision = self.nav_turn_signal.update(
-        nav, nav_valid, self.nav_params, car_state, car_control, self.validation.status(),
+        nav, nav_valid, self.nav_params, car_state, lateral_ready, self.validation.status(), now_nanos,
       )
       if decision.action == TurnSignalAction.REQUEST:
         if self.validation.submit_request(decision.request_id, decision.direction, now_nanos, origin="navigation"):
-          self.nav_turn_signal.mark_submitted(nav)
+          self.nav_turn_signal.mark_submitted(nav, decision.request_id, now_nanos)
       elif decision.action == TurnSignalAction.CANCEL:
         self.validation.request_cancel(decision.request_id, now_nanos)
 
@@ -140,14 +159,58 @@ class TeslaCardAdapter:
       valid=model_valid,
       state=int(getattr(lane_change.laneChangeState, "raw", lane_change.laneChangeState)),
       direction=int(getattr(lane_change.laneChangeDirection, "raw", lane_change.laneChangeDirection)),
-      lateral_active=bool(car_control.latActive),
+      lateral_active=lateral_ready,
       brake_pressed=bool(car_state.brakePressed),
     )
-    return self.validation.take_can_sends(now_nanos)
+    sends = self.validation.take_can_sends(now_nanos)
+    controller_status = self.validation.status() or {}
+    mads_active = bool(self.sm.seen.get("selfdriveStateSP", False)
+                       and self.sm["selfdriveStateSP"].mads.active)
+    nav_status = {
+      "navSeen": nav_seen,
+      "navValid": nav_valid,
+      "enabled": self.nav_params.enabled,
+      "shadow": self.nav_params.shadow_mode,
+      "turnControl": self.nav_params.turn_control,
+      "maneuver": int(getattr(nav.maneuver, "raw", nav.maneuver)) if nav is not None else 0,
+      "maneuverId": int(nav.maneuverId) if nav is not None else 0,
+      "distanceM": round(float(nav.distanceToManeuverM), 1) if nav is not None else 0.0,
+      "policyAction": str(decision.action) if decision is not None else "none",
+      "policyReason": decision.reason if decision is not None else "no_navigation",
+      "lateralReady": lateral_ready,
+      "latActive": bool(car_control.latActive),
+      "madsActive": mads_active,
+      "leftBlinker": bool(car_state.leftBlinker),
+      "rightBlinker": bool(car_state.rightBlinker),
+      "leftBlindspot": bool(getattr(car_state, "leftBlindspot", False)),
+      "rightBlindspot": bool(getattr(car_state, "rightBlindspot", False)),
+      "controllerConfigured": self.validation.configured,
+      "controllerActive": bool(controller_status),
+      "controllerPhase": str(controller_status.get("phase", "")),
+      "controllerDirection": str(controller_status.get("direction", "")),
+      "framesSent": int(controller_status.get("action_frames_sent", 0)),
+      "vehicleFeedback": bool(controller_status.get("feedback", False)),
+      "laneChangeState": int(getattr(lane_change.laneChangeState, "raw", lane_change.laneChangeState)),
+      "laneChangeDirection": int(getattr(lane_change.laneChangeDirection, "raw", lane_change.laneChangeDirection)),
+      "cancelReason": str(controller_status.get("cancel_reason", "")),
+      "lastResult": self._last_nav_result,
+      "canSends": len(sends),
+    }
+    with self._nav_status_lock:
+      self._nav_status = nav_status
+    return sends
 
   def service_params(self, params) -> None:
     self.speed_limit_assist_configured = params.get("SpeedLimitMode", return_default=True) == Mode.assist
     self.nav_params = NavAssistParams.read(params)
+    now = time.monotonic()
+    with self._nav_status_lock:
+      nav_status = dict(self._nav_status)
+    if (nav_status and nav_status != self._last_nav_status_published
+        and now - self._last_nav_status_publish_s >= 1.0):
+      params.put("NavTurnSignalStatus", nav_status)
+      self._last_nav_status_published = nav_status
+      self._last_nav_status_publish_s = now
     if self.validation is not None:
       self.validation.service_params(params)
 

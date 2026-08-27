@@ -141,3 +141,41 @@ def test_navigation_requests_tesla_turn_signal_without_direct_model_desire():
   assert len(sends) == 1
   assert decode_body_controls(sends[0].dat)["turn_request"] == 1
   assert adapter.validation.status()["origin"] == "navigation"
+
+
+def test_navigation_signal_accepts_fresh_mads_when_lat_active_is_false():
+  now = time.monotonic()
+  sm = FakeSubMaster(now)
+  sm.data["selfdriveStateSP"].mads.active = True
+  sm.data["modelV2"] = SimpleNamespace(meta=SimpleNamespace(
+    laneChangeState=SimpleNamespace(raw=0), laneChangeDirection=SimpleNamespace(raw=0),
+  ))
+  sm.data["navAssistSP"] = SimpleNamespace(
+    sessionId="session", maneuverId=8, maneuver=SimpleNamespace(raw=2), distanceToManeuverM=150.0,
+    dataValid=True, guidanceValid=True, guidanceActive=True, stale=False, offRoute=False,
+  )
+  sm.recv_time.update(modelV2=now, navAssistSP=now, selfdriveStateSP=now)
+  sm.seen.update(modelV2=True, navAssistSP=True, selfdriveStateSP=True)
+  sm.valid.update(modelV2=True, navAssistSP=True, selfdriveStateSP=True)
+  sm.updated.update(modelV2=True, navAssistSP=True, selfdriveStateSP=True)
+  interface = SimpleNamespace(
+    CS=FakeState(), CP_SP=SimpleNamespace(safetyParam=int(TeslaSafetyFlagsSP.TURN_SIGNAL_VALIDATION)),
+  )
+  adapter = TeslaCardAdapter("tesla", interface, sm)
+  adapter.nav_params = NavAssistParams(True, False, True, True, False, 1.2)
+  template = bytearray([0xA5, 0x8C, 0x61, 0xB4, 0x5A, 0xC3, 0x47, 0])
+  template[7] = tesla_body_controls_checksum(template)
+  now_ns = time.monotonic_ns()
+  adapter.validation.observe_frame(now_ns, DAS_BODY_CONTROLS_ADDRESS, bytes(template), 1)
+
+  sends = adapter.control_sends(
+    SimpleNamespace(vEgo=20.0, leftBlinker=False, rightBlinker=False, brakePressed=False),
+    SimpleNamespace(latActive=False), now_ns,
+  )
+
+  assert len(sends) == 1
+  assert decode_body_controls(sends[0].dat)["turn_request"] == 2
+  assert adapter._nav_status["lateralReady"] is True
+  assert adapter._nav_status["latActive"] is False
+  assert adapter._nav_status["madsActive"] is True
+  assert adapter._nav_status["policyReason"] == "triggered"

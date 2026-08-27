@@ -55,3 +55,12 @@ def test_navigation_origin_is_tracked_without_using_validation_result_channel():
   controller = TeslaTurnSignalRealtimeController(configured=True)
   assert controller.submit_request("nav:session:1", "left", 100, origin="navigation")
   assert controller.status()["origin"] == "navigation"
+
+
+def test_navigation_completion_has_independent_drain_channel():
+  controller = TeslaTurnSignalRealtimeController(configured=True)
+  assert controller.submit_request("nav:session:1", "left", 100, origin="navigation")
+  controller.request_cancel("nav:session:1", 200)
+  assert controller.drain_completed() == []
+  completed = controller.drain_navigation_completed()
+  assert completed[0][0]["origin"] == "navigation"

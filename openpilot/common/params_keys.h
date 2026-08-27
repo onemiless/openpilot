@@ -290,6 +290,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"NavAssistTurnControl", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"NavAssistRouteSpeedControl", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"NavAssistMessageTimeoutMs", {PERSISTENT | BACKUP, INT, "1200"}},
+    {"NavTurnSignalStatus", {CLEAR_ON_MANAGER_START | DONT_LOG, JSON}},
     {"ToyotaEnforceStockLongitudinal", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"ToyotaStopAndGoHack", {PERSISTENT | BACKUP, BOOL, "0"}},
 

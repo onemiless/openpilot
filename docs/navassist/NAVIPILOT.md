@@ -34,6 +34,22 @@ polyline, so route summaries are accepted but `routeValid` and route-curve
 speed remain false. AMap Auto also lacks a durable off-route source; it must not
 advertise a transient UI flag as control truth.
 
+## Tesla navigation turn signals
+
+Validated left/right turns and forks can request the existing Tesla `0x3E9`
+turn-signal path without injecting a model desire. The request begins about ten
+seconds before the maneuver, clamped to 50–250 meters. Either fresh openpilot
+lateral control or fresh MADS ownership satisfies the lateral-ready gate; the
+existing SP blindspot and lane-change state machine still decides whether a
+lane change may begin.
+
+Panda's single-session limits remain unchanged at 12 seconds and 64 action
+frames. If a session ends cleanly without starting a lane change while the same
+maneuver remains valid, NavAssist may re-arm after an explicit cancel, with at
+most three bounded attempts. `NavTurnSignalStatus` exposes the policy reason,
+controller phase, feedback, frame count, MADS/latActive state, blindspots,
+lane-change state, cancel reason, and last result for device diagnosis.
+
 ## Validation and distribution
 
 The audited Android source is
