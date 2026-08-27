@@ -2652,7 +2652,7 @@ msgstr "导航辅助（实验性）"
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
 msgid "Receive Carrot/CP navigation guidance. Control remains disabled unless its individual switches are enabled."
-msgstr "接收 Carrot/CP 导航指引。只有打开对应的独立开关后才会进入控制。"
+msgstr "获取 Carrot/CP 导航提示。只有打开对应的独立开关后才会进入控制。"
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
 msgid "NavAssist Shadow Mode"
@@ -2660,7 +2660,7 @@ msgstr "导航辅助影子模式"
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
 msgid "Receive and calculate navigation actions without changing vehicle control."
-msgstr "接收并计算导航动作，但不改变车辆控制。"
+msgstr "获取并计算导航动作，但不改变车辆控制。"
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
 msgid "NavAssist Speed Control"
@@ -2684,7 +2684,7 @@ msgstr "导航控制 Tesla 转向灯"
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
 msgid "Request the matching Tesla turn signal near a maneuver. Existing SP logic decides whether a lane change is safe."
-msgstr "接近导航动作时请求对应的 Tesla 转向灯，是否安全变道仍由现有 SP 逻辑判断。"
+msgstr "接近导航动作时请求对应的 Tesla 转向灯，是否安全变道仍由现有 SP 规则确认。"
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
 msgid "NavAssist Status"
@@ -2712,7 +2712,7 @@ msgstr "导航数据有效"
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
 msgid "Connected, no valid guidance"
-msgstr "已连接，暂无有效导航指引"
+msgstr "已连接，暂无有效导航提示"
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/settings.py
 msgid "Navigation"
@@ -2720,7 +2720,7 @@ msgstr "导航"
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
 msgid "AMap Companion"
-msgstr "高德搭子"
+msgstr "AMap 助手"
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/navigation.py
 msgid "NaviPilot / Carrot V2"
