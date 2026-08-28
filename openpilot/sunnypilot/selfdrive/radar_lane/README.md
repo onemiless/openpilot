@@ -67,10 +67,11 @@ current radar track remains alive, adjacent-lane display requires a 6 m distance
 advantage before switching to an ordinary challenger; cut-in candidates can
 switch immediately. Classified cars, trucks,
 pedestrians, motorcycles, and bicycles are never removed by the roadside-clutter
-display filter. Point/wide or unknown targets are hidden when three or more
-side targets are world-stationary, share a narrow lateral band, and span at
-least 15 m longitudinally, even if path jitter previously marked them as a
-cut-in. Radar-native stationary properties also prevent path motion from
-creating a cut-in candidate. Isolated and center stopped targets are retained.
+display filter. A radar-native stationary point/wide/unknown target outside the
+center corridor is hidden even when isolated. Targets without a native static
+property require three or more world-stationary side targets in a narrow
+lateral band spanning at least 15 m longitudinally. Radar-native stationary
+properties also prevent path motion from creating a cut-in candidate. Center
+stopped targets and classified stopped vehicles/VRUs are retained.
 These rules change only rendering and do not
 remove any target from `radarTracks`, `radarState`, or control.

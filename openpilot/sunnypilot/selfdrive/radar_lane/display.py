@@ -144,7 +144,14 @@ def filter_static_side_clutter(targets: Iterable[Any], v_ego: float) -> tuple[An
       dynamic_property = int(getattr(target, "dynamicProperty", 4))
       if object_class in ARS408_VEHICLE_OR_VRU_CLASSES:
         continue
-      if (side * d_path > STATIC_SIDE_OFFSET_M and abs(absolute_speed) <= STATIC_WORLD_SPEED_MPS and
+      is_stationary_side = side * d_path > STATIC_SIDE_OFFSET_M and abs(absolute_speed) <= STATIC_WORLD_SPEED_MPS
+      if is_stationary_side and dynamic_property in ARS408_STATIC_PROPERTIES:
+        # Native radar classification is enough to reject an isolated static
+        # road/line reflection; requiring a same-frame cluster allowed one
+        # surviving point to become the adjacent-lane representative.
+        clutter_ids.add(int(target.trackId))
+        continue
+      if (is_stationary_side and
           (object_class not in ARS408_NON_VEHICLE_CLASSES or dynamic_property in ARS408_STATIC_PROPERTIES)):
         stationary_side.append((target, d_path))
 

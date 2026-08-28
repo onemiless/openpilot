@@ -79,6 +79,22 @@ def test_false_cut_in_flag_does_not_exempt_static_roadside_cluster():
   assert filter_static_side_clutter(targets, 20.0) == ()
 
 
+def test_isolated_radar_native_static_side_reflection_is_hidden():
+  reflection = _target(
+    9, 4, 18.0, d_path=-4.5, v_rel=-21.0, object_class=7, dynamic_property=1,
+  )
+
+  assert filter_static_side_clutter([reflection], 20.0) == ()
+
+
+def test_isolated_classified_stopped_vehicle_is_preserved():
+  stopped_car = _target(
+    10, 4, 18.0, d_path=-4.5, v_rel=-20.0, object_class=1, dynamic_property=1,
+  )
+
+  assert filter_static_side_clutter([stopped_car], 20.0) == (stopped_car,)
+
+
 def test_classified_vehicle_and_vru_are_not_removed_with_static_roadside_cluster():
   targets = [
     _target(1, 4, 15.0, d_path=-4.0, v_rel=-20.0, object_class=0, dynamic_property=1),
