@@ -69,6 +69,16 @@ def test_static_roadside_cluster_is_hidden_but_isolated_and_center_stops_remain(
   assert [target.trackId for target in filter_static_side_clutter(targets, 20.0)] == [4, 5, 6]
 
 
+def test_false_cut_in_flag_does_not_exempt_static_roadside_cluster():
+  targets = [
+    _target(1, 1, 15.0, d_path=4.0, v_rel=-20.0, cut_in=True, object_class=7, dynamic_property=1),
+    _target(2, 1, 35.0, d_path=4.1, v_rel=-20.0, cut_in=True, object_class=7, dynamic_property=1),
+    _target(3, 1, 55.0, d_path=3.9, v_rel=-20.0, cut_in=True, object_class=7, dynamic_property=1),
+  ]
+
+  assert filter_static_side_clutter(targets, 20.0) == ()
+
+
 def test_classified_vehicle_and_vru_are_not_removed_with_static_roadside_cluster():
   targets = [
     _target(1, 4, 15.0, d_path=-4.0, v_rel=-20.0, object_class=0, dynamic_property=1),

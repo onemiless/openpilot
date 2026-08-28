@@ -124,14 +124,19 @@ class ChevronMetrics:
       # Draw text
       rl.draw_text_ex(self._font, line, rl.Vector2(x, y), font_size, 0, text_color)
 
-  def draw_lead_status(self, sm, radar_state, rect, lead_vehicles):
+  def draw_target_status(self, target, lead_vehicle, v_ego: float, rect: rl.Rectangle):
+    """Draw any radar target with the same metrics style as a stock SP lead."""
+    self._draw_lead(target, lead_vehicle, v_ego, rect)
+
+  def draw_lead_status(self, sm, radar_state, rect, lead_vehicles, update_alpha: bool = True):
     lead_one = radar_state.leadOne
     lead_two = radar_state.leadTwo
 
     has_lead_one = lead_one.present if lead_one else False
     has_lead_two = lead_two.present if lead_two else False
 
-    self.update_alpha(has_lead_one or has_lead_two)
+    if update_alpha:
+      self.update_alpha(has_lead_one or has_lead_two)
 
     if not self.should_render():
       return

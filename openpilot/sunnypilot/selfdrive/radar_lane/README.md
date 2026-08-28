@@ -55,12 +55,10 @@ for side/rear blind-spot monitoring.
 The standard C3XL on-road renderer subscribes to this service only for the
 left and right adjacent-lane display; the center lane keeps the stock SP lead
 chevron without an added marker. Each adjacent lane displays at most one unique
-representative target, using the stock chevron orientation without an L/C/R
-badge. A predicted cut-in target has priority over the closest target. Each
-marker shows radar class (when known), distance, and estimated
-longitudinal target speed (`vEgo + vRel`); this is a radar-relative estimate,
-not a wheel-speed measurement from the other vehicle. Red marks a cut-in
-candidate, orange a closing target, and green a non-closing target.
+representative target and reuses the exact stock SP chevron geometry, yellow
+glow, red fill-alpha calculation, and `ChevronInfo` text formatting. There is
+no L/C/R badge, class label, custom color, or custom text box. A predicted
+cut-in target has priority over the closest target.
 The legacy `leadOne`/`leadTwo` chevrons are also display-deduplicated by track
 ID and spatial proximity. Leads without a stable common track use 3 m hide /
 5 m show longitudinal hysteresis when laterally close. The ARS408 tracker remains
@@ -69,8 +67,10 @@ current radar track remains alive, adjacent-lane display requires a 6 m distance
 advantage before switching to an ordinary challenger; cut-in candidates can
 switch immediately. Classified cars, trucks,
 pedestrians, motorcycles, and bicycles are never removed by the roadside-clutter
-display filter. Point/wide or unknown targets are hidden only when three or more
+display filter. Point/wide or unknown targets are hidden when three or more
 side targets are world-stationary, share a narrow lateral band, and span at
-least 15 m longitudinally; isolated and center stopped targets are retained.
+least 15 m longitudinally, even if path jitter previously marked them as a
+cut-in. Radar-native stationary properties also prevent path motion from
+creating a cut-in candidate. Isolated and center stopped targets are retained.
 These rules change only rendering and do not
 remove any target from `radarTracks`, `radarState`, or control.

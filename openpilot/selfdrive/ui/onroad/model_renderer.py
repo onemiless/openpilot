@@ -12,13 +12,11 @@ from openpilot.sunnypilot.selfdrive.radar_lane.display import (
   SIDE_LANE_ORDER,
   LaneDisplayTargetStabilizer,
   filter_static_side_clutter,
-  format_target_label,
   matches_rendered_lead,
   should_render_second_lead,
 )
-from openpilot.system.ui.lib.application import FontWeight, gui_app
+from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.shader_polygon import draw_polygon, Gradient
-from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.system.ui.widgets import Widget
 
 from openpilot.selfdrive.ui.sunnypilot.onroad.model_renderer import ChevronMetrics, ModelRendererSP
@@ -55,12 +53,9 @@ class LeadVehicle:
 
 @dataclass(frozen=True)
 class RadarLaneMarker:
-  point: tuple[float, float]
+  target: object
+  lead_vehicle: LeadVehicle
   d_rel: float
-  v_rel: float
-  label: str
-  cut_in: bool
-  draw_arrow: bool
 
 
 class ModelRenderer(Widget, ChevronMetrics, ModelRendererSP):
@@ -78,7 +73,6 @@ class ModelRenderer(Widget, ChevronMetrics, ModelRendererSP):
     self._lead_two_visible = False
     self._radar_lane_markers: list[RadarLaneMarker] = []
     self._radar_lane_stabilizer = LaneDisplayTargetStabilizer()
-    self._radar_lane_font = gui_app.font(FontWeight.SEMI_BOLD)
     self._path_offset_z = HEIGHT_INIT[0]
     self._counter = -1
     self._camera_offset = ui_state.params.get("CameraOffset", return_default=True) if ui_state.active_bundle else 0.0
@@ -163,10 +157,12 @@ class ModelRenderer(Widget, ChevronMetrics, ModelRendererSP):
     self._draw_lane_lines()
     self._draw_path(sm)
 
+    has_stock_lead = bool(radar_state and (radar_state.leadOne.present or radar_state.leadTwo.present))
+    self.chevron_metrics.update_alpha(has_stock_lead or bool(self._radar_lane_markers))
     if render_lead_indicator and radar_state:
       self._draw_lead_indicator()
-      self.chevron_metrics.draw_lead_status(sm, radar_state, self._rect, self._lead_vehicles)
-    self._draw_radar_lane_markers()
+      self.chevron_metrics.draw_lead_status(sm, radar_state, self._rect, self._lead_vehicles, update_alpha=False)
+    self._draw_radar_lane_markers(float(sm['carState'].vEgo))
 
   def _update_raw_points(self, model):
     """Update raw 3D points from model data"""
@@ -210,6 +206,8 @@ class ModelRenderer(Widget, ChevronMetrics, ModelRendererSP):
     visible_targets = filter_static_side_clutter(radar_lane_state.targets, v_ego)
     stable_targets = self._radar_lane_stabilizer.update(visible_targets, SIDE_LANE_ORDER)
     for target in stable_targets:
+      if matches_rendered_lead(target, drawn_radar_state, include_lead_two=self._lead_two_visible):
+        continue
       d_rel = float(target.dRel)
       if not 2.5 < d_rel <= MAX_DRAW_DISTANCE:
         continue
@@ -219,14 +217,9 @@ class ModelRenderer(Widget, ChevronMetrics, ModelRendererSP):
       if point is None:
         continue
       self._radar_lane_markers.append(RadarLaneMarker(
-        point=point,
+        target=target,
+        lead_vehicle=self._update_lead_vehicle(d_rel, float(target.vRel), point, self._rect),
         d_rel=d_rel,
-        v_rel=float(target.vRel),
-        label=format_target_label(
-          d_rel, float(target.vRel), v_ego, ui_state.is_metric, int(getattr(target, "objectClass", 7)),
-        ),
-        cut_in=bool(target.cutInCandidate),
-        draw_arrow=not matches_rendered_lead(target, drawn_radar_state, include_lead_two=self._lead_two_visible),
       ))
 
     # Draw farther targets first so a close target remains legible when projections overlap.
@@ -385,40 +378,15 @@ class ModelRenderer(Widget, ChevronMetrics, ModelRendererSP):
       rl.draw_triangle_fan(lead.glow, len(lead.glow), rl.Color(218, 202, 37, 255))
       rl.draw_triangle_fan(lead.chevron, len(lead.chevron), rl.Color(201, 34, 49, lead.fill_alpha))
 
-  def _draw_radar_lane_markers(self) -> None:
+  def _draw_radar_lane_markers(self, v_ego: float) -> None:
     for marker in self._radar_lane_markers:
-      x, y = marker.point
-      size = float(np.clip(58.0 - marker.d_rel * 0.28, 26.0, 52.0))
-      if marker.cut_in:
-        color = rl.Color(255, 48, 48, 245)
-      elif marker.v_rel < -0.5:
-        color = rl.Color(255, 175, 3, 235)
-      else:
-        color = rl.Color(0, 203, 0, 225)
-
-      if marker.draw_arrow:
-        arrow = [(x + size * 1.25, y + size), (x, y), (x - size * 1.25, y + size)]
-        rl.draw_triangle_fan(arrow, len(arrow), color)
-
-      font_size = 27
-      text_size = measure_text_cached(self._radar_lane_font, marker.label, font_size)
-      padding_x, padding_y = 10.0, 5.0
-      box = rl.Rectangle(
-        float(np.clip(x - text_size.x / 2.0 - padding_x, self._rect.x, self._rect.x + self._rect.width - text_size.x - 2 * padding_x)),
-        float(np.clip(y + size * 1.1, self._rect.y, self._rect.y + self._rect.height - text_size.y - 2 * padding_y)),
-        text_size.x + 2 * padding_x,
-        text_size.y + 2 * padding_y,
-      )
-      rl.draw_rectangle_rounded(box, 0.28, 8, rl.Color(0, 0, 0, 190))
-      rl.draw_rectangle_rounded_lines_ex(box, 0.28, 8, 2.0, color)
-      rl.draw_text_ex(
-        self._radar_lane_font,
-        marker.label,
-        rl.Vector2(box.x + padding_x, box.y + padding_y),
-        font_size,
-        0,
-        rl.Color(255, 255, 255, 255),
-      )
+      lead = marker.lead_vehicle
+      if not lead.glow or not lead.chevron:
+        continue
+      # Adjacent targets deliberately use the exact stock SP lead appearance.
+      rl.draw_triangle_fan(lead.glow, len(lead.glow), rl.Color(218, 202, 37, 255))
+      rl.draw_triangle_fan(lead.chevron, len(lead.chevron), rl.Color(201, 34, 49, lead.fill_alpha))
+      self.chevron_metrics.draw_target_status(marker.target, lead, v_ego, self._rect)
 
   @staticmethod
   def _get_path_length_idx(pos_x_array: np.ndarray, path_distance: float) -> int:

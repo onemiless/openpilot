@@ -145,7 +145,6 @@ def filter_static_side_clutter(targets: Iterable[Any], v_ego: float) -> tuple[An
       if object_class in ARS408_VEHICLE_OR_VRU_CLASSES:
         continue
       if (side * d_path > STATIC_SIDE_OFFSET_M and abs(absolute_speed) <= STATIC_WORLD_SPEED_MPS and
-          not bool(getattr(target, "cutInCandidate", False)) and
           (object_class not in ARS408_NON_VEHICLE_CLASSES or dynamic_property in ARS408_STATIC_PROPERTIES)):
         stationary_side.append((target, d_path))
 

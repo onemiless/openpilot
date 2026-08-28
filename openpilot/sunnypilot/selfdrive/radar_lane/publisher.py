@@ -29,6 +29,7 @@ MAX_MOTION_DT_S = 0.25
 MAX_LATERAL_SPEED_MPS = 8.0
 MIN_CUT_IN_SPEED_MPS = 0.25
 MOTION_FILTER_ALPHA = 0.5
+ARS408_STATIC_PROPERTIES = frozenset((1, 3, 5))
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,10 @@ class TargetMotionTracker:
       return TargetMotion(predicted_d_path=target.d_path)
 
     predicted_d_path = target.d_path + state.lateral_speed * PREDICTION_HORIZON_S
+    # A stationary radar object can appear to move laterally when the model
+    # path moves. Do not promote that projection jitter to a cut-in candidate.
+    if target.dynamic_property in ARS408_STATIC_PROPERTIES:
+      return TargetMotion(state.lateral_speed, True, predicted_d_path)
     toward_center_speed = 0.0
     if target.lane_mask & LANE_LEFT_MASK:
       toward_center_speed = max(toward_center_speed, -state.lateral_speed)

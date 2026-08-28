@@ -55,7 +55,8 @@ def test_lane_occupancy_has_a_ui_consumer_without_becoming_control_input():
   assert "filter_static_side_clutter(radar_lane_state.targets, v_ego)" in renderer
   assert "LaneDisplayTargetStabilizer()" in renderer
   assert "self._radar_lane_stabilizer.update(visible_targets, SIDE_LANE_ORDER)" in renderer
-  assert "format_target_label" in renderer
+  assert "self._update_lead_vehicle(d_rel, float(target.vRel), point, self._rect)" in renderer
+  assert "self.chevron_metrics.draw_target_status" in renderer
 
 
 if __name__ == "__main__":

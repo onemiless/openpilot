@@ -194,6 +194,23 @@ def test_right_lane_motion_toward_center_is_candidate_but_motion_away_is_not():
   assert message.radarLaneStateSP.cutInCandidate["trackId"] == 9
 
 
+def test_radar_stationary_property_blocks_path_jitter_cut_in():
+  publisher = RadarLaneStatePublisher(1.52, _factory)
+  publisher.build_message(
+    FakeSubMaster(_model(), model_mono_time=1_020_000_000, radar_mono_time=1_000_000_000),
+    namespace(points=[_point(track_id=11, y_rel=3.0, dynamic_property=1)], errors=namespace(to_dict=lambda: {})),
+  )
+  message = publisher.build_message(
+    FakeSubMaster(_model(), model_mono_time=1_120_000_000, radar_mono_time=1_100_000_000),
+    namespace(points=[_point(track_id=11, y_rel=2.5, dynamic_property=1)], errors=namespace(to_dict=lambda: {})),
+  )
+
+  target = message.radarLaneStateSP.targets[0]
+  assert target["lateralSpeedValid"]
+  assert not target["cutInCandidate"]
+  assert message.radarLaneStateSP.cutInCandidateCount == 0
+
+
 def test_repeated_model_tick_does_not_reapply_same_radar_sample_as_motion():
   publisher = RadarLaneStatePublisher(1.52, _factory)
   radar_data = namespace(points=[_point(track_id=8, y_rel=3.0)], errors=namespace(to_dict=lambda: {}))
