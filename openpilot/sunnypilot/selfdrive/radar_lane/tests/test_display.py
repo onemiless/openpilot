@@ -2,6 +2,7 @@ from types import SimpleNamespace as namespace
 
 from openpilot.sunnypilot.selfdrive.radar_lane.display import (
   LaneDisplayTargetStabilizer,
+  RADAR_LANE_MAX_DRAW_DISTANCE_M,
   SIDE_LANE_ORDER,
   filter_static_side_clutter,
   format_target_label,
@@ -10,6 +11,7 @@ from openpilot.sunnypilot.selfdrive.radar_lane.display import (
   select_lane_display_targets,
   should_render_second_lead,
 )
+from openpilot.sunnypilot.selfdrive.radar_lane.occupancy import MAX_FORWARD_DISTANCE_M
 
 
 def _target(track_id, lane_mask, d_rel, *, y_rel=0.0, d_path=None, v_rel=0.0, cut_in=False, crossing=-1.0,
@@ -85,6 +87,10 @@ def test_isolated_radar_native_static_side_reflection_is_hidden():
   )
 
   assert filter_static_side_clutter([reflection], 20.0) == ()
+
+
+def test_side_marker_range_matches_lane_fusion_range():
+  assert RADAR_LANE_MAX_DRAW_DISTANCE_M == MAX_FORWARD_DISTANCE_M == 120.0
 
 
 def test_isolated_classified_stopped_vehicle_is_preserved():

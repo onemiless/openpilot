@@ -9,6 +9,7 @@ from openpilot.common.params import Params
 from openpilot.selfdrive.locationd.calibrationd import HEIGHT_INIT
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.sunnypilot.selfdrive.radar_lane.display import (
+  RADAR_LANE_MAX_DRAW_DISTANCE_M,
   SIDE_LANE_ORDER,
   LaneDisplayTargetStabilizer,
   filter_static_side_clutter,
@@ -209,7 +210,7 @@ class ModelRenderer(Widget, ChevronMetrics, ModelRendererSP):
       if matches_rendered_lead(target, drawn_radar_state, include_lead_two=self._lead_two_visible):
         continue
       d_rel = float(target.dRel)
-      if not 2.5 < d_rel <= MAX_DRAW_DISTANCE:
+      if not 2.5 < d_rel <= RADAR_LANE_MAX_DRAW_DISTANCE_M:
         continue
       idx = self._get_path_length_idx(path_x_array, d_rel)
       z = self._path.raw_points[idx, 2] if idx < len(self._path.raw_points) else 0.0

@@ -58,7 +58,9 @@ chevron without an added marker. Each adjacent lane displays at most one unique
 representative target and reuses the exact stock SP chevron geometry, yellow
 glow, red fill-alpha calculation, and `ChevronInfo` text formatting. There is
 no L/C/R badge, class label, custom color, or custom text box. A predicted
-cut-in target has priority over the closest target.
+cut-in target has priority over the closest target. Adjacent-lane markers use
+the same 120 m forward limit as lane fusion instead of the stock path renderer's
+100 m limit.
 The legacy `leadOne`/`leadTwo` chevrons are also display-deduplicated by track
 ID and spatial proximity. Leads without a stable common track use 3 m hide /
 5 m show longitudinal hysteresis when laterally close. The ARS408 tracker remains
