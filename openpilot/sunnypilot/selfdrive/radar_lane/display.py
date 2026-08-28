@@ -31,6 +31,7 @@ STATIC_CLUTTER_MIN_SPAN_M = 15.0
 ARS408_VEHICLE_OR_VRU_CLASSES = frozenset((1, 2, 3, 4, 5))
 ARS408_NON_VEHICLE_CLASSES = frozenset((0, 6))
 ARS408_STATIC_PROPERTIES = frozenset((1, 3, 5))
+ARS408_MOVING_PROPERTIES = frozenset((0, 2, 6))
 ARS408_CLASS_LABELS = {
   0: "目标",
   1: "小车",
@@ -137,9 +138,30 @@ def filter_static_side_clutter(targets: Iterable[Any], v_ego: float) -> tuple[An
   """Hide clear roadside clusters while preserving classified vehicles and VRUs."""
   candidates = tuple(target for target in targets if bool(getattr(target, "present", False)))
   clutter_ids: set[int] = set()
+
+  # ARS408 classification can be confidently wrong on lane-edge reflections:
+  # route replay contained "car/crossing-moving" targets whose world speed
+  # stayed near zero while they swept along a solid line. For side-display
+  # purposes, reject stationary unclassified targets and contradictory moving
+  # metadata per target. A classified stopped target with consistent metadata
+  # remains visible, and center-only targets are untouched.
+  for target in candidates:
+    lane_mask = int(getattr(target, "laneMask", 0))
+    object_class = int(getattr(target, "objectClass", 7))
+    dynamic_property = int(getattr(target, "dynamicProperty", 4))
+    absolute_speed = float(v_ego) + float(getattr(target, "vRel", 0.0))
+    is_side_target = bool(lane_mask & (LANE_LEFT_MASK | LANE_RIGHT_MASK))
+    is_world_stationary = abs(absolute_speed) <= STATIC_WORLD_SPEED_MPS
+    is_unclassified = object_class not in ARS408_VEHICLE_OR_VRU_CLASSES
+    moving_metadata_conflict = dynamic_property in ARS408_MOVING_PROPERTIES
+    if is_side_target and is_world_stationary and (is_unclassified or moving_metadata_conflict):
+      clutter_ids.add(int(target.trackId))
+
   for side in (-1.0, 1.0):
     stationary_side = []
     for target in candidates:
+      if int(target.trackId) in clutter_ids:
+        continue
       d_path = float(getattr(target, "dPath", getattr(target, "yRel", 0.0)))
       absolute_speed = float(v_ego) + float(getattr(target, "vRel", 0.0))
       object_class = int(getattr(target, "objectClass", 7))

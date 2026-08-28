@@ -73,11 +73,14 @@ cycle. This stabilizes model-boundary jitter without extending the radar
 target's lifetime: when the native radar ID disappears, its lane history is
 removed. Classified cars, trucks,
 pedestrians, motorcycles, and bicycles are never removed by the roadside-clutter
-display filter. A radar-native stationary point/wide/unknown target outside the
-center corridor is hidden even when isolated. Targets without a native static
-property require three or more world-stationary side targets in a narrow
+display filter. Any world-stationary side target is hidden when it is
+unclassified, or when its native moving/oncoming/crossing-moving property
+contradicts its near-zero world speed. This also covers shared center/side
+boundary targets and isolated reflections. Targets not caught by that rule can
+still be removed when three or more world-stationary side targets form a narrow
 lateral band spanning at least 15 m longitudinally. Radar-native stationary
-properties also prevent path motion from creating a cut-in candidate. Center
-stopped targets and classified stopped vehicles/VRUs are retained.
+properties also prevent path motion from creating a cut-in candidate. Center-
+only stopped targets and classified stopped vehicles/VRUs with consistent
+metadata are retained.
 These rules change only rendering and do not
 remove any target from `radarTracks`, `radarState`, or control.

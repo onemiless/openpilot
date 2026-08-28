@@ -58,7 +58,7 @@ def test_side_display_never_adds_a_center_lane_marker():
   assert [target.trackId for target in select_lane_display_targets(targets, SIDE_LANE_ORDER)] == [1, 3]
 
 
-def test_static_roadside_cluster_is_hidden_but_isolated_and_center_stops_remain():
+def test_static_roadside_cluster_and_unclassified_side_stop_are_hidden():
   targets = [
     _target(1, 4, 15.0, y_rel=-4.1, d_path=-4.0, v_rel=-20.0),
     _target(2, 4, 35.0, y_rel=-4.2, d_path=-4.1, v_rel=-20.2),
@@ -68,7 +68,7 @@ def test_static_roadside_cluster_is_hidden_but_isolated_and_center_stops_remain(
     _target(6, 1, 40.0, y_rel=3.5, d_path=3.5, v_rel=-5.0),
   ]
 
-  assert [target.trackId for target in filter_static_side_clutter(targets, 20.0)] == [4, 5, 6]
+  assert [target.trackId for target in filter_static_side_clutter(targets, 20.0)] == [5, 6]
 
 
 def test_false_cut_in_flag_does_not_exempt_static_roadside_cluster():
@@ -99,6 +99,30 @@ def test_isolated_classified_stopped_vehicle_is_preserved():
   )
 
   assert filter_static_side_clutter([stopped_car], 20.0) == (stopped_car,)
+
+
+def test_stationary_unclassified_shared_boundary_target_is_hidden():
+  boundary_reflection = _target(
+    11, 6, 30.0, d_path=-1.2, v_rel=-20.0, object_class=7, dynamic_property=1,
+  )
+
+  assert filter_static_side_clutter([boundary_reflection], 20.0) == ()
+
+
+def test_stationary_classified_target_with_moving_metadata_conflict_is_hidden():
+  contradictory_reflection = _target(
+    12, 1, 30.0, d_path=2.5, v_rel=-20.0, object_class=1, dynamic_property=6,
+  )
+
+  assert filter_static_side_clutter([contradictory_reflection], 20.0) == ()
+
+
+def test_unclassified_side_target_with_real_world_motion_is_preserved():
+  moving_target = _target(
+    13, 4, 30.0, d_path=-3.5, v_rel=-15.0, object_class=7, dynamic_property=0,
+  )
+
+  assert filter_static_side_clutter([moving_target], 20.0) == (moving_target,)
 
 
 def test_classified_vehicle_and_vru_are_not_removed_with_static_roadside_cluster():
