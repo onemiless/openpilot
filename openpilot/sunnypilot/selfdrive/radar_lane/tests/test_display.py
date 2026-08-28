@@ -11,7 +11,8 @@ from openpilot.sunnypilot.selfdrive.radar_lane.display import (
 )
 
 
-def _target(track_id, lane_mask, d_rel, *, y_rel=0.0, d_path=None, v_rel=0.0, cut_in=False, crossing=-1.0):
+def _target(track_id, lane_mask, d_rel, *, y_rel=0.0, d_path=None, v_rel=0.0, cut_in=False, crossing=-1.0,
+            object_class=7, dynamic_property=4):
   return namespace(
     present=True,
     trackId=track_id,
@@ -22,6 +23,8 @@ def _target(track_id, lane_mask, d_rel, *, y_rel=0.0, d_path=None, v_rel=0.0, cu
     vRel=v_rel,
     cutInCandidate=cut_in,
     timeToLaneCross=crossing,
+    objectClass=object_class,
+    dynamicProperty=dynamic_property,
   )
 
 
@@ -65,9 +68,23 @@ def test_static_roadside_cluster_is_hidden_but_isolated_and_center_stops_remain(
   assert [target.trackId for target in filter_static_side_clutter(targets, 20.0)] == [4, 5, 6]
 
 
+def test_classified_vehicle_and_vru_are_not_removed_with_static_roadside_cluster():
+  targets = [
+    _target(1, 4, 15.0, d_path=-4.0, v_rel=-20.0, object_class=0, dynamic_property=1),
+    _target(2, 4, 35.0, d_path=-4.1, v_rel=-20.0, object_class=6, dynamic_property=3),
+    _target(3, 4, 55.0, d_path=-3.9, v_rel=-20.0, object_class=0, dynamic_property=5),
+    _target(4, 4, 25.0, d_path=-4.0, v_rel=-20.0, object_class=2, dynamic_property=1),
+    _target(5, 4, 45.0, d_path=-4.0, v_rel=-20.0, object_class=3, dynamic_property=1),
+  ]
+
+  assert [target.trackId for target in filter_static_side_clutter(targets, 20.0)] == [4, 5]
+
+
 def test_target_label_reports_distance_and_estimated_absolute_speed():
   assert format_target_label(30.0, -2.0, 20.0, True) == "30m  65km/h"
   assert format_target_label(30.0, -2.0, 20.0, False) == "98ft  40mph"
+  assert format_target_label(30.0, -2.0, 20.0, True, 2) == "货车  30m  65km/h"
+  assert format_target_label(30.0, -2.0, 20.0, True, 3) == "行人  30m  65km/h"
 
 
 def test_existing_radar_chevrons_are_not_drawn_twice():

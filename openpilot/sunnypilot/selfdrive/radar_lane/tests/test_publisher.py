@@ -58,12 +58,16 @@ def _model():
   )
 
 
-def _point(track_id=0, d_rel=20.0, y_rel=3.6, v_rel=-1.0, yv_rel=0.0, measured=True):
+def _point(track_id=0, d_rel=20.0, y_rel=3.6, v_rel=-1.0, yv_rel=0.0, measured=True,
+           object_class=7, existence_probability=0, dynamic_property=4):
   return namespace(
     trackId=track_id,
     dRel=d_rel,
     yRel=y_rel,
     vRel=v_rel,
+    objectClass=object_class,
+    existenceProbability=existence_probability,
+    dynamicProperty=dynamic_property,
     deprecated=namespace(measured=measured, yvRel=yv_rel),
   )
 
@@ -89,6 +93,20 @@ def test_publisher_builds_logged_three_lane_contract_and_preserves_id_zero():
   assert message.radarLaneStateSP.leftAhead.occupancy == "occupied"
   assert message.radarLaneStateSP.leftAhead.closestTarget["trackId"] == 0
   assert message.radarLaneStateSP.centerAhead.occupancy == "clear"
+
+
+def test_publisher_preserves_ars408_target_metadata():
+  publisher = RadarLaneStatePublisher(1.52, _factory)
+  message = publisher.build_message(
+    FakeSubMaster(_model()),
+    namespace(points=[_point(object_class=2, existence_probability=6, dynamic_property=7)],
+              errors=namespace(to_dict=lambda: {})),
+  )
+
+  target = message.radarLaneStateSP.targets[0]
+  assert target["objectClass"] == 2
+  assert target["existenceProbability"] == 6
+  assert target["dynamicProperty"] == 7
 
 
 def test_radar_error_returns_invalid_unknown_lanes():

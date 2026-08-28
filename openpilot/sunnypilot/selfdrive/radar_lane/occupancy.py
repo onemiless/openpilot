@@ -45,6 +45,9 @@ class RadarTarget:
   measured: bool = True
   yv_rel: float = 0.0
   yv_rel_valid: bool = False
+  object_class: int = 7
+  existence_probability: int = 0
+  dynamic_property: int = 4
 
 
 @dataclass(frozen=True)
@@ -293,7 +296,18 @@ def radar_target_from_point(point: Any) -> RadarTarget | None:
       yv_rel_valid = math.isfinite(yv_rel)
     except (AttributeError, TypeError, ValueError):
       pass
-  return RadarTarget(track_id, d_rel, y_rel, v_rel, measured, yv_rel if yv_rel_valid else 0.0, yv_rel_valid)
+  def bounded_metadata(name: str, default: int) -> int:
+    try:
+      value = int(getattr(point, name, default))
+    except (TypeError, ValueError):
+      return default
+    return value if 0 <= value <= 7 else default
+
+  return RadarTarget(
+    track_id, d_rel, y_rel, v_rel, measured, yv_rel if yv_rel_valid else 0.0, yv_rel_valid,
+    bounded_metadata("objectClass", 7), bounded_metadata("existenceProbability", 0),
+    bounded_metadata("dynamicProperty", 4),
+  )
 
 
 def classify_radar_lanes(model: Any, targets: Iterable[RadarTarget],
@@ -349,6 +363,9 @@ def classify_radar_lanes(model: Any, targets: Iterable[RadarTarget],
       measured=target.measured,
       yv_rel=target.yv_rel,
       yv_rel_valid=target.yv_rel_valid,
+      object_class=target.object_class,
+      existence_probability=target.existence_probability,
+      dynamic_property=target.dynamic_property,
       d_path=projection.d_path,
       ambiguous=ambiguous,
       lane_mask=lane_mask,

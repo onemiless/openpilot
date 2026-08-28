@@ -25,6 +25,18 @@ STATIC_SIDE_OFFSET_M = 2.2
 STATIC_CLUTTER_LATERAL_BAND_M = 1.0
 STATIC_CLUTTER_MIN_TARGETS = 3
 STATIC_CLUTTER_MIN_SPAN_M = 15.0
+ARS408_VEHICLE_OR_VRU_CLASSES = frozenset((1, 2, 3, 4, 5))
+ARS408_NON_VEHICLE_CLASSES = frozenset((0, 6))
+ARS408_STATIC_PROPERTIES = frozenset((1, 3, 5))
+ARS408_CLASS_LABELS = {
+  0: "目标",
+  1: "小车",
+  2: "货车",
+  3: "行人",
+  4: "摩托",
+  5: "自行车",
+  6: "宽目标",
+}
 
 
 def _target_priority(target: Any) -> tuple[bool, float, float, int]:
@@ -55,7 +67,7 @@ def select_lane_display_targets(targets: Iterable[Any],
 
 
 def filter_static_side_clutter(targets: Iterable[Any], v_ego: float) -> tuple[Any, ...]:
-  """Hide only clear roadside clusters; retain center and isolated stopped targets."""
+  """Hide clear roadside clusters while preserving classified vehicles and VRUs."""
   candidates = tuple(target for target in targets if bool(getattr(target, "present", False)))
   clutter_ids: set[int] = set()
   for side in (-1.0, 1.0):
@@ -63,8 +75,13 @@ def filter_static_side_clutter(targets: Iterable[Any], v_ego: float) -> tuple[An
     for target in candidates:
       d_path = float(getattr(target, "dPath", getattr(target, "yRel", 0.0)))
       absolute_speed = float(v_ego) + float(getattr(target, "vRel", 0.0))
+      object_class = int(getattr(target, "objectClass", 7))
+      dynamic_property = int(getattr(target, "dynamicProperty", 4))
+      if object_class in ARS408_VEHICLE_OR_VRU_CLASSES:
+        continue
       if (side * d_path > STATIC_SIDE_OFFSET_M and abs(absolute_speed) <= STATIC_WORLD_SPEED_MPS and
-          not bool(getattr(target, "cutInCandidate", False))):
+          not bool(getattr(target, "cutInCandidate", False)) and
+          (object_class not in ARS408_NON_VEHICLE_CLASSES or dynamic_property in ARS408_STATIC_PROPERTIES)):
         stationary_side.append((target, d_path))
 
     for target, lateral in stationary_side:
@@ -131,9 +148,12 @@ def matches_rendered_lead(target: Any, radar_state: Any | None, include_lead_two
   return False
 
 
-def format_target_label(d_rel: float, v_rel: float, v_ego: float, metric: bool) -> str:
+def format_target_label(d_rel: float, v_rel: float, v_ego: float, metric: bool,
+                        object_class: int = 7) -> str:
   """Format distance and estimated longitudinal target speed for the overlay."""
   target_speed = v_ego + v_rel
+  class_label = ARS408_CLASS_LABELS.get(int(object_class), "")
+  prefix = f"{class_label}  " if class_label else ""
   if metric:
-    return f"{d_rel:.0f}m  {target_speed * MS_TO_KPH:.0f}km/h"
-  return f"{d_rel * M_TO_FT:.0f}ft  {target_speed * MS_TO_MPH:.0f}mph"
+    return f"{prefix}{d_rel:.0f}m  {target_speed * MS_TO_KPH:.0f}km/h"
+  return f"{prefix}{d_rel * M_TO_FT:.0f}ft  {target_speed * MS_TO_MPH:.0f}mph"

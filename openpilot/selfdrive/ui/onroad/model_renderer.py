@@ -219,7 +219,9 @@ class ModelRenderer(Widget, ChevronMetrics, ModelRendererSP):
         point=point,
         d_rel=d_rel,
         v_rel=float(target.vRel),
-        label=format_target_label(d_rel, float(target.vRel), v_ego, ui_state.is_metric),
+        label=format_target_label(
+          d_rel, float(target.vRel), v_ego, ui_state.is_metric, int(getattr(target, "objectClass", 7)),
+        ),
         cut_in=bool(target.cutInCandidate),
         draw_arrow=not matches_rendered_lead(target, drawn_radar_state, include_lead_two=self._lead_two_visible),
       ))

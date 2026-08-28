@@ -176,6 +176,9 @@ def _target_dict(target: ClassifiedTarget, motion: TargetMotion | None = None) -
     "predictedDPath": motion.predicted_d_path,
     "timeToLaneCross": motion.time_to_lane_cross,
     "cutInCandidate": motion.cut_in_candidate,
+    "objectClass": target.object_class,
+    "existenceProbability": target.existence_probability,
+    "dynamicProperty": target.dynamic_property,
   }
 
 

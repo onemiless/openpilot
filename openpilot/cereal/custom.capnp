@@ -727,6 +727,9 @@ struct RadarLaneStateSP @0xd4c6bb3adf1c2a91 {
     predictedDPath @13 :Float32;
     timeToLaneCross @14 :Float32;  # s; -1 when unavailable
     cutInCandidate @15 :Bool;
+    objectClass @16 :UInt8 = 7;  # ARS408: 0 point, 1 car, 2 truck, 3 pedestrian, 4 motorcycle, 5 bicycle, 6 wide, 7 unknown
+    existenceProbability @17 :UInt8;  # ARS408 encoded level, 0..7
+    dynamicProperty @18 :UInt8 = 4;  # ARS408 motion classification, 4 means unknown
   }
 
   enum Occupancy {

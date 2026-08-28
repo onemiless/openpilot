@@ -16,6 +16,9 @@ def test_custom_event_keeps_reserved_slot_and_logged_service():
   assert "struct RadarLaneStateSP @0xd4c6bb3adf1c2a91" in custom_schema
   assert "targets @13 :List(Target)" in custom_schema
   assert "cutInCandidate @15 :Target" in custom_schema
+  assert "objectClass @16 :UInt8 = 7" in custom_schema
+  assert "existenceProbability @17 :UInt8" in custom_schema
+  assert "dynamicProperty @18 :UInt8 = 4" in custom_schema
   assert "radarLaneStateSP @138 :Custom.RadarLaneStateSP" in event_schema
   assert '"radarLaneStateSP": (True, 20., 5)' in services
 

@@ -181,6 +181,9 @@ def test_radar_point_adapter_preserves_unmeasured_track_and_id_zero():
     dRel=8.0,
     yRel=1.0,
     vRel=-0.5,
+    objectClass=2,
+    existenceProbability=6,
+    dynamicProperty=7,
     deprecated=namespace(measured=False, yvRel=0.75),
   )
   target = radar_target_from_point(point)
@@ -190,6 +193,9 @@ def test_radar_point_adapter_preserves_unmeasured_track_and_id_zero():
   assert not target.measured
   assert target.yv_rel_valid
   assert target.yv_rel == 0.75
+  assert target.object_class == 2
+  assert target.existence_probability == 6
+  assert target.dynamic_property == 7
 
 
 if __name__ == "__main__":
