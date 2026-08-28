@@ -1,5 +1,4 @@
 import colorsys
-import time
 import numpy as np
 import pyray as rl
 from openpilot.cereal import messaging
@@ -209,7 +208,7 @@ class ModelRenderer(Widget, ChevronMetrics, ModelRendererSP):
       return
 
     visible_targets = filter_static_side_clutter(radar_lane_state.targets, v_ego)
-    stable_targets = self._radar_lane_stabilizer.update(visible_targets, time.monotonic_ns(), SIDE_LANE_ORDER)
+    stable_targets = self._radar_lane_stabilizer.update(visible_targets, SIDE_LANE_ORDER)
     for target in stable_targets:
       d_rel = float(target.dRel)
       if not 2.5 < d_rel <= MAX_DRAW_DISTANCE:

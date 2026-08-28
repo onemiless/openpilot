@@ -63,10 +63,11 @@ not a wheel-speed measurement from the other vehicle. Red marks a cut-in
 candidate, orange a closing target, and green a non-closing target.
 The legacy `leadOne`/`leadTwo` chevrons are also display-deduplicated by track
 ID and spatial proximity. Leads without a stable common track use 3 m hide /
-5 m show longitudinal hysteresis when laterally close. Adjacent-lane display
-keeps its selected track through brief 300 ms dropouts, reacquires a nearby
-replacement ID, and requires a 6 m distance advantage before switching to an
-ordinary challenger; cut-in candidates can switch immediately. Classified cars, trucks,
+5 m show longitudinal hysteresis when laterally close. The ARS408 tracker remains
+the sole owner of target lifetime, ID handover, and missed-cycle grace. While the
+current radar track remains alive, adjacent-lane display requires a 6 m distance
+advantage before switching to an ordinary challenger; cut-in candidates can
+switch immediately. Classified cars, trucks,
 pedestrians, motorcycles, and bicycles are never removed by the roadside-clutter
 display filter. Point/wide or unknown targets are hidden only when three or more
 side targets are world-stationary, share a narrow lateral band, and span at

@@ -1,7 +1,6 @@
 from types import SimpleNamespace as namespace
 
 from openpilot.sunnypilot.selfdrive.radar_lane.display import (
-  DISPLAY_TARGET_HOLD_NS,
   LaneDisplayTargetStabilizer,
   SIDE_LANE_ORDER,
   filter_static_side_clutter,
@@ -91,32 +90,29 @@ def test_target_label_reports_distance_and_estimated_absolute_speed():
 
 def test_side_target_stabilizer_resists_small_closest_target_changes():
   stabilizer = LaneDisplayTargetStabilizer()
-  assert [target.trackId for target in stabilizer.update([_target(1, 1, 30.0)], 1_000_000_000)] == [1]
-  stable = stabilizer.update([_target(1, 1, 30.0), _target(2, 1, 27.0)], 1_050_000_000)
+  assert [target.trackId for target in stabilizer.update([_target(1, 1, 30.0)])] == [1]
+  stable = stabilizer.update([_target(1, 1, 30.0), _target(2, 1, 27.0)])
   assert [target.trackId for target in stable] == [1]
 
 
 def test_side_target_stabilizer_switches_for_clear_distance_advantage_or_cut_in():
   stabilizer = LaneDisplayTargetStabilizer()
-  stabilizer.update([_target(1, 1, 30.0)], 1_000_000_000)
-  closer = stabilizer.update([_target(1, 1, 30.0), _target(2, 1, 20.0)], 1_050_000_000)
+  stabilizer.update([_target(1, 1, 30.0)])
+  closer = stabilizer.update([_target(1, 1, 30.0), _target(2, 1, 20.0)])
   assert [target.trackId for target in closer] == [2]
 
   cut_in = stabilizer.update([
     _target(2, 1, 20.0), _target(3, 1, 28.0, cut_in=True, crossing=0.8),
-  ], 1_100_000_000)
+  ])
   assert [target.trackId for target in cut_in] == [3]
 
 
-def test_side_target_stabilizer_reacquires_new_id_and_bridges_short_dropout():
+def test_side_target_stabilizer_follows_radar_track_lifecycle_without_ui_hold():
   stabilizer = LaneDisplayTargetStabilizer()
-  stabilizer.update([_target(10, 4, 30.0, y_rel=-3.5)], 1_000_000_000)
-  reacquired = stabilizer.update([_target(20, 4, 32.0, y_rel=-3.2)], 1_050_000_000)
-  assert [target.trackId for target in reacquired] == [20]
-
-  held = stabilizer.update([], 1_050_000_000 + DISPLAY_TARGET_HOLD_NS)
-  assert [target.trackId for target in held] == [20]
-  assert stabilizer.update([], 1_050_000_001 + DISPLAY_TARGET_HOLD_NS) == ()
+  stabilizer.update([_target(10, 4, 30.0, y_rel=-3.5)])
+  assert stabilizer.update([]) == ()
+  replacement = stabilizer.update([_target(20, 4, 32.0, y_rel=-3.2)])
+  assert [target.trackId for target in replacement] == [20]
 
 
 def test_existing_radar_chevrons_are_not_drawn_twice():
