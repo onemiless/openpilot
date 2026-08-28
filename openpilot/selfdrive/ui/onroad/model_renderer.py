@@ -9,8 +9,10 @@ from openpilot.common.params import Params
 from openpilot.selfdrive.locationd.calibrationd import HEIGHT_INIT
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.sunnypilot.selfdrive.radar_lane.display import (
+  SIDE_LANE_ORDER,
+  filter_static_side_clutter,
   format_target_label,
-  rendered_radar_track_ids,
+  matches_rendered_lead,
   select_lane_display_targets,
   should_render_second_lead,
 )
@@ -203,9 +205,8 @@ class ModelRenderer(Widget, ChevronMetrics, ModelRendererSP):
     if radar_lane_state is None or not radar_lane_state.radarFresh or not radar_lane_state.modelFresh:
       return
 
-    drawn_track_ids = rendered_radar_track_ids(drawn_radar_state, include_lead_two=self._lead_two_visible)
-
-    for target in select_lane_display_targets(radar_lane_state.targets):
+    visible_targets = filter_static_side_clutter(radar_lane_state.targets, v_ego)
+    for target in select_lane_display_targets(visible_targets, SIDE_LANE_ORDER):
       d_rel = float(target.dRel)
       if not 2.5 < d_rel <= MAX_DRAW_DISTANCE:
         continue
@@ -220,7 +221,7 @@ class ModelRenderer(Widget, ChevronMetrics, ModelRendererSP):
         v_rel=float(target.vRel),
         label=format_target_label(d_rel, float(target.vRel), v_ego, ui_state.is_metric),
         cut_in=bool(target.cutInCandidate),
-        draw_arrow=int(target.trackId) not in drawn_track_ids,
+        draw_arrow=not matches_rendered_lead(target, drawn_radar_state, include_lead_two=self._lead_two_visible),
       ))
 
     # Draw farther targets first so a close target remains legible when projections overlap.
@@ -391,7 +392,7 @@ class ModelRenderer(Widget, ChevronMetrics, ModelRendererSP):
         color = rl.Color(0, 203, 0, 225)
 
       if marker.draw_arrow:
-        arrow = [(x - size, y - size * 0.55), (x, y + size * 0.45), (x + size, y - size * 0.55)]
+        arrow = [(x + size * 1.25, y + size), (x, y), (x - size * 1.25, y + size)]
         rl.draw_triangle_fan(arrow, len(arrow), color)
 
       font_size = 27
@@ -399,7 +400,7 @@ class ModelRenderer(Widget, ChevronMetrics, ModelRendererSP):
       padding_x, padding_y = 10.0, 5.0
       box = rl.Rectangle(
         float(np.clip(x - text_size.x / 2.0 - padding_x, self._rect.x, self._rect.x + self._rect.width - text_size.x - 2 * padding_x)),
-        float(np.clip(y + size * 0.55, self._rect.y, self._rect.y + self._rect.height - text_size.y - 2 * padding_y)),
+        float(np.clip(y + size * 1.1, self._rect.y, self._rect.y + self._rect.height - text_size.y - 2 * padding_y)),
         text_size.x + 2 * padding_x,
         text_size.y + 2 * padding_y,
       )

@@ -49,7 +49,8 @@ def test_lane_occupancy_has_a_ui_consumer_without_becoming_control_input():
   renderer = _read("openpilot/selfdrive/ui/onroad/model_renderer.py")
 
   assert '"radarLaneStateSP"' in ui_state
-  assert "select_lane_display_targets(radar_lane_state.targets)" in renderer
+  assert "filter_static_side_clutter(radar_lane_state.targets, v_ego)" in renderer
+  assert "select_lane_display_targets(visible_targets, SIDE_LANE_ORDER)" in renderer
   assert "format_target_label" in renderer
 
 

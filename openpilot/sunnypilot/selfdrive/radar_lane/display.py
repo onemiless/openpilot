@@ -11,12 +11,20 @@ from openpilot.sunnypilot.selfdrive.radar_lane.occupancy import (
 
 
 DISPLAY_LANE_ORDER = (LANE_LEFT_MASK, LANE_CENTER_MASK, LANE_RIGHT_MASK)
+SIDE_LANE_ORDER = (LANE_LEFT_MASK, LANE_RIGHT_MASK)
 M_TO_FT = 3.28084
 MS_TO_KPH = 3.6
 MS_TO_MPH = 2.2369363
 LEAD_TWO_HIDE_DISTANCE_M = 3.0
 LEAD_TWO_SHOW_DISTANCE_M = 5.0
 LEAD_TWO_SAME_OBJECT_LATERAL_M = 1.5
+LEAD_SPATIAL_MATCH_DISTANCE_M = 4.0
+LEAD_SPATIAL_MATCH_LATERAL_M = 1.5
+STATIC_WORLD_SPEED_MPS = 1.5
+STATIC_SIDE_OFFSET_M = 2.2
+STATIC_CLUTTER_LATERAL_BAND_M = 1.0
+STATIC_CLUTTER_MIN_TARGETS = 3
+STATIC_CLUTTER_MIN_SPAN_M = 15.0
 
 
 def _target_priority(target: Any) -> tuple[bool, float, float, int]:
@@ -27,12 +35,13 @@ def _target_priority(target: Any) -> tuple[bool, float, float, int]:
   return not cut_in, crossing_time, float(target.dRel), int(target.trackId)
 
 
-def select_lane_display_targets(targets: Iterable[Any]) -> tuple[Any, ...]:
+def select_lane_display_targets(targets: Iterable[Any],
+                                lane_order: tuple[int, ...] = DISPLAY_LANE_ORDER) -> tuple[Any, ...]:
   """Select at most one unique, risk-prioritized target for each displayed lane."""
   candidates = tuple(target for target in targets if bool(getattr(target, "present", False)))
   selected = []
   selected_ids: set[int] = set()
-  for lane_mask in DISPLAY_LANE_ORDER:
+  for lane_mask in lane_order:
     lane_targets = [
       target for target in candidates
       if int(getattr(target, "laneMask", 0)) & lane_mask and int(target.trackId) not in selected_ids
@@ -43,6 +52,33 @@ def select_lane_display_targets(targets: Iterable[Any]) -> tuple[Any, ...]:
     selected.append(target)
     selected_ids.add(int(target.trackId))
   return tuple(selected)
+
+
+def filter_static_side_clutter(targets: Iterable[Any], v_ego: float) -> tuple[Any, ...]:
+  """Hide only clear roadside clusters; retain center and isolated stopped targets."""
+  candidates = tuple(target for target in targets if bool(getattr(target, "present", False)))
+  clutter_ids: set[int] = set()
+  for side in (-1.0, 1.0):
+    stationary_side = []
+    for target in candidates:
+      d_path = float(getattr(target, "dPath", getattr(target, "yRel", 0.0)))
+      absolute_speed = float(v_ego) + float(getattr(target, "vRel", 0.0))
+      if (side * d_path > STATIC_SIDE_OFFSET_M and abs(absolute_speed) <= STATIC_WORLD_SPEED_MPS and
+          not bool(getattr(target, "cutInCandidate", False))):
+        stationary_side.append((target, d_path))
+
+    for target, lateral in stationary_side:
+      cluster = [
+        other for other, other_lateral in stationary_side
+        if abs(other_lateral - lateral) <= STATIC_CLUTTER_LATERAL_BAND_M
+      ]
+      if len(cluster) < STATIC_CLUTTER_MIN_TARGETS:
+        continue
+      distances = [float(other.dRel) for other in cluster]
+      if max(distances) - min(distances) >= STATIC_CLUTTER_MIN_SPAN_M:
+        clutter_ids.update(int(other.trackId) for other in cluster)
+
+  return tuple(target for target in candidates if int(target.trackId) not in clutter_ids)
 
 
 def should_render_second_lead(lead_one: Any | None, lead_two: Any | None, was_visible: bool) -> bool:
@@ -76,6 +112,23 @@ def rendered_radar_track_ids(radar_state: Any | None, include_lead_two: bool = T
     if bool(getattr(lead, "present", False)) and bool(getattr(lead, "radar", False)) and track_id >= 0:
       track_ids.add(track_id)
   return frozenset(track_ids)
+
+
+def matches_rendered_lead(target: Any, radar_state: Any | None, include_lead_two: bool = True) -> bool:
+  if radar_state is None:
+    return False
+  leads = (radar_state.leadOne, radar_state.leadTwo) if include_lead_two else (radar_state.leadOne,)
+  target_id = int(getattr(target, "trackId", -1))
+  for lead in leads:
+    if not bool(getattr(lead, "present", False)):
+      continue
+    lead_id = int(getattr(lead, "radarTrackId", -1))
+    if bool(getattr(lead, "radar", False)) and target_id >= 0 and target_id == lead_id:
+      return True
+    if (abs(float(target.dRel) - float(lead.dRel)) <= LEAD_SPATIAL_MATCH_DISTANCE_M and
+        abs(float(target.yRel) - float(lead.yRel)) <= LEAD_SPATIAL_MATCH_LATERAL_M):
+      return True
+  return False
 
 
 def format_target_label(d_rel: float, v_rel: float, v_ego: float, metric: bool) -> str:

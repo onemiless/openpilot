@@ -50,13 +50,19 @@ lane identifiers. Consumers must require a live service and valid event, treat
 change. `clear` does not prove complete sensor coverage and is not a substitute
 for side/rear blind-spot monitoring.
 
-The standard C3XL on-road renderer subscribes to this service and displays at
-most one unique representative target per lane. A predicted cut-in target has
-priority over the closest target. Each marker shows distance and estimated
+The standard C3XL on-road renderer subscribes to this service only for the
+left and right adjacent-lane display; the center lane keeps the stock SP lead
+chevron without an added marker. Each adjacent lane displays at most one unique
+representative target, using the stock chevron orientation without an L/C/R
+badge. A predicted cut-in target has priority over the closest target. Each
+marker shows distance and estimated
 longitudinal target speed (`vEgo + vRel`); this is a radar-relative estimate,
 not a wheel-speed measurement from the other vehicle. Red marks a cut-in
 candidate, orange a closing target, and green a non-closing target.
-The legacy `leadOne`/`leadTwo` chevrons are also display-deduplicated: the same
-radar track is never drawn twice, while leads without a stable common track use
-3 m hide / 5 m show longitudinal hysteresis when laterally close. This changes
-only rendering and does not remove either lead from `radarState` or control.
+The legacy `leadOne`/`leadTwo` chevrons are also display-deduplicated by track
+ID and spatial proximity. Leads without a stable common track use 3 m hide /
+5 m show longitudinal hysteresis when laterally close. Clear roadside clutter
+is hidden only when three or more side targets are world-stationary, share a
+narrow lateral band, and span at least 15 m longitudinally; isolated and center
+stopped targets are retained. These rules change only rendering and do not
+remove any target from `radarTracks`, `radarState`, or control.

@@ -1,19 +1,25 @@
 from types import SimpleNamespace as namespace
 
 from openpilot.sunnypilot.selfdrive.radar_lane.display import (
+  SIDE_LANE_ORDER,
+  filter_static_side_clutter,
   format_target_label,
+  matches_rendered_lead,
   rendered_radar_track_ids,
   select_lane_display_targets,
   should_render_second_lead,
 )
 
 
-def _target(track_id, lane_mask, d_rel, *, cut_in=False, crossing=-1.0):
+def _target(track_id, lane_mask, d_rel, *, y_rel=0.0, d_path=None, v_rel=0.0, cut_in=False, crossing=-1.0):
   return namespace(
     present=True,
     trackId=track_id,
     laneMask=lane_mask,
     dRel=d_rel,
+    yRel=y_rel,
+    dPath=y_rel if d_path is None else d_path,
+    vRel=v_rel,
     cutInCandidate=cut_in,
     timeToLaneCross=crossing,
   )
@@ -40,6 +46,25 @@ def test_boundary_target_is_not_drawn_twice():
   assert [target.trackId for target in selected] == [7, 8]
 
 
+def test_side_display_never_adds_a_center_lane_marker():
+  targets = [_target(1, 1, 20.0), _target(2, 2, 15.0), _target(3, 4, 25.0)]
+
+  assert [target.trackId for target in select_lane_display_targets(targets, SIDE_LANE_ORDER)] == [1, 3]
+
+
+def test_static_roadside_cluster_is_hidden_but_isolated_and_center_stops_remain():
+  targets = [
+    _target(1, 4, 15.0, y_rel=-4.1, d_path=-4.0, v_rel=-20.0),
+    _target(2, 4, 35.0, y_rel=-4.2, d_path=-4.1, v_rel=-20.2),
+    _target(3, 4, 55.0, y_rel=-4.0, d_path=-3.9, v_rel=-19.8),
+    _target(4, 1, 25.0, y_rel=3.6, d_path=3.6, v_rel=-20.0),
+    _target(5, 2, 30.0, y_rel=0.0, d_path=0.0, v_rel=-20.0),
+    _target(6, 1, 40.0, y_rel=3.5, d_path=3.5, v_rel=-5.0),
+  ]
+
+  assert [target.trackId for target in filter_static_side_clutter(targets, 20.0)] == [4, 5, 6]
+
+
 def test_target_label_reports_distance_and_estimated_absolute_speed():
   assert format_target_label(30.0, -2.0, 20.0, True) == "30m  65km/h"
   assert format_target_label(30.0, -2.0, 20.0, False) == "98ft  40mph"
@@ -54,6 +79,16 @@ def test_existing_radar_chevrons_are_not_drawn_twice():
   assert rendered_radar_track_ids(radar_state) == frozenset({7, 8})
   assert rendered_radar_track_ids(radar_state, include_lead_two=False) == frozenset({7})
   assert rendered_radar_track_ids(None) == frozenset()
+
+
+def test_spatially_matching_lead_is_not_redrawn_when_track_ids_differ():
+  radar_state = namespace(
+    leadOne=_lead(track_id=80, d_rel=30.0, y_rel=-3.4),
+    leadTwo=_lead(present=False),
+  )
+
+  assert matches_rendered_lead(_target(81, 4, 32.0, y_rel=-3.0), radar_state)
+  assert not matches_rendered_lead(_target(82, 4, 40.0, y_rel=-3.0), radar_state)
 
 
 def _lead(*, present=True, radar=True, track_id=-1, d_rel=20.0, y_rel=0.0):
