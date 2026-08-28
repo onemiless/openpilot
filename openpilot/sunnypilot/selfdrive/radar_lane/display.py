@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import Any, Iterable
 
 from openpilot.sunnypilot.selfdrive.radar_lane.occupancy import (
@@ -37,6 +38,110 @@ ARS408_CLASS_LABELS = {
   5: "自行车",
   6: "宽目标",
 }
+DISPLAY_TARGET_HOLD_NS = 300_000_000
+DISPLAY_SWITCH_ADVANTAGE_M = 6.0
+DISPLAY_REACQUIRE_DISTANCE_M = 5.0
+DISPLAY_REACQUIRE_LATERAL_M = 1.5
+
+
+@dataclass
+class _LaneDisplayState:
+  target: Any
+  last_seen_ns: int
+
+
+class LaneDisplayTargetStabilizer:
+  """Keep adjacent-lane display identity stable without changing radar/control data."""
+  def __init__(self) -> None:
+    self._states: dict[int, _LaneDisplayState] = {}
+    self._last_now_ns = 0
+
+  def reset(self) -> None:
+    self._states.clear()
+    self._last_now_ns = 0
+
+  @staticmethod
+  def _should_switch(incumbent: Any, challenger: Any) -> bool:
+    if challenger is None or int(challenger.trackId) == int(incumbent.trackId):
+      return False
+    incumbent_cut_in = bool(getattr(incumbent, "cutInCandidate", False))
+    challenger_cut_in = bool(getattr(challenger, "cutInCandidate", False))
+    if challenger_cut_in and not incumbent_cut_in:
+      return True
+    if challenger_cut_in and incumbent_cut_in:
+      return _target_priority(challenger) < _target_priority(incumbent)
+    return float(challenger.dRel) + DISPLAY_SWITCH_ADVANTAGE_M < float(incumbent.dRel)
+
+  @staticmethod
+  def _spatial_reacquisition(previous: Any, candidates: Iterable[Any]) -> Any | None:
+    matches = [
+      candidate for candidate in candidates
+      if abs(float(candidate.dRel) - float(previous.dRel)) <= DISPLAY_REACQUIRE_DISTANCE_M and
+      abs(float(candidate.yRel) - float(previous.yRel)) <= DISPLAY_REACQUIRE_LATERAL_M
+    ]
+    if not matches:
+      return None
+    return min(matches, key=lambda candidate: (
+      abs(float(candidate.dRel) - float(previous.dRel)),
+      abs(float(candidate.yRel) - float(previous.yRel)),
+      _target_priority(candidate),
+    ))
+
+  def update(self, targets: Iterable[Any], now_ns: int,
+             lane_order: tuple[int, ...] = SIDE_LANE_ORDER) -> tuple[Any, ...]:
+    if now_ns < self._last_now_ns:
+      self.reset()
+    self._last_now_ns = now_ns
+    candidates = tuple(target for target in targets if bool(getattr(target, "present", False)))
+    selected = []
+    selected_ids: set[int] = set()
+
+    for lane_mask in lane_order:
+      lane_targets = [
+        target for target in candidates
+        if int(getattr(target, "laneMask", 0)) & lane_mask and int(target.trackId) not in selected_ids
+      ]
+      best = min(lane_targets, key=_target_priority) if lane_targets else None
+      state = self._states.get(lane_mask)
+      if state is not None and int(state.target.trackId) in selected_ids:
+        self._states.pop(lane_mask, None)
+        state = None
+      chosen = None
+      seen_now = False
+
+      if state is not None:
+        incumbent = next(
+          (target for target in lane_targets if int(target.trackId) == int(state.target.trackId)), None,
+        )
+        if incumbent is not None:
+          chosen = best if self._should_switch(incumbent, best) else incumbent
+          seen_now = True
+        else:
+          reacquired = self._spatial_reacquisition(state.target, lane_targets)
+          if reacquired is not None:
+            chosen = reacquired
+            seen_now = True
+          elif best is not None and self._should_switch(state.target, best):
+            chosen = best
+            seen_now = True
+          elif now_ns - state.last_seen_ns <= DISPLAY_TARGET_HOLD_NS:
+            chosen = state.target
+          else:
+            chosen = best
+            seen_now = best is not None
+      else:
+        chosen = best
+        seen_now = best is not None
+
+      if chosen is None:
+        self._states.pop(lane_mask, None)
+        continue
+      last_seen_ns = now_ns if seen_now else state.last_seen_ns
+      self._states[lane_mask] = _LaneDisplayState(chosen, last_seen_ns)
+      selected.append(chosen)
+      selected_ids.add(int(chosen.trackId))
+
+    return tuple(selected)
 
 
 def _target_priority(target: Any) -> tuple[bool, float, float, int]:

@@ -1,4 +1,5 @@
 import colorsys
+import time
 import numpy as np
 import pyray as rl
 from openpilot.cereal import messaging
@@ -10,10 +11,10 @@ from openpilot.selfdrive.locationd.calibrationd import HEIGHT_INIT
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.sunnypilot.selfdrive.radar_lane.display import (
   SIDE_LANE_ORDER,
+  LaneDisplayTargetStabilizer,
   filter_static_side_clutter,
   format_target_label,
   matches_rendered_lead,
-  select_lane_display_targets,
   should_render_second_lead,
 )
 from openpilot.system.ui.lib.application import FontWeight, gui_app
@@ -77,6 +78,7 @@ class ModelRenderer(Widget, ChevronMetrics, ModelRendererSP):
     self._lead_vehicles = [LeadVehicle(), LeadVehicle()]
     self._lead_two_visible = False
     self._radar_lane_markers: list[RadarLaneMarker] = []
+    self._radar_lane_stabilizer = LaneDisplayTargetStabilizer()
     self._radar_lane_font = gui_app.font(FontWeight.SEMI_BOLD)
     self._path_offset_z = HEIGHT_INIT[0]
     self._counter = -1
@@ -203,10 +205,12 @@ class ModelRenderer(Widget, ChevronMetrics, ModelRendererSP):
   def _update_radar_lane_markers(self, radar_lane_state, path_x_array, v_ego: float, drawn_radar_state=None) -> None:
     self._radar_lane_markers = []
     if radar_lane_state is None or not radar_lane_state.radarFresh or not radar_lane_state.modelFresh:
+      self._radar_lane_stabilizer.reset()
       return
 
     visible_targets = filter_static_side_clutter(radar_lane_state.targets, v_ego)
-    for target in select_lane_display_targets(visible_targets, SIDE_LANE_ORDER):
+    stable_targets = self._radar_lane_stabilizer.update(visible_targets, time.monotonic_ns(), SIDE_LANE_ORDER)
+    for target in stable_targets:
       d_rel = float(target.dRel)
       if not 2.5 < d_rel <= MAX_DRAW_DISTANCE:
         continue

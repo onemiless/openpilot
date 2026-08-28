@@ -53,7 +53,8 @@ def test_lane_occupancy_has_a_ui_consumer_without_becoming_control_input():
 
   assert '"radarLaneStateSP"' in ui_state
   assert "filter_static_side_clutter(radar_lane_state.targets, v_ego)" in renderer
-  assert "select_lane_display_targets(visible_targets, SIDE_LANE_ORDER)" in renderer
+  assert "LaneDisplayTargetStabilizer()" in renderer
+  assert "self._radar_lane_stabilizer.update(visible_targets, time.monotonic_ns(), SIDE_LANE_ORDER)" in renderer
   assert "format_target_label" in renderer
 
 
