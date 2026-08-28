@@ -220,6 +220,7 @@ class RadarLaneStatePublisher:
     self.message_factory = message_factory
     self.radar_available = radar_available
     self.motion_tracker = TargetMotionTracker()
+    self.previous_lane_masks: dict[int, int] = {}
 
   def build_message(self, sm: Any, radar_data: Any) -> Any:
     if self.message_factory is None:
@@ -238,15 +239,26 @@ class RadarLaneStatePublisher:
       model_mono_time > 0 and radar_mono_time > 0 and not radar_error
     )
     result: RadarLaneResult = empty_result()
+    targets = ()
     if healthy:
       targets = tuple(
         target for target in (radar_target_from_point(point) for point in radar_data.points)
         if target is not None
       )
-      result = classify_radar_lanes(sm["modelV2"], targets, self.radar_to_camera)
+      result = classify_radar_lanes(
+        sm["modelV2"], targets, self.radar_to_camera, self.previous_lane_masks,
+      )
+    else:
+      self.previous_lane_masks.clear()
 
     message.valid = healthy and result.valid
     unique_targets = _unique_targets(result)
+    classified_masks = {target.track_id: target.lane_mask for target in unique_targets}
+    self.previous_lane_masks = {
+      target.track_id: classified_masks.get(target.track_id, self.previous_lane_masks.get(target.track_id, 0))
+      for target in targets
+      if classified_masks.get(target.track_id, self.previous_lane_masks.get(target.track_id, 0))
+    }
     motions = self.motion_tracker.update(unique_targets, radar_mono_time)
     ordered_targets = tuple(sorted(unique_targets, key=lambda target: _published_target_sort_key(target, motions)))
     published_targets = ordered_targets[:MAX_PUBLISHED_TARGETS]

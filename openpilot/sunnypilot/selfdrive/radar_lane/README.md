@@ -65,7 +65,11 @@ ID and spatial proximity. Leads without a stable common track use 3 m hide /
 the sole owner of target lifetime, ID handover, and missed-cycle grace. While the
 current radar track remains alive, adjacent-lane display requires a 6 m distance
 advantage before switching to an ordinary challenger; cut-in candidates can
-switch immediately. Classified cars, trucks,
+switch immediately. Lane membership also uses 0.5 m of additional boundary
+hysteresis only for a track ID that occupied that lane in the previous radar
+cycle. This stabilizes model-boundary jitter without extending the radar
+target's lifetime: when the native radar ID disappears, its lane history is
+removed. Classified cars, trucks,
 pedestrians, motorcycles, and bicycles are never removed by the roadside-clutter
 display filter. A radar-native stationary point/wide/unknown target outside the
 center corridor is hidden even when isolated. Targets without a native static

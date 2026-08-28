@@ -17,6 +17,7 @@ MAX_PLAUSIBLE_LANE_WIDTH_M = 5.5
 MIN_LANE_LINE_RANGE_M = 10.0
 LANE_LINE_START_TOLERANCE_M = 0.05
 LANE_BOUNDARY_AMBIGUITY_M = 0.30
+LANE_BOUNDARY_HYSTERESIS_M = 0.50
 
 LANE_LEFT_MASK = 1
 LANE_CENTER_MASK = 2
@@ -311,7 +312,8 @@ def radar_target_from_point(point: Any) -> RadarTarget | None:
 
 
 def classify_radar_lanes(model: Any, targets: Iterable[RadarTarget],
-                         radar_to_camera: float) -> RadarLaneResult:
+                         radar_to_camera: float,
+                         previous_lane_masks: dict[int, int] | None = None) -> RadarLaneResult:
   path = _PathGeometry.from_model(getattr(model, "position", None))
   if path is None:
     return empty_result()
@@ -336,7 +338,10 @@ def classify_radar_lanes(model: Any, targets: Iterable[RadarTarget],
         continue
       value = geometry.lateral_value(target, projection)
       lower, upper = bounds
-      if lower - LANE_BOUNDARY_AMBIGUITY_M <= value <= upper + LANE_BOUNDARY_AMBIGUITY_M:
+      lane_mask = LANE_MASKS[name]
+      was_in_lane = bool((previous_lane_masks or {}).get(target.track_id, 0) & lane_mask)
+      boundary_margin = LANE_BOUNDARY_AMBIGUITY_M + (LANE_BOUNDARY_HYSTERESIS_M if was_in_lane else 0.0)
+      if lower - boundary_margin <= value <= upper + boundary_margin:
         boundary_distance = min(abs(value - lower), abs(value - upper))
         matches[name] = (boundary_distance, value, lower, upper)
 

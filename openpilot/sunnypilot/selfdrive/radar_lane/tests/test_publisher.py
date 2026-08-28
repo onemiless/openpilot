@@ -2,6 +2,7 @@ from types import SimpleNamespace as namespace
 
 import pytest
 
+from openpilot.sunnypilot.selfdrive.radar_lane.occupancy import LANE_LEFT_MASK
 from openpilot.sunnypilot.selfdrive.radar_lane.publisher import RadarLaneStatePublisher
 
 
@@ -93,6 +94,22 @@ def test_publisher_builds_logged_three_lane_contract_and_preserves_id_zero():
   assert message.radarLaneStateSP.leftAhead.occupancy == "occupied"
   assert message.radarLaneStateSP.leftAhead.closestTarget["trackId"] == 0
   assert message.radarLaneStateSP.centerAhead.occupancy == "clear"
+
+
+def test_publisher_keeps_same_radar_id_through_lane_boundary_jitter():
+  publisher = RadarLaneStatePublisher(1.52, _factory)
+  first = publisher.build_message(
+    FakeSubMaster(_model()),
+    namespace(points=[_point(track_id=21, y_rel=5.2)], errors=namespace(to_dict=lambda: {})),
+  )
+  second = publisher.build_message(
+    FakeSubMaster(_model(), model_mono_time=1_200_000_000, radar_mono_time=1_100_000_000),
+    namespace(points=[_point(track_id=21, y_rel=6.0)], errors=namespace(to_dict=lambda: {})),
+  )
+
+  assert first.radarLaneStateSP.leftAhead.closestTarget["trackId"] == 21
+  assert second.radarLaneStateSP.leftAhead.closestTarget["trackId"] == 21
+  assert publisher.previous_lane_masks == {21: LANE_LEFT_MASK}
 
 
 def test_publisher_preserves_ars408_target_metadata():

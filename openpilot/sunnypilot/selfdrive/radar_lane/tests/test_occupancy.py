@@ -143,6 +143,19 @@ def test_boundary_target_conservatively_occupies_both_adjacent_lanes():
   assert result.left.targets[0].center_boundary_distance == 0.0
 
 
+def test_previous_lane_membership_adds_only_boundary_hysteresis():
+  outside = RadarTarget(19, 30.0, 6.0, 0.0)
+
+  without_history = classify_radar_lanes(_model(), [outside], RADAR_TO_CAMERA_M)
+  with_history = classify_radar_lanes(
+    _model(), [outside], RADAR_TO_CAMERA_M, {19: LANE_LEFT_MASK},
+  )
+
+  assert not without_history.left.targets
+  assert with_history.left.targets[0].track_id == 19
+  assert with_history.left.targets[0].lane_mask == LANE_LEFT_MASK
+
+
 def test_closest_target_is_first_and_track_zero_is_valid():
   result = _classify(
     _model(),
