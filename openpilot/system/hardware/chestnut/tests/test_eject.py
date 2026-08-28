@@ -169,7 +169,8 @@ def test_ejector_rejects_unknown_poweroff_state(monkeypatch):
 def test_safe_status_clears_only_after_disconnect_and_5gbps_return():
   params = FakeParams({"UsbGpuEjectStatus": "safe"})
   ejector = ChestnutEjector(params)
-  present = [{"vendorId": 0x3801, "productId": 0x0001, "speedMbps": 5000}]
+  present = [{"vendorId": 0x3801, "productId": 0x0001, "manufacturer": "tiny",
+              "product": "custom ed4e39b7-CLEAN", "speedMbps": 5000}]
 
   ejector.update(True, present)
   assert params.get("UsbGpuEjectStatus") == "safe"
