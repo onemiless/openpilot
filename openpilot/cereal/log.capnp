@@ -2645,7 +2645,7 @@ struct Event {
     modelDataV2SP @116 :Custom.ModelDataV2SP;
     trafficRadarState @136 :Custom.TrafficRadarState;
     navAssistSP @137 :Custom.NavAssistSP;
-    customReserved12 @138 :Custom.CustomReserved12;
+    radarLaneStateSP @138 :Custom.RadarLaneStateSP;
     customReserved13 @139 :Custom.CustomReserved13;
     customReserved14 @140 :Custom.CustomReserved14;
     customReserved15 @141 :Custom.CustomReserved15;
