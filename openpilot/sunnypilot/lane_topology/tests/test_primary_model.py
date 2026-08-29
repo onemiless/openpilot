@@ -1,0 +1,41 @@
+from types import SimpleNamespace
+
+import pytest
+
+from openpilot.sunnypilot.lane_topology.adapter import LaneTopologyFrame
+from openpilot.sunnypilot.lane_topology.primary_model import PrimaryModelLaneTopologyAdapter, model_v2_to_observations
+from openpilot.sunnypilot.lane_topology.types import LaneMarkingType
+
+
+def model_fixture(probabilities=(0.9, 0.9, 0.9, 0.9)):
+  lines = tuple(SimpleNamespace(x=(0.0, 5.0, 10.0, 40.0), y=(y, y, y, y), z=(0.0,) * 4)
+                for y in (5.4, 1.8, -1.8, -5.4))
+  return SimpleNamespace(laneLines=lines, laneLineProbs=probabilities)
+
+
+def test_primary_model_reuses_four_visible_boundaries_without_gpu_imports():
+  observations = model_v2_to_observations(model_fixture())
+  assert len(observations) == 4
+  assert [observation.source_id for observation in observations] == [0, 1, 2, 3]
+  assert all(observation.marking_type == LaneMarkingType.unknown for observation in observations)
+
+
+def test_primary_model_filters_low_probability_outer_lines():
+  observations = model_v2_to_observations(model_fixture((0.1, 0.8, 0.9, 0.2)))
+  assert [observation.source_id for observation in observations] == [1, 2]
+
+
+def test_marking_classifier_is_optional_and_explicit():
+  observations = model_v2_to_observations(model_fixture(), marking_classifier=lambda index, line: LaneMarkingType.solid)
+  assert all(observation.marking_type == LaneMarkingType.solid for observation in observations)
+
+
+def test_adapter_accepts_model_v2_as_opaque_frame_payload():
+  frame = LaneTopologyFrame(1, 2, model_fixture())
+  observations = PrimaryModelLaneTopologyAdapter().infer(frame)
+  assert len(observations) == 4
+
+
+def test_primary_model_rejects_incomplete_contract():
+  with pytest.raises(ValueError, match="exactly four"):
+    model_v2_to_observations(SimpleNamespace(laneLines=(), laneLineProbs=()))
