@@ -12,6 +12,11 @@ from openpilot.sunnypilot.lane_topology.yolop import HomographyProjector, lane_l
 
 
 EXPECTED_YOLOP_320_SHA256 = "86d6e8b6dfdef195c061e9bcad82d9487bb5ee1ac4a1cf9a3dc4736657a07369"
+SUPPORTED_YOLOP_320_MODELS = {
+  EXPECTED_YOLOP_320_SHA256: "official-full-fp32",
+  "03690d106c5e59f8c6c55aa9a24b4bca795db1c7e1335887e26c50f43ee2feaf": "lane-only-fp32",
+  "b7b09f3e918627b124943dcb7fa819b4c6968c7528f8eef9a474a082d4ef65ba": "lane-only-fp16",
+}
 
 
 class YOLOPOnnxLaneModel:
@@ -23,8 +28,10 @@ class YOLOPOnnxLaneModel:
       raise FileNotFoundError(self.model_path)
     with self.model_path.open("rb") as model_file:
       observed_hash = hashlib.file_digest(model_file, "sha256").hexdigest()
-    if observed_hash != EXPECTED_YOLOP_320_SHA256:
+    if observed_hash not in SUPPORTED_YOLOP_320_MODELS:
       raise RuntimeError(f"YOLOP 320 hash mismatch: {observed_hash}")
+    self.model_sha256 = observed_hash
+    self.variant = SUPPORTED_YOLOP_320_MODELS[observed_hash]
 
     # Imports are deliberately delayed: importing lane_topology never selects
     # a device or opens USB. modeld constructs this only after its primary AMD
