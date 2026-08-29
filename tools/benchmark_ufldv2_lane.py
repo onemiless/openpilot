@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""Offroad-only official UFLDv2 TuSimple benchmark on the selected tinygrad device."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import time
+
+import numpy as np
+
+from openpilot.common.params import Params
+from openpilot.sunnypilot.lane_topology.ufldv2_adapter import UFLDv2OnnxLaneModel
+
+
+def percentile(values: list[float], q: float) -> float:
+  return float(np.percentile(np.asarray(values, dtype=np.float64), q * 100.0))
+
+
+def write_exclusive(path: Path, value: dict) -> None:
+  path.parent.mkdir(parents=True, exist_ok=True)
+  with path.open("x") as output:
+    json.dump(value, output, indent=2, sort_keys=True)
+    output.write("\n")
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser(description=__doc__)
+  parser.add_argument("--model", type=Path, required=True)
+  parser.add_argument("--runs", type=int, default=100)
+  parser.add_argument("--report", type=Path, required=True)
+  args = parser.parse_args()
+  if args.runs <= 0:
+    raise ValueError("runs must be positive")
+
+  params = Params()
+  if not params.get_bool("IsOffroad"):
+    raise RuntimeError("UFLDv2 lane benchmark requires IsOffroad=1")
+
+  from tinygrad.runtime.support.usb import USB3
+
+  original_control_write = USB3.control_write
+  original_bulk_read = USB3.bulk_read
+  trace = {"f2_in": 0, "bulk_ok": 0, "bulk_fail": 0, "pending": False,
+           "transferred_bytes_min": None, "transferred_bytes_max": None}
+
+  def traced_control_write(self, request, value=0, index=0, data=b"", timeout=1000):
+    result = original_control_write(self, request, value, index, data, timeout)
+    if request == 0xF2 and value & 0x8000:
+      trace["f2_in"] += 1
+      trace["pending"] = True
+    return result
+
+  def traced_bulk_read(self, length, timeout=1000):
+    try:
+      result = original_bulk_read(self, length, timeout)
+      if trace["pending"]:
+        transferred = len(result)
+        trace["bulk_ok"] += 1
+        trace["pending"] = False
+        low, high = trace["transferred_bytes_min"], trace["transferred_bytes_max"]
+        trace["transferred_bytes_min"] = transferred if low is None else min(low, transferred)
+        trace["transferred_bytes_max"] = transferred if high is None else max(high, transferred)
+      return result
+    except Exception:
+      trace["bulk_fail"] += 1
+      raise
+
+  USB3.control_write = traced_control_write
+  USB3.bulk_read = traced_bulk_read
+
+  rgb = np.zeros((720, 1280, 3), dtype=np.uint8)
+  load_started = time.perf_counter()
+  model = UFLDv2OnnxLaneModel(args.model)
+  load_seconds = time.perf_counter() - load_started
+
+  warmup_latencies: list[float] = []
+  for _ in range(3):
+    started = time.perf_counter()
+    outputs = model.outputs(rgb)
+    warmup_latencies.append((time.perf_counter() - started) * 1000.0)
+
+  expected_shapes = {
+    "loc_row": (1, 100, 56, 4),
+    "loc_col": (1, 100, 41, 4),
+    "exist_row": (1, 2, 56, 4),
+    "exist_col": (1, 2, 41, 4),
+  }
+  latencies: list[float] = []
+  for run in range(args.runs):
+    if run % 20 == 0 and not params.get_bool("IsOffroad"):
+      raise RuntimeError("IsOffroad changed during UFLDv2 benchmark")
+    started = time.perf_counter()
+    outputs = model.outputs(rgb)
+    latencies.append((time.perf_counter() - started) * 1000.0)
+    for name, expected_shape in expected_shapes.items():
+      if outputs[name].shape != expected_shape or not np.all(np.isfinite(outputs[name])):
+        raise RuntimeError(f"invalid UFLDv2 {name} output at run {run + 1}: {outputs[name].shape}")
+
+  model.close()
+  if trace["bulk_fail"] or trace["pending"] or trace["f2_in"] != trace["bulk_ok"]:
+    raise RuntimeError(f"incomplete USB trace: {trace}")
+  report = {
+    "schema": "ufldv2-tusimple-res18-usbgpu-benchmark-v1",
+    "status": "PASS",
+    "model": str(args.model),
+    "model_sha256": model.model_sha256,
+    "input_shape": [1, 3, 320, 800],
+    "output_shapes": {name: list(shape) for name, shape in expected_shapes.items()},
+    "load_seconds": load_seconds,
+    "warmup_ms": warmup_latencies,
+    "runs": args.runs,
+    "latency_ms": {
+      "mean": sum(latencies) / len(latencies),
+      "p50": percentile(latencies, 0.50),
+      "p95": percentile(latencies, 0.95),
+      "p99": percentile(latencies, 0.99),
+      "min": min(latencies),
+      "max": max(latencies),
+    },
+    "trace": trace,
+    "offroad": params.get_bool("IsOffroad"),
+  }
+  write_exclusive(args.report, report)
+  print(json.dumps(report, indent=2, sort_keys=True))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
