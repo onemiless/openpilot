@@ -72,8 +72,12 @@ def only_onroad(started: bool, params: Params, CP: car.CarParams) -> bool:
 def radar_lane_available(started: bool, params: Params, CP: car.CarParams) -> bool:
   return started and not CP.notCar and not CP.radarUnavailable
 
+def c3xl_local_diagnostics(started: bool, params: Params, CP: car.CarParams) -> bool:
+  return started and get_hardware_profile() == HardwareProfile.C3XL
+
 def record_route_video(started: bool, params: Params, CP: car.CarParams) -> bool:
-  return started and params.get_bool("RecordRoadVideo")
+  return (get_hardware_profile() != HardwareProfile.C3XL and
+          started and params.get_bool("RecordRoadVideo"))
 
 def only_offroad(started: bool, params: Params, CP: car.CarParams) -> bool:
   return not started
@@ -132,6 +136,7 @@ procs = [
   DaemonProcess("manage_athenad", "openpilot.system.athena.manage_athenad", "AthenadPid"),
 
   NativeProcess("loggerd", "openpilot/system/loggerd", ["./loggerd"], logging),
+  PythonProcess("local_diagnosticsd", "openpilot.selfdrive.debug.local_diagnostics", c3xl_local_diagnostics),
   NativeProcess("encoderd", "openpilot/system/loggerd", ["./encoderd"], record_route_video),
   NativeProcess("stream_encoderd", "openpilot/system/loggerd", ["./encoderd", "--stream"], or_(livestream, notcar)),
   PythonProcess("logmessaged", "openpilot.system.logmessaged", always_run),
