@@ -2,9 +2,9 @@ import numpy as np
 import pytest
 
 from openpilot.sunnypilot.lane_topology.types import LaneMarkingType
+from openpilot.sunnypilot.lane_topology.image_marking import classify_marking_continuity
 from openpilot.sunnypilot.lane_topology.ufldv2 import (
   _resize_bilinear_rgb,
-  classify_marking_continuity,
   decode_tusimple_row_lanes,
   prepare_tusimple_rgb,
   row_outputs_to_observations,

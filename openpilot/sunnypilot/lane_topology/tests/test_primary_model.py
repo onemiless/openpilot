@@ -3,7 +3,8 @@ from types import SimpleNamespace
 import pytest
 
 from openpilot.sunnypilot.lane_topology.adapter import LaneTopologyFrame
-from openpilot.sunnypilot.lane_topology.primary_model import PrimaryModelLaneTopologyAdapter, model_v2_to_observations
+from openpilot.sunnypilot.lane_topology.primary_model import PrimaryLaneVisibilityFilter, PrimaryModelLaneTopologyAdapter, \
+                                                               model_v2_to_observations
 from openpilot.sunnypilot.lane_topology.types import LaneMarkingType
 
 
@@ -18,6 +19,7 @@ def test_primary_model_reuses_four_visible_boundaries_without_gpu_imports():
   assert len(observations) == 4
   assert [observation.source_id for observation in observations] == [0, 1, 2, 3]
   assert all(observation.marking_type == LaneMarkingType.unknown for observation in observations)
+  assert [observation.points[0][1] for observation in observations] == [-5.4, -1.8, 1.8, 5.4]
 
 
 def test_primary_model_filters_low_probability_outer_lines():
@@ -34,6 +36,13 @@ def test_adapter_accepts_model_v2_as_opaque_frame_payload():
   frame = LaneTopologyFrame(1, 2, model_fixture())
   observations = PrimaryModelLaneTopologyAdapter().infer(frame)
   assert len(observations) == 4
+
+
+def test_visibility_hysteresis_retains_a_line_until_exit_threshold():
+  visibility = PrimaryLaneVisibilityFilter(enter_threshold=0.5, exit_threshold=0.25)
+  assert visibility.update((0.1, 0.6, 0.6, 0.1)) == frozenset((1, 2))
+  assert visibility.update((0.1, 0.3, 0.4, 0.1)) == frozenset((1, 2))
+  assert visibility.update((0.1, 0.2, 0.4, 0.1)) == frozenset((2,))
 
 
 def test_primary_model_rejects_incomplete_contract():

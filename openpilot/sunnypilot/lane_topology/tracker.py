@@ -15,6 +15,8 @@ class _Track:
 
   def update_type(self, marking_type: LaneMarkingType, confidence: float) -> LaneMarkingType:
     self.type_scores = {key: score * 0.8 for key, score in self.type_scores.items() if score * 0.8 >= 0.05}
+    if marking_type == LaneMarkingType.unknown:
+      return max(self.type_scores, key=self.type_scores.get) if self.type_scores else LaneMarkingType.unknown
     self.type_scores[marking_type] = self.type_scores.get(marking_type, 0.0) + confidence
     return max(self.type_scores, key=self.type_scores.get)
 

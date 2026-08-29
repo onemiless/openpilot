@@ -22,6 +22,13 @@ def test_marking_type_uses_temporal_evidence_instead_of_one_frame_flip():
   assert second.boundaries[0].marking_type == LaneMarkingType.solid
 
 
+def test_unknown_image_evidence_does_not_erase_a_known_marking_type():
+  tracker = LaneTopologyTracker()
+  tracker.update((line(1, 1.8, LaneMarkingType.solid, 0.9), line(2, -1.8)), frame_id=1, timestamp_ns=1)
+  second = tracker.update((line(1, 1.8, LaneMarkingType.unknown, 0.9), line(2, -1.8)), frame_id=2, timestamp_ns=2)
+  assert second.boundaries[0].marking_type == LaneMarkingType.solid
+
+
 def test_expired_track_gets_a_new_stable_id():
   tracker = LaneTopologyTracker(max_missed_frames=1)
   first = tracker.update((line(1, 1.8), line(2, -1.8)), frame_id=1, timestamp_ns=1)

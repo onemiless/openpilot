@@ -5,7 +5,8 @@ from collections.abc import Callable
 import numpy as np
 
 from openpilot.sunnypilot.lane_topology.types import LaneBoundaryObservation
-from openpilot.sunnypilot.lane_topology.ufldv2 import _resize_bilinear_rgb, classify_marking_continuity
+from openpilot.sunnypilot.lane_topology.image_marking import classify_marking_continuity
+from openpilot.sunnypilot.lane_topology.ufldv2 import _resize_bilinear_rgb
 
 
 UFLDV1_INPUT_WIDTH = 800

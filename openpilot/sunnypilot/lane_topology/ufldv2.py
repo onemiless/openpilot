@@ -5,7 +5,8 @@ import math
 
 import numpy as np
 
-from openpilot.sunnypilot.lane_topology.types import LaneBoundaryObservation, LaneMarkingType
+from openpilot.sunnypilot.lane_topology.image_marking import classify_marking_continuity
+from openpilot.sunnypilot.lane_topology.types import LaneBoundaryObservation
 
 
 UFLDV2_INPUT_WIDTH = 800
@@ -90,49 +91,6 @@ def decode_tusimple_row_lanes(outputs: Mapping[str, np.ndarray], source_width: i
       points.append((u, v))
     lanes.append(tuple(points))
   return tuple(lanes)
-
-
-def classify_marking_continuity(rgb: np.ndarray, points: tuple[tuple[float, float], ...], *,
-                                center_radius: int = 3, side_offset: int = 10,
-                                contrast_threshold: float = 14.0) -> LaneMarkingType:
-  """Classify solid/dashed from image evidence along one predicted lane.
-
-  UFLDv2 has no marking-type head. This deterministic classifier measures
-  whether a bright/colour marking is continuously visible against nearby road;
-  uncertain evidence stays ``unknown`` instead of inventing a type.
-  """
-
-  image = np.asarray(rgb)
-  if image.ndim != 3 or image.shape[2] != 3 or image.dtype != np.uint8:
-    raise ValueError("marking classification requires an HxWx3 uint8 RGB image")
-  if len(points) < 6:
-    return LaneMarkingType.unknown
-
-  height, width = image.shape[:2]
-  luminance = image.astype(np.float32).max(axis=2)
-  visible: list[bool] = []
-  for u_float, v_float in sorted(points, key=lambda point: point[1]):
-    u, v = int(round(u_float)), int(round(v_float))
-    if not (side_offset + center_radius <= u < width - side_offset - center_radius and center_radius <= v < height - center_radius):
-      continue
-    center = luminance[v - center_radius:v + center_radius + 1, u - center_radius:u + center_radius + 1]
-    left = luminance[v - center_radius:v + center_radius + 1,
-                     u - side_offset - center_radius:u - side_offset + center_radius + 1]
-    right = luminance[v - center_radius:v + center_radius + 1,
-                      u + side_offset - center_radius:u + side_offset + center_radius + 1]
-    road_level = 0.5 * (float(np.median(left)) + float(np.median(right)))
-    visible.append(float(np.percentile(center, 80)) - road_level >= contrast_threshold)
-
-  if len(visible) < 6:
-    return LaneMarkingType.unknown
-  coverage = sum(visible) / len(visible)
-  transitions = sum(current != previous for previous, current in zip(visible, visible[1:], strict=False))
-  lit_runs = int(visible[0]) + sum(not previous and current for previous, current in zip(visible, visible[1:], strict=False))
-  if coverage >= 0.72 and transitions <= 3:
-    return LaneMarkingType.solid
-  if 0.18 <= coverage <= 0.72 and lit_runs >= 2 and transitions >= 3:
-    return LaneMarkingType.dashed
-  return LaneMarkingType.unknown
 
 
 def row_outputs_to_observations(outputs: Mapping[str, np.ndarray], rgb: np.ndarray,

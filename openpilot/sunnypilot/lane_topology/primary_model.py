@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Collection, Iterable
 import math
 from typing import Protocol
 
@@ -23,7 +23,8 @@ class ModelV2Like(Protocol):
 
 def model_v2_to_observations(model_v2: ModelV2Like, *, confidence_threshold: float = 0.35,
                              marking_classifier: MarkingClassifier | None = None,
-                             max_distance_m: float = 80.0) -> tuple[LaneBoundaryObservation, ...]:
+                             max_distance_m: float = 80.0,
+                             visible_source_ids: Collection[int] | None = None) -> tuple[LaneBoundaryObservation, ...]:
   """Reuse modelV2's four lane lines without running another neural network.
 
   This adapter is deliberately duck-typed so it works with both Cap'n Proto
@@ -40,13 +41,16 @@ def model_v2_to_observations(model_v2: ModelV2Like, *, confidence_threshold: flo
 
   observations: list[LaneBoundaryObservation] = []
   for source_id, (lane_line, confidence) in enumerate(zip(lane_lines, probabilities, strict=True)):
-    if not math.isfinite(confidence) or confidence < confidence_threshold:
+    if ((visible_source_ids is not None and source_id not in visible_source_ids) or
+        not math.isfinite(confidence) or confidence < confidence_threshold):
       continue
     xs = tuple(lane_line.x)
     ys = tuple(lane_line.y)
     if len(xs) != len(ys):
       raise ValueError(f"lane line {source_id} has mismatched x/y lengths")
-    points = tuple((float(x), float(y)) for x, y in zip(xs, ys, strict=True)
+    # modelV2 uses calibration/device convention (right-positive y); topology
+    # intentionally exposes road convention (left-positive y).
+    points = tuple((float(x), -float(y)) for x, y in zip(xs, ys, strict=True)
                    if math.isfinite(x) and math.isfinite(y) and 0.0 <= x <= max_distance_m)
     if len(points) < 2:
       continue
@@ -60,17 +64,41 @@ def model_v2_to_observations(model_v2: ModelV2Like, *, confidence_threshold: flo
   return tuple(observations)
 
 
+class PrimaryLaneVisibilityFilter:
+  """Per-slot probability hysteresis for the primary model's four lines."""
+
+  def __init__(self, *, enter_threshold: float = 0.5, exit_threshold: float = 0.25):
+    if not 0.0 <= exit_threshold < enter_threshold <= 1.0:
+      raise ValueError("lane visibility requires 0 <= exit < enter <= 1")
+    self.enter_threshold = enter_threshold
+    self.exit_threshold = exit_threshold
+    self._visible = [False] * 4
+
+  def reset(self) -> None:
+    self._visible = [False] * 4
+
+  def update(self, probabilities: Iterable[float]) -> frozenset[int]:
+    values = tuple(float(value) for value in probabilities)
+    if len(values) != 4:
+      raise ValueError("lane visibility requires exactly four probabilities")
+    for index, probability in enumerate(values):
+      threshold = self.exit_threshold if self._visible[index] else self.enter_threshold
+      self._visible[index] = math.isfinite(probability) and probability >= threshold
+    return frozenset(index for index, visible in enumerate(self._visible) if visible)
+
+
 class PrimaryModelLaneTopologyAdapter:
   """Shadow adapter for already-published modelV2 data; owns no GPU resources."""
 
-  def __init__(self, *, confidence_threshold: float = 0.35,
+  def __init__(self, *, enter_threshold: float = 0.5, exit_threshold: float = 0.25,
                marking_classifier: MarkingClassifier | None = None):
-    self.confidence_threshold = confidence_threshold
+    self.visibility = PrimaryLaneVisibilityFilter(enter_threshold=enter_threshold, exit_threshold=exit_threshold)
     self.marking_classifier = marking_classifier
 
   def infer(self, frame: LaneTopologyFrame) -> tuple[LaneBoundaryObservation, ...]:
-    return model_v2_to_observations(frame.payload, confidence_threshold=self.confidence_threshold,  # type: ignore[arg-type]
-                                    marking_classifier=self.marking_classifier)
+    visible = self.visibility.update(frame.payload.laneLineProbs)  # type: ignore[attr-defined]
+    return model_v2_to_observations(frame.payload, confidence_threshold=0.0,  # type: ignore[arg-type]
+                                    marking_classifier=self.marking_classifier, visible_source_ids=visible)
 
   def close(self) -> None:
-    pass
+    self.visibility.reset()
