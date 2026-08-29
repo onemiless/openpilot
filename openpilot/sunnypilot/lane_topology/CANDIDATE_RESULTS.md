@@ -22,4 +22,16 @@ The target-device CPU stress test completed 100,000 full adapter-plus-topology i
 
 The primary model does not publish solid/dashed semantics. Marking type therefore remains `unknown` unless synchronized image evidence is explicitly supplied to a marking classifier. Returning `unknown` is intentional; deriving solid/dashed from lane geometry alone would be an unsupported guess.
 
-This branch remains shadow-only. It does not modify cereal schemas, process configuration, `modeld`, planner, controls, Panda, UI, Params, or UT3G firmware. A production/UI hook should only be added after an onroad replay validates accuracy and image synchronization.
+The auxiliary neural candidates remain shadow-only. The validated primary-model geometry is exposed through the read-only UI bridge described below; cereal schemas, process configuration, `modeld`, planner, controls, Panda, Params, and UT3G firmware remain unchanged.
+
+## Real-route replay follow-up
+
+Four user route segments were recovered from the archived traffic-control logs in `~/Downloads`. Each segment contains 1,200 `modelV2` messages, 1,200 qcamera encode indices, calibrated extrinsics, and a synchronized 526x330 qcamera video. A separate public openpilot CI segment supplied 1,200 synchronized 1928x1208 fcamera frames.
+
+The replay exposed and fixed a coordinate-boundary error: modelV2 is right-positive in y, while this module's public road convention is left-positive. `PrimaryModelLaneTopologyAdapter` now negates model y exactly once at its boundary. Camera projection continues to use the original model convention and visually aligns with lane markings.
+
+At 4 Hz, all four user segments produced 239 exact model/video matches out of 240 sampled frames; the missing sample in each is the segment-start encoder/model offset. The image overlays confirmed that the four model lines project onto the visible road markings. A `0.50` enter / `0.25` exit probability hysteresis reduced ego-lane index transitions from `7/3/8/0` to `4/3/4/0` without retaining intersection lines as valid lanes.
+
+Solid/dashed image rules did **not** pass the production gate. Low-resolution qcamera compression caused both false solid results and unknown results. Full-resolution fcamera improved projection detail but still returned 272 unknown boundary observations and only five solid observations across 240 sampled frames on a route with faded and occluded markings. The rule implementation and evidence reports remain available for offline work, but the live UI does not publish or display a marking type.
+
+The validated geometry is integrated at the UI boundary only. `LaneTopologyUIBridge` reads the already-subscribed modelV2 at approximately 4 Hz and drives a compact `LANE current/total · LINES boundaries` HUD label. It does not add a service, schema field, parameter, process, GPU call, modeld hook, planner input, or control dependency. Offroad transition resets all cached topology state.

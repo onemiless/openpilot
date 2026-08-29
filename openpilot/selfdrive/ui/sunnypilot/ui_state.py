@@ -11,6 +11,7 @@ from opendbc.car.structs import car
 from openpilot.common.params import Params
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.display import OnroadBrightness
 from openpilot.sunnypilot.models.helpers import ACTIVE_BUNDLE_KEYS, get_active_source
+from openpilot.sunnypilot.lane_topology.ui_bridge import LaneTopologyUIBridge
 from openpilot.sunnypilot.sunnylink.sunnylink_state import SunnylinkState
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.sunnypilot.widgets.screen_saver import ScreenSaverSP
@@ -37,6 +38,8 @@ class UIStateSP:
       "modelManagerSP", "selfdriveStateSP", "longitudinalPlanSP", "backupManagerSP",
       "gpsLocation", "lateralTorqueParameters", "carStateSP", "liveMapDataSP", "carParamsSP", "lateralDelay"
     ]
+    self.lane_topology_bridge = LaneTopologyUIBridge(frame_divisor=5)
+    self.lane_topology = None
 
     self.sunnylink_state = SunnylinkState()
 
@@ -70,6 +73,12 @@ class UIStateSP:
       self.sunnylink_state.start()
     else:
       self.sunnylink_state.stop()
+    if self.is_offroad():
+      if self.lane_topology is not None:
+        self.lane_topology_bridge.reset()
+        self.lane_topology = None
+    elif self.sm.updated["modelV2"]:
+      self.lane_topology = self.lane_topology_bridge.update(self.sm["modelV2"])
 
   def onroad_brightness_handle_alerts(self, _ui_state, alert):
     if _ui_state.sm.recv_frame["carState"] < _ui_state.started_frame:

@@ -197,7 +197,28 @@ class HudRenderer(Widget):
 
     draw_egpu_status_panel(rect, self._font_medium, compact=True)
 
+    self._draw_lane_topology(rect)
+
     self._draw_steering_wheel(rect)
+
+  def _draw_lane_topology(self, rect: rl.Rectangle) -> None:
+    topology = ui_state.lane_topology
+    if topology is None or topology.stale or topology.ego_lane_index_from_left < 0 or topology.visible_lane_count <= 0:
+      return
+    lane_number = topology.ego_lane_index_from_left + 1
+    text = f"LANE {lane_number}/{topology.visible_lane_count}   LINES {topology.boundary_count_visible}"
+    font_size = 28
+    size = measure_text_cached(self._font_semi_bold, text, font_size)
+    padding_x, padding_y = 16, 8
+    box = rl.Rectangle(
+      rect.x + (rect.width - size.x) / 2 - padding_x,
+      rect.y + rect.height - size.y - 18 - padding_y * 2,
+      size.x + padding_x * 2,
+      size.y + padding_y * 2,
+    )
+    rl.draw_rectangle_rounded(box, 0.35, 8, rl.Color(0, 0, 0, 145))
+    rl.draw_text_ex(self._font_semi_bold, text, rl.Vector2(box.x + padding_x, box.y + padding_y),
+                    font_size, 0, rl.Color(255, 255, 255, 225))
 
   def _draw_model_source(self, rect: rl.Rectangle) -> None:
     if ui_state.sm.recv_frame['selfdriveState'] < ui_state.started_frame:
