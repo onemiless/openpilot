@@ -66,6 +66,14 @@ is a Plan Constraint; the Traffic Radar strategy uses the same producer through
 the planner's optional target seam.
 _Avoid_: traffic planner, duplicated traffic controller
 
+**Lane Topology**:
+A shadow-only interpretation of independently observed visible lane markings.
+It distinguishes physical markings from topology boundaries, derives visible
+lane spaces and the ego lane, and carries explicit ambiguous/stale state through
+merge, split, occlusion, and low-confidence scenes. It never replaces modelV2,
+becomes a Planner Backend or Plan Constraint, or feeds vehicle control.
+_Avoid_: total road lanes, lane control model, modelV2 lane replacement
+
 **Model Platform**:
 The official hardware-driven QCOM/Chestnut selection. Each platform keeps an
 independent selected bundle; a healthy connected Chestnut activates Big Model,
