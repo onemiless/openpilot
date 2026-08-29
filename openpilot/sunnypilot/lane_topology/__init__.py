@@ -19,10 +19,12 @@ from openpilot.sunnypilot.lane_topology.types import (
   LaneTopology,
   LaneTopologyState,
 )
+from openpilot.sunnypilot.lane_topology.yolop import HomographyProjector, lane_logits_to_observations, letterbox_rgb
 
 __all__ = (
   "CallableLaneTopologyAdapter",
   "DisabledLaneTopologyAdapter",
+  "HomographyProjector",
   "LaneBoundary",
   "LaneBoundaryObservation",
   "LaneMarkingType",
@@ -37,5 +39,7 @@ __all__ = (
   "LaneTopologyTracker",
   "ReplayLaneTopologyAdapter",
   "analyze_lane_topology",
+  "lane_logits_to_observations",
+  "letterbox_rgb",
   "run_interleaved_benchmark",
 )
