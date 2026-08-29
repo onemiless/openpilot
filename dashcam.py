@@ -157,6 +157,22 @@ function render(){
         a3.addEventListener('click', function(e){ e.stopPropagation(); });
         dl.appendChild(a3);
       }
+      if (d.has_qlog) {
+        const a4 = document.createElement('a');
+        a4.href = '/download?route=' + encodeURIComponent(d.name) + '&file=qlog';
+        a4.download = d.date + '-' + d.time.replace(/:/g,'-') + '-qlog.zst';
+        a4.textContent = '下载 qlog';
+        a4.addEventListener('click', function(e){ e.stopPropagation(); });
+        dl.appendChild(a4);
+      }
+      if (d.has_rlog) {
+        const a5 = document.createElement('a');
+        a5.href = '/download?route=' + encodeURIComponent(d.name) + '&file=rlog';
+        a5.download = d.date + '-' + d.time.replace(/:/g,'-') + '-rlog.zst';
+        a5.textContent = '下载 rlog';
+        a5.addEventListener('click', function(e){ e.stopPropagation(); });
+        dl.appendChild(a5);
+      }
       info.appendChild(dl);
       it.appendChild(info);
       it.addEventListener('click', ()=>play(parseInt(it.dataset.i)));
@@ -250,6 +266,8 @@ def _list_drives():
       "has_qcam": os.path.exists(os.path.join(path, "qcamera.ts")),
       "has_fcam": os.path.exists(os.path.join(path, "fcamera.hevc")),
       "has_ecam": os.path.exists(os.path.join(path, "ecamera.hevc")),
+      "has_qlog": os.path.exists(os.path.join(path, "qlog.zst")),
+      "has_rlog": os.path.exists(os.path.join(path, "rlog.zst")),
       "size": _dir_size(path),
     })
   drives.sort(key=lambda d: (d["date"], d["time"], d["seq"]))
@@ -359,7 +377,13 @@ class Handler(BaseHTTPRequestHandler):
       if not _safe_route(route):
         self.send_error(400, "Invalid route")
         return
-      fname = {"wide": "ecamera.hevc", "front": "fcamera.hevc", "sd": "qcamera.ts"}.get(cam, "ecamera.hevc")
+      if "file" in qs:
+        fname = {"qlog": "qlog.zst", "rlog": "rlog.zst"}.get(qs["file"][0], "")
+        if not fname:
+          self.send_error(400, "Invalid file")
+          return
+      else:
+        fname = {"wide": "ecamera.hevc", "front": "fcamera.hevc", "sd": "qcamera.ts"}.get(cam, "ecamera.hevc")
       fp = os.path.join(REALDATA_DIR, route, fname)
       if not os.path.exists(fp):
         self.send_error(404, "Not found")
