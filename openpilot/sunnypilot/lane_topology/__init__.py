@@ -7,6 +7,7 @@ from openpilot.sunnypilot.lane_topology.adapter import (
   LaneTopologyModelAdapter,
   ReplayLaneTopologyAdapter,
 )
+from openpilot.sunnypilot.lane_topology.benchmark import LaneTopologyBenchmarkSample, run_interleaved_benchmark
 from openpilot.sunnypilot.lane_topology.geometry import analyze_lane_topology
 from openpilot.sunnypilot.lane_topology.runner import LaneTopologyRunner
 from openpilot.sunnypilot.lane_topology.scheduler import LaneTopologySchedule, LaneTopologyScheduler
@@ -26,6 +27,7 @@ __all__ = (
   "LaneBoundaryObservation",
   "LaneMarkingType",
   "LaneTopology",
+  "LaneTopologyBenchmarkSample",
   "LaneTopologyFrame",
   "LaneTopologyModelAdapter",
   "LaneTopologyRunner",
@@ -35,4 +37,5 @@ __all__ = (
   "LaneTopologyTracker",
   "ReplayLaneTopologyAdapter",
   "analyze_lane_topology",
+  "run_interleaved_benchmark",
 )
