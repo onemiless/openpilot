@@ -217,7 +217,8 @@ class HudRenderer(Widget):
     if left_type not in type_text or right_type not in type_text:
       return
     lane_number = topology.ego_lane_index_from_left + 1
-    text = f"L:{type_text[left_type]}   LANE {lane_number}/{topology.visible_lane_count}   R:{type_text[right_type]}"
+    text = f"L:{type_text[left_type]}   LANE {lane_number}/{topology.visible_lane_count}   " + \
+           f"R:{type_text[right_type]}   LINES {topology.boundary_count_visible}"
     font_size = 28
     size = measure_text_cached(self._font_semi_bold, text, font_size)
     padding_x, padding_y = 16, 8
