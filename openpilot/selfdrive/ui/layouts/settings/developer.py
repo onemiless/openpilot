@@ -32,6 +32,11 @@ DESCRIPTIONS = {
 }
 
 
+def nav_assist_token_configured(params: Params) -> bool:
+  token = params.get("NavAssistToken")
+  return isinstance(token, str) and len(token.encode("utf-8")) >= 16
+
+
 class DeveloperLayout(Widget):
   def __init__(self):
     super().__init__()
@@ -78,14 +83,18 @@ class DeveloperLayout(Widget):
       callback=self._on_lat_maneuver_mode,
     )
 
+    self._nav_assist_token_configured = nav_assist_token_configured(self._params)
     self._nav_assist_toggle = toggle_item(
       lambda: tr("CLOSED-COURSE Navigation Assist"),
-      description=lambda: tr("For controlled test tracks only. Requires a configured token and WGS-84 geofence."),
+      description=lambda: (
+        tr("For controlled test tracks only. Requires a configured token and WGS-84 geofence.") + "<br><br>" +
+        (tr("NavAssist token configured.") if self._nav_assist_token_configured else
+         tr("NavAssist token not configured. Set it through the local service console; the token is never displayed."))
+      ),
       initial_state=self._params.get_bool("NavAssistTrackMode"),
       callback=self._on_nav_assist_track_mode,
       enabled=ui_state.is_offroad,
     )
-
     self._alpha_long_toggle = toggle_item(
       lambda: tr("sunnypilot Longitudinal Control (Alpha)"),
       description=lambda: tr(DESCRIPTIONS["alpha_longitudinal"]),
@@ -127,6 +136,7 @@ class DeveloperLayout(Widget):
 
   def _update_toggles(self):
     ui_state.update_params()
+    self._nav_assist_token_configured = nav_assist_token_configured(self._params)
 
     # Hide non-release toggles on release builds
     # TODO: we can do an onroad cycle, but alpha long toggle requires a deinit function to re-enable radar and not fault

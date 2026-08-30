@@ -9,6 +9,7 @@ from openpilot.cereal import log, messaging
 from openpilot.common.params import Params
 from openpilot.common.realtime import Ratekeeper
 from openpilot.common.swaglog import cloudlog
+from openpilot.sunnypilot.navassist.discovery import DISCOVERY_HOST, DISCOVERY_PORT, NavAssistDiscoveryServer
 from openpilot.sunnypilot.navassist.protocol import NavAssistStore
 from openpilot.sunnypilot.navassist.publisher import build_nav_assist_message
 from openpilot.sunnypilot.navassist.server import NavAssistHTTPServer
@@ -59,14 +60,30 @@ def main() -> None:
 
   store = NavAssistStore(token, checkpoint_path=REPLAY_CHECKPOINT_PATH)
   server = NavAssistHTTPServer((LISTEN_HOST, LISTEN_PORT), store)
-  server_thread = threading.Thread(target=server.serve_forever, name="navassist-http", daemon=True)
-  server_thread.start()
-  cloudlog.warning("navassistd armed for closed-course input on port %d", LISTEN_PORT)
-
-  pm = messaging.PubMaster(["navAssistStateSP"])
-  sm = messaging.SubMaster(["liveLocationKalman"])
-  ratekeeper = Ratekeeper(PUBLISH_HZ)
   try:
+    discovery_server = NavAssistDiscoveryServer((DISCOVERY_HOST, DISCOVERY_PORT), token)
+  except BaseException:
+    server.server_close()
+    raise
+  server_thread = threading.Thread(target=server.serve_forever, name="navassist-http", daemon=True)
+  discovery_thread = threading.Thread(
+    target=discovery_server.serve_forever, name="navassist-discovery", daemon=True,
+  )
+  server_started = False
+  discovery_started = False
+  try:
+    server_thread.start()
+    server_started = True
+    discovery_thread.start()
+    discovery_started = True
+    cloudlog.warning(
+      "navassistd armed for closed-course input on HTTP port %d and discovery port %d",
+      LISTEN_PORT, DISCOVERY_PORT,
+    )
+
+    pm = messaging.PubMaster(["navAssistStateSP"])
+    sm = messaging.SubMaster(["liveLocationKalman"])
+    ratekeeper = Ratekeeper(PUBLISH_HZ)
     while params.get_bool("NavAssistTrackMode"):
       sm.update(0)
       now_ns = time.monotonic_ns()
@@ -85,9 +102,16 @@ def main() -> None:
       pm.send("navAssistStateSP", message)
       ratekeeper.keep_time()
   finally:
-    server.shutdown()
+    if discovery_started:
+      discovery_server.shutdown()
+    if server_started:
+      server.shutdown()
+    if discovery_started:
+      discovery_thread.join(timeout=2)
+    if server_started:
+      server_thread.join(timeout=2)
+    discovery_server.server_close()
     server.server_close()
-    server_thread.join(timeout=2)
 
 
 if __name__ == "__main__":

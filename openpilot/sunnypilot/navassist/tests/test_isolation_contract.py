@@ -36,6 +36,24 @@ def test_track_processes_are_both_guarded_by_one_explicit_manager_predicate():
   assert "LaneTopologyUIBridge(frame_divisor=1)" in lane_daemon
   assert "bridge.last_frame_id % IMAGE_CLASSIFIER_DIVISOR" in lane_daemon
 
+  navassist_daemon = (NAVASSIST / "navassistd.py").read_text()
+  assert "NavAssistDiscoveryServer((DISCOVERY_HOST, DISCOVERY_PORT), token)" in navassist_daemon
+  assert "discovery_server.shutdown()" in navassist_daemon
+  assert "discovery_thread.join(timeout=2)" in navassist_daemon
+
+
+def test_developer_settings_show_only_navassist_token_configuration_status():
+  settings_sources = (
+    ROOT / "selfdrive/ui/layouts/settings/developer.py",
+    ROOT / "selfdrive/ui/mici/layouts/settings/developer.py",
+  )
+  for path in settings_sources:
+    source = path.read_text()
+    assert 'get("NavAssistToken")' in source
+    assert "token configured" in source.lower()
+    assert "set_text(token" not in source
+    assert "set_value(token" not in source
+
 
 def test_planner_uses_common_target_seam_and_controlsd_is_untouched():
   common_planner = (ROOT / "sunnypilot/selfdrive/controls/lib/longitudinal_planner.py").read_text()

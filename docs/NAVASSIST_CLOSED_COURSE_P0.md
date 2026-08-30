@@ -33,17 +33,21 @@ lane change, intersection turn, or highway-exit steering is authorized.
 - Confirm the target is a Tesla C3XL, the official longitudinal backend is
   selected, and SP has active longitudinal authority before active deceleration.
 
-On TesNav, place these values in the user Gradle properties used for the test
-APK:
+On TesNav, place the shared secret and interval in the user Gradle properties
+used for the test APK. Leave `NAV_ASSIST_V2_URL` blank for authenticated UDP
+discovery; an explicit valid HTTP/HTTPS URL remains a manual override:
 
 ```properties
-NAV_ASSIST_V2_URL=http://192.168.53.232:7766
+NAV_ASSIST_V2_URL=
 NAV_ASSIST_V2_TOKEN=<test-only-shared-secret>
 NAV_ASSIST_V2_INTERVAL_MS=200
 ```
 
 On C3XL, configure `NavAssistToken` and `NavAssistTrackGeofence` offroad using
-the local service console. The geofence value is JSON:
+the local service console. For example, the token is written locally with
+`Params().put("NavAssistToken", "<test secret>")`; never paste the real value
+into logs, screenshots, or the repository. The developer page reports only
+whether the token is configured. The geofence value is JSON:
 
 ```json
 {"coordinateSystem":"wgs84","polygon":[[31.0,121.0],[31.0,121.01],[31.01,121.01],[31.01,121.0]]}
@@ -63,20 +67,25 @@ manager restart and on the following offroad transition.
    and all existing longitudinal sources are unchanged.
 2. Arm with no phone connection. The HUD must report navigation unavailable;
    no speed target may change.
-3. Send missing-signature, wrong-signature, duplicate-sequence, decreasing
+3. Broadcast malformed, oversized, unknown-field, and wrong-HMAC discovery
+   requests. C3XL must remain silent. A valid request must receive a
+   nonce-matched, authenticated unicast offer from UDP source port 7765, but the
+   App must not report `ONLINE` until its HTTP POST on port 7766 succeeds.
+4. Send missing-signature, wrong-signature, duplicate-sequence, decreasing
    route-revision, expired source-wall timestamp, contradictory inactive mode,
    malformed, non-finite, and oversized requests. Every request must be rejected
    or remain control-invalid and must not make `navAssistStateSP.valid` true.
-4. Put the local LLK point outside the test polygon or invalidate localization.
+5. Put the local LLK point outside the test polygon or invalidate localization.
    The state must report `outsideTrack` or `localLocalization` and remain unable
    to affect the planner.
    Repeat with GPS loss, local position uncertainty above 10 m, and a point less
    than 20 m plus its uncertainty from the polygon boundary.
-5. Stop phone updates for more than 500 ms. The state must become stale and the
+6. Stop phone updates for more than 500 ms. The state must become stale and the
    speed ceiling must release upward at its bounded release rate, never jump to
    zero or command braking directly.
-6. Restart the manager. Track Mode must be disarmed.
-7. Restart only `navassistd`, replay the last accepted signed request, and verify
+7. Restart the manager. Track Mode must be disarmed and UDP discovery port 7765
+   must no longer answer.
+8. Restart only `navassistd`, replay the last accepted signed request, and verify
    the persisted receive high-water mark rejects it.
 
 ## Active longitudinal progression

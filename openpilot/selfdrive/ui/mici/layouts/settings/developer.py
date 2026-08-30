@@ -9,6 +9,11 @@ from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.selfdrive.ui.widgets.ssh_key import SshKeyFetcher
 
 
+def nav_assist_token_configured() -> bool:
+  token = ui_state.params.get("NavAssistToken")
+  return isinstance(token, str) and len(token.encode("utf-8")) >= 16
+
+
 class AlphaLongConfirmPage(NavScroller):
   def __init__(self, on_confirm: Callable[[], None]):
     super().__init__()
@@ -80,6 +85,7 @@ class DeveloperLayoutMici(NavScroller):
                                           initial_state=ui_state.params.get_bool("LateralManeuverMode"),
                                           toggle_callback=self._on_lat_maneuver_mode)
     self._nav_assist_toggle = BigToggle("CLOSED-COURSE nav assist",
+                                        value="token configured" if nav_assist_token_configured() else "token not configured",
                                         initial_state=ui_state.params.get_bool("NavAssistTrackMode"),
                                         toggle_callback=self._on_nav_assist_track_mode)
     self._alpha_long_toggle = BigToggle("alpha longitudinal",
@@ -148,6 +154,9 @@ class DeveloperLayoutMici(NavScroller):
 
   def _update_toggles(self):
     ui_state.update_params()
+    self._nav_assist_toggle.set_value(
+      "token configured" if nav_assist_token_configured() else "token not configured",
+    )
 
     # CP gating
     if ui_state.CP is not None:

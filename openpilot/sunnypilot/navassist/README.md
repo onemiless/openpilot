@@ -19,11 +19,54 @@ onroad when:
 
 `NavAssistTrackMode` clears on manager restart and on the following offroad
 transition. The phone cannot arm it. Configure the token offroad using the local
-service console, configure the surveyed test polygon, then enable the
+service console (`Params().put("NavAssistToken", "<test secret>")`), configure the surveyed test polygon, then enable the
 closed-course toggle in developer settings. The normalized snapshot remains
 invalid unless C3XL's own `liveLocationKalman` is valid and inside this polygon.
+The developer screen reports only `token configured` or `token not configured`;
+it never displays the secret itself.
 
 ## Transport
+
+The phone discovers an armed C3XL without scanning every HTTP address. It sends
+an authenticated IPv4 UDP broadcast to port 7765, then constructs the HTTP URL
+from the source IP of a verified unicast offer. The offer never supplies a host
+name or IP address. Both datagrams are compact JSON, at most 512 bytes, with
+exact field sets:
+
+```json
+{"messageType":"navassist_discovery_request","schemaVersion":2,"nonce":"<32-lower-hex>","proof":"<64-lower-hex>"}
+{"messageType":"navassist_discovery_offer","schemaVersion":2,"nonce":"<same-nonce>","port":7766,"path":"/v2/snapshot","proof":"<64-lower-hex>"}
+```
+
+The request proof is lower-case hex HMAC-SHA256 with `NavAssistToken` over the
+exact UTF-8 bytes below (with newline separators and no trailing newline):
+
+```text
+navassist_discovery_request
+2
+<nonce>
+```
+
+The offer proof covers this exact UTF-8 material:
+
+```text
+navassist_discovery_offer
+2
+<nonce>
+7766
+/v2/snapshot
+```
+
+The nonce is a new 16-byte random value for each discovery round. C3XL replies
+only to RFC1918 IPv4 sources and silently drops malformed, oversized,
+unauthenticated, or rate-limited requests. A bounded two-second `(source,
+nonce)` cache suppresses duplicate bursts; because the request has no timestamp,
+this cache is not persistent replay protection. The outstanding random nonce on
+the phone prevents an old offer from matching a new round, while HTTP retains
+its separate TTL and replay controls. Only the manager-gated `navassistd`
+process owns the UDP socket, so Track Mode off means there is no discovery
+responder. A verified offer identifies a candidate; the phone reports the C3XL
+as online only after an HTTP exchange also succeeds.
 
 POST compact JSON matching `nav-assist-v2.schema.json` to:
 
