@@ -37,8 +37,8 @@ class MetricMarkingEvidence:
 
 def project_model_lane_metric_samples(lane_line: object, camera_from_calib: np.ndarray,
                                       image_width: int, image_height: int, *,
-                                      min_distance_m: float = 5.0, max_distance_m: float = 50.0,
-                                      distance_step_m: float = 0.5,
+                                      min_distance_m: float = 5.0, max_distance_m: float = 45.0,
+                                      distance_step_m: float = 1.0,
                                       image_margin_px: float = 20.0) -> tuple[MetricLaneSample, ...]:
   """Interpolate a model lane uniformly in metres, then project to the image."""
 
@@ -97,13 +97,16 @@ def _runs(values: list[bool], step_m: float) -> list[tuple[bool, float]]:
   return runs
 
 
-def _normal_patch_value(luminance: np.ndarray, sample: MetricLaneSample, normal: np.ndarray,
-                        offset: float, center_radius: int) -> float:
-  center_u, center_v = sample.u + normal[0] * offset, sample.v + normal[1] * offset
-  u0, v0 = int(round(center_u)), int(round(center_v))
-  patch = luminance[v0 - center_radius:v0 + center_radius + 1,
-                    u0 - center_radius:u0 + center_radius + 1]
-  return float(np.mean(patch))
+def _strip_means(luminance: np.ndarray, uv: np.ndarray, normal: np.ndarray, tangent_unit: np.ndarray,
+                 offsets: np.ndarray, center_radius: int) -> np.ndarray:
+  """Vectorized lane-tangent strip means at offsets along each lane normal."""
+
+  centers = uv[:, None, :] + normal[:, None, :] * offsets[None, :, None]
+  along = np.arange(-center_radius, center_radius + 1, dtype=np.float64)
+  points = centers[:, :, None, :] + tangent_unit[:, None, None, :] * along[None, None, :, None]
+  u_indices = np.rint(points[:, :, :, 0]).astype(np.int32)
+  v_indices = np.rint(points[:, :, :, 1]).astype(np.int32)
+  return luminance[v_indices, u_indices].mean(axis=-1)
 
 
 def classify_metric_presence(distances_m: np.ndarray, presence: np.ndarray) -> MetricMarkingEvidence:
@@ -156,29 +159,28 @@ def measure_metric_marking(image: np.ndarray, samples: tuple[MetricLaneSample, .
     raise ValueError("metric marking requires HxW luma or HxWx3 uint8 image")
   if len(samples) < 12:
     return MetricMarkingEvidence.unknown(len(samples))
-  luminance = source.astype(np.float32) if source.ndim == 2 else source.astype(np.float32).max(axis=2)
+  luminance = source if source.ndim == 2 else source.max(axis=2)
   height, width = luminance.shape
-  distances: list[float] = []
-  presence: list[bool] = []
-  for index, sample in enumerate(samples):
-    previous = samples[max(0, index - 1)]
-    following = samples[min(len(samples) - 1, index + 1)]
-    tangent = np.array((following.u - previous.u, following.v - previous.v), dtype=np.float64)
-    norm = float(np.linalg.norm(tangent))
-    if norm < 1e-6:
-      continue
-    normal = np.array((-tangent[1], tangent[0]), dtype=np.float64) / norm
-    span = side_offset + center_radius + search_radius
-    if not (span <= sample.u < width - span and span <= sample.v < height - span):
-      continue
-
-    center_level = max(_normal_patch_value(luminance, sample, normal, offset, center_radius)
-                       for offset in range(-search_radius, search_radius + 1))
-    road_level = 0.5 * (_normal_patch_value(luminance, sample, normal, -side_offset, center_radius) +
-                        _normal_patch_value(luminance, sample, normal, side_offset, center_radius))
-    distances.append(sample.distance_m)
-    presence.append(center_level - road_level >= contrast_threshold)
-  return classify_metric_presence(np.asarray(distances), np.asarray(presence))
+  distances = np.array([sample.distance_m for sample in samples], dtype=np.float64)
+  uv = np.array([(sample.u, sample.v) for sample in samples], dtype=np.float64)
+  tangent = np.empty_like(uv)
+  tangent[1:-1] = uv[2:] - uv[:-2]
+  tangent[0], tangent[-1] = uv[1] - uv[0], uv[-1] - uv[-2]
+  norms = np.linalg.norm(tangent, axis=1)
+  span = side_offset + center_radius + search_radius
+  valid = ((norms >= 1e-6) & (uv[:, 0] >= span) & (uv[:, 0] < width - span) &
+           (uv[:, 1] >= span) & (uv[:, 1] < height - span))
+  if np.count_nonzero(valid) < 12:
+    return MetricMarkingEvidence.unknown(int(np.count_nonzero(valid)))
+  distances, uv, tangent, norms = distances[valid], uv[valid], tangent[valid], norms[valid]
+  tangent_unit = tangent / norms[:, None]
+  normal = np.stack((-tangent_unit[:, 1], tangent_unit[:, 0]), axis=1)
+  center_offsets = np.arange(-search_radius, search_radius + 1, dtype=np.float64)
+  center_level = _strip_means(luminance, uv, normal, tangent_unit, center_offsets, center_radius).max(axis=1)
+  side_levels = _strip_means(luminance, uv, normal, tangent_unit,
+                             np.array((-side_offset, side_offset)), center_radius)
+  presence = center_level - side_levels.mean(axis=1) >= contrast_threshold
+  return classify_metric_presence(distances, presence)
 
 
 class TemporalMarkingFilter:
