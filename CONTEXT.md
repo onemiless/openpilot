@@ -67,12 +67,34 @@ the planner's optional target seam.
 _Avoid_: traffic planner, duplicated traffic controller
 
 **Lane Topology**:
-A shadow-only interpretation of independently observed visible lane markings.
+A read-only interpretation of independently observed visible lane markings.
 It distinguishes physical markings from topology boundaries, derives visible
 lane spaces and the ego lane, and carries explicit ambiguous/stale state through
 merge, split, occlusion, and low-confidence scenes. It never replaces modelV2,
-becomes a Planner Backend or Plan Constraint, or feeds vehicle control.
+becomes a Planner Backend or Plan Constraint, or supplies a trajectory. The UI
+bridge remains display-only; a separate Control Lane Observation may expose a
+fail-closed typed derivative without making Lane Topology a control owner.
 _Avoid_: total road lanes, lane control model, modelV2 lane replacement
+
+**Control Lane Observation**:
+The closed-course, typed, freshness-bounded derivative of Lane Topology. It
+publishes synchronized source ages and raw marking evidence, invalidates on any
+unknown/stale/ambiguous input, and may only veto or qualify a high-level
+maneuver. It never writes curvature, actuators, CarState, or CAN.
+_Avoid_: lane permission command, UI lane state, steering input
+
+**Mobile Navigation Observation**:
+An authenticated, replay-protected, freshness-bounded high-level route snapshot
+received from a phone. It is untrusted context until normalized by navassistd
+and never carries curvature, acceleration, actuator, or CAN commands.
+_Avoid_: phone control command, mobile planner, navigation CAN
+
+**Track Navigation Speed Controller**:
+A closed-course-only common longitudinal target that can lower the base cruise
+speed ceiling for an admitted maneuver. It cannot request a stop, acceleration,
+or a less conservative target and is transparent unless NavAssistTrackMode was
+armed offroad for the current manager session.
+_Avoid_: navigation planner backend, phone acceleration command, route MPC
 
 **Model Platform**:
 The official hardware-driven QCOM/Chestnut selection. Each platform keeps an

@@ -106,6 +106,8 @@ class AugmentedRoadView(CameraView, AugmentedRoadViewSP):
     self._draw_border(rect)
 
   def _update_lane_marking_evidence(self) -> None:
+    if ui_state.nav_assist_track_mode:
+      return
     if self.frame is None or self.device_camera is None or not ui_state.lane_topology_bridge.needs_image(self.frame.frame_id):
       return
     is_wide_camera = self.stream_type == WIDE_CAM

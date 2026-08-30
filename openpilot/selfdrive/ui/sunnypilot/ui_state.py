@@ -36,10 +36,12 @@ class UIStateSP:
     self.is_sp_release: bool = self.params.get_bool("IsReleaseSpBranch")
     self.sm_services_ext = [
       "modelManagerSP", "selfdriveStateSP", "longitudinalPlanSP", "backupManagerSP",
-      "gpsLocation", "lateralTorqueParameters", "carStateSP", "liveMapDataSP", "carParamsSP", "lateralDelay"
+      "gpsLocation", "lateralTorqueParameters", "carStateSP", "liveMapDataSP", "carParamsSP", "lateralDelay",
+      "navAssistStateSP", "laneTopologyStateSP"
     ]
     self.lane_topology_bridge = LaneTopologyUIBridge(frame_divisor=5)
     self.lane_topology = None
+    self.nav_assist_track_mode = False
 
     self.sunnylink_state = SunnylinkState()
 
@@ -77,6 +79,12 @@ class UIStateSP:
       if self.lane_topology is not None:
         self.lane_topology_bridge.reset()
         self.lane_topology = None
+    elif self.nav_assist_track_mode:
+      # Track mode has an isolated lane_topologyd producer. Do not run the same
+      # image classifier a second time in UI.
+      if self.lane_topology_bridge.current is not None:
+        self.lane_topology_bridge.reset()
+      self.lane_topology = None
     elif self.sm.updated["modelV2"]:
       self.lane_topology = self.lane_topology_bridge.update(self.sm["modelV2"])
 
@@ -173,6 +181,7 @@ class UIStateSP:
     self.custom_interactive_timeout = self.params.get("InteractivityTimeout", return_default=True)
     self.developer_ui = self.params.get("DevUIInfo")
     self.hide_v_ego_ui = self.params.get_bool("HideVEgoUI")
+    self.nav_assist_track_mode = self.params.get_bool("NavAssistTrackMode")
     self.onroad_brightness = int(float(self.params.get("OnroadScreenOffBrightness", return_default=True)))
     self.onroad_brightness_timer_param = self.params.get("OnroadScreenOffTimer", return_default=True)
     self.rainbow_path = self.params.get_bool("RainbowMode")
