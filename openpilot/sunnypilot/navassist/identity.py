@@ -24,6 +24,7 @@ PUBLIC_KEY_PATTERN = re.compile(rf"^[A-Za-z0-9_-]{{{PUBLIC_KEY_TEXT_LENGTH}}}$")
 SIGNATURE_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,96}$")
 DEFAULT_DEVICE_KEY_PATH = Path(Paths.persist_root()) / "comma/navassist/device_key.pem"
 PAIRED_APP_PARAM = "NavAssistPairedApp"
+DEVICE_PRIVATE_KEY_PARAM = "NavAssistDevicePrivateKey"
 PAIRED_APP_VERSION = 1
 
 
@@ -101,7 +102,31 @@ class NavAssistDeviceIdentity:
   device_id: str
 
   @classmethod
-  def load_or_create(cls, path: str | Path = DEFAULT_DEVICE_KEY_PATH) -> NavAssistDeviceIdentity:
+  def load_or_create(cls, path: str | Path = DEFAULT_DEVICE_KEY_PATH, *, params: Any | None = None) -> NavAssistDeviceIdentity:
+    if params is not None:
+      stored = params.get(DEVICE_PRIVATE_KEY_PARAM)
+      if stored is None:
+        private_key = ec.generate_private_key(ec.SECP256R1())
+        payload = private_key.private_bytes(
+          encoding=serialization.Encoding.PEM,
+          format=serialization.PrivateFormat.PKCS8,
+          encryption_algorithm=serialization.NoEncryption(),
+        )
+        try:
+          params.put(DEVICE_PRIVATE_KEY_PARAM, payload.decode("ascii"), block=True)
+        except (OSError, RuntimeError) as error:
+          raise RuntimeError("NavAssist device identity could not be persisted") from error
+      else:
+        try:
+          payload = stored.encode("ascii") if isinstance(stored, str) else bytes(stored)
+          private_key = serialization.load_pem_private_key(payload, password=None)
+        except (UnicodeEncodeError, TypeError, UnsupportedAlgorithm, ValueError) as error:
+          raise RuntimeError("NavAssist device identity is unreadable") from error
+      if not isinstance(private_key, ec.EllipticCurvePrivateKey) or not isinstance(private_key.curve, ec.SECP256R1):
+        raise RuntimeError("NavAssist device identity is not a P-256 key")
+      public_key = encode_public_key(private_key.public_key())
+      return cls(private_key, public_key, public_key_id(public_key))
+
     key_path = Path(path)
     if key_path.exists():
       try:

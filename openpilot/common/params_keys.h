@@ -289,6 +289,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"TeslaTrafficStopReference", {PERSISTENT | BACKUP, INT, "50"}},  // decimeters
     {"TeslaTrafficControlMaxSpeed", {PERSISTENT | BACKUP, INT, "60"}},  // km/h
     {"NavAssistPairedApp", {PERSISTENT | DONT_LOG, JSON}},
+    {"NavAssistDevicePrivateKey", {PERSISTENT | DONT_LOG, STRING}},
     {"NavAssistPairingReset", {CLEAR_ON_MANAGER_START, BOOL}},
     {"NavAssistTrackGeofence", {PERSISTENT | DONT_LOG, JSON}},
     {"ToyotaEnforceStockLongitudinal", {PERSISTENT | BACKUP, BOOL, "0"}},

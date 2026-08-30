@@ -34,6 +34,15 @@ def test_device_identity_persists_and_signs_with_a_p256_public_key(tmp_path):
   assert restarted.public_key == first.public_key
 
 
+def test_device_identity_can_be_generated_and_persisted_by_params():
+  params = FakeParams()
+  first = NavAssistDeviceIdentity.load_or_create(params=params)
+  assert "NavAssistDevicePrivateKey" in params.values
+  restarted = NavAssistDeviceIdentity.load_or_create(params=params)
+  assert restarted.device_id == first.device_id
+  assert restarted.public_key == first.public_key
+
+
 def test_first_app_pairs_only_offroad_and_subsequent_apps_cannot_replace_it(tmp_path):
   params = FakeParams()
   pairing = NavAssistPairingStore(params)
@@ -53,4 +62,5 @@ def test_first_app_pairs_only_offroad_and_subsequent_apps_cannot_replace_it(tmp_
 def test_paired_app_param_is_persistent_json_and_excluded_from_logs():
   params_keys = (Path(__file__).parents[3] / "common/params_keys.h").read_text()
   assert '{"NavAssistPairedApp", {PERSISTENT | DONT_LOG, JSON}}' in params_keys
+  assert '{"NavAssistDevicePrivateKey", {PERSISTENT | DONT_LOG, STRING}}' in params_keys
   assert '{"NavAssistPairingReset", {CLEAR_ON_MANAGER_START, BOOL}}' in params_keys

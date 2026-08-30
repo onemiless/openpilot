@@ -63,7 +63,7 @@ def local_localization_valid(sm, now_ns: int) -> bool:
 def main() -> None:
   params = Params()
   geofence = load_track_geofence(params.get("NavAssistTrackGeofence"))
-  identity = NavAssistDeviceIdentity.load_or_create()
+  identity = NavAssistDeviceIdentity.load_or_create(params=params)
   pairing = NavAssistPairingStore(params)
 
   store = NavAssistStore(checkpoint_path=REPLAY_CHECKPOINT_PATH)

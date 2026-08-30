@@ -24,7 +24,7 @@ is valid and inside this polygon; enabling SP never bypasses that condition.
 On first use, C3XL trusts exactly one self-signed App identity only while
 offroad. That P-256 public key is persisted as `NavAssistPairedApp`; later
 unknown App keys are ignored and cannot replace it. The C3XL device private key
-is stored under `/persist/comma/navassist/` and never transmitted. Clearing or
+is stored in the `PERSISTENT | DONT_LOG` `NavAssistDevicePrivateKey` Param and never transmitted. Clearing or
 changing an App identity requires an explicit offroad maintenance action; it is
 not a network command. First-use TOFU removes shared-secret configuration, but
 it cannot identify the owner before the first pin: pair only on a controlled
