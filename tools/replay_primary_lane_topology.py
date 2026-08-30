@@ -14,7 +14,6 @@ import numpy as np
 
 from openpilot.common.transformations.camera import DEVICE_CAMERAS, view_frame_from_device_frame
 from openpilot.common.transformations.orientation import rot_from_euler
-from openpilot.sunnypilot.lane_topology.image_marking import project_model_lane_to_image
 from openpilot.sunnypilot.lane_topology.metric_marking import measure_metric_marking, MetricMarkingEvidence, \
                                                                project_model_lane_metric_samples, TemporalMarkingFilter
 from openpilot.sunnypilot.lane_topology.primary_model import find_ego_source_ids, PrimaryLaneVisibilityFilter, \
@@ -136,7 +135,10 @@ def main() -> int:
     model_time, model = model_entry
     camera_from_calib = _camera_matrix(device_type, sensor, _calibration_at(calibrations, model_time), width, height)
     pixel_lanes = {
-      lane_index: project_model_lane_to_image(lane, camera_from_calib, width, height)
+      lane_index: tuple((sample.u, sample.v) for sample in project_model_lane_metric_samples(
+        lane, camera_from_calib, width, height, min_distance_m=3.0, max_distance_m=60.0,
+        distance_step_m=1.0, image_margin_px=0.0,
+      ))
       for lane_index, lane in enumerate(model.laneLines)
     }
     visible_source_ids = visibility.update(model.laneLineProbs)

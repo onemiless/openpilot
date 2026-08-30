@@ -1,4 +1,4 @@
-"""Shadow-only visible Lane Topology inference and tracking."""
+"""Read-only current-lane topology and marking classification."""
 
 from openpilot.sunnypilot.lane_topology.adapter import (
   CallableLaneTopologyAdapter,
@@ -7,10 +7,9 @@ from openpilot.sunnypilot.lane_topology.adapter import (
   LaneTopologyModelAdapter,
   ReplayLaneTopologyAdapter,
 )
-from openpilot.sunnypilot.lane_topology.benchmark import LaneTopologyBenchmarkSample, run_interleaved_benchmark
 from openpilot.sunnypilot.lane_topology.geometry import analyze_lane_topology
-from openpilot.sunnypilot.lane_topology.runner import LaneTopologyRunner
-from openpilot.sunnypilot.lane_topology.scheduler import LaneTopologySchedule, LaneTopologyScheduler
+from openpilot.sunnypilot.lane_topology.primary_model import find_ego_source_ids, model_v2_to_observations, \
+                                                               PrimaryLaneVisibilityFilter, PrimaryModelLaneTopologyAdapter
 from openpilot.sunnypilot.lane_topology.tracker import LaneTopologyTracker
 from openpilot.sunnypilot.lane_topology.types import (
   LaneBoundary,
@@ -19,27 +18,22 @@ from openpilot.sunnypilot.lane_topology.types import (
   LaneTopology,
   LaneTopologyState,
 )
-from openpilot.sunnypilot.lane_topology.yolop import HomographyProjector, lane_logits_to_observations, letterbox_rgb
 
 __all__ = (
   "CallableLaneTopologyAdapter",
   "DisabledLaneTopologyAdapter",
-  "HomographyProjector",
   "LaneBoundary",
   "LaneBoundaryObservation",
   "LaneMarkingType",
   "LaneTopology",
-  "LaneTopologyBenchmarkSample",
   "LaneTopologyFrame",
   "LaneTopologyModelAdapter",
-  "LaneTopologyRunner",
-  "LaneTopologySchedule",
-  "LaneTopologyScheduler",
   "LaneTopologyState",
   "LaneTopologyTracker",
   "ReplayLaneTopologyAdapter",
   "analyze_lane_topology",
-  "lane_logits_to_observations",
-  "letterbox_rgb",
-  "run_interleaved_benchmark",
+  "find_ego_source_ids",
+  "model_v2_to_observations",
+  "PrimaryLaneVisibilityFilter",
+  "PrimaryModelLaneTopologyAdapter",
 )
