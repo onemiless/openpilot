@@ -1,6 +1,9 @@
 from types import SimpleNamespace
 
-from openpilot.sunnypilot.lane_topology.ui_bridge import LaneTopologyUIBridge
+import numpy as np
+
+from openpilot.sunnypilot.lane_topology.ui_bridge import LaneTopologyUIBridge, visionbuf_luma
+from openpilot.sunnypilot.lane_topology.types import LaneMarkingType
 
 
 def model_fixture(frame_id: int, probabilities=(0.9, 0.9, 0.9, 0.9)):
@@ -32,3 +35,28 @@ def test_ui_bridge_reset_drops_stale_onroad_state():
   assert bridge.update(model_fixture(1)) is not None
   bridge.reset()
   assert bridge.current is None
+
+
+def test_visionbuf_luma_returns_only_visible_width():
+  frame = SimpleNamespace(width=6, height=4, stride=8, data=bytes(range(48)))
+  luma = visionbuf_luma(frame)
+  assert luma.shape == (4, 6)
+  assert luma[1].tolist() == [8, 9, 10, 11, 12, 13]
+
+
+def test_ui_bridge_accumulates_metric_dashed_and_solid_evidence():
+  bridge = LaneTopologyUIBridge(frame_divisor=1)
+  xs = tuple(np.arange(0.0, 61.0, 1.0))
+  lines = tuple(SimpleNamespace(x=xs, y=(y,) * len(xs), z=(1.0,) * len(xs)) for y in (20.0, 40.0, 60.0, 80.0))
+  image = np.full((100, 300), 30, dtype=np.uint8)
+  image[57:64, 20:201] = 230  # source 2: solid
+  for start in range(5, 50, 9):
+    image[37:44, start * 4:(start + 3) * 4] = 230  # source 1: 3 m line / 6 m gap
+  camera_from_calib = np.diag((4.0, 1.0, 1.0))
+  for frame_id in range(1, 9):
+    model = SimpleNamespace(frameId=frame_id, timestampEof=frame_id, laneLines=lines, laneLineProbs=(0.1, 0.9, 0.9, 0.1))
+    bridge.update(model)
+    assert bridge.update_image(frame_id, image, camera_from_calib)
+  bridge.update(SimpleNamespace(frameId=9, timestampEof=9, laneLines=lines, laneLineProbs=(0.1, 0.9, 0.9, 0.1)))
+  assert bridge.marking_types[1] == LaneMarkingType.dashed
+  assert bridge.marking_types[2] == LaneMarkingType.solid

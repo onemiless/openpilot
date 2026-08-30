@@ -11,6 +11,7 @@ from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.system.ui.widgets import Widget
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.cereal import log
+from openpilot.sunnypilot.lane_topology.types import LaneMarkingType
 
 EventName = log.OnroadEvent.EventName
 
@@ -205,8 +206,18 @@ class HudRenderer(Widget):
     topology = ui_state.lane_topology
     if topology is None or topology.stale or topology.ego_lane_index_from_left < 0 or topology.visible_lane_count <= 0:
       return
+    marking_types = ui_state.lane_topology_bridge.ego_marking_types()
+    if marking_types is None:
+      return
+    left_type, right_type = marking_types
+    type_text = {
+      LaneMarkingType.solid: "SOLID",
+      LaneMarkingType.dashed: "DASHED",
+    }
+    if left_type not in type_text or right_type not in type_text:
+      return
     lane_number = topology.ego_lane_index_from_left + 1
-    text = f"LANE {lane_number}/{topology.visible_lane_count}   LINES {topology.boundary_count_visible}"
+    text = f"L:{type_text[left_type]}   LANE {lane_number}/{topology.visible_lane_count}   R:{type_text[right_type]}"
     font_size = 28
     size = measure_text_cached(self._font_semi_bold, text, font_size)
     padding_x, padding_y = 16, 8
