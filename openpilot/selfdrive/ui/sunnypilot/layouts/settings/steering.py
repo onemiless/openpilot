@@ -111,8 +111,6 @@ class SteeringLayout(Widget):
       self._blinker_control_toggle,
       self._blinker_control_options,
       self._blinker_reengage_delay,
-      LineSeparatorSP(40),
-      self._nnlc_toggle,
     ]
     return items
 
