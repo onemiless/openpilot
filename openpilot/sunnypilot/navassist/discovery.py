@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from collections import OrderedDict, deque
 from collections.abc import Callable
-import hashlib
-import hmac
+from dataclasses import dataclass
 import ipaddress
 import json
 import re
@@ -12,18 +11,27 @@ import threading
 import time
 from typing import Any
 
+from openpilot.sunnypilot.navassist.identity import (
+  KEY_ID_PATTERN,
+  NavAssistDeviceIdentity,
+  NavAssistPairingStore,
+  public_key_id,
+  verify_signature,
+)
+
 
 DISCOVERY_HOST = "0.0.0.0"
 DISCOVERY_PORT = 7765
 DISCOVERY_MAX_DATAGRAM_BYTES = 512
-DISCOVERY_SCHEMA_VERSION = 2
+DISCOVERY_SCHEMA_VERSION = 3
 DISCOVERY_HTTP_PORT = 7766
-DISCOVERY_SNAPSHOT_PATH = "/v2/snapshot"
+DISCOVERY_SNAPSHOT_PATH = "/v3/snapshot"
 DISCOVERY_REQUEST_TYPE = "navassist_discovery_request"
 DISCOVERY_OFFER_TYPE = "navassist_discovery_offer"
 DISCOVERY_NONCE_PATTERN = re.compile(r"^[0-9a-f]{32}$")
-DISCOVERY_PROOF_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-DISCOVERY_REQUEST_KEYS = frozenset(("messageType", "schemaVersion", "nonce", "proof"))
+DISCOVERY_REQUEST_KEYS = frozenset((
+  "messageType", "schemaVersion", "nonce", "appKeyId", "appPublicKey", "signature",
+))
 DISCOVERY_PRIVATE_NETWORKS = tuple(ipaddress.ip_network(network) for network in (
   "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
 ))
@@ -33,29 +41,38 @@ class DiscoveryProtocolError(ValueError):
   pass
 
 
-def _token_bytes(token: str | bytes) -> bytes:
-  result = token.encode("utf-8") if isinstance(token, str) else token
-  if not isinstance(result, bytes) or len(result) < 16:
-    raise ValueError("NavAssistToken must contain at least 16 UTF-8 bytes")
-  return result
+@dataclass(frozen=True)
+class DiscoveryRequest:
+  nonce: str
+  key_id: str
+  public_key: str
 
 
-def _request_proof_material(nonce: str) -> bytes:
-  return f"{DISCOVERY_REQUEST_TYPE}\n{DISCOVERY_SCHEMA_VERSION}\n{nonce}".encode()
+def request_signature_material(nonce: str, key_id: str, public_key: str) -> bytes:
+  return f"{DISCOVERY_REQUEST_TYPE}\n{DISCOVERY_SCHEMA_VERSION}\n{nonce}\n{key_id}\n{public_key}".encode()
 
 
-def _offer_proof_material(nonce: str) -> bytes:
-  material = f"{DISCOVERY_OFFER_TYPE}\n{DISCOVERY_SCHEMA_VERSION}\n{nonce}\n"
-  material += f"{DISCOVERY_HTTP_PORT}\n{DISCOVERY_SNAPSHOT_PATH}"
+def offer_signature_material(offer: dict[str, Any]) -> bytes:
+  material = f"{DISCOVERY_OFFER_TYPE}\n{DISCOVERY_SCHEMA_VERSION}\n{offer['nonce']}\n{offer['appKeyId']}\n"
+  material += f"{offer['deviceId']}\n{offer['devicePublicKey']}\n{DISCOVERY_HTTP_PORT}\n{DISCOVERY_SNAPSHOT_PATH}"
   return material.encode()
 
 
-def request_proof(token: str | bytes, nonce: str) -> str:
-  return hmac.new(_token_bytes(token), _request_proof_material(nonce), hashlib.sha256).hexdigest()
-
-
-def offer_proof(token: str | bytes, nonce: str) -> str:
-  return hmac.new(_token_bytes(token), _offer_proof_material(nonce), hashlib.sha256).hexdigest()
+def build_discovery_request(nonce: str, identity: NavAssistDeviceIdentity) -> bytes:
+  if DISCOVERY_NONCE_PATTERN.fullmatch(nonce) is None:
+    raise ValueError("nonce must be 32 lower-case hexadecimal characters")
+  request = {
+    "messageType": DISCOVERY_REQUEST_TYPE,
+    "schemaVersion": DISCOVERY_SCHEMA_VERSION,
+    "nonce": nonce,
+    "appKeyId": identity.device_id,
+    "appPublicKey": identity.public_key,
+  }
+  request["signature"] = identity.sign(request_signature_material(nonce, identity.device_id, identity.public_key))
+  encoded = json.dumps(request, separators=(",", ":")).encode()
+  if len(encoded) > DISCOVERY_MAX_DATAGRAM_BYTES:
+    raise AssertionError("discovery request exceeds datagram limit")
+  return encoded
 
 
 def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -67,7 +84,7 @@ def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
   return result
 
 
-def parse_discovery_request(datagram: bytes, token: str | bytes) -> str:
+def parse_discovery_request(datagram: bytes) -> DiscoveryRequest:
   if not 0 < len(datagram) <= DISCOVERY_MAX_DATAGRAM_BYTES:
     raise DiscoveryProtocolError("invalid datagram size")
   try:
@@ -81,27 +98,37 @@ def parse_discovery_request(datagram: bytes, token: str | bytes) -> str:
   if type(request["schemaVersion"]) is not int or request["schemaVersion"] != DISCOVERY_SCHEMA_VERSION:
     raise DiscoveryProtocolError("unexpected schema version")
   nonce = request["nonce"]
-  proof = request["proof"]
+  key_id = request["appKeyId"]
+  public_key = request["appPublicKey"]
+  signature = request["signature"]
   if not isinstance(nonce, str) or DISCOVERY_NONCE_PATTERN.fullmatch(nonce) is None:
     raise DiscoveryProtocolError("invalid nonce")
-  if not isinstance(proof, str) or DISCOVERY_PROOF_PATTERN.fullmatch(proof) is None:
-    raise DiscoveryProtocolError("invalid proof")
-  if not hmac.compare_digest(request_proof(token, nonce), proof):
+  if not isinstance(key_id, str) or KEY_ID_PATTERN.fullmatch(key_id) is None:
+    raise DiscoveryProtocolError("invalid app key id")
+  if not isinstance(public_key, str) or not isinstance(signature, str):
+    raise DiscoveryProtocolError("invalid app identity")
+  try:
+    if public_key_id(public_key) != key_id:
+      raise DiscoveryProtocolError("app key id mismatch")
+  except ValueError as error:
+    raise DiscoveryProtocolError("invalid app public key") from error
+  if not verify_signature(public_key, request_signature_material(nonce, key_id, public_key), signature):
     raise DiscoveryProtocolError("authentication failed")
-  return nonce
+  return DiscoveryRequest(nonce, key_id, public_key)
 
 
-def build_discovery_offer(nonce: str, token: str | bytes) -> bytes:
-  if DISCOVERY_NONCE_PATTERN.fullmatch(nonce) is None:
-    raise ValueError("nonce must be 32 lower-case hexadecimal characters")
+def build_discovery_offer(request: DiscoveryRequest, identity: NavAssistDeviceIdentity) -> bytes:
   offer = {
     "messageType": DISCOVERY_OFFER_TYPE,
     "schemaVersion": DISCOVERY_SCHEMA_VERSION,
-    "nonce": nonce,
+    "nonce": request.nonce,
+    "appKeyId": request.key_id,
+    "deviceId": identity.device_id,
+    "devicePublicKey": identity.public_key,
     "port": DISCOVERY_HTTP_PORT,
     "path": DISCOVERY_SNAPSHOT_PATH,
-    "proof": offer_proof(token, nonce),
   }
+  offer["signature"] = identity.sign(offer_signature_material(offer))
   encoded = json.dumps(offer, separators=(",", ":")).encode()
   if len(encoded) > DISCOVERY_MAX_DATAGRAM_BYTES:
     raise AssertionError("discovery offer exceeds datagram limit")
@@ -188,10 +215,13 @@ def is_private_discovery_client(client: str) -> bool:
 
 
 class NavAssistDiscoveryServer:
-  def __init__(self, address: tuple[str, int], token: str | bytes, *,
+  def __init__(self, address: tuple[str, int], identity: NavAssistDeviceIdentity, pairing: NavAssistPairingStore, *,
+               is_offroad: Callable[[], bool],
                rate_limiter: DiscoveryRateLimiter | None = None, nonce_cache: DiscoveryNonceCache | None = None,
                client_allowed: Callable[[str], bool] = is_private_discovery_client, socket_timeout_s: float = 0.2):
-    self._token = _token_bytes(token)
+    self._identity = identity
+    self._pairing = pairing
+    self._is_offroad = is_offroad
     self._rate_limiter = rate_limiter or DiscoveryRateLimiter()
     self._nonce_cache = nonce_cache or DiscoveryNonceCache()
     self._client_allowed = client_allowed
@@ -229,12 +259,16 @@ class NavAssistDiscoveryServer:
       if not self._client_allowed(client_ip) or not self._rate_limiter.allow(client_ip):
         continue
       try:
-        nonce = parse_discovery_request(datagram, self._token)
-        if not self._nonce_cache.accept_once(client_ip, nonce):
+        request = parse_discovery_request(datagram)
+        if not self._pairing.authorize_or_pair(
+          request.key_id, request.public_key, is_offroad=self._is_offroad(),
+        ):
           continue
-        offer = build_discovery_offer(nonce, self._token)
+        if not self._nonce_cache.accept_once(f"{client_ip}:{request.key_id}", request.nonce):
+          continue
+        offer = build_discovery_offer(request, self._identity)
         self._socket.sendto(offer, client_address)
-      except (DiscoveryProtocolError, OSError):
+      except (DiscoveryProtocolError, OSError, RuntimeError):
         # UDP discovery is intentionally silent for malformed, unauthenticated,
         # rate-limited, or unreachable requests. Never log request material.
         continue

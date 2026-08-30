@@ -737,6 +737,12 @@ struct LaneTopologyStateSP @0x9ccdc8676701b412 {
   rightEvidenceAgeMs @22 :Float32;
   sourcePairChanged @23 :Bool;
   validForControl @24 :Bool;
+  leftEgoSideMarking @25 :Marking;
+  leftFarSideMarking @26 :Marking;
+  rightEgoSideMarking @27 :Marking;
+  rightFarSideMarking @28 :Marking;
+  leftCrossingAllowed @29 :Bool;
+  rightCrossingAllowed @30 :Bool;
 
   enum Marking {
     unknown @0;
@@ -759,7 +765,24 @@ struct LaneTopologyStateSP @0x9ccdc8676701b412 {
   }
 }
 
-struct CustomReserved13 @0xcd96dafb67a082d0 {
+struct NavLaneIntentSP @0xcd96dafb67a082d0 {
+  publishMonoTime @0 :UInt64;
+  valid @1 :Bool;
+  signalRequested @2 :Bool;
+  laneChangeAuthorized @3 :Bool;
+  direction @4 :Direction;
+  requestId @5 :UInt64;
+  targetLaneIndex @6 :Int8 = -1;
+  routeRevision @7 :UInt64;
+  maneuverEventId @8 :UInt64;
+  reason @9 :Text;
+  sessionId @10 :Text;
+
+  enum Direction {
+    none @0;
+    left @1;
+    right @2;
+  }
 }
 
 struct CustomReserved14 @0xb057204d7deadf3f {

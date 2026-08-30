@@ -2,19 +2,24 @@
 
 ## Scope
 
-P0 accepts authenticated Android navigation observations and exercises one
-active vehicle behavior: a bounded navigation speed ceiling before a supported
-maneuver. It does not initiate a lane change, turn the steering wheel from route
-geometry, synthesize a turn signal, request a stop, or send CAN.
+This branch accepts authenticated Android navigation observations and exposes
+two closed-course behaviors: a bounded navigation speed ceiling before a
+supported maneuver, and an experimental one-lane-at-a-time navigation request
+through SP's existing DesireHelper. On Tesla, the latter uses the bounded
+0x3E9 turn-signal controller and requires Panda TX echo plus physical lamp
+feedback before lateral authority can become true.
 
-Driver-confirmed lane changes continue through the existing physical turn
-signal and DesireHelper path. NavAssist adds an onroad recommendation display
-and an independent freshness-bounded lane observation for test diagnostics.
+The phone never supplies curvature, steering angle, acceleration, CarState, or
+CAN. C3XL aligns AMap's recommended lane index with fresh visual topology,
+requests one physical turn signal, waits for ego-side dashed evidence and a
+clear blind spot, then lets the existing SP lane-change state machine act. It
+cancels the signal after a stable one-lane visual index transition and observes
+again before another request.
 
-This is not the full requested navigation stack. Android P0 does not emit a
+This is not the full requested navigation stack. Android does not emit a
 directional ramp/exit maneuver from road text or `roadType`, iOS has not been
-implemented, phone/C3XL positions are not yet cross-correlated, and no automatic
-lane change, intersection turn, or highway-exit steering is authorized.
+implemented, phone/C3XL positions are not yet cross-correlated, and no
+intersection-turn curvature or highway-exit steering has been implemented.
 
 ## Preconditions
 
@@ -23,9 +28,10 @@ lane change, intersection turn, or highway-exit steering is authorized.
 - Configure a dedicated private phone/C3XL network.
 - Survey a WGS-84 polygon with three to 64 vertices that contains the complete
   vehicle test envelope and excludes public access roads.
-- Configure the same random test-only HMAC secret on TesNav and C3XL. Use at
-  least 32 random bytes in practice (16 UTF-8 bytes is only the parser floor),
-  do not distribute the APK containing it, and rotate it after testing.
+- Install the v3 TesNav App and perform its first automatic C3XL pairing while
+  the vehicle is offroad on a controlled private LAN. No shared token is
+  configured. C3XL pins the first valid P-256 App identity and ignores later
+  unknown keys.
 - Synchronize phone and C3XL system clocks to within one second before arming.
 - Physically secure the configured phone in the tested vehicle; P0 validates
   both devices independently inside their own data gates but does not yet prove
@@ -33,41 +39,36 @@ lane change, intersection turn, or highway-exit steering is authorized.
 - Confirm the target is a Tesla C3XL, the official longitudinal backend is
   selected, and SP has active longitudinal authority before active deceleration.
 
-On TesNav, place the shared secret and interval in the user Gradle properties
-used for the test APK. Leave `NAV_ASSIST_V2_URL` blank for authenticated UDP
-discovery; an explicit valid HTTP/HTTPS URL remains a manual override:
+TesNav generates a non-exportable P-256 private key in Android Keystore. C3XL
+generates its own persistent P-256 device key and stores only the App public key
+in `NavAssistPairedApp`. First-use trust-on-first-use cannot distinguish the
+owner from another live App on that LAN before the first pin, so do not perform
+initial pairing on a shared network. Reinstalling the App changes its identity
+and requires an explicit offroad pairing reset.
 
-```properties
-NAV_ASSIST_V2_URL=
-NAV_ASSIST_V2_TOKEN=<test-only-shared-secret>
-NAV_ASSIST_V2_INTERVAL_MS=200
-```
-
-On C3XL, configure `NavAssistToken` and `NavAssistTrackGeofence` offroad using
-the local service console. For example, the token is written locally with
-`Params().put("NavAssistToken", "<test secret>")`; never paste the real value
-into logs, screenshots, or the repository. The developer page reports only
-whether the token is configured. The geofence value is JSON:
+On C3XL, configure `NavAssistTrackGeofence` offroad using the local service
+console. The geofence value is JSON:
 
 ```json
 {"coordinateSystem":"wgs84","polygon":[[31.0,121.0],[31.0,121.01],[31.01,121.01],[31.01,121.0]]}
 ```
 
-Do not place a real secret or real track coordinates in the repository. HMAC
-protects authenticity and integrity, not confidentiality; do not use P0 on a
-shared network.
+Do not place real track coordinates or private keys in the repository. P-256
+signatures protect authenticity and integrity after TOFU pinning, not
+confidentiality; do not use P0 on a shared network.
 
-Finally, arm `CLOSED-COURSE nav assist` on the physical C3XL developer screen
-while offroad. The phone protocol has no arming command. Arming clears on
-manager restart and on the following offroad transition.
+There is no per-drive Track Mode or shared-token step. With the one-time track
+polygon configured, a fresh realtime TesNav route becomes eligible only while
+SP has the required control authority and every localization/data gate passes.
 
 ## Mandatory stationary checks
 
-1. With Track Mode off, verify `navassistd` and `lane_topologyd` are not running
-   and all existing longitudinal sources are unchanged.
-2. Arm with no phone connection. The HUD must report navigation unavailable;
+1. With no realtime phone navigation, verify `navassistd` remains available for
+   pairing and transport, but `navAssistStateSP.valid` is false and all existing
+   longitudinal sources are unchanged. `lane_topologyd` remains onroad-only.
+2. Start a realtime route with SP disengaged. The HUD must report navigation unavailable;
    no speed target may change.
-3. Broadcast malformed, oversized, unknown-field, and wrong-HMAC discovery
+3. Broadcast malformed, oversized, unknown-field, and wrong-signature discovery
    requests. C3XL must remain silent. A valid request must receive a
    nonce-matched, authenticated unicast offer from UDP source port 7765, but the
    App must not report `ONLINE` until its HTTP POST on port 7766 succeeds.
@@ -83,8 +84,9 @@ manager restart and on the following offroad transition.
 6. Stop phone updates for more than 500 ms. The state must become stale and the
    speed ceiling must release upward at its bounded release rate, never jump to
    zero or command braking directly.
-7. Restart the manager. Track Mode must be disarmed and UDP discovery port 7765
-   must no longer answer.
+7. Restart the manager. The already-paired App must automatically rediscover the
+   receiver, while old snapshots remain unable to affect planning until fresh
+   realtime navigation, localization, geofence, and SP authority all return.
 8. Restart only `navassistd`, replay the last accepted signed request, and verify
    the persisted receive high-water mark rejects it.
 
@@ -114,11 +116,13 @@ backend, attribute deceleration carefully: the navigation-only cruise component
 is bounded at -1.2 m/s², while an existing lead/FCW/model source may legitimately
 be more conservative and therefore produce stronger braking.
 
-## Driver-confirmed lane-change checks
+## Navigation-requested single-lane change checks
 
-P0 does not authorize a navigation-triggered lane change. It displays the
-recommended lane while the driver uses the physical turn signal or steering
-nudge to enter the existing ALC path.
+This path is experimental and must progress from stationary signal validation
+to HIL/replay before any moving test. `TeslaTurnSignalValidation` must be
+enabled offroad and the onroad cycle restarted so the matching Panda safety
+capability is present. Without confirmed physical lamp feedback, the state may
+request a signal but must never authorize lateral motion.
 
 Use painted single dashed, single solid, and dashed-to-solid boundaries and
 keep the target lane physically empty. Confirm the independent
@@ -129,8 +133,18 @@ keep the target lane physically empty. Confirm the independent
   tracker remembers a previous marking;
 - clears on ambiguous topology, calibration loss, or ego source-pair change;
 - distinguishes relative visible lane index from total road lane count.
+- preserves the left/right component order of mixed solid-dashed boundaries and
+  allows crossing only when the ego-side component has current dashed evidence;
+- requires AMap and vision lane counts/indexes to match, a real neighboring
+  lane, physical one-sided lamp feedback, clear BSM, and active SP lateral;
+- tolerates at most one second of expected source-pair handoff while changing,
+  then requires a stable one-lane index transition before cancelling the lamp;
+- cancels on route/session change, pedals, physical-signal loss, stale input,
+  direction conflict, or bounded timeout.
 
-No P0 result is permission to test automatic lane-change initiation.
+Never begin moving tests solely because unit tests pass. Capture a real model /
+lane-topology replay and verify outer-line visibility cannot imitate a completed
+lane change before authorizing closed-course motion.
 
 ## Immediate stop criteria
 
@@ -142,7 +156,7 @@ Stop the active test and return to HIL/root-cause analysis after any:
 - speed target below the configured non-stop floor;
 - harsh braking caused by a late navigation event;
 - route revision causing an old maneuver to reactivate;
-- any behavior difference with Track Mode disabled;
+- any behavior difference while navigation is invalid or SP is disengaged;
 - model, camera, calibration, Panda, EPS, or longitudinal ownership fault.
 
 Missing an instruction is the required fallback. The vehicle must never use

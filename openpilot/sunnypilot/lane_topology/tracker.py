@@ -64,13 +64,17 @@ class LaneTopologyTracker:
         track_id = self._next_track_id
         self._next_track_id += 1
         boundary = LaneBoundary(track_id, canonical_points(observation.points), observation.marking_type,
-                                observation.confidence, visible=True)
+                                observation.confidence, visible=True,
+                                left_component_source_id=observation.source_id,
+                                right_component_source_id=observation.source_id)
         track = self._tracks[track_id] = _Track(track_id, boundary)
       else:
         track = self._tracks[track_id]
       stable_type = track.update_type(observation.marking_type, observation.confidence)
       track.boundary = LaneBoundary(track_id, canonical_points(observation.points), stable_type,
-                                    observation.confidence, visible=True)
+                                    observation.confidence, visible=True,
+                                    left_component_source_id=observation.source_id,
+                                    right_component_source_id=observation.source_id)
       track.missed_frames = 0
       seen_tracks.add(track_id)
       tracked_boundaries.append(track.boundary)

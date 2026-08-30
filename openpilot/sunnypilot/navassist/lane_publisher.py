@@ -25,6 +25,15 @@ TOPOLOGY_TO_CEREAL = {
   LaneTopologyState.ambiguous: "ambiguous",
   LaneTopologyState.stale: "stale",
 }
+CROSSABLE_EGO_MARKINGS = {LaneMarkingType.dashed, LaneMarkingType.doubleDashed}
+
+
+def raw_marking_matches(bridge, source_id: int, expected: LaneMarkingType) -> bool:
+  return bool(
+    0 <= source_id < len(bridge.marking_evidence)
+    and bridge.marking_evidence[source_id].marking_type == expected
+    and expected != LaneMarkingType.unknown
+  )
 
 
 def build_lane_topology_message(bridge, *, now_ns: int, image_mono_time: int = 0, image_frame_id: int = 0,
@@ -73,6 +82,8 @@ def build_lane_topology_message(bridge, *, now_ns: int, image_mono_time: int = 0
     state.rightMarkingConfidence = right_evidence.confidence
     raw_evidence_known = LaneMarkingType.unknown not in (left_evidence.marking_type, right_evidence.marking_type)
 
+  left_ego = left_far = right_ego = right_far = LaneMarkingType.unknown
+  left_ego_raw_known = right_ego_raw_known = False
   if topology.ego_lane_index_from_left >= 0:
     ego_space = topology.spaces[topology.ego_lane_index_from_left]
     by_track = {boundary.track_id: boundary for boundary in topology.boundaries}
@@ -82,6 +93,22 @@ def build_lane_topology_message(bridge, *, now_ns: int, image_mono_time: int = 0
       state.leftBoundaryConfidence = left_boundary.confidence
     if right_boundary is not None:
       state.rightBoundaryConfidence = right_boundary.confidence
+    left_ego = left_boundary.right_component_marking if left_boundary is not None else LaneMarkingType.unknown
+    left_far = left_boundary.left_component_marking if left_boundary is not None else LaneMarkingType.unknown
+    right_ego = right_boundary.left_component_marking if right_boundary is not None else LaneMarkingType.unknown
+    right_far = right_boundary.right_component_marking if right_boundary is not None else LaneMarkingType.unknown
+    left_fallback_source = bridge.ego_source_ids[0] if bridge.ego_source_ids is not None else -1
+    right_fallback_source = bridge.ego_source_ids[1] if bridge.ego_source_ids is not None else -1
+    left_ego_source = (left_boundary.right_component_source_id if left_boundary is not None and
+                       left_boundary.right_component_source_id >= 0 else left_fallback_source)
+    right_ego_source = (right_boundary.left_component_source_id if right_boundary is not None and
+                        right_boundary.left_component_source_id >= 0 else right_fallback_source)
+    left_ego_raw_known = raw_marking_matches(bridge, left_ego_source, left_ego or LaneMarkingType.unknown)
+    right_ego_raw_known = raw_marking_matches(bridge, right_ego_source, right_ego or LaneMarkingType.unknown)
+    state.leftEgoSideMarking = MARKING_TO_CEREAL[left_ego or LaneMarkingType.unknown]
+    state.leftFarSideMarking = MARKING_TO_CEREAL[left_far or LaneMarkingType.unknown]
+    state.rightEgoSideMarking = MARKING_TO_CEREAL[right_ego or LaneMarkingType.unknown]
+    state.rightFarSideMarking = MARKING_TO_CEREAL[right_far or LaneMarkingType.unknown]
 
   ambiguous = topology.state != LaneTopologyState.normal or topology.ego_lane_index_from_left < 0
   stale = bool(topology.stale or not model_fresh or not image_fresh)
@@ -91,6 +118,14 @@ def build_lane_topology_message(bridge, *, now_ns: int, image_mono_time: int = 0
   state.validForControl = bool(
     calibration_valid and not stale and not ambiguous and not source_pair_changed
     and known_stable_markings and raw_evidence_known
+  )
+  state.leftCrossingAllowed = bool(
+    state.validForControl and state.leftNeighborExists and
+    left_ego in CROSSABLE_EGO_MARKINGS and left_ego_raw_known
+  )
+  state.rightCrossingAllowed = bool(
+    state.validForControl and state.rightNeighborExists and
+    right_ego in CROSSABLE_EGO_MARKINGS and right_ego_raw_known
   )
   state.valid = bool(model_fresh and not topology.stale)
   message.valid = True

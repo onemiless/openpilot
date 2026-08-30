@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 from openpilot.cereal import log
 from openpilot.sunnypilot.navassist.lane_topologyd import services_healthy
-from openpilot.sunnypilot.navassist.navassistd import LOCALIZATION_MAX_AGE_NS, local_localization_valid
+from openpilot.sunnypilot.navassist.navassistd import LOCALIZATION_MAX_AGE_NS, load_track_geofence, local_localization_valid
 from openpilot.sunnypilot.hardware.profile import HardwareProfile
 from openpilot.system.manager import process_config
 
@@ -19,16 +19,20 @@ def test_network_ingress_never_imports_or_publishes_vehicle_control_interfaces()
   assert 'PubMaster(["navAssistStateSP"])' in (NAVASSIST / "navassistd.py").read_text()
 
 
-def test_track_processes_are_both_guarded_by_one_explicit_manager_predicate():
+def test_receiver_is_always_available_and_lane_observer_stays_onroad():
   process_config = (ROOT / "system/manager/process_config.py").read_text()
-  assert 'PythonProcess("navassistd", "openpilot.sunnypilot.navassist.navassistd", navassist_track_ready)' in process_config
-  assert 'PythonProcess("lane_topologyd", "openpilot.sunnypilot.navassist.lane_topologyd", navassist_track_ready)' in process_config
-  predicate = process_config.split("def navassist_track_ready", 1)[1].split("def ", 1)[0]
-  assert "HardwareProfile.C3XL" in predicate
-  assert 'CP.brand == "tesla"' in predicate
-  assert 'params.get_bool("NavAssistTrackMode")' in predicate
-  assert 'params.get("NavAssistToken")' in predicate
-  assert 'params.get("NavAssistTrackGeofence")' in predicate
+  assert 'PythonProcess("navassistd", "openpilot.sunnypilot.navassist.navassistd", navassist_receiver_ready)' in process_config
+  assert 'PythonProcess("lane_topologyd", "openpilot.sunnypilot.navassist.lane_topologyd", navassist_lane_observer_ready)' in process_config
+  assert 'PythonProcess("nav_lane_intentd", "openpilot.sunnypilot.navassist.nav_lane_intentd", navassist_lane_observer_ready)' in process_config
+  receiver = process_config.split("def navassist_receiver_ready", 1)[1].split("def ", 1)[0]
+  assert "HardwareProfile.C3XL" in receiver
+  assert 'CP.brand == "tesla"' in receiver
+  assert "NavAssistToken" not in receiver
+  assert "NavAssistTrackMode" not in receiver
+  assert "NavAssistTrackGeofence" not in receiver
+  lane_observer = process_config.split("def navassist_lane_observer_ready", 1)[1].split("def ", 1)[0]
+  assert "started" in lane_observer
+  assert "navassist_receiver_ready" in lane_observer
 
   lane_daemon = (NAVASSIST / "lane_topologyd.py").read_text()
   assert "client.timestamp_eof" in lane_daemon
@@ -37,22 +41,27 @@ def test_track_processes_are_both_guarded_by_one_explicit_manager_predicate():
   assert "bridge.last_frame_id % IMAGE_CLASSIFIER_DIVISOR" in lane_daemon
 
   navassist_daemon = (NAVASSIST / "navassistd.py").read_text()
-  assert "NavAssistDiscoveryServer((DISCOVERY_HOST, DISCOVERY_PORT), token)" in navassist_daemon
+  assert "NavAssistDeviceIdentity.load_or_create()" in navassist_daemon
+  assert "NavAssistPairingStore(params)" in navassist_daemon
+  assert "NavAssistDiscoveryServer(" in navassist_daemon
+  assert "NavAssistToken" not in navassist_daemon
+  assert 'params.get_bool("NavAssistTrackMode")' not in navassist_daemon
+  assert "load_track_geofence" in navassist_daemon
   assert "discovery_server.shutdown()" in navassist_daemon
   assert "discovery_thread.join(timeout=2)" in navassist_daemon
 
 
-def test_developer_settings_show_only_navassist_token_configuration_status():
+def test_developer_settings_show_automatic_pairing_without_token_or_track_toggle():
   settings_sources = (
     ROOT / "selfdrive/ui/layouts/settings/developer.py",
     ROOT / "selfdrive/ui/mici/layouts/settings/developer.py",
   )
   for path in settings_sources:
     source = path.read_text()
-    assert 'get("NavAssistToken")' in source
-    assert "token configured" in source.lower()
-    assert "set_text(token" not in source
-    assert "set_value(token" not in source
+    assert 'get("NavAssistPairedApp")' in source
+    assert "NavAssistToken" not in source
+    assert "NavAssistTrackMode" not in source
+    assert "pair" in source.lower()
 
 
 def test_planner_uses_common_target_seam_and_controlsd_is_untouched():
@@ -61,6 +70,18 @@ def test_planner_uses_common_target_seam_and_controlsd_is_untouched():
   assert "LongitudinalPlanSource.navAssist" in common_planner
   assert 'planner_verified=getattr(self, "active_backend_id", None) == BackendId.OFFICIAL' in common_planner
   assert "navAssistStateSP" not in controlsd
+
+
+def test_both_model_runners_consume_only_typed_navigation_lane_intent():
+  runners = (
+    ROOT / "selfdrive/modeld/modeld.py",
+    ROOT / "sunnypilot/modeld_v2/modeld.py",
+  )
+  for runner in runners:
+    source = runner.read_text()
+    assert '"navLaneIntentSP"' in source
+    assert "nav_lane_intent=nav_lane_intent" in source
+    assert "navAssistStateSP" not in source
 
 
 def test_local_localization_requires_alive_valid_and_bounded_age():
@@ -97,6 +118,15 @@ def test_local_localization_requires_alive_valid_and_bounded_age():
   assert not local_localization_valid(sm, now_ns)
 
 
+def test_missing_or_malformed_geofence_keeps_transport_online_but_control_unarmed():
+  assert load_track_geofence(None) is None
+  assert load_track_geofence({"coordinateSystem": "wgs84", "polygon": []}) is None
+  assert load_track_geofence({
+    "coordinateSystem": "wgs84",
+    "polygon": [[0, 0], [0, 1], [1, 1]],
+  }) is not None
+
+
 def test_lane_control_inputs_require_seen_alive_and_valid():
   services = ("modelV2", "extrinsicsCalibration", "deviceState", "narrowRoadCameraState")
   sm = SimpleNamespace(
@@ -115,37 +145,31 @@ def test_track_hud_never_treats_seen_alone_as_service_health():
   hud = (ROOT / "selfdrive/ui/mici/onroad/hud_renderer.py").read_text()
   assert 'sm.alive["navAssistStateSP"] and sm.valid["navAssistStateSP"]' in hud
   assert 'ui_state.sm.alive["laneTopologyStateSP"] and ui_state.sm.valid["laneTopologyStateSP"]' in hud
-  assert "NO AUTO LC" in hud
-  assert "未与视觉车道对齐" in hud
+  assert "CROSSING DATA VALID" in hud
+  assert 'sm.alive["navLaneIntentSP"] and sm.valid["navLaneIntentSP"]' in hud
+  assert "AMap推荐" in hud
 
 
 class FakeParams:
-  def __init__(self, *, armed=False, token="", geofence=None):
+  def __init__(self, *, geofence=None):
     self.values = {
-      "NavAssistTrackMode": armed,
-      "NavAssistToken": token,
       "NavAssistTrackGeofence": geofence,
     }
-
-  def get_bool(self, key):
-    return bool(self.values[key])
 
   def get(self, key):
     return self.values[key]
 
 
-def test_manager_predicate_requires_c3xl_tesla_onroad_arm_secret_and_geofence(monkeypatch):
-  geofence = {"coordinateSystem": "wgs84", "polygon": [[0, 0], [0, 1], [1, 1]]}
+def test_manager_receiver_requires_only_c3xl_tesla(monkeypatch):
   tesla = SimpleNamespace(brand="tesla")
   monkeypatch.setattr(process_config, "get_hardware_profile", lambda: HardwareProfile.C3XL)
-  assert process_config.navassist_track_ready(True, FakeParams(armed=True, token="0123456789abcdef", geofence=geofence), tesla)
-  assert process_config.navassist_track_ready(True, FakeParams(armed=True, token="安全密钥六字节以上", geofence=geofence), tesla)
-  assert not process_config.navassist_track_ready(False, FakeParams(armed=True, token="0123456789abcdef", geofence=geofence), tesla)
-  assert not process_config.navassist_track_ready(True, FakeParams(armed=False, token="0123456789abcdef", geofence=geofence), tesla)
-  assert not process_config.navassist_track_ready(True, FakeParams(armed=True, token="short", geofence=geofence), tesla)
-  assert not process_config.navassist_track_ready(True, FakeParams(armed=True, token="0123456789abcdef"), tesla)
-  assert not process_config.navassist_track_ready(
-    True, FakeParams(armed=True, token="0123456789abcdef", geofence=geofence), SimpleNamespace(brand="honda"),
+  configured = FakeParams()
+  assert process_config.navassist_receiver_ready(False, configured, tesla)
+  assert process_config.navassist_receiver_ready(True, configured, tesla)
+  assert process_config.navassist_lane_observer_ready(True, configured, tesla)
+  assert not process_config.navassist_lane_observer_ready(False, configured, tesla)
+  assert not process_config.navassist_receiver_ready(
+    True, configured, SimpleNamespace(brand="honda"),
   )
   monkeypatch.setattr(process_config, "get_hardware_profile", lambda: HardwareProfile.STANDARD)
-  assert not process_config.navassist_track_ready(True, FakeParams(armed=True, token="0123456789abcdef", geofence=geofence), tesla)
+  assert not process_config.navassist_receiver_ready(True, configured, tesla)

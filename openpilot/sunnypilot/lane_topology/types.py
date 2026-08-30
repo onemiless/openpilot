@@ -60,6 +60,16 @@ class LaneBoundary:
   confidence: float
   visible: bool = True
   missed_frames: int = 0
+  left_component_marking: LaneMarkingType | None = None
+  right_component_marking: LaneMarkingType | None = None
+  left_component_source_id: int = -1
+  right_component_source_id: int = -1
+
+  def __post_init__(self) -> None:
+    if self.left_component_marking is None:
+      object.__setattr__(self, "left_component_marking", self.marking_type)
+    if self.right_component_marking is None:
+      object.__setattr__(self, "right_component_marking", self.marking_type)
 
   def with_track(self, track_id: int) -> LaneBoundary:
     return replace(self, track_id=track_id)

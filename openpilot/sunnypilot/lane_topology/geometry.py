@@ -80,6 +80,10 @@ def merge_double_markings(boundaries: Iterable[LaneBoundary], sample_x_m: float 
           marking_type=_combine_marking_type(current.marking_type, nxt.marking_type),
           confidence=min(current.confidence, nxt.confidence),
           visible=True,
+          left_component_marking=current.marking_type,
+          right_component_marking=nxt.marking_type,
+          left_component_source_id=current.left_component_source_id,
+          right_component_source_id=nxt.right_component_source_id,
         ))
         index += 2
         continue
@@ -96,6 +100,10 @@ def observations_to_boundaries(observations: Iterable[LaneBoundaryObservation]) 
     marking_type=observation.marking_type,
     confidence=observation.confidence,
     visible=observation.visible,
+    left_component_marking=observation.marking_type,
+    right_component_marking=observation.marking_type,
+    left_component_source_id=observation.source_id,
+    right_component_source_id=observation.source_id,
   ) for observation in observations)
 
 

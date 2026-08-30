@@ -7,11 +7,18 @@ import json
 import threading
 import time
 
+from openpilot.sunnypilot.navassist.identity import NavAssistDeviceIdentity, NavAssistPairingStore, verify_signature
 from openpilot.sunnypilot.navassist.protocol import MAX_BODY_BYTES, NavAssistProtocolError, NavAssistStore
 
 
-SNAPSHOT_PATH = "/v2/snapshot"
+SNAPSHOT_PATH = "/v3/snapshot"
+KEY_ID_HEADER = "X-NavAssist-Key-Id"
 SIGNATURE_HEADER = "X-NavAssist-Signature"
+
+
+def snapshot_signature_material(device_id: str, app_key_id: str, path: str, body: bytes) -> bytes:
+  prefix = f"navassist_snapshot\n3\nPOST\n{path}\n{device_id}\n{app_key_id}\n{len(body)}\n".encode("ascii")
+  return prefix + body
 
 
 class ClientRateLimiter:
@@ -40,11 +47,14 @@ class NavAssistHTTPServer(ThreadingHTTPServer):
   allow_reuse_address = True
   request_queue_size = 4
 
-  def __init__(self, address: tuple[str, int], store: NavAssistStore, *, rate_limiter: ClientRateLimiter | None = None,
+  def __init__(self, address: tuple[str, int], store: NavAssistStore, identity: NavAssistDeviceIdentity,
+               pairing: NavAssistPairingStore, *, rate_limiter: ClientRateLimiter | None = None,
                max_concurrent_requests: int = 4):
     if not 1 <= max_concurrent_requests <= 16:
       raise ValueError("max_concurrent_requests must be in [1, 16]")
     self.store = store
+    self.identity = identity
+    self.pairing = pairing
     self.rate_limiter = rate_limiter or ClientRateLimiter()
     self._request_slots = threading.BoundedSemaphore(max_concurrent_requests)
     super().__init__(address, NavAssistRequestHandler)
@@ -108,8 +118,18 @@ class NavAssistRequestHandler(BaseHTTPRequestHandler):
       self._respond(413, {"accepted": False, "reason": "body_size"})
       return
     body = self.rfile.read(content_length)
+    app_key_id = self.headers.get(KEY_ID_HEADER)
+    app_public_key = self.server.pairing.public_key_for(app_key_id) if app_key_id is not None else None
+    signature = self.headers.get(SIGNATURE_HEADER)
+    if app_public_key is None or signature is None or not verify_signature(
+      app_public_key,
+      snapshot_signature_material(self.server.identity.device_id, app_key_id, SNAPSHOT_PATH, body),
+      signature,
+    ):
+      self._respond(401, {"accepted": False, "reason": "authentication"})
+      return
     try:
-      accepted = self.server.store.accept(body, self.headers.get(SIGNATURE_HEADER))
+      accepted = self.server.store.accept(body, app_key_id)
     except NavAssistProtocolError as error:
       status = 401 if error.reason == "authentication" else 409 if error.reason == "replay" else 400
       self._respond(status, {"accepted": False, "reason": error.reason})

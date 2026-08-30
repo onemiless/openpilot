@@ -6,79 +6,106 @@ acceleration, CarState, or CAN commands.
 
 ## Arming
 
-The manager starts `navassistd` and `lane_topologyd` only on a Tesla C3XL while
-onroad when:
-
-- `NavAssistTrackMode` was enabled offroad for the current manager session; and
-- `NavAssistToken` contains at least 16 UTF-8 bytes.
-- `NavAssistTrackGeofence` contains a WGS-84 test-track polygon, for example:
+The manager keeps the network-only `navassistd` receiver available on a Tesla
+C3XL so an installed TesNav App can reconnect without a manually copied token.
+`lane_topologyd` still runs only onroad. Network availability grants no control
+authority. Active use separately requires valid realtime navigation, SP control
+authority, valid local localization, and a `NavAssistTrackGeofence` WGS-84 test-track polygon, for
+example:
 
 ```json
 {"coordinateSystem":"wgs84","polygon":[[31.0,121.0],[31.0,121.01],[31.01,121.01],[31.01,121.0]]}
 ```
 
-`NavAssistTrackMode` clears on manager restart and on the following offroad
-transition. The phone cannot arm it. Configure the token offroad using the local
-service console (`Params().put("NavAssistToken", "<test secret>")`), configure the surveyed test polygon, then enable the
-closed-course toggle in developer settings. The normalized snapshot remains
-invalid unless C3XL's own `liveLocationKalman` is valid and inside this polygon.
-The developer screen reports only `token configured` or `token not configured`;
-it never displays the secret itself.
+No per-drive Track Mode or token step exists. Configure the surveyed test polygon once.
+The normalized snapshot remains invalid unless C3XL's own `liveLocationKalman`
+is valid and inside this polygon; enabling SP never bypasses that condition.
+
+On first use, C3XL trusts exactly one self-signed App identity only while
+offroad. That P-256 public key is persisted as `NavAssistPairedApp`; later
+unknown App keys are ignored and cannot replace it. The C3XL device private key
+is stored under `/persist/comma/navassist/` and never transmitted. Clearing or
+changing an App identity requires an explicit offroad maintenance action; it is
+not a network command. First-use TOFU removes shared-secret configuration, but
+it cannot identify the owner before the first pin: pair only on a controlled
+private LAN.
 
 ## Transport
 
-The phone discovers an armed C3XL without scanning every HTTP address. It sends
-an authenticated IPv4 UDP broadcast to port 7765, then constructs the HTTP URL
+The phone discovers C3XL without scanning every HTTP address. It sends a signed
+IPv4 UDP broadcast to port 7765, then constructs the HTTP URL
 from the source IP of a verified unicast offer. The offer never supplies a host
 name or IP address. Both datagrams are compact JSON, at most 512 bytes, with
 exact field sets:
 
 ```json
-{"messageType":"navassist_discovery_request","schemaVersion":2,"nonce":"<32-lower-hex>","proof":"<64-lower-hex>"}
-{"messageType":"navassist_discovery_offer","schemaVersion":2,"nonce":"<same-nonce>","port":7766,"path":"/v2/snapshot","proof":"<64-lower-hex>"}
+{"messageType":"navassist_discovery_request","schemaVersion":3,"nonce":"<32-lower-hex>","appKeyId":"<32-lower-hex>","appPublicKey":"<P-256-X.509-SPKI-base64url>","signature":"<ECDSA-DER-base64url>"}
+{"messageType":"navassist_discovery_offer","schemaVersion":3,"nonce":"<same-nonce>","appKeyId":"<same-app-key-id>","deviceId":"<32-lower-hex>","devicePublicKey":"<P-256-X.509-SPKI-base64url>","port":7766,"path":"/v3/snapshot","signature":"<ECDSA-DER-base64url>"}
 ```
 
-The request proof is lower-case hex HMAC-SHA256 with `NavAssistToken` over the
-exact UTF-8 bytes below (with newline separators and no trailing newline):
+Both keys use P-256. `appKeyId` and `deviceId` are the lower-case hexadecimal
+first 16 bytes of SHA-256 over the canonical 91-byte X.509 SubjectPublicKeyInfo
+DER. Public keys and standard DER ECDSA signatures use unpadded base64url. The
+request is signed using ECDSA with SHA-256 over the exact UTF-8 bytes below
+(newline separators, no trailing newline):
 
 ```text
 navassist_discovery_request
-2
+3
 <nonce>
+<appKeyId>
+<appPublicKey>
 ```
 
-The offer proof covers this exact UTF-8 material:
+The offer signature covers:
 
 ```text
 navassist_discovery_offer
-2
+3
 <nonce>
+<appKeyId>
+<deviceId>
+<devicePublicKey>
 7766
-/v2/snapshot
+/v3/snapshot
 ```
 
-The nonce is a new 16-byte random value for each discovery round. C3XL replies
-only to RFC1918 IPv4 sources and silently drops malformed, oversized,
-unauthenticated, or rate-limited requests. A bounded two-second `(source,
-nonce)` cache suppresses duplicate bursts; because the request has no timestamp,
-this cache is not persistent replay protection. The outstanding random nonce on
-the phone prevents an old offer from matching a new round, while HTTP retains
-its separate TTL and replay controls. Only the manager-gated `navassistd`
-process owns the UDP socket, so Track Mode off means there is no discovery
-responder. A verified offer identifies a candidate; the phone reports the C3XL
-as online only after an HTTP exchange also succeeds.
+With the longest valid P-256 DER signature, the compact request is at most 403
+bytes and the offer is at most 484 bytes. Parsers reject noncanonical keys,
+invalid curves, duplicate or unknown fields, incorrect primitive types, and
+datagrams over 512 bytes. C3XL replies only to RFC1918 IPv4 sources and silently
+drops malformed, unauthenticated, unpaired, or rate-limited requests. A bounded
+two-second `(source, appKeyId, nonce)` cache suppresses duplicate bursts. The
+outstanding random nonce on the phone prevents an old offer from matching a new
+round, while HTTP retains separate TTL and persistent sequence replay controls.
+A verified offer identifies a candidate; the phone reports C3XL as online only
+after an HTTP exchange also succeeds.
 
-POST compact JSON matching `nav-assist-v2.schema.json` to:
+POST compact v3 navigation JSON to:
 
 ```text
-http://<c3xl-private-address>:7766/v2/snapshot
+http://<c3xl-private-address>:7766/v3/snapshot
 ```
 
-Set `X-NavAssist-Signature` to lower-case hex HMAC-SHA256 of the exact request
-body using `NavAssistToken`. Use only a dedicated private test network; P0 HMAC
-authenticates and protects message integrity but does not encrypt location data.
-Use a random test token of at least 32 bytes in practice; the protocol's 16-byte
-minimum is only a configuration floor.
+Set `X-NavAssist-Key-Id` to the pinned App key ID. Set
+`X-NavAssist-Signature` to the App's unpadded base64url DER ECDSA/SHA-256
+signature over these prefix bytes followed immediately by the exact HTTP body:
+
+```text
+navassist_snapshot
+3
+POST
+/v3/snapshot
+<deviceId>
+<appKeyId>
+<body-byte-length>
+<raw-body-bytes>
+```
+
+Binding both identities, method, path, byte length, and raw body prevents a
+valid snapshot signature from being redirected to another C3XL or request.
+Signatures authenticate and protect integrity but do not encrypt location data;
+use only a controlled private network.
 
 The receiver bounds request size, rate, and concurrent connections, rejects malformed/non-finite values,
 requires a strictly increasing sequence and non-decreasing route revision, and
@@ -88,7 +115,8 @@ new authenticated session above sequence 1 after earlier HTTP attempts failed;
 once replaced, that retired session cannot become active again. A source-wall
 freshness bound rejects old captures, and an atomic high-water checkpoint in
 `/dev/shm` preserves active/retired session state if only `navassistd` crashes
-and restarts. A manager restart disarms Track Mode before the process can run.
+and restarts. A manager restart leaves the receiver available for the
+already-paired App; transport availability never grants control authority.
 
 Transport freshness cannot make an old SDK callback fresh: active use also
 requires phone location accuracy no worse than 25 m, location observation age
@@ -109,9 +137,12 @@ not stock longitudinal control, owns the vehicle. Active P0 deceleration is
 allowed only with the official longitudinal planner, whose cruise contribution
 is limited to -1.2 m/s²; the experimental and TN-NoDEC backends fail closed.
 Lead, FCW, or other existing safety sources may independently request stronger
-deceleration. Driver-confirmed lane changes
-continue through the existing physical turn-signal/DesireHelper path; P0 does
-not change either model runner's DesireHelper ordering or road-edge behavior.
+deceleration. An experimental typed `navLaneIntentSP` path can also request one
+Tesla physical turn signal and authorize the existing DesireHelper only after
+fresh lane-index alignment, ego-side dashed evidence, clear BSM, active SP
+lateral, Panda TX echo, and physical lamp feedback. It never accepts phone
+curvature or bypasses Panda safety, and every lane is re-observed before another
+request.
 
 Follow the stationary gates and speed progression in
 [`docs/NAVASSIST_CLOSED_COURSE_P0.md`](../../../docs/NAVASSIST_CLOSED_COURSE_P0.md)

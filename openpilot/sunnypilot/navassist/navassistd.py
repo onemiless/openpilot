@@ -10,7 +10,8 @@ from openpilot.common.params import Params
 from openpilot.common.realtime import Ratekeeper
 from openpilot.common.swaglog import cloudlog
 from openpilot.sunnypilot.navassist.discovery import DISCOVERY_HOST, DISCOVERY_PORT, NavAssistDiscoveryServer
-from openpilot.sunnypilot.navassist.protocol import NavAssistStore
+from openpilot.sunnypilot.navassist.identity import NavAssistDeviceIdentity, NavAssistPairingStore
+from openpilot.sunnypilot.navassist.protocol import NavAssistProtocolError, NavAssistStore
 from openpilot.sunnypilot.navassist.publisher import build_nav_assist_message
 from openpilot.sunnypilot.navassist.server import NavAssistHTTPServer
 from openpilot.sunnypilot.navassist.geofence import TrackGeofence
@@ -23,6 +24,16 @@ LOCALIZATION_MAX_AGE_NS = 500_000_000
 LOCAL_POSITION_MAX_STD_M = 10.0
 TRACK_GEOFENCE_BASE_MARGIN_M = 20.0
 REPLAY_CHECKPOINT_PATH = "/dev/shm/navassist_replay_state.json"
+TRACK_GEOFENCE_REFRESH_NS = 1_000_000_000
+
+
+def load_track_geofence(value) -> TrackGeofence | None:
+  if value is None:
+    return None
+  try:
+    return TrackGeofence.parse(value)
+  except NavAssistProtocolError:
+    return None
 
 
 def local_position_std_m(location) -> float:
@@ -51,17 +62,16 @@ def local_localization_valid(sm, now_ns: int) -> bool:
 
 def main() -> None:
   params = Params()
-  if not params.get_bool("NavAssistTrackMode"):
-    raise RuntimeError("NavAssistTrackMode must be armed offroad for this ignition cycle")
-  token = params.get("NavAssistToken")
-  if not isinstance(token, str) or len(token.encode("utf-8")) < 16:
-    raise RuntimeError("NavAssistToken must contain at least 16 UTF-8 bytes")
-  geofence = TrackGeofence.parse(params.get("NavAssistTrackGeofence"))
+  geofence = load_track_geofence(params.get("NavAssistTrackGeofence"))
+  identity = NavAssistDeviceIdentity.load_or_create()
+  pairing = NavAssistPairingStore(params)
 
-  store = NavAssistStore(token, checkpoint_path=REPLAY_CHECKPOINT_PATH)
-  server = NavAssistHTTPServer((LISTEN_HOST, LISTEN_PORT), store)
+  store = NavAssistStore(checkpoint_path=REPLAY_CHECKPOINT_PATH)
+  server = NavAssistHTTPServer((LISTEN_HOST, LISTEN_PORT), store, identity, pairing)
   try:
-    discovery_server = NavAssistDiscoveryServer((DISCOVERY_HOST, DISCOVERY_PORT), token)
+    discovery_server = NavAssistDiscoveryServer(
+      (DISCOVERY_HOST, DISCOVERY_PORT), identity, pairing, is_offroad=lambda: params.get_bool("IsOffroad"),
+    )
   except BaseException:
     server.server_close()
     raise
@@ -77,21 +87,29 @@ def main() -> None:
     discovery_thread.start()
     discovery_started = True
     cloudlog.warning(
-      "navassistd armed for closed-course input on HTTP port %d and discovery port %d",
+      "navassistd receiver online on HTTP port %d and discovery port %d",
       LISTEN_PORT, DISCOVERY_PORT,
     )
 
     pm = messaging.PubMaster(["navAssistStateSP"])
     sm = messaging.SubMaster(["liveLocationKalman"])
     ratekeeper = Ratekeeper(PUBLISH_HZ)
-    while params.get_bool("NavAssistTrackMode"):
+    next_geofence_refresh_ns = 0
+    while True:
       sm.update(0)
       now_ns = time.monotonic_ns()
+      if now_ns >= next_geofence_refresh_ns:
+        if params.get_bool("NavAssistPairingReset"):
+          pairing.reset()
+          store.reset()
+          params.put_bool("NavAssistPairingReset", False, block=True)
+        geofence = load_track_geofence(params.get("NavAssistTrackGeofence"))
+        next_geofence_refresh_ns = now_ns + TRACK_GEOFENCE_REFRESH_NS
       location = sm["liveLocationKalman"]
       localization_valid = local_localization_valid(sm, now_ns)
       boundary_margin_m = TRACK_GEOFENCE_BASE_MARGIN_M + local_position_std_m(location)
       track_geofence_valid = bool(
-        localization_valid and geofence.contains_with_margin(
+        geofence is not None and localization_valid and geofence.contains_with_margin(
           location.positionGeodetic.value[0], location.positionGeodetic.value[1], boundary_margin_m,
         )
       )

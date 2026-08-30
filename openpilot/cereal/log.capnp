@@ -2646,7 +2646,7 @@ struct Event {
     trafficRadarState @136 :Custom.TrafficRadarState;
     navAssistStateSP @137 :Custom.NavAssistStateSP;
     laneTopologyStateSP @138 :Custom.LaneTopologyStateSP;
-    customReserved13 @139 :Custom.CustomReserved13;
+    navLaneIntentSP @139 :Custom.NavLaneIntentSP;
     customReserved14 @140 :Custom.CustomReserved14;
     customReserved15 @141 :Custom.CustomReserved15;
     customReserved16 @142 :Custom.CustomReserved16;

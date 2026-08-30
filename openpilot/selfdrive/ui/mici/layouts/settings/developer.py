@@ -9,9 +9,19 @@ from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.selfdrive.ui.widgets.ssh_key import SshKeyFetcher
 
 
-def nav_assist_token_configured() -> bool:
-  token = ui_state.params.get("NavAssistToken")
-  return isinstance(token, str) and len(token.encode("utf-8")) >= 16
+def nav_assist_paired() -> bool:
+  pairing = ui_state.params.get("NavAssistPairedApp")
+  return isinstance(pairing, dict) and isinstance(pairing.get("keyId"), str)
+
+
+def nav_assist_turn_signal_ready() -> bool:
+  return ui_state.params.get_bool("TeslaTurnSignalValidation")
+
+
+def nav_assist_status() -> str:
+  pairing = "paired" if nav_assist_paired() else "waiting for TesNav"
+  signal = "signal ready" if nav_assist_turn_signal_ready() else "signal disabled; restart required"
+  return f"{pairing} / {signal}"
 
 
 class AlphaLongConfirmPage(NavScroller):
@@ -84,10 +94,15 @@ class DeveloperLayoutMici(NavScroller):
     self._lat_maneuver_toggle = BigToggle("lateral maneuver mode",
                                           initial_state=ui_state.params.get_bool("LateralManeuverMode"),
                                           toggle_callback=self._on_lat_maneuver_mode)
-    self._nav_assist_toggle = BigToggle("CLOSED-COURSE nav assist",
-                                        value="token configured" if nav_assist_token_configured() else "token not configured",
-                                        initial_state=ui_state.params.get_bool("NavAssistTrackMode"),
-                                        toggle_callback=self._on_nav_assist_track_mode)
+    self._nav_assist_toggle = BigToggle("navigation assist auto pairing",
+                                        value=nav_assist_status(),
+                                        initial_state=nav_assist_paired(),
+                                        toggle_callback=lambda _state: None)
+    self._nav_assist_toggle.set_enabled(False)
+    self._nav_assist_reset = BigButton("reset TesNav pairing", "offroad only")
+    self._nav_assist_reset.set_click_callback(
+      lambda: ui_state.params.put_bool("NavAssistPairingReset", True, block=True),
+    )
     self._alpha_long_toggle = BigToggle("alpha longitudinal",
                                         initial_state=ui_state.params.get_bool("AlphaLongitudinalEnabled"),
                                         toggle_callback=self._on_alpha_long_enabled)
@@ -103,6 +118,7 @@ class DeveloperLayoutMici(NavScroller):
       self._long_maneuver_toggle,
       self._lat_maneuver_toggle,
       self._nav_assist_toggle,
+      self._nav_assist_reset,
       self._alpha_long_toggle,
       self._debug_mode_toggle,
     ])
@@ -114,14 +130,14 @@ class DeveloperLayoutMici(NavScroller):
       ("JoystickDebugMode", self._joystick_toggle),
       ("LongitudinalManeuverMode", self._long_maneuver_toggle),
       ("LateralManeuverMode", self._lat_maneuver_toggle),
-      ("NavAssistTrackMode", self._nav_assist_toggle),
       ("AlphaLongitudinalEnabled", self._alpha_long_toggle),
       ("ShowDebugInfo", self._debug_mode_toggle),
     )
-    onroad_blocked_toggles = (self._adb_toggle, self._joystick_toggle, self._nav_assist_toggle)
+    onroad_blocked_toggles = (self._adb_toggle, self._joystick_toggle)
     release_blocked_toggles = (
       self._joystick_toggle, self._long_maneuver_toggle, self._lat_maneuver_toggle,
       self._nav_assist_toggle, self._alpha_long_toggle,
+      self._nav_assist_reset,
     )
     engaged_blocked_toggles = (self._long_maneuver_toggle, self._lat_maneuver_toggle, self._alpha_long_toggle)
 
@@ -132,6 +148,7 @@ class DeveloperLayoutMici(NavScroller):
     # Disable toggles that require offroad
     for item in onroad_blocked_toggles:
       item.set_enabled(lambda: ui_state.is_offroad())
+    self._nav_assist_reset.set_enabled(lambda: ui_state.is_offroad())
 
     # Disable toggles that require not engaged
     for item in engaged_blocked_toggles:
@@ -155,8 +172,9 @@ class DeveloperLayoutMici(NavScroller):
   def _update_toggles(self):
     ui_state.update_params()
     self._nav_assist_toggle.set_value(
-      "token configured" if nav_assist_token_configured() else "token not configured",
+      nav_assist_status(),
     )
+    self._nav_assist_toggle.set_checked(nav_assist_paired())
 
     # CP gating
     if ui_state.CP is not None:
@@ -170,11 +188,13 @@ class DeveloperLayoutMici(NavScroller):
       long_man_enabled = ui_state.has_longitudinal_control and ui_state.is_offroad()
       self._long_maneuver_toggle.set_enabled(long_man_enabled)
       self._lat_maneuver_toggle.set_enabled(ui_state.is_offroad())
-      self._nav_assist_toggle.set_enabled(ui_state.is_offroad())
+      self._nav_assist_toggle.set_enabled(False)
+      self._nav_assist_reset.set_enabled(ui_state.is_offroad())
     else:
       self._long_maneuver_toggle.set_enabled(False)
       self._lat_maneuver_toggle.set_enabled(False)
       self._nav_assist_toggle.set_enabled(False)
+      self._nav_assist_reset.set_enabled(False)
       self._alpha_long_toggle.set_visible(False)
 
     # Refresh toggles from params to mirror external changes
@@ -204,10 +224,6 @@ class DeveloperLayoutMici(NavScroller):
     ui_state.params.put_bool("LongitudinalManeuverMode", False, block=True)
     self._long_maneuver_toggle.set_checked(False)
     restart_needed_callback()
-
-  def _on_nav_assist_track_mode(self, state: bool):
-    ui_state.params.put_bool("NavAssistTrackMode", state, block=True)
-    ui_state.update_params()
 
   def _on_alpha_long_enabled(self, state: bool):
     def do_toggle(_state: bool):

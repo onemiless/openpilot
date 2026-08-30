@@ -97,6 +97,7 @@ _services: dict[str, tuple] = {
   "trafficRadarState": (True, 20., 5, QueueSize.SMALL, 2),
   "navAssistStateSP": (True, 20., 5, QueueSize.SMALL, 2),
   "laneTopologyStateSP": (True, 20., 5, QueueSize.SMALL, 2),
+  "navLaneIntentSP": (True, 20., 5, QueueSize.SMALL, 2),
   "liveLocationKalman": (True, 20.),
 
   # debug

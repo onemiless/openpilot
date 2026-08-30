@@ -37,6 +37,23 @@ def test_two_close_solid_markings_become_one_double_solid_boundary():
   assert result.ego_lane_index_from_left == 0
 
 
+@pytest.mark.parametrize(("left_type", "right_type"), [
+  (LaneMarkingType.solid, LaneMarkingType.dashed),
+  (LaneMarkingType.dashed, LaneMarkingType.solid),
+])
+def test_mixed_double_line_preserves_vehicle_side_order(left_type, right_type):
+  result = analyze_lane_topology((
+    line(1, 1.92, left_type),
+    line(2, 1.68, right_type),
+    line(3, -1.8, LaneMarkingType.dashed),
+  ), frame_id=1, timestamp_ns=2)
+
+  boundary = result.boundaries[0]
+  assert boundary.marking_type == LaneMarkingType.solidDashed
+  assert boundary.left_component_marking == left_type
+  assert boundary.right_component_marking == right_type
+
+
 def test_implausible_boundary_gap_is_not_counted_as_a_lane():
   result = analyze_lane_topology((line(1, 1.0), line(2, -1.0), line(3, -8.0)), frame_id=1, timestamp_ns=2)
   assert result.visible_lane_count == 0

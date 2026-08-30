@@ -4,7 +4,6 @@ import math
 
 from openpilot.cereal import custom
 from opendbc.sunnypilot.car.tesla.values import TeslaFlagsSP
-from openpilot.common.params import Params
 from openpilot.common.realtime import DT_MDL
 from openpilot.selfdrive.car.cruise import V_CRUISE_UNSET
 from openpilot.sunnypilot.selfdrive.car.tesla.control_runtime import TeslaControlState, TeslaLongitudinalOwner
@@ -42,7 +41,7 @@ class NavigationSpeedController:
   """Closed-course navigation speed ceiling; never requests acceleration or a stop."""
 
   def __init__(self, *, enabled: bool | None = None, require_sp_longitudinal_owner: bool = False):
-    self.enabled = Params().get_bool("NavAssistTrackMode") if enabled is None else enabled
+    self.enabled = True if enabled is None else enabled
     self.require_sp_longitudinal_owner = require_sp_longitudinal_owner
     self.output_v_target = V_CRUISE_UNSET
     self.output_a_target = 0.0
@@ -114,9 +113,23 @@ class NavigationSpeedController:
       return
 
     driver_override = bool(long_override or sm["carState"].gasPressed or sm["carState"].brakePressed)
-    unsafe_source = (not planner_verified or v_ego > MAX_TRACK_SPEED_MPS
-                     or not self._healthy(sm) or not self._sp_owns_longitudinal(sm))
-    if not long_enabled or driver_override or unsafe_source:
+    if driver_override:
+      self._reject_visible_event(sm)
+      self._release(v_cruise, a_ego)
+      return
+
+    temporarily_unavailable = (not long_enabled or not planner_verified or v_ego > MAX_TRACK_SPEED_MPS
+                               or not self._sp_owns_longitudinal(sm))
+    if temporarily_unavailable:
+      # Allow the documented workflow: plan the phone route first, then engage
+      # SP/select the official backend. Once an event was admitted, however,
+      # losing authority latches it out so it cannot resume mid-maneuver.
+      if self.event_key is not None:
+        self.event_rejected = True
+      self._release(v_cruise, a_ego)
+      return
+
+    if not self._healthy(sm):
       self._reject_visible_event(sm)
       self._release(v_cruise, a_ego)
       return

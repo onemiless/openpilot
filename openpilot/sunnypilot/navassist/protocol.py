@@ -3,8 +3,6 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
-import hashlib
-import hmac
 import json
 import math
 import os
@@ -15,7 +13,7 @@ import time
 from typing import Any
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 MESSAGE_TYPE = "navigation_snapshot"
 MAX_BODY_BYTES = 64 * 1024
 MAX_VALID_FOR_MS = 2_000
@@ -26,8 +24,9 @@ MAX_SOURCE_FUTURE_SKEW_MS = 1_000
 MAX_LANES = 16
 MAX_SESSION_ID_LENGTH = 64
 MAX_ROAD_NAME_LENGTH = 256
-CHECKPOINT_VERSION = 1
+CHECKPOINT_VERSION = 2
 SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]+$")
+APP_KEY_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 
 SOURCE_VALUES = frozenset(("android", "ios", "track"))
 MODE_VALUES = frozenset(("idle", "route_planned", "realtime", "simulation", "arrived", "recalculating"))
@@ -239,16 +238,6 @@ def _optional_road_name(obj: dict[str, Any], field: str) -> str:
   return value
 
 
-def verify_signature(body: bytes, signature: str | None, token: bytes) -> None:
-  if not token:
-    _reject("authentication", "NavAssist token is not configured")
-  if signature is None or not isinstance(signature, str) or not re.fullmatch(r"[0-9a-f]{64}", signature):
-    _reject("authentication", "missing or malformed signature")
-  expected = hmac.new(token, body, hashlib.sha256).hexdigest()
-  if not hmac.compare_digest(expected, signature):
-    _reject("authentication", "signature mismatch")
-
-
 def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
   result: dict[str, Any] = {}
   for key, value in pairs:
@@ -365,19 +354,18 @@ def parse_snapshot(body: bytes) -> NavAssistSnapshot:
 class NavAssistStore:
   """Thread-safe freshness and replay boundary for one active phone session."""
 
-  def __init__(self, token: str | bytes, *, clock_ns: Callable[[], int] = time.monotonic_ns,
+  def __init__(self, *, clock_ns: Callable[[], int] = time.monotonic_ns,
                wall_clock_ms: Callable[[], int] = lambda: time.time_ns() // 1_000_000,
                remembered_sessions: int = 32, checkpoint_path: str | Path | None = None):
     if remembered_sessions <= 0:
       raise ValueError("remembered_sessions must be positive")
-    self._token = token.encode("utf-8") if isinstance(token, str) else bytes(token)
     self._clock_ns = clock_ns
     self._wall_clock_ms = wall_clock_ms
     self._checkpoint_path = Path(checkpoint_path) if checkpoint_path is not None else None
-    self._token_id = hashlib.sha256(self._token).hexdigest()[:16]
     self._lock = threading.Lock()
     self._current: AcceptedSnapshot | None = None
     self._retired_sessions: deque[str] = deque(maxlen=remembered_sessions)
+    self._app_key_id: str | None = None
     self._active_session_id: str | None = None
     self._last_sequence = 0
     self._last_route_revision = 0
@@ -398,14 +386,17 @@ class NavAssistStore:
       return
     try:
       raw = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicate_keys)
-      expected_keys = {"version", "tokenId", "activeSessionId", "sequence", "routeRevision", "retiredSessions"}
+      legacy_keys = {"version", "tokenId", "activeSessionId", "sequence", "routeRevision", "retiredSessions"}
+      if isinstance(raw, dict) and set(raw) == legacy_keys and raw.get("version") == 1:
+        return
+      expected_keys = {"version", "appKeyId", "activeSessionId", "sequence", "routeRevision", "retiredSessions"}
       if not isinstance(raw, dict) or set(raw) != expected_keys or raw["version"] != CHECKPOINT_VERSION:
         raise ValueError("unsupported replay checkpoint")
-      if raw["tokenId"] != self._token_id:
-        return
+      app_key_id = raw["appKeyId"]
       active = raw["activeSessionId"]
       retired = raw["retiredSessions"]
-      if (not self._valid_checkpoint_session(active) or not self._valid_checkpoint_counter(raw["sequence"])
+      if (not isinstance(app_key_id, str) or APP_KEY_ID_PATTERN.fullmatch(app_key_id) is None
+          or not self._valid_checkpoint_session(active) or not self._valid_checkpoint_counter(raw["sequence"])
           or not self._valid_checkpoint_counter(raw["routeRevision"]) or not isinstance(retired, list)
           or len(retired) > self._retired_sessions.maxlen
           or any(not self._valid_checkpoint_session(session) for session in retired)
@@ -413,19 +404,20 @@ class NavAssistStore:
         raise ValueError("invalid replay checkpoint")
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, NavAssistProtocolError, ValueError) as error:
       raise RuntimeError("NavAssist replay checkpoint is unreadable") from error
+    self._app_key_id = app_key_id
     self._active_session_id = active
     self._last_sequence = raw["sequence"]
     self._last_route_revision = raw["routeRevision"]
     self._retired_sessions.extend(retired)
 
-  def _save_checkpoint(self, active_session_id: str, sequence: int, route_revision: int,
+  def _save_checkpoint(self, app_key_id: str, active_session_id: str, sequence: int, route_revision: int,
                        retired_sessions: deque[str]) -> None:
     path = self._checkpoint_path
     if path is None:
       return
     payload = json.dumps({
       "version": CHECKPOINT_VERSION,
-      "tokenId": self._token_id,
+      "appKeyId": app_key_id,
       "activeSessionId": active_session_id,
       "sequence": sequence,
       "routeRevision": route_revision,
@@ -446,8 +438,9 @@ class NavAssistStore:
         pass
       _reject("replay", f"replay checkpoint unavailable: {type(error).__name__}")
 
-  def accept(self, body: bytes, signature: str | None) -> AcceptedSnapshot:
-    verify_signature(body, signature, self._token)
+  def accept(self, body: bytes, app_key_id: str) -> AcceptedSnapshot:
+    if not isinstance(app_key_id, str) or APP_KEY_ID_PATTERN.fullmatch(app_key_id) is None:
+      _reject("authentication", "missing or malformed app key id")
     snapshot = parse_snapshot(body)
     source_age_ms = self._wall_clock_ms() - snapshot.source_wall_time_ms
     maximum_age_ms = min(MAX_SOURCE_AGE_MS, snapshot.valid_for_ms + SOURCE_DELIVERY_GRACE_MS)
@@ -456,6 +449,11 @@ class NavAssistStore:
     now_ns = self._clock_ns()
     accepted = AcceptedSnapshot(snapshot, now_ns, now_ns + snapshot.valid_for_ms * 1_000_000)
     with self._lock:
+      if self._app_key_id is not None and self._app_key_id != app_key_id:
+        self._active_session_id = None
+        self._last_sequence = 0
+        self._last_route_revision = 0
+        self._retired_sessions.clear()
       retired_sessions = deque(self._retired_sessions, maxlen=self._retired_sessions.maxlen)
       if self._active_session_id is not None:
         if snapshot.session_id == self._active_session_id:
@@ -467,13 +465,28 @@ class NavAssistStore:
           if snapshot.session_id in retired_sessions:
             _reject("replay", "retired session cannot become active again")
           retired_sessions.append(self._active_session_id)
-      self._save_checkpoint(snapshot.session_id, snapshot.sequence, snapshot.route_revision, retired_sessions)
+      self._save_checkpoint(app_key_id, snapshot.session_id, snapshot.sequence, snapshot.route_revision, retired_sessions)
+      self._app_key_id = app_key_id
       self._active_session_id = snapshot.session_id
       self._last_sequence = snapshot.sequence
       self._last_route_revision = snapshot.route_revision
       self._retired_sessions = retired_sessions
       self._current = accepted
     return accepted
+
+  def reset(self) -> None:
+    with self._lock:
+      self._current = None
+      self._app_key_id = None
+      self._active_session_id = None
+      self._last_sequence = 0
+      self._last_route_revision = 0
+      self._retired_sessions.clear()
+      if self._checkpoint_path is not None:
+        try:
+          self._checkpoint_path.unlink(missing_ok=True)
+        except OSError as error:
+          raise RuntimeError("NavAssist replay checkpoint could not be reset") from error
 
   def current(self, now_ns: int | None = None) -> AcceptedSnapshot | None:
     with self._lock:

@@ -2,7 +2,7 @@ from openpilot.common.params import Params
 from openpilot.selfdrive.ui.widgets.ssh_key import ssh_key_item
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.widgets import Widget
-from openpilot.system.ui.widgets.list_view import toggle_item
+from openpilot.system.ui.widgets.list_view import button_item, toggle_item
 from openpilot.system.ui.widgets.scroller_tici import Scroller
 from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog
 from openpilot.system.ui.lib.application import gui_app
@@ -32,9 +32,13 @@ DESCRIPTIONS = {
 }
 
 
-def nav_assist_token_configured(params: Params) -> bool:
-  token = params.get("NavAssistToken")
-  return isinstance(token, str) and len(token.encode("utf-8")) >= 16
+def nav_assist_paired(params: Params) -> bool:
+  pairing = params.get("NavAssistPairedApp")
+  return isinstance(pairing, dict) and isinstance(pairing.get("keyId"), str)
+
+
+def nav_assist_turn_signal_ready(params: Params) -> bool:
+  return params.get_bool("TeslaTurnSignalValidation")
 
 
 class DeveloperLayout(Widget):
@@ -83,16 +87,25 @@ class DeveloperLayout(Widget):
       callback=self._on_lat_maneuver_mode,
     )
 
-    self._nav_assist_token_configured = nav_assist_token_configured(self._params)
+    self._nav_assist_paired = nav_assist_paired(self._params)
+    self._nav_assist_turn_signal_ready = nav_assist_turn_signal_ready(self._params)
     self._nav_assist_toggle = toggle_item(
-      lambda: tr("CLOSED-COURSE Navigation Assist"),
+      lambda: tr("Navigation Assist Auto Pairing"),
       description=lambda: (
-        tr("For controlled test tracks only. Requires a configured token and WGS-84 geofence.") + "<br><br>" +
-        (tr("NavAssist token configured.") if self._nav_assist_token_configured else
-         tr("NavAssist token not configured. Set it through the local service console; the token is never displayed."))
+        tr("Open TesNav to discover and pair automatically. First pairing is accepted only while offroad.") + "<br><br>" +
+        (tr("TesNav is paired.") if self._nav_assist_paired else tr("Waiting for TesNav automatic pairing.")) + "<br>" +
+        (tr("Tesla physical turn-signal capability is enabled.") if self._nav_assist_turn_signal_ready else
+         tr("Tesla physical turn-signal capability is disabled; enable it offroad and restart before lane-change testing."))
       ),
-      initial_state=self._params.get_bool("NavAssistTrackMode"),
-      callback=self._on_nav_assist_track_mode,
+      initial_state=self._nav_assist_paired,
+      callback=lambda _state: None,
+      enabled=False,
+    )
+    self._nav_assist_reset = button_item(
+      lambda: tr("Reset TesNav Pairing"),
+      button_text=lambda: tr("Reset"),
+      description=lambda: tr("Offroad only. Close the old App first; the next valid TesNav App will pair automatically."),
+      callback=self._on_nav_assist_pairing_reset,
       enabled=ui_state.is_offroad,
     )
     self._alpha_long_toggle = toggle_item(
@@ -119,6 +132,7 @@ class DeveloperLayout(Widget):
       self._long_maneuver_toggle,
       self._lat_maneuver_toggle,
       self._nav_assist_toggle,
+      self._nav_assist_reset,
       self._alpha_long_toggle,
       self._ui_debug_toggle,
     ], line_separator=True, spacing=0)
@@ -136,13 +150,15 @@ class DeveloperLayout(Widget):
 
   def _update_toggles(self):
     ui_state.update_params()
-    self._nav_assist_token_configured = nav_assist_token_configured(self._params)
+    self._nav_assist_paired = nav_assist_paired(self._params)
+    self._nav_assist_turn_signal_ready = nav_assist_turn_signal_ready(self._params)
 
     # Hide non-release toggles on release builds
     # TODO: we can do an onroad cycle, but alpha long toggle requires a deinit function to re-enable radar and not fault
     for item in (
       self._joystick_toggle, self._long_maneuver_toggle, self._lat_maneuver_toggle,
       self._nav_assist_toggle, self._alpha_long_toggle,
+      self._nav_assist_reset,
     ):
       item.set_visible(not self._is_release)
 
@@ -158,11 +174,13 @@ class DeveloperLayout(Widget):
       long_man_enabled = ui_state.has_longitudinal_control and ui_state.is_offroad()
       self._long_maneuver_toggle.action_item.set_enabled(long_man_enabled)
       self._lat_maneuver_toggle.action_item.set_enabled(ui_state.is_offroad())
-      self._nav_assist_toggle.action_item.set_enabled(ui_state.is_offroad())
+      self._nav_assist_toggle.action_item.set_enabled(False)
+      self._nav_assist_reset.action_item.set_enabled(ui_state.is_offroad())
     else:
       self._long_maneuver_toggle.action_item.set_enabled(False)
       self._lat_maneuver_toggle.action_item.set_enabled(False)
       self._nav_assist_toggle.action_item.set_enabled(False)
+      self._nav_assist_reset.action_item.set_enabled(False)
       self._alpha_long_toggle.set_visible(False)
 
     # TODO: make a param control list item so we don't need to manage internal state as much here
@@ -173,17 +191,30 @@ class DeveloperLayout(Widget):
       ("JoystickDebugMode", self._joystick_toggle),
       ("LongitudinalManeuverMode", self._long_maneuver_toggle),
       ("LateralManeuverMode", self._lat_maneuver_toggle),
-      ("NavAssistTrackMode", self._nav_assist_toggle),
       ("AlphaLongitudinalEnabled", self._alpha_long_toggle),
       ("ShowDebugInfo", self._ui_debug_toggle),
     ):
       item.action_item.set_state(self._params.get_bool(key))
+    self._nav_assist_toggle.action_item.set_state(self._nav_assist_paired)
 
   def _on_enable_ui_debug(self, state: bool):
     self._params.put_bool("ShowDebugInfo", state, block=True)
     gui_app.set_show_touches(state)
     gui_app.set_show_fps(state)
     gui_app.set_show_mouse_coords(state)
+
+  def _on_nav_assist_pairing_reset(self):
+    def confirm_callback(result: DialogResult):
+      if result == DialogResult.CONFIRM:
+        self._params.put_bool("NavAssistPairingReset", True, block=True)
+        self._nav_assist_toggle.action_item.set_state(False)
+
+    dlg = ConfirmDialog(
+      tr("Reset the paired TesNav App? Close the old App before continuing."),
+      tr("Reset"),
+      callback=confirm_callback,
+    )
+    gui_app.push_widget(dlg)
 
   def _on_enable_adb(self, state: bool):
     self._params.put_bool("AdbEnabled", state, block=True)
@@ -212,10 +243,6 @@ class DeveloperLayout(Widget):
     self._joystick_toggle.action_item.set_state(False)
     self._params.put_bool("LongitudinalManeuverMode", False, block=True)
     self._long_maneuver_toggle.action_item.set_state(False)
-
-  def _on_nav_assist_track_mode(self, state: bool):
-    self._params.put_bool("NavAssistTrackMode", state, block=True)
-    ui_state.update_params()
 
   def _on_alpha_long_enabled(self, state: bool):
     if state:

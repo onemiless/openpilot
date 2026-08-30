@@ -49,6 +49,40 @@ def bridge(*, left=LaneMarkingType.dashed, right=LaneMarkingType.solid,
   )
 
 
+def three_lane_bridge(*, left_far, left_ego, right_ego, right_far, left_ego_source=-1, right_ego_source=-1):
+  topology = LaneTopology(
+    frame_id=10,
+    timestamp_ns=NOW_NS - 50_000_000,
+    boundaries=(
+      LaneBoundary(10, ((5.0, 5.4), (40.0, 5.4)), LaneMarkingType.solid, 0.9),
+      LaneBoundary(1, ((5.0, 1.8), (40.0, 1.8)), LaneMarkingType.solidDashed, 0.9,
+                   left_component_marking=left_far, right_component_marking=left_ego,
+                   right_component_source_id=left_ego_source),
+      LaneBoundary(2, ((5.0, -1.8), (40.0, -1.8)), LaneMarkingType.solidDashed, 0.9,
+                   left_component_marking=right_ego, right_component_marking=right_far,
+                   left_component_source_id=right_ego_source),
+      LaneBoundary(11, ((5.0, -5.4), (40.0, -5.4)), LaneMarkingType.solid, 0.9),
+    ),
+    spaces=(LaneSpace(10, 1, 3.6, 0.9), LaneSpace(1, 2, 3.6, 0.9), LaneSpace(2, 11, 3.6, 0.9)),
+    marking_count_visible=6,
+    boundary_count_visible=4,
+    visible_lane_count=3,
+    ego_lane_index_from_left=1,
+    ego_lane_index_from_right=1,
+    lanes_left_of_ego=1,
+    lanes_right_of_ego=1,
+    state=LaneTopologyState.normal,
+    confidence=0.9,
+  )
+  return SimpleNamespace(
+    current=topology,
+    ego_source_ids=(1, 2),
+    marking_evidence=[MetricMarkingEvidence.unknown(), evidence(left_ego), evidence(right_ego),
+                      MetricMarkingEvidence.unknown()],
+    ego_marking_types=lambda: (LaneMarkingType.solidDashed, LaneMarkingType.solidDashed),
+  )
+
+
 def test_control_validity_requires_fresh_synchronized_known_evidence():
   message = build_lane_topology_message(
     bridge(), now_ns=NOW_NS, image_mono_time=NOW_NS - 100_000_000, image_frame_id=9,
@@ -67,6 +101,46 @@ def test_unknown_current_evidence_immediately_fails_closed_even_if_tracker_remem
     image_mono_time=NOW_NS - 100_000_000, calibration_valid=True,
   )
   assert not message.laneTopologyStateSP.validForControl
+
+
+def test_mixed_lines_allow_crossing_only_when_ego_side_is_dashed():
+  state = build_lane_topology_message(
+    three_lane_bridge(
+      left_far=LaneMarkingType.solid,
+      left_ego=LaneMarkingType.dashed,
+      right_ego=LaneMarkingType.solid,
+      right_far=LaneMarkingType.dashed,
+    ),
+    now_ns=NOW_NS,
+    image_mono_time=NOW_NS - 100_000_000,
+    calibration_valid=True,
+  ).laneTopologyStateSP
+
+  assert state.validForControl
+  assert state.leftEgoSideMarking == "dashed"
+  assert state.leftFarSideMarking == "solid"
+  assert state.leftCrossingAllowed
+  assert state.rightEgoSideMarking == "solid"
+  assert state.rightFarSideMarking == "dashed"
+  assert not state.rightCrossingAllowed
+
+
+def test_crossing_requires_current_raw_evidence_for_the_ego_side_component():
+  state = build_lane_topology_message(
+    three_lane_bridge(
+      left_far=LaneMarkingType.solid,
+      left_ego=LaneMarkingType.dashed,
+      right_ego=LaneMarkingType.solid,
+      right_far=LaneMarkingType.dashed,
+      left_ego_source=3,
+    ),
+    now_ns=NOW_NS,
+    image_mono_time=NOW_NS - 100_000_000,
+    calibration_valid=True,
+  ).laneTopologyStateSP
+
+  assert state.validForControl
+  assert not state.leftCrossingAllowed
 
 
 def test_stale_ambiguous_source_change_or_bad_calibration_fail_closed():

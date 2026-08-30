@@ -48,6 +48,13 @@ def test_disabled_controller_is_exactly_transparent_without_nav_service_state():
   assert not controller.is_active
 
 
+def test_controller_defaults_to_automatic_activation_when_navigation_is_valid():
+  controller = NavigationSpeedController()
+  update(controller, FakeSM(nav(distance=100.0)))
+  assert controller.enabled
+  assert controller.event_admitted
+
+
 def test_early_event_is_admitted_then_activates_inside_comfort_window():
   controller = NavigationSpeedController(enabled=True)
   update(controller, FakeSM(nav(distance=100.0)))
@@ -124,20 +131,15 @@ def test_disappearing_maneuver_cannot_reactivate_same_event():
   assert controller.event_rejected and not controller.is_active
 
 
-def test_tesla_stock_longitudinal_owner_cannot_receive_navigation_speed_target():
+def test_route_can_be_started_before_sp_takes_longitudinal_ownership():
   controller = NavigationSpeedController(enabled=True, require_sp_longitudinal_owner=True)
   stock = FakeSM(nav(distance=100.0), tesla_flags=int(TeslaFlagsSP.STOCK_LONGITUDINAL_ACTIVE))
   update(controller, stock)
-  assert controller.event_rejected and not controller.event_admitted and controller.output_v_target == V_CRUISE_UNSET
+  assert not controller.event_rejected and not controller.event_admitted and controller.output_v_target == V_CRUISE_UNSET
 
-  # An ownership transition cannot resurrect an event first seen while stock
-  # longitudinal owned the vehicle.
+  # The same still-early event may be admitted after SP takes ownership.
   sp = FakeSM(nav(distance=100.0), tesla_flags=0)
   update(controller, sp)
-  assert controller.event_rejected and not controller.event_admitted
-
-  next_event = FakeSM(nav(distance=100.0, event_id=2), tesla_flags=0)
-  update(controller, next_event)
   assert controller.event_admitted
 
 
@@ -149,7 +151,8 @@ def test_tesla_stock_longitudinal_owner_cannot_receive_navigation_speed_target()
 def test_all_tesla_stock_ownership_modes_fail_closed(flags):
   controller = NavigationSpeedController(enabled=True, require_sp_longitudinal_owner=True)
   update(controller, FakeSM(nav(distance=100.0), tesla_flags=int(flags)))
-  assert controller.event_rejected and controller.output_v_target == V_CRUISE_UNSET
+  assert not controller.event_admitted and not controller.is_active
+  assert controller.output_v_target == V_CRUISE_UNSET
 
 
 def test_tesla_ap_hybrid_sp_owner_is_allowed():
@@ -159,9 +162,20 @@ def test_tesla_ap_hybrid_sp_owner_is_allowed():
   assert controller.event_admitted
 
 
-def test_unverified_longitudinal_backend_rejects_event_for_its_lifetime():
+def test_route_can_be_started_before_official_longitudinal_backend_is_selected():
   controller = NavigationSpeedController(enabled=True)
   update(controller, FakeSM(nav(distance=100.0)), planner_verified=False)
-  assert controller.event_rejected and controller.output_v_target == V_CRUISE_UNSET
+  assert not controller.event_rejected and controller.output_v_target == V_CRUISE_UNSET
   update(controller, FakeSM(nav(distance=90.0)), planner_verified=True)
-  assert controller.event_rejected and not controller.event_admitted
+  assert controller.event_admitted and not controller.event_rejected
+
+
+def test_disengaging_after_event_admission_still_latches_that_event():
+  controller = NavigationSpeedController(enabled=True)
+  sm = FakeSM(nav(distance=100.0))
+  update(controller, sm)
+  assert controller.event_admitted
+  update(controller, FakeSM(nav(distance=90.0)), long_enabled=False)
+  assert controller.event_rejected
+  update(controller, FakeSM(nav(distance=80.0)), long_enabled=True)
+  assert not controller.is_active and controller.event_rejected

@@ -5,6 +5,7 @@ planner/control context and observes the original speed-wheel template without
 adding Tesla branches throughout generic card.
 """
 
+import hashlib
 import time
 from typing import Any
 
@@ -18,7 +19,9 @@ from openpilot.sunnypilot.selfdrive.traffic_control.tesla_observer import (
 
 
 CONTEXT_STALE_S = 0.2
-CONTEXT_SERVICES = ("selfdriveStateSP", "modelV2")
+NAV_SIGNAL_SESSION_TIMEOUT_NS = 60_000_000_000
+NAV_SIGNAL_RETRY_NS = 500_000_000
+CONTEXT_SERVICES = ("selfdriveStateSP", "modelV2", "navLaneIntentSP")
 
 
 def longitudinal_context(sm, now: float) -> tuple[int, bool, bool, float, bool, bool, bool, float, bool, float, bool]:
@@ -71,6 +74,9 @@ class TeslaCardAdapter:
     configured = bool(getattr(car_interface, "CP_SP", None) and
                       car_interface.CP_SP.safetyParam & TeslaSafetyFlagsSP.TURN_SIGNAL_VALIDATION)
     self.validation = TeslaTurnSignalRealtimeController(configured) if self.enabled else None
+    self._last_nav_signal_request: tuple[str, int, int, str] | None = None
+    self._active_nav_signal_test_id: str | None = None
+    self._nav_signal_retry_after_ns = 0
 
   def _create_road_context_parser(self):
     try:
@@ -112,6 +118,7 @@ class TeslaCardAdapter:
   def control_sends(self, car_state, car_control, now_nanos: int) -> list:
     if self.validation is None:
       return []
+    self._update_nav_turn_signal(now_nanos)
     now = time.monotonic()
     model_valid = (self.sm.seen["modelV2"] and self.sm.valid["modelV2"] and
                    now - self.sm.recv_time["modelV2"] <= CONTEXT_STALE_S)
@@ -125,6 +132,50 @@ class TeslaCardAdapter:
       brake_pressed=bool(car_state.brakePressed),
     )
     return self.validation.take_can_sends(now_nanos)
+
+  def _update_nav_turn_signal(self, now_nanos: int) -> None:
+    if self.validation is None:
+      return
+    now = time.monotonic()
+    service = "navLaneIntentSP"
+    fresh = bool(
+      self.sm.seen[service] and self.sm.alive[service] and self.sm.valid[service] and
+      now - self.sm.recv_time[service] <= CONTEXT_STALE_S
+    )
+    intent = self.sm[service]
+    direction = str(intent.direction) if fresh else "none"
+    requested = bool(fresh and intent.valid and intent.signalRequested and direction in ("left", "right"))
+    if not requested:
+      if self._active_nav_signal_test_id is not None:
+        self.validation.request_cancel(self._active_nav_signal_test_id, now_nanos)
+        self._active_nav_signal_test_id = None
+      self._last_nav_signal_request = None
+      self._nav_signal_retry_after_ns = 0
+      return
+
+    session_id = str(intent.sessionId)
+    key = (session_id, int(intent.routeRevision), int(intent.requestId), direction)
+    if key == self._last_nav_signal_request:
+      return
+    if now_nanos < self._nav_signal_retry_after_ns:
+      return
+    session_tag = hashlib.sha256(session_id.encode()).hexdigest()[:8]
+    test_id = f"nav-{session_tag}-{key[1]}-{key[2]}-{direction}"
+    accepted = self.validation.submit_request(
+      test_id, direction, now_nanos, session_timeout_ns=NAV_SIGNAL_SESSION_TIMEOUT_NS,
+    )
+    if accepted:
+      self._last_nav_signal_request = key
+      self._active_nav_signal_test_id = test_id
+      self._nav_signal_retry_after_ns = 0
+    elif not self.validation.configured:
+      # Capability is fixed when card/Panda initialize; retrying cannot make it
+      # available until the next onroad cycle.
+      self._last_nav_signal_request = key
+    else:
+      # BUSY/cancelling is temporary. Retry at a bounded rate while the typed
+      # intent and all upstream gates remain valid.
+      self._nav_signal_retry_after_ns = now_nanos + NAV_SIGNAL_RETRY_NS
 
   def service_params(self, params) -> None:
     self.speed_limit_assist_configured = params.get("SpeedLimitMode", return_default=True) == Mode.assist

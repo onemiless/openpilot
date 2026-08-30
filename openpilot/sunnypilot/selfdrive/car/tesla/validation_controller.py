@@ -20,6 +20,7 @@ CANCEL_TURN_REASON = 4
 TEMPLATE_MAX_AGE_NS = 1_500_000_000
 ECHO_TIMEOUT_NS = 1_200_000_000
 SESSION_TIMEOUT_NS = 12_000_000_000
+MAX_SESSION_TIMEOUT_NS = 60_000_000_000
 CONTEXT_GRACE_NS = 1_000_000_000
 VEHICLE_FEEDBACK_TIMEOUT_NS = 2_500_000_000
 CANCEL_FEEDBACK_TIMEOUT_NS = 1_500_000_000
@@ -173,9 +174,12 @@ class TeslaTurnSignalRealtimeController:
     self._completed.append((payload, session["records"]))
     self._active = None
 
-  def submit_request(self, test_id: str, direction: str, now_nanos: int) -> bool:
+  def submit_request(self, test_id: str, direction: str, now_nanos: int,
+                     session_timeout_ns: int = SESSION_TIMEOUT_NS) -> bool:
     if direction not in ("left", "right"):
       raise ValueError(f"unsupported turn request: {direction}")
+    if not SESSION_TIMEOUT_NS <= int(session_timeout_ns) <= MAX_SESSION_TIMEOUT_NS:
+      raise ValueError("turn-signal session timeout is outside the bounded range")
     with self._lock:
       if not self.configured:
         records = [{
@@ -206,6 +210,7 @@ class TeslaTurnSignalRealtimeController:
         "test_id": test_id,
         "direction": direction,
         "started_nanos": int(now_nanos),
+        "session_timeout_ns": int(session_timeout_ns),
         "used_template_generation": -1,
         "awaiting_data": None,
         "awaiting_phase": None,
@@ -431,7 +436,7 @@ class TeslaTurnSignalRealtimeController:
       elif (self._active["cancel_requested"] and
             now_nanos - self._active["cancel_requested_nanos"] >= CANCEL_TOTAL_TIMEOUT_NS):
         self._finish_locked("CANCEL_TIMEOUT", now_nanos)
-      elif now_nanos - self._active["started_nanos"] >= SESSION_TIMEOUT_NS:
+      elif now_nanos - self._active["started_nanos"] >= self._active["session_timeout_ns"]:
         if not self._active["cancel_requested"]:
           self._request_cancel_locked("session_timeout", now_nanos)
 

@@ -37,7 +37,7 @@ class UIStateSP:
     self.sm_services_ext = [
       "modelManagerSP", "selfdriveStateSP", "longitudinalPlanSP", "backupManagerSP",
       "gpsLocation", "lateralTorqueParameters", "carStateSP", "liveMapDataSP", "carParamsSP", "lateralDelay",
-      "navAssistStateSP", "laneTopologyStateSP"
+      "navAssistStateSP", "laneTopologyStateSP", "navLaneIntentSP"
     ]
     self.lane_topology_bridge = LaneTopologyUIBridge(frame_divisor=5)
     self.lane_topology = None
@@ -181,7 +181,8 @@ class UIStateSP:
     self.custom_interactive_timeout = self.params.get("InteractivityTimeout", return_default=True)
     self.developer_ui = self.params.get("DevUIInfo")
     self.hide_v_ego_ui = self.params.get_bool("HideVEgoUI")
-    self.nav_assist_track_mode = self.params.get_bool("NavAssistTrackMode")
+    pairing = self.params.get("NavAssistPairedApp")
+    self.nav_assist_track_mode = isinstance(pairing, dict) and isinstance(pairing.get("keyId"), str)
     self.onroad_brightness = int(float(self.params.get("OnroadScreenOffBrightness", return_default=True)))
     self.onroad_brightness_timer_param = self.params.get("OnroadScreenOffTimer", return_default=True)
     self.rainbow_path = self.params.get_bool("RainbowMode")

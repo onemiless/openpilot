@@ -288,10 +288,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"TeslaTrafficSignalControlEnabled", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaTrafficStopReference", {PERSISTENT | BACKUP, INT, "50"}},  // decimeters
     {"TeslaTrafficControlMaxSpeed", {PERSISTENT | BACKUP, INT, "60"}},  // km/h
-    // Explicitly armed offroad for one closed-course onroad session. Manager
-    // restart or the following offroad transition clears control authority.
-    {"NavAssistTrackMode", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | DEVELOPMENT_ONLY, BOOL}},
-    {"NavAssistToken", {PERSISTENT | DONT_LOG, STRING}},
+    {"NavAssistPairedApp", {PERSISTENT | DONT_LOG, JSON}},
+    {"NavAssistPairingReset", {CLEAR_ON_MANAGER_START, BOOL}},
     {"NavAssistTrackGeofence", {PERSISTENT | DONT_LOG, JSON}},
     {"ToyotaEnforceStockLongitudinal", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"ToyotaStopAndGoHack", {PERSISTENT | BACKUP, BOOL, "0"}},

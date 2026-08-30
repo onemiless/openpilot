@@ -101,7 +101,7 @@ class LaneTopologyUIBridge:
       margin = center_radius + side_offset + search_radius
       probabilities = tuple(float(value) for value in self.model_v2.laneLineProbs)  # type: ignore[attr-defined]
       for lane_index, lane in enumerate(self.model_v2.laneLines):  # type: ignore[attr-defined]
-        if self.ego_source_ids is None or lane_index not in self.ego_source_ids or probabilities[lane_index] < 0.25:
+        if self.ego_source_ids is None or probabilities[lane_index] < 0.25:
           evidence = MetricMarkingEvidence.unknown()
           self.marking_types[lane_index] = LaneMarkingType.unknown
         else:

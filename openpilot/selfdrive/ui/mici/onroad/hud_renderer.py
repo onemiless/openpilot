@@ -216,7 +216,7 @@ class HudRenderer(Widget):
         if not topology_sp.valid or topology_sp.stale or topology_sp.ambiguous or left_text is None or right_text is None:
           return
         lane_number = topology_sp.egoLaneIndexFromLeft + 1
-        validity = "OBS VALID / NO AUTO LC" if topology_sp.validForControl else "OBS ONLY / NO AUTO LC"
+        validity = "CROSSING DATA VALID" if topology_sp.validForControl else "OBSERVATION ONLY"
         text = f"L:{left_text}   LANE {lane_number}/{topology_sp.visibleLaneCount}   R:{right_text}   {validity}"
     else:
       topology = ui_state.lane_topology
@@ -262,12 +262,19 @@ class HudRenderer(Widget):
       "roundabout": "环岛", "straight": "直行", "destination": "到达",
     }.get(str(nav.maneuver), "等待导航")
     recommended = [str(lane.index + 1) for lane in nav.lanes if lane.recommended]
-    lane_text = f" · AMap推荐 {','.join(recommended)}（未与视觉车道对齐）" if recommended else ""
+    lane_text = f" · AMap推荐 {','.join(recommended)}" if recommended else ""
+    lane_intent_text = ""
+    if sm.seen["navLaneIntentSP"] and sm.alive["navLaneIntentSP"] and sm.valid["navLaneIntentSP"]:
+      lane_intent = sm["navLaneIntentSP"]
+      if lane_intent.signalRequested:
+        direction = "左" if str(lane_intent.direction) == "left" else "右"
+        phase = "已授权" if lane_intent.laneChangeAuthorized else "等待虚线/物理灯/盲区"
+        lane_intent_text = f" · {direction}变道{phase}"
     if service_healthy and nav.valid:
       longitudinal_sp_healthy = sm.alive["longitudinalPlanSP"] and sm.valid["longitudinalPlanSP"]
       decel_active = longitudinal_sp_healthy and str(sm["longitudinalPlanSP"].longitudinalPlanSource) == "navAssist"
       status = "导航减速约束生效" if decel_active else "导航数据有效"
-      text = f"封闭场地{status} · {maneuver_text} {max(0, int(nav.maneuverDistanceM))}m{lane_text}"
+      text = f"封闭场地{status} · {maneuver_text} {max(0, int(nav.maneuverDistanceM))}m{lane_text}{lane_intent_text}"
       color = rl.Color(255, 214, 64, 235)
     else:
       reason = str(nav.rejectReason) if service_healthy else "serviceOffline"

@@ -1,5 +1,3 @@
-import hashlib
-import hmac
 import json
 
 import pytest
@@ -7,17 +5,17 @@ import pytest
 from openpilot.sunnypilot.navassist.protocol import LANE_ACTION_BITS, NavAssistProtocolError, NavAssistStore, parse_snapshot
 
 
-TOKEN = b"track-only-secret"
+APP_KEY_ID = "a" * 32
 SOURCE_WALL_MS = 1_700_000_000_000
 
 
 def store(**kwargs):
-  return NavAssistStore(TOKEN, wall_clock_ms=lambda: SOURCE_WALL_MS, **kwargs)
+  return NavAssistStore(wall_clock_ms=lambda: SOURCE_WALL_MS, **kwargs)
 
 
 def payload(*, session_id="session-a", sequence=1, route_revision=1, valid_for_ms=500):
   return {
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "messageType": "navigation_snapshot",
     "sessionId": session_id,
     "sequence": sequence,
@@ -70,10 +68,6 @@ def encode(value):
   return json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
 
 
-def signature(body):
-  return hmac.new(TOKEN, body, hashlib.sha256).hexdigest()
-
-
 def test_parses_bounded_normalized_snapshot():
   snapshot = parse_snapshot(encode(payload()))
   assert snapshot.session_id == "session-a"
@@ -84,51 +78,45 @@ def test_parses_bounded_normalized_snapshot():
   assert snapshot.lanes[0].recommended_actions == LANE_ACTION_BITS["RIGHT"]
 
 
-def test_hmac_vector_matches_android_contract():
-  body = b'{"a":1,"b":"two"}'
-  assert hmac.new(b"secret", body, hashlib.sha256).hexdigest() == \
-    "0de740ad4f63bf5d8d217729e3ff9dc3aadda131e050cdfa861987c4e2f14666"
-
-
-def test_hmac_sequence_route_revision_and_local_ttl():
+def test_sequence_route_revision_and_local_ttl():
   now = 1_000_000_000
   receiver = store(clock_ns=lambda: now)
   first_body = encode(payload())
-  accepted = receiver.accept(first_body, signature(first_body))
+  accepted = receiver.accept(first_body, APP_KEY_ID)
   assert not accepted.is_stale(now + 500_000_000)
   assert accepted.is_stale(now + 500_000_001)
 
   with pytest.raises(NavAssistProtocolError, match="sequence") as duplicate:
-    receiver.accept(first_body, signature(first_body))
+    receiver.accept(first_body, APP_KEY_ID)
   assert duplicate.value.reason == "replay"
 
   rollback_body = encode(payload(sequence=2, route_revision=0))
   with pytest.raises(NavAssistProtocolError, match="routeRevision"):
-    receiver.accept(rollback_body, signature(rollback_body))
+    receiver.accept(rollback_body, APP_KEY_ID)
 
   next_body = encode(payload(sequence=2, route_revision=2))
-  assert receiver.accept(next_body, signature(next_body)).snapshot.sequence == 2
+  assert receiver.accept(next_body, APP_KEY_ID).snapshot.sequence == 2
 
 
 def test_new_session_may_join_after_failed_sends_but_retired_session_cannot_return():
   receiver = store(clock_ns=lambda: 1)
   first = encode(payload())
-  receiver.accept(first, signature(first))
+  receiver.accept(first, APP_KEY_ID)
 
   # The phone increments sequence on failed HTTP attempts, so a receiver that
   # starts later must be able to join an authenticated session mid-stream.
   valid_new = encode(payload(session_id="session-b", sequence=20))
-  receiver.accept(valid_new, signature(valid_new))
+  receiver.accept(valid_new, APP_KEY_ID)
   retired = encode(payload(session_id="session-a", sequence=2))
   with pytest.raises(NavAssistProtocolError, match="retired session"):
-    receiver.accept(retired, signature(retired))
+    receiver.accept(retired, APP_KEY_ID)
 
 
-def test_rejects_bad_auth_non_finite_unknown_fields_and_ranges():
+def test_rejects_bad_app_identity_non_finite_unknown_fields_and_ranges():
   body = encode(payload())
   receiver = store()
   with pytest.raises(NavAssistProtocolError) as auth:
-    receiver.accept(body, "0" * 64)
+    receiver.accept(body, "not-a-key-id")
   assert auth.value.reason == "authentication"
 
   non_finite = body.replace(b'"accuracyM":3.0', b'"accuracyM":NaN')
@@ -169,7 +157,7 @@ def test_rejects_duplicate_lanes_and_excessive_ttl():
 def test_first_observed_authenticated_session_can_start_above_sequence_one():
   receiver = store(clock_ns=lambda: 1)
   body = encode(payload(sequence=42))
-  assert receiver.accept(body, signature(body)).snapshot.sequence == 42
+  assert receiver.accept(body, APP_KEY_ID).snapshot.sequence == 42
 
 
 def test_source_wall_time_bounds_replay_even_without_a_checkpoint():
@@ -177,28 +165,40 @@ def test_source_wall_time_bounds_replay_even_without_a_checkpoint():
   old["sourceWallTimeMs"] = SOURCE_WALL_MS - 1_001
   body = encode(old)
   with pytest.raises(NavAssistProtocolError, match="freshness window") as error:
-    store().accept(body, signature(body))
+    store().accept(body, APP_KEY_ID)
   assert error.value.reason == "replay"
 
   future = payload()
   future["sourceWallTimeMs"] = SOURCE_WALL_MS + 1_001
   body = encode(future)
   with pytest.raises(NavAssistProtocolError, match="freshness window"):
-    store().accept(body, signature(body))
+    store().accept(body, APP_KEY_ID)
 
 
 def test_replay_checkpoint_survives_daemon_store_restart(tmp_path):
   checkpoint = tmp_path / "navassist-replay.json"
   first_body = encode(payload(sequence=7))
-  store(checkpoint_path=checkpoint).accept(first_body, signature(first_body))
+  store(checkpoint_path=checkpoint).accept(first_body, APP_KEY_ID)
 
   restarted = store(checkpoint_path=checkpoint)
   with pytest.raises(NavAssistProtocolError, match="sequence") as replay:
-    restarted.accept(first_body, signature(first_body))
+    restarted.accept(first_body, APP_KEY_ID)
   assert replay.value.reason == "replay"
 
   next_body = encode(payload(sequence=8))
-  assert restarted.accept(next_body, signature(next_body)).snapshot.sequence == 8
+  assert restarted.accept(next_body, APP_KEY_ID).snapshot.sequence == 8
+
+
+def test_explicit_offroad_pairing_reset_clears_live_and_persisted_replay_state(tmp_path):
+  checkpoint = tmp_path / "navassist-replay.json"
+  receiver = store(checkpoint_path=checkpoint)
+  body = encode(payload(sequence=7))
+  receiver.accept(body, APP_KEY_ID)
+  assert checkpoint.exists() and receiver.current() is not None
+
+  receiver.reset()
+  assert not checkpoint.exists() and receiver.current() is None
+  assert receiver.accept(body, APP_KEY_ID).snapshot.sequence == 7
 
 
 def test_corrupt_matching_replay_checkpoint_fails_closed(tmp_path):
