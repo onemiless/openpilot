@@ -14,7 +14,9 @@ import numpy as np
 
 from openpilot.common.transformations.camera import DEVICE_CAMERAS, view_frame_from_device_frame
 from openpilot.common.transformations.orientation import rot_from_euler
-from openpilot.sunnypilot.lane_topology.image_marking import measure_marking_continuity, project_model_lane_to_image
+from openpilot.sunnypilot.lane_topology.image_marking import project_model_lane_to_image
+from openpilot.sunnypilot.lane_topology.metric_marking import measure_metric_marking, project_model_lane_metric_samples, \
+                                                               TemporalMarkingFilter
 from openpilot.sunnypilot.lane_topology.primary_model import PrimaryLaneVisibilityFilter, model_v2_to_observations
 from openpilot.sunnypilot.lane_topology.tracker import LaneTopologyTracker
 from openpilot.sunnypilot.lane_topology.types import LaneMarkingType
@@ -100,10 +102,11 @@ def main() -> int:
   marking_kwargs = {
     "center_radius": max(3, int(round(3 * sampling_scale))),
     "side_offset": max(10, int(round(10 * sampling_scale))),
-    "row_step_px": max(4.0, 4.0 * sampling_scale),
+    "search_radius": max(4, int(round(4 * sampling_scale))),
   }
   tracker = LaneTopologyTracker(max_missed_frames=3)
   visibility = PrimaryLaneVisibilityFilter()
+  temporal_marking = TemporalMarkingFilter()
   distributions = {name: Counter() for name in ("boundaries", "lanes", "ego_left", "ego_right", "state", "marking")}
   records = []
   exact_matches = missing_models = ego_transitions = 0
@@ -134,10 +137,16 @@ def main() -> int:
       lane_index: project_model_lane_to_image(lane, camera_from_calib, width, height)
       for lane_index, lane in enumerate(model.laneLines)
     }
+    metric_samples = {
+      lane_index: project_model_lane_metric_samples(
+        lane, camera_from_calib, width, height,
+        image_margin_px=marking_kwargs["center_radius"] + marking_kwargs["side_offset"] + marking_kwargs["search_radius"],
+      ) for lane_index, lane in enumerate(model.laneLines)
+    }
     rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-    evidence = {lane_index: measure_marking_continuity(rgb, points, **marking_kwargs)
-                for lane_index, points in pixel_lanes.items()}
-    types = {lane_index: value.marking_type for lane_index, value in evidence.items()}
+    evidence = {lane_index: measure_metric_marking(rgb, samples, **marking_kwargs)
+                for lane_index, samples in metric_samples.items()}
+    types = {lane_index: temporal_marking.update(lane_index, value) for lane_index, value in evidence.items()}
     visible_source_ids = visibility.update(model.laneLineProbs)
     observations = model_v2_to_observations(
       model, confidence_threshold=0.0, visible_source_ids=visible_source_ids,
@@ -165,12 +174,19 @@ def main() -> int:
       "ego_right": topology.ego_lane_index_from_right,
       "state": topology.state.name,
       "markings": [boundary.marking_type.name for boundary in topology.boundaries],
-      "raw_markings": [types[index].name for index in range(4)],
+      "stable_markings": [types[index].name for index in range(4)],
+      "frame_markings": [evidence[index].marking_type.name for index in range(4)],
       "marking_evidence": [{
         "sample_count": evidence[index].sample_count,
+        "confidence": evidence[index].confidence,
         "coverage": evidence[index].coverage,
         "transitions": evidence[index].transitions,
         "lit_runs": evidence[index].lit_runs,
+        "max_internal_dark_gap_m": evidence[index].max_internal_dark_gap_m,
+        "median_lit_run_m": evidence[index].median_lit_run_m,
+        "complete_lit_runs": evidence[index].complete_lit_runs,
+        "internal_dark_runs": evidence[index].internal_dark_runs,
+        "run_regularity": evidence[index].run_regularity,
       } for index in range(4)],
       "probabilities": [float(value) for value in model.laneLineProbs],
     })
