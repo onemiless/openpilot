@@ -31,7 +31,7 @@ class LongitudinalPlannerSP:
     self.scc = SmartCruiseControl()
     self.resolver = SpeedLimitResolver()
     self.sla = SpeedLimitAssist(CP, CP_SP)
-    self.nav = NavigationSpeedController(require_sp_longitudinal_owner=CP.brand == "tesla")
+    self.nav = NavigationSpeedController(enabled=CP.brand == "tesla", require_sp_longitudinal_owner=CP.brand == "tesla")
     self.generation = int(model_bundle.generation) if (model_bundle := get_active_bundle()) else None
     self.source = LongitudinalPlanSource.cruise
     self.e2e_alerts_helper = E2EAlertsHelper()

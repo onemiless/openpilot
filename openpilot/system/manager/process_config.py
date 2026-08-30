@@ -69,12 +69,12 @@ def only_onroad(started: bool, params: Params, CP: car.CarParams) -> bool:
 def c3xl_local_diagnostics(started: bool, params: Params, CP: car.CarParams) -> bool:
   return started and get_hardware_profile() == HardwareProfile.C3XL
 
-def navassist_receiver_ready(_started: bool, _params: Params, CP: car.CarParams) -> bool:
-  return bool(get_hardware_profile() == HardwareProfile.C3XL and CP.brand == "tesla")
+def navassist_receiver_ready(_started: bool, _params: Params, _CP: car.CarParams) -> bool:
+  return get_hardware_profile() == HardwareProfile.C3XL
 
 
 def navassist_lane_observer_ready(started: bool, params: Params, CP: car.CarParams) -> bool:
-  return started and navassist_receiver_ready(started, params, CP)
+  return started and CP.brand == "tesla" and navassist_receiver_ready(started, params, CP)
 
 def record_route_video(started: bool, params: Params, CP: car.CarParams) -> bool:
   return (get_hardware_profile() != HardwareProfile.C3XL and

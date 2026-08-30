@@ -26,12 +26,13 @@ def test_receiver_is_always_available_and_lane_observer_stays_onroad():
   assert 'PythonProcess("nav_lane_intentd", "openpilot.sunnypilot.navassist.nav_lane_intentd", navassist_lane_observer_ready)' in process_config
   receiver = process_config.split("def navassist_receiver_ready", 1)[1].split("def ", 1)[0]
   assert "HardwareProfile.C3XL" in receiver
-  assert 'CP.brand == "tesla"' in receiver
+  assert 'brand == "tesla"' not in receiver
   assert "NavAssistToken" not in receiver
   assert "NavAssistTrackMode" not in receiver
   assert "NavAssistTrackGeofence" not in receiver
   lane_observer = process_config.split("def navassist_lane_observer_ready", 1)[1].split("def ", 1)[0]
   assert "started" in lane_observer
+  assert 'CP.brand == "tesla"' in lane_observer
   assert "navassist_receiver_ready" in lane_observer
 
   lane_daemon = (NAVASSIST / "lane_topologyd.py").read_text()
@@ -160,7 +161,7 @@ class FakeParams:
     return self.values[key]
 
 
-def test_manager_receiver_requires_only_c3xl_tesla(monkeypatch):
+def test_manager_receiver_requires_only_c3xl_while_control_observers_require_tesla(monkeypatch):
   tesla = SimpleNamespace(brand="tesla")
   monkeypatch.setattr(process_config, "get_hardware_profile", lambda: HardwareProfile.C3XL)
   configured = FakeParams()
@@ -168,8 +169,8 @@ def test_manager_receiver_requires_only_c3xl_tesla(monkeypatch):
   assert process_config.navassist_receiver_ready(True, configured, tesla)
   assert process_config.navassist_lane_observer_ready(True, configured, tesla)
   assert not process_config.navassist_lane_observer_ready(False, configured, tesla)
-  assert not process_config.navassist_receiver_ready(
-    True, configured, SimpleNamespace(brand="honda"),
-  )
+  honda = SimpleNamespace(brand="honda")
+  assert process_config.navassist_receiver_ready(False, configured, honda)
+  assert not process_config.navassist_lane_observer_ready(True, configured, honda)
   monkeypatch.setattr(process_config, "get_hardware_profile", lambda: HardwareProfile.STANDARD)
   assert not process_config.navassist_receiver_ready(True, configured, tesla)
