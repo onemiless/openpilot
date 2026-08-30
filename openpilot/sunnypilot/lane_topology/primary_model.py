@@ -5,6 +5,7 @@ import math
 from typing import Protocol
 
 from openpilot.sunnypilot.lane_topology.adapter import LaneTopologyFrame
+from openpilot.sunnypilot.lane_topology.geometry import canonical_points, interpolate_y
 from openpilot.sunnypilot.lane_topology.types import LaneBoundaryObservation, LaneMarkingType
 
 
@@ -19,6 +20,21 @@ class LaneLineLike(Protocol):
 class ModelV2Like(Protocol):
   laneLines: Iterable[LaneLineLike]
   laneLineProbs: Iterable[float]
+
+
+def find_ego_source_ids(observations: Iterable[LaneBoundaryObservation], *, sample_x_m: float = 10.0) -> tuple[int, int] | None:
+  """Return the model source IDs immediately left and right of vehicle y=0."""
+
+  positioned = []
+  for observation in observations:
+    y = interpolate_y(canonical_points(observation.points), sample_x_m)
+    if y is not None:
+      positioned.append((y, observation.source_id))
+  positioned.sort(reverse=True)
+  for (left_y, left_id), (right_y, right_id) in zip(positioned, positioned[1:], strict=False):
+    if left_y > 0.0 > right_y:
+      return left_id, right_id
+  return None
 
 
 def model_v2_to_observations(model_v2: ModelV2Like, *, confidence_threshold: float = 0.35,

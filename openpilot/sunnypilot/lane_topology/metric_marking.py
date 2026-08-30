@@ -37,7 +37,7 @@ class MetricMarkingEvidence:
 
 def project_model_lane_metric_samples(lane_line: object, camera_from_calib: np.ndarray,
                                       image_width: int, image_height: int, *,
-                                      min_distance_m: float = 5.0, max_distance_m: float = 45.0,
+                                      min_distance_m: float = 8.0, max_distance_m: float = 35.0,
                                       distance_step_m: float = 1.0,
                                       image_margin_px: float = 20.0) -> tuple[MetricLaneSample, ...]:
   """Interpolate a model lane uniformly in metres, then project to the image."""
@@ -186,7 +186,7 @@ def measure_metric_marking(image: np.ndarray, samples: tuple[MetricLaneSample, .
 class TemporalMarkingFilter:
   """Accumulate independent per-boundary marking evidence over time."""
 
-  def __init__(self, *, minimum_score: float = 2.2, dominance_ratio: float = 1.6, decay: float = 0.88):
+  def __init__(self, *, minimum_score: float = 3.0, dominance_ratio: float = 2.0, decay: float = 0.90):
     self.minimum_score = minimum_score
     self.dominance_ratio = dominance_ratio
     self.decay = decay

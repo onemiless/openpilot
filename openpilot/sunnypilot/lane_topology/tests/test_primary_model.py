@@ -3,8 +3,8 @@ from types import SimpleNamespace
 import pytest
 
 from openpilot.sunnypilot.lane_topology.adapter import LaneTopologyFrame
-from openpilot.sunnypilot.lane_topology.primary_model import PrimaryLaneVisibilityFilter, PrimaryModelLaneTopologyAdapter, \
-                                                               model_v2_to_observations
+from openpilot.sunnypilot.lane_topology.primary_model import find_ego_source_ids, PrimaryLaneVisibilityFilter, \
+                                                               PrimaryModelLaneTopologyAdapter, model_v2_to_observations
 from openpilot.sunnypilot.lane_topology.types import LaneMarkingType
 
 
@@ -48,3 +48,8 @@ def test_visibility_hysteresis_retains_a_line_until_exit_threshold():
 def test_primary_model_rejects_incomplete_contract():
   with pytest.raises(ValueError, match="exactly four"):
     model_v2_to_observations(SimpleNamespace(laneLines=(), laneLineProbs=()))
+
+
+def test_find_ego_source_ids_ignores_outer_lines():
+  observations = model_v2_to_observations(model_fixture())
+  assert find_ego_source_ids(observations) == (2, 1)

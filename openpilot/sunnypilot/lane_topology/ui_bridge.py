@@ -7,9 +7,9 @@ import numpy as np
 from openpilot.sunnypilot.lane_topology.adapter import LaneTopologyFrame
 from openpilot.sunnypilot.lane_topology.metric_marking import measure_metric_marking, MetricMarkingEvidence, \
                                                                project_model_lane_metric_samples, TemporalMarkingFilter
-from openpilot.sunnypilot.lane_topology.primary_model import PrimaryModelLaneTopologyAdapter
+from openpilot.sunnypilot.lane_topology.primary_model import find_ego_source_ids, PrimaryModelLaneTopologyAdapter
 from openpilot.sunnypilot.lane_topology.tracker import LaneTopologyTracker
-from openpilot.sunnypilot.lane_topology.types import LaneMarkingType, LaneTopology
+from openpilot.sunnypilot.lane_topology.types import LaneBoundaryObservation, LaneMarkingType, LaneTopology
 
 
 def visionbuf_luma(frame: object) -> np.ndarray:
@@ -35,6 +35,7 @@ class LaneTopologyUIBridge:
     self.last_frame_id = -1
     self.last_image_model_frame_id = -1
     self.model_v2: object | None = None
+    self.ego_source_ids: tuple[int, int] | None = None
     self.marking_evidence = [MetricMarkingEvidence.unknown() for _ in range(4)]
     self.last_error: str | None = None
 
@@ -48,6 +49,7 @@ class LaneTopologyUIBridge:
     self.last_frame_id = -1
     self.last_image_model_frame_id = -1
     self.model_v2 = None
+    self.ego_source_ids = None
     self.last_error = None
 
   def update(self, model_v2: object) -> LaneTopology | None:
@@ -60,6 +62,20 @@ class LaneTopologyUIBridge:
       timestamp_ns = int(model_v2.timestampEof)  # type: ignore[attr-defined]
       frame = LaneTopologyFrame(frame_id, timestamp_ns, model_v2)
       observations = self.adapter.infer(frame)
+      ego_source_ids = find_ego_source_ids(observations)
+      if ego_source_ids != self.ego_source_ids:
+        self.temporal_marking.reset()
+        self.marking_types = [LaneMarkingType.unknown] * 4
+        self.marking_evidence = [MetricMarkingEvidence.unknown() for _ in range(4)]
+        self.tracker.reset()
+        observations = tuple(LaneBoundaryObservation(
+          source_id=observation.source_id,
+          points=observation.points,
+          marking_type=LaneMarkingType.unknown,
+          confidence=observation.confidence,
+          visible=observation.visible,
+        ) for observation in observations)
+      self.ego_source_ids = ego_source_ids
       self.current = self.tracker.update(observations, frame_id=frame_id, timestamp_ns=timestamp_ns)
       self.last_error = None
       return self.current
@@ -85,15 +101,16 @@ class LaneTopologyUIBridge:
       margin = center_radius + side_offset + search_radius
       probabilities = tuple(float(value) for value in self.model_v2.laneLineProbs)  # type: ignore[attr-defined]
       for lane_index, lane in enumerate(self.model_v2.laneLines):  # type: ignore[attr-defined]
-        if probabilities[lane_index] < 0.25:
+        if self.ego_source_ids is None or lane_index not in self.ego_source_ids or probabilities[lane_index] < 0.25:
           evidence = MetricMarkingEvidence.unknown()
+          self.marking_types[lane_index] = LaneMarkingType.unknown
         else:
           samples = project_model_lane_metric_samples(lane, camera_from_calib, width, height, image_margin_px=margin)
           evidence = measure_metric_marking(
             image, samples, center_radius=center_radius, side_offset=side_offset, search_radius=search_radius,
           )
+          self.marking_types[lane_index] = self.temporal_marking.update(lane_index, evidence)
         self.marking_evidence[lane_index] = evidence
-        self.marking_types[lane_index] = self.temporal_marking.update(lane_index, evidence)
       self.last_image_model_frame_id = self.last_frame_id
       return True
     except Exception as error:
