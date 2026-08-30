@@ -17,7 +17,7 @@ def test_no_data_is_invalid_and_stale():
 
 def test_fresh_snapshot_maps_to_typed_cereal_without_control_commands():
   message = build_nav_assist_message(
-    accepted(), 1_100_000_000, track_geofence_valid=True, local_localization_valid=True,
+    accepted(), 1_100_000_000, local_localization_valid=True,
   )
   state = message.navAssistStateSP
   assert message.valid and state.valid and not state.stale
@@ -32,7 +32,7 @@ def test_fresh_snapshot_maps_to_typed_cereal_without_control_commands():
 
 def test_local_expiry_fails_closed_while_retaining_diagnostics():
   message = build_nav_assist_message(
-    accepted(), 1_500_000_001, track_geofence_valid=True, local_localization_valid=True,
+    accepted(), 1_500_000_001, local_localization_valid=True,
   )
   state = message.navAssistStateSP
   assert message.valid
@@ -41,14 +41,9 @@ def test_local_expiry_fails_closed_while_retaining_diagnostics():
   assert state.rejectReason == "stale"
 
 
-def test_local_geofence_and_localization_are_independent_hard_gates():
-  outside = build_nav_assist_message(
-    accepted(), 1_100_000_000, track_geofence_valid=False, local_localization_valid=True,
-  ).navAssistStateSP
-  assert not outside.valid and outside.rejectReason == "outsideTrack"
-
+def test_local_localization_is_a_hard_gate():
   no_localization = build_nav_assist_message(
-    accepted(), 1_100_000_000, track_geofence_valid=False, local_localization_valid=False,
+    accepted(), 1_100_000_000, local_localization_valid=False,
   ).navAssistStateSP
   assert not no_localization.valid and no_localization.rejectReason == "localLocalization"
 
@@ -58,7 +53,7 @@ def test_non_realtime_or_non_mobile_source_cannot_become_control_valid():
   raw["navigationMode"] = "idle"
   current = AcceptedSnapshot(parse_snapshot(encode(raw)), 1_000_000_000, 1_500_000_000)
   state = build_nav_assist_message(
-    current, 1_100_000_000, track_geofence_valid=True, local_localization_valid=True,
+    current, 1_100_000_000, local_localization_valid=True,
   ).navAssistStateSP
   assert not state.valid and state.rejectReason == "noData"
 
@@ -66,7 +61,7 @@ def test_non_realtime_or_non_mobile_source_cannot_become_control_valid():
   raw["sourcePlatform"] = "track"
   current = AcceptedSnapshot(parse_snapshot(encode(raw)), 1_000_000_000, 1_500_000_000)
   state = build_nav_assist_message(
-    current, 1_100_000_000, track_geofence_valid=True, local_localization_valid=True,
+    current, 1_100_000_000, local_localization_valid=True,
   ).navAssistStateSP
   assert not state.valid and state.rejectReason == "noData"
 
@@ -78,7 +73,7 @@ def test_missing_phone_observation_blocks_are_retained_as_invalid_diagnostics():
   raw.pop("lanes")
   current = AcceptedSnapshot(parse_snapshot(encode(raw)), 1_000_000_000, 1_500_000_000)
   state = build_nav_assist_message(
-    current, 1_100_000_000, track_geofence_valid=True, local_localization_valid=True,
+    current, 1_100_000_000, local_localization_valid=True,
   ).navAssistStateSP
   assert not state.valid and state.rejectReason == "noData"
 
@@ -88,7 +83,7 @@ def test_stale_or_inaccurate_phone_observations_do_not_become_fresh_via_new_tran
   raw["guidance"]["observedAtMs"] = raw["sourceWallTimeMs"] - 2_001
   old_guidance = AcceptedSnapshot(parse_snapshot(encode(raw)), 1_000_000_000, 1_500_000_000)
   state = build_nav_assist_message(
-    old_guidance, 1_100_000_000, track_geofence_valid=True, local_localization_valid=True,
+    old_guidance, 1_100_000_000, local_localization_valid=True,
   ).navAssistStateSP
   assert not state.valid and state.rejectReason == "phoneLocalization"
 
@@ -96,7 +91,7 @@ def test_stale_or_inaccurate_phone_observations_do_not_become_fresh_via_new_tran
   raw["location"]["accuracyM"] = 26.0
   inaccurate = AcceptedSnapshot(parse_snapshot(encode(raw)), 1_000_000_000, 1_500_000_000)
   state = build_nav_assist_message(
-    inaccurate, 1_100_000_000, track_geofence_valid=True, local_localization_valid=True,
+    inaccurate, 1_100_000_000, local_localization_valid=True,
   ).navAssistStateSP
   assert not state.valid and state.rejectReason == "phoneLocalization"
 
@@ -106,7 +101,7 @@ def test_stale_lane_guidance_is_hidden_without_disabling_longitudinal_guidance()
   raw["lanes"]["observedAtMs"] = raw["sourceWallTimeMs"] - 2_001
   stale_lanes = AcceptedSnapshot(parse_snapshot(encode(raw)), 1_000_000_000, 1_500_000_000)
   state = build_nav_assist_message(
-    stale_lanes, 1_100_000_000, track_geofence_valid=True, local_localization_valid=True,
+    stale_lanes, 1_100_000_000, local_localization_valid=True,
   ).navAssistStateSP
   assert state.valid and len(state.lanes) == 0
   assert state.laneGuidanceObservedAtMs == raw["lanes"]["observedAtMs"]

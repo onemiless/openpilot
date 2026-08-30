@@ -40,12 +40,10 @@ def _phone_observations_valid(snapshot) -> bool:
   )
 
 
-def build_nav_assist_message(current: AcceptedSnapshot | None, now_ns: int, *, track_geofence_valid: bool = False,
-                             local_localization_valid: bool = False):
+def build_nav_assist_message(current: AcceptedSnapshot | None, now_ns: int, *, local_localization_valid: bool = False):
   message = messaging.new_message("navAssistStateSP")
   state = message.navAssistStateSP
   state.publishMonoTime = now_ns
-  state.trackGeofenceValid = track_geofence_valid
   if current is None:
     message.valid = False
     state.valid = False
@@ -107,7 +105,7 @@ def build_nav_assist_message(current: AcceptedSnapshot | None, now_ns: int, *, t
   state.valid = bool(not stale and control_source_valid and snapshot.route_active and snapshot.route_matched and not snapshot.gps_weak
                      and snapshot.location_present and snapshot.guidance_present
                      and phone_observations_valid
-                     and local_localization_valid and track_geofence_valid)
+                     and local_localization_valid)
   if stale:
     state.rejectReason = "stale"
   elif not control_source_valid:
@@ -124,8 +122,6 @@ def build_nav_assist_message(current: AcceptedSnapshot | None, now_ns: int, *, t
     state.rejectReason = "phoneLocalization"
   elif not local_localization_valid:
     state.rejectReason = "localLocalization"
-  elif not track_geofence_valid:
-    state.rejectReason = "outsideTrack"
   else:
     state.rejectReason = "none"
   return message

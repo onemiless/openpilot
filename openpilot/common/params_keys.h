@@ -291,7 +291,6 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"NavAssistPairedApp", {PERSISTENT | DONT_LOG, JSON}},
     {"NavAssistDevicePrivateKey", {PERSISTENT | DONT_LOG, STRING}},
     {"NavAssistPairingReset", {CLEAR_ON_MANAGER_START, BOOL}},
-    {"NavAssistTrackGeofence", {PERSISTENT | DONT_LOG, JSON}},
     {"ToyotaEnforceStockLongitudinal", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"ToyotaStopAndGoHack", {PERSISTENT | BACKUP, BOOL, "0"}},
 

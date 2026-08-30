@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 from openpilot.cereal import log
 from openpilot.sunnypilot.navassist.lane_topologyd import services_healthy
-from openpilot.sunnypilot.navassist.navassistd import LOCALIZATION_MAX_AGE_NS, load_track_geofence, local_localization_valid
+from openpilot.sunnypilot.navassist.navassistd import LOCALIZATION_MAX_AGE_NS, local_localization_valid
 from openpilot.sunnypilot.hardware.profile import HardwareProfile
 from openpilot.system.manager import process_config
 
@@ -42,12 +42,12 @@ def test_receiver_is_always_available_and_lane_observer_stays_onroad():
   assert "bridge.last_frame_id % IMAGE_CLASSIFIER_DIVISOR" in lane_daemon
 
   navassist_daemon = (NAVASSIST / "navassistd.py").read_text()
-  assert "NavAssistDeviceIdentity.load_or_create()" in navassist_daemon
+  assert "NavAssistDeviceIdentity.load_or_create(params=params)" in navassist_daemon
   assert "NavAssistPairingStore(params)" in navassist_daemon
   assert "NavAssistDiscoveryServer(" in navassist_daemon
   assert "NavAssistToken" not in navassist_daemon
   assert 'params.get_bool("NavAssistTrackMode")' not in navassist_daemon
-  assert "load_track_geofence" in navassist_daemon
+  assert "Geofence" not in navassist_daemon
   assert "discovery_server.shutdown()" in navassist_daemon
   assert "discovery_thread.join(timeout=2)" in navassist_daemon
 
@@ -63,6 +63,17 @@ def test_developer_settings_show_automatic_pairing_without_token_or_track_toggle
     assert "NavAssistToken" not in source
     assert "NavAssistTrackMode" not in source
     assert "pair" in source.lower()
+
+
+def test_navigation_control_has_no_geofence_configuration_or_gate():
+  params_keys = (ROOT / "common/params_keys.h").read_text()
+  schema = (ROOT / "cereal/custom.capnp").read_text()
+  publisher = (NAVASSIST / "publisher.py").read_text()
+  assert "NavAssistTrackGeofence" not in params_keys
+  assert "trackGeofenceValid @" not in schema
+  assert "outsideTrack @" not in schema
+  assert "track_geofence" not in publisher
+  assert "outsideTrack" not in publisher
 
 
 def test_planner_uses_common_target_seam_and_controlsd_is_untouched():
@@ -119,15 +130,6 @@ def test_local_localization_requires_alive_valid_and_bounded_age():
   assert not local_localization_valid(sm, now_ns)
 
 
-def test_missing_or_malformed_geofence_keeps_transport_online_but_control_unarmed():
-  assert load_track_geofence(None) is None
-  assert load_track_geofence({"coordinateSystem": "wgs84", "polygon": []}) is None
-  assert load_track_geofence({
-    "coordinateSystem": "wgs84",
-    "polygon": [[0, 0], [0, 1], [1, 1]],
-  }) is not None
-
-
 def test_lane_control_inputs_require_seen_alive_and_valid():
   services = ("modelV2", "extrinsicsCalibration", "deviceState", "narrowRoadCameraState")
   sm = SimpleNamespace(
@@ -152,13 +154,7 @@ def test_track_hud_never_treats_seen_alone_as_service_health():
 
 
 class FakeParams:
-  def __init__(self, *, geofence=None):
-    self.values = {
-      "NavAssistTrackGeofence": geofence,
-    }
-
-  def get(self, key):
-    return self.values[key]
+  pass
 
 
 def test_manager_receiver_requires_only_c3xl_while_control_observers_require_tesla(monkeypatch):

@@ -11,10 +11,9 @@ from openpilot.common.realtime import Ratekeeper
 from openpilot.common.swaglog import cloudlog
 from openpilot.sunnypilot.navassist.discovery import DISCOVERY_HOST, DISCOVERY_PORT, NavAssistDiscoveryServer
 from openpilot.sunnypilot.navassist.identity import NavAssistDeviceIdentity, NavAssistPairingStore
-from openpilot.sunnypilot.navassist.protocol import NavAssistProtocolError, NavAssistStore
+from openpilot.sunnypilot.navassist.protocol import NavAssistStore
 from openpilot.sunnypilot.navassist.publisher import build_nav_assist_message
 from openpilot.sunnypilot.navassist.server import NavAssistHTTPServer
-from openpilot.sunnypilot.navassist.geofence import TrackGeofence
 
 
 LISTEN_HOST = "0.0.0.0"
@@ -22,18 +21,8 @@ LISTEN_PORT = 7766
 PUBLISH_HZ = 20
 LOCALIZATION_MAX_AGE_NS = 500_000_000
 LOCAL_POSITION_MAX_STD_M = 10.0
-TRACK_GEOFENCE_BASE_MARGIN_M = 20.0
 REPLAY_CHECKPOINT_PATH = "/dev/shm/navassist_replay_state.json"
-TRACK_GEOFENCE_REFRESH_NS = 1_000_000_000
-
-
-def load_track_geofence(value) -> TrackGeofence | None:
-  if value is None:
-    return None
-  try:
-    return TrackGeofence.parse(value)
-  except NavAssistProtocolError:
-    return None
+MAINTENANCE_REFRESH_NS = 1_000_000_000
 
 
 def local_position_std_m(location) -> float:
@@ -62,7 +51,6 @@ def local_localization_valid(sm, now_ns: int) -> bool:
 
 def main() -> None:
   params = Params()
-  geofence = load_track_geofence(params.get("NavAssistTrackGeofence"))
   identity = NavAssistDeviceIdentity.load_or_create(params=params)
   pairing = NavAssistPairingStore(params)
 
@@ -94,28 +82,19 @@ def main() -> None:
     pm = messaging.PubMaster(["navAssistStateSP"])
     sm = messaging.SubMaster(["liveLocationKalman"])
     ratekeeper = Ratekeeper(PUBLISH_HZ)
-    next_geofence_refresh_ns = 0
+    next_maintenance_ns = 0
     while True:
       sm.update(0)
       now_ns = time.monotonic_ns()
-      if now_ns >= next_geofence_refresh_ns:
+      if now_ns >= next_maintenance_ns:
         if params.get_bool("NavAssistPairingReset"):
           pairing.reset()
           store.reset()
           params.put_bool("NavAssistPairingReset", False, block=True)
-        geofence = load_track_geofence(params.get("NavAssistTrackGeofence"))
-        next_geofence_refresh_ns = now_ns + TRACK_GEOFENCE_REFRESH_NS
-      location = sm["liveLocationKalman"]
+        next_maintenance_ns = now_ns + MAINTENANCE_REFRESH_NS
       localization_valid = local_localization_valid(sm, now_ns)
-      boundary_margin_m = TRACK_GEOFENCE_BASE_MARGIN_M + local_position_std_m(location)
-      track_geofence_valid = bool(
-        geofence is not None and localization_valid and geofence.contains_with_margin(
-          location.positionGeodetic.value[0], location.positionGeodetic.value[1], boundary_margin_m,
-        )
-      )
       message = build_nav_assist_message(
-        store.current(), now_ns, track_geofence_valid=track_geofence_valid,
-        local_localization_valid=localization_valid,
+        store.current(), now_ns, local_localization_valid=localization_valid,
       )
       pm.send("navAssistStateSP", message)
       ratekeeper.keep_time()

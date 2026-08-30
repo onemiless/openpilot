@@ -26,8 +26,6 @@ intersection-turn curvature or highway-exit steering has been implemented.
 - Use `navassist-track-p0` based on `dev-sp-egpu-lane`.
 - Test only on a physically closed course with a safety driver and observer.
 - Configure a dedicated private phone/C3XL network.
-- Survey a WGS-84 polygon with three to 64 vertices that contains the complete
-  vehicle test envelope and excludes public access roads.
 - Install the v3 TesNav App and perform its first automatic C3XL pairing while
   the vehicle is offroad on a controlled private LAN. No shared token is
   configured. C3XL pins the first valid P-256 App identity and ignores later
@@ -46,20 +44,13 @@ owner from another live App on that LAN before the first pin, so do not perform
 initial pairing on a shared network. Reinstalling the App changes its identity
 and requires an explicit offroad pairing reset.
 
-On C3XL, configure `NavAssistTrackGeofence` offroad using the local service
-console. The geofence value is JSON:
-
-```json
-{"coordinateSystem":"wgs84","polygon":[[31.0,121.0],[31.0,121.01],[31.01,121.01],[31.01,121.0]]}
-```
-
 Do not place real track coordinates or private keys in the repository. P-256
 signatures protect authenticity and integrity after TOFU pinning, not
 confidentiality; do not use P0 on a shared network.
 
-There is no per-drive Track Mode or shared-token step. With the one-time track
-polygon configured, a fresh realtime TesNav route becomes eligible only while
-SP has the required control authority and every localization/data gate passes.
+There is no per-drive Track Mode, shared-token, or geofence step. A fresh
+realtime TesNav route becomes eligible only while SP has the required control
+authority and every localization/data gate passes.
 
 ## Mandatory stationary checks
 
@@ -76,17 +67,15 @@ SP has the required control authority and every localization/data gate passes.
    route-revision, expired source-wall timestamp, contradictory inactive mode,
    malformed, non-finite, and oversized requests. Every request must be rejected
    or remain control-invalid and must not make `navAssistStateSP.valid` true.
-5. Put the local LLK point outside the test polygon or invalidate localization.
-   The state must report `outsideTrack` or `localLocalization` and remain unable
-   to affect the planner.
-   Repeat with GPS loss, local position uncertainty above 10 m, and a point less
-   than 20 m plus its uncertainty from the polygon boundary.
+5. Invalidate local localization. The state must report `localLocalization` and
+   remain unable to affect the planner. Repeat with GPS loss and local position
+   uncertainty above 10 m.
 6. Stop phone updates for more than 500 ms. The state must become stale and the
    speed ceiling must release upward at its bounded release rate, never jump to
    zero or command braking directly.
 7. Restart the manager. The already-paired App must automatically rediscover the
    receiver, while old snapshots remain unable to affect planning until fresh
-   realtime navigation, localization, geofence, and SP authority all return.
+   realtime navigation, localization, and SP authority all return.
 8. Restart only `navassistd`, replay the last accepted signed request, and verify
    the persisted receive high-water mark rejects it.
 
@@ -152,7 +141,7 @@ Stop the active test and return to HIL/root-cause analysis after any:
 
 - unintended lateral actuation;
 - failure of brake/cancel/driver override;
-- accepted unauthenticated, replayed, stale, or outside-geofence input;
+- accepted unauthenticated, replayed, or stale input;
 - speed target below the configured non-stop floor;
 - harsh braking caused by a late navigation event;
 - route revision causing an old maneuver to reactivate;

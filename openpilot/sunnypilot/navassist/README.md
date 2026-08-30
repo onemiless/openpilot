@@ -10,16 +10,10 @@ The manager keeps the network-only `navassistd` receiver available on a Tesla
 C3XL so an installed TesNav App can reconnect without a manually copied token.
 `lane_topologyd` still runs only onroad. Network availability grants no control
 authority. Active use separately requires valid realtime navigation, SP control
-authority, valid local localization, and a `NavAssistTrackGeofence` WGS-84 test-track polygon, for
-example:
-
-```json
-{"coordinateSystem":"wgs84","polygon":[[31.0,121.0],[31.0,121.01],[31.01,121.01],[31.01,121.0]]}
-```
-
-No per-drive Track Mode or token step exists. Configure the surveyed test polygon once.
-The normalized snapshot remains invalid unless C3XL's own `liveLocationKalman`
-is valid and inside this polygon; enabling SP never bypasses that condition.
+authority, and valid local localization. No per-drive Track Mode, token, or
+geofence configuration step exists. The normalized snapshot remains invalid
+unless C3XL's own `liveLocationKalman` is healthy; enabling SP never bypasses
+that condition.
 
 On first use, C3XL trusts exactly one self-signed App identity only while
 offroad. That P-256 public key is persisted as `NavAssistPairedApp`; later
@@ -121,9 +115,8 @@ already-paired App; transport availability never grants control authority.
 Transport freshness cannot make an old SDK callback fresh: active use also
 requires phone location accuracy no worse than 25 m, location observation age
 no more than 1 s, guidance observation age no more than 2 s, a known coordinate
-system, route matching, and healthy C3XL GPS/localization inside the geofence.
-The local ECEF position standard deviation must be at most 10 m, and the point
-must remain at least 20 m plus that uncertainty inside the surveyed boundary.
+system, route matching, and healthy C3XL GPS/localization. The local ECEF
+position standard deviation must be at most 10 m.
 Only Android/iOS `realtime` navigation can become control-valid; simulation and
 generic track sources remain diagnostic-only.
 

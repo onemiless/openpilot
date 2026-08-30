@@ -640,7 +640,7 @@ struct NavAssistStateSP @0xc2243c65e0340384 {
   sourceAgeMs @36 :Float32;
   rejectReason @37 :RejectReason;
   guidanceObservedAtMs @38 :UInt64;
-  trackGeofenceValid @39 :Bool;
+  trackGeofenceValidDEPRECATED @39 :Bool;
 
   struct LaneGuidance {
     index @0 :UInt8;
@@ -705,7 +705,7 @@ struct NavAssistStateSP @0xc2243c65e0340384 {
     stale @6;
     routeUnmatched @7;
     gpsWeak @8;
-    outsideTrack @9;
+    outsideTrackDEPRECATED @9;
     localLocalization @10;
     phoneLocalization @11;
   }
