@@ -15,3 +15,9 @@ def test_ui_integration_stays_out_of_model_planner_control_and_schema():
   assert "PubMaster" not in ui_state
   assert "sendcan" not in ui_state
   assert "modelDataV2SP" not in ui_state
+
+
+def test_tici_big_onroad_hud_renders_lane_and_navigation_overlay():
+  hud = (ROOT / "openpilot/selfdrive/ui/sunnypilot/onroad/hud_renderer.py").read_text()
+  assert "LaneNavigationOverlay" in hud
+  assert "lane_navigation_overlay.render(rect)" in hud
