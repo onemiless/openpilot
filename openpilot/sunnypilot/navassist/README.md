@@ -15,9 +15,10 @@ geofence configuration step exists. The normalized snapshot remains invalid
 unless C3XL's own `liveLocationKalman` is healthy; enabling SP never bypasses
 that condition.
 
-On first use, C3XL trusts exactly one self-signed App identity only while
-offroad. That P-256 public key is persisted as `NavAssistPairedApp`; later
-unknown App keys are ignored and cannot replace it. The C3XL device private key
+On first use, C3XL trusts a bounded set of up to four self-signed App identities,
+and it adds each new identity only while offroad. Those P-256 public keys are
+persisted as `NavAssistPairedApp`; unknown App keys cannot replace existing
+entries while onroad. The C3XL device private key
 is stored in the `PERSISTENT | DONT_LOG` `NavAssistDevicePrivateKey` Param and never transmitted. Clearing or
 changing an App identity requires an explicit offroad maintenance action; it is
 not a network command. First-use TOFU removes shared-secret configuration, but
@@ -110,7 +111,9 @@ once replaced, that retired session cannot become active again. A source-wall
 freshness bound rejects old captures, and an atomic high-water checkpoint in
 `/dev/shm` preserves active/retired session state if only `navassistd` crashes
 and restarts. A manager restart leaves the receiver available for the
-already-paired App; transport availability never grants control authority.
+already-paired Apps; transport availability never grants control authority. If
+one paired App owns a fresh active navigation session, snapshots from another
+paired App cannot preempt it until the active session expires.
 
 Transport freshness cannot make an old SDK callback fresh: active use also
 requires phone location accuracy no worse than 25 m, location observation age

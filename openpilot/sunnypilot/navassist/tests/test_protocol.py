@@ -112,6 +112,19 @@ def test_new_session_may_join_after_failed_sends_but_retired_session_cannot_retu
     receiver.accept(retired, APP_KEY_ID)
 
 
+def test_second_paired_app_cannot_preempt_a_fresh_active_navigation_session():
+  now = 1_000_000_000
+  receiver = store(clock_ns=lambda: now)
+  receiver.accept(encode(payload(session_id="android-active")), "a" * 32)
+
+  with pytest.raises(NavAssistProtocolError, match="another paired app") as busy:
+    receiver.accept(encode(payload(session_id="ios-active")), "b" * 32)
+  assert busy.value.reason == "replay"
+
+  now += 500_000_001
+  assert receiver.accept(encode(payload(session_id="ios-active")), "b" * 32).snapshot.session_id == "ios-active"
+
+
 def test_rejects_bad_app_identity_non_finite_unknown_fields_and_ranges():
   body = encode(payload())
   receiver = store()

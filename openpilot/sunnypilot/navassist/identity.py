@@ -25,7 +25,8 @@ SIGNATURE_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,96}$")
 DEFAULT_DEVICE_KEY_PATH = Path(Paths.persist_root()) / "comma/navassist/device_key.pem"
 PAIRED_APP_PARAM = "NavAssistPairedApp"
 DEVICE_PRIVATE_KEY_PARAM = "NavAssistDevicePrivateKey"
-PAIRED_APP_VERSION = 1
+PAIRED_APP_VERSION = 2
+MAX_PAIRED_APPS = 4
 
 
 def _base64url_encode(value: bytes) -> str:
@@ -185,7 +186,7 @@ class PairedApp:
 
 
 class NavAssistPairingStore:
-  """Owns the single app identity trusted to publish navigation snapshots."""
+  """Owns the bounded set of phone identities trusted to publish navigation snapshots."""
 
   def __init__(self, params: Any):
     self._params = params
@@ -193,24 +194,39 @@ class NavAssistPairingStore:
     self._paired = self._load(params.get(PAIRED_APP_PARAM))
 
   @staticmethod
-  def _load(value: Any) -> PairedApp | None:
+  def _load(value: Any) -> tuple[PairedApp, ...]:
     if value is None:
-      return None
-    if not isinstance(value, dict) or set(value) != {"version", "keyId", "publicKey"}:
+      return ()
+    if not isinstance(value, dict):
       raise RuntimeError("NavAssist paired app identity is unreadable")
-    key_id = value["keyId"]
-    public_key = value["publicKey"]
+    if type(value.get("version")) is not int:
+      raise RuntimeError("NavAssist paired app identity is unreadable")
+
+    if set(value) == {"version", "keyId", "publicKey"} and value.get("version") == 1:
+      raw_apps = [{"keyId": value["keyId"], "publicKey": value["publicKey"]}]
+    elif set(value) == {"version", "apps"} and value.get("version") == PAIRED_APP_VERSION:
+      raw_apps = value["apps"]
+    else:
+      raise RuntimeError("NavAssist paired app identity is unreadable")
+
+    if not isinstance(raw_apps, list) or not 0 < len(raw_apps) <= MAX_PAIRED_APPS:
+      raise RuntimeError("NavAssist paired app identity is unreadable")
+    paired: list[PairedApp] = []
     try:
-      valid = (
-        type(value["version"]) is int and value["version"] == PAIRED_APP_VERSION
-        and isinstance(key_id, str) and KEY_ID_PATTERN.fullmatch(key_id) is not None
-        and isinstance(public_key, str) and public_key_id(public_key) == key_id
-      )
+      for raw in raw_apps:
+        if not isinstance(raw, dict) or set(raw) != {"keyId", "publicKey"}:
+          raise ValueError
+        key_id = raw["keyId"]
+        public_key = raw["publicKey"]
+        if (not isinstance(key_id, str) or KEY_ID_PATTERN.fullmatch(key_id) is None
+            or not isinstance(public_key, str) or public_key_id(public_key) != key_id):
+          raise ValueError
+        paired.append(PairedApp(key_id, public_key))
     except ValueError:
-      valid = False
-    if not valid:
+      raise RuntimeError("NavAssist paired app identity is unreadable") from None
+    if len({app.key_id for app in paired}) != len(paired):
       raise RuntimeError("NavAssist paired app identity is unreadable")
-    return PairedApp(key_id, public_key)
+    return tuple(paired)
 
   def authorize_or_pair(self, key_id: str, public_key: str, *, is_offroad: bool) -> bool:
     try:
@@ -220,25 +236,29 @@ class NavAssistPairingStore:
       return False
 
     with self._lock:
-      if self._paired is not None:
-        return self._paired.key_id == key_id and self._paired.public_key == public_key
+      if any(app.key_id == key_id and app.public_key == public_key for app in self._paired):
+        return True
       if not is_offroad:
         return False
-      record = {"version": PAIRED_APP_VERSION, "keyId": key_id, "publicKey": public_key}
+      if len(self._paired) >= MAX_PAIRED_APPS:
+        return False
+      paired = (*self._paired, PairedApp(key_id, public_key))
+      record = {
+        "version": PAIRED_APP_VERSION,
+        "apps": [{"keyId": app.key_id, "publicKey": app.public_key} for app in paired],
+      }
       try:
         self._params.put(PAIRED_APP_PARAM, record, block=True)
       except (OSError, RuntimeError) as error:
         raise RuntimeError("NavAssist paired app identity could not be persisted") from error
-      self._paired = PairedApp(key_id, public_key)
+      self._paired = paired
       return True
 
   def public_key_for(self, key_id: str) -> str | None:
     with self._lock:
-      if self._paired is None or self._paired.key_id != key_id:
-        return None
-      return self._paired.public_key
+      return next((app.public_key for app in self._paired if app.key_id == key_id), None)
 
   def reset(self) -> None:
     with self._lock:
       self._params.remove(PAIRED_APP_PARAM)
-      self._paired = None
+      self._paired = ()

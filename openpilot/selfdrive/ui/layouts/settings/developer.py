@@ -34,7 +34,12 @@ DESCRIPTIONS = {
 
 def nav_assist_paired(params: Params) -> bool:
   pairing = params.get("NavAssistPairedApp")
-  return isinstance(pairing, dict) and isinstance(pairing.get("keyId"), str)
+  if not isinstance(pairing, dict):
+    return False
+  if isinstance(pairing.get("keyId"), str):
+    return True
+  apps = pairing.get("apps")
+  return isinstance(apps, list) and any(isinstance(app, dict) and isinstance(app.get("keyId"), str) for app in apps)
 
 
 def nav_assist_turn_signal_ready(params: Params) -> bool:

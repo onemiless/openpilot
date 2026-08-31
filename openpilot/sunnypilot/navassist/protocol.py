@@ -450,6 +450,8 @@ class NavAssistStore:
     accepted = AcceptedSnapshot(snapshot, now_ns, now_ns + snapshot.valid_for_ms * 1_000_000)
     with self._lock:
       if self._app_key_id is not None and self._app_key_id != app_key_id:
+        if self._current is not None and not self._current.is_stale(now_ns) and self._current.snapshot.route_active:
+          _reject("replay", "another paired app owns the active navigation session")
         self._active_session_id = None
         self._last_sequence = 0
         self._last_route_revision = 0

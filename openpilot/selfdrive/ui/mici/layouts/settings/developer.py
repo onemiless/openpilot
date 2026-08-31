@@ -11,7 +11,12 @@ from openpilot.selfdrive.ui.widgets.ssh_key import SshKeyFetcher
 
 def nav_assist_paired() -> bool:
   pairing = ui_state.params.get("NavAssistPairedApp")
-  return isinstance(pairing, dict) and isinstance(pairing.get("keyId"), str)
+  if not isinstance(pairing, dict):
+    return False
+  if isinstance(pairing.get("keyId"), str):
+    return True
+  apps = pairing.get("apps")
+  return isinstance(apps, list) and any(isinstance(app, dict) and isinstance(app.get("keyId"), str) for app in apps)
 
 
 def nav_assist_turn_signal_ready() -> bool:

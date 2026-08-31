@@ -28,8 +28,8 @@ intersection-turn curvature or highway-exit steering has been implemented.
 - Configure a dedicated private phone/C3XL network.
 - Install the v3 TesNav App and perform its first automatic C3XL pairing while
   the vehicle is offroad on a controlled private LAN. No shared token is
-  configured. C3XL pins the first valid P-256 App identity and ignores later
-  unknown keys.
+  configured. C3XL can pin up to four P-256 App identities, adding each new
+  identity only while offroad; unknown onroad keys are ignored.
 - Synchronize phone and C3XL system clocks to within one second before arming.
 - Physically secure the configured phone in the tested vehicle; P0 validates
   both devices independently inside their own data gates but does not yet prove
@@ -38,11 +38,13 @@ intersection-turn curvature or highway-exit steering has been implemented.
   selected, and SP has active longitudinal authority before active deceleration.
 
 TesNav generates a non-exportable P-256 private key in Android Keystore. C3XL
-generates its own persistent P-256 device key and stores only the App public key
-in `NavAssistPairedApp`. First-use trust-on-first-use cannot distinguish the
-owner from another live App on that LAN before the first pin, so do not perform
-initial pairing on a shared network. Reinstalling the App changes its identity
-and requires an explicit offroad pairing reset.
+generates its own persistent P-256 device key and stores only the bounded App
+public-key set in `NavAssistPairedApp`. First-use trust-on-first-use cannot
+distinguish the owner from another live App on that LAN before a new key is
+pinned, so do not perform initial pairing on a shared network. Reinstalling an
+App changes its identity and requires offroad pairing; reset clears the entire
+set. A fresh active navigation session cannot be preempted by another paired
+App until it expires.
 
 Do not place real track coordinates or private keys in the repository. P-256
 signatures protect authenticity and integrity after TOFU pinning, not
