@@ -102,7 +102,7 @@ def build_nav_assist_message(current: AcceptedSnapshot | None, now_ns: int, *, l
 
   phone_observations_valid = _phone_observations_valid(snapshot)
   control_source_valid = snapshot.source_platform in ("android", "ios") and snapshot.navigation_mode == "realtime"
-  state.valid = bool(not stale and control_source_valid and snapshot.route_active and snapshot.route_matched and not snapshot.gps_weak
+  state.valid = bool(not stale and control_source_valid and snapshot.route_active and snapshot.route_matched
                      and snapshot.location_present and snapshot.guidance_present
                      and phone_observations_valid
                      and local_localization_valid)
@@ -114,8 +114,6 @@ def build_nav_assist_message(current: AcceptedSnapshot | None, now_ns: int, *, l
     state.rejectReason = "noData"
   elif not snapshot.route_matched:
     state.rejectReason = "routeUnmatched"
-  elif snapshot.gps_weak:
-    state.rejectReason = "gpsWeak"
   elif not snapshot.location_present or not snapshot.guidance_present:
     state.rejectReason = "noData"
   elif not phone_observations_valid:

@@ -120,6 +120,9 @@ requires phone location accuracy no worse than 25 m, location observation age
 no more than 1 s, guidance observation age no more than 2 s, a known coordinate
 system, route matching, and healthy C3XL GPS/localization. The local ECEF
 position standard deviation must be at most 10 m.
+The phone SDK's `gpsWeak` flag remains visible as diagnostic state but is not a
+control gate; explicit accuracy/freshness checks and C3XL localization remain
+the control authority boundary.
 Only Android/iOS `realtime` navigation can become control-valid; simulation and
 generic track sources remain diagnostic-only.
 

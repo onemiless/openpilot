@@ -48,6 +48,17 @@ def test_local_localization_is_a_hard_gate():
   assert not no_localization.valid and no_localization.rejectReason == "localLocalization"
 
 
+def test_phone_gps_weak_flag_is_diagnostic_not_a_control_gate():
+  raw = payload()
+  raw["gpsWeak"] = True
+  current = AcceptedSnapshot(parse_snapshot(encode(raw)), 1_000_000_000, 1_500_000_000)
+  state = build_nav_assist_message(
+    current, 1_100_000_000, local_localization_valid=True,
+  ).navAssistStateSP
+  assert state.gpsWeak
+  assert state.valid and state.rejectReason == "none"
+
+
 def test_non_realtime_or_non_mobile_source_cannot_become_control_valid():
   raw = payload()
   raw["navigationMode"] = "idle"
