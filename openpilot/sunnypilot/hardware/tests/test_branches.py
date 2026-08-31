@@ -5,8 +5,10 @@ from openpilot.common.version import TICI_COMPATIBLE_BRANCHES
 
 REMOTE_BRANCHES = [
   "dev-sp-egpu",
+  "dev-sp-egpu-lane",
   "dev-sp-egpu-nva",
   "dev-sp-egpu-prebuild",
+  "navassist-track-p0",
   "dev",
   "master-new",
   "release-tici",
@@ -15,11 +17,19 @@ REMOTE_BRANCHES = [
 
 
 def test_c3xl_exposes_only_the_maintained_branches() -> None:
-  assert C3XL_COMPATIBLE_BRANCHES == ("dev-sp-egpu", "dev-sp-egpu-nva", "dev-sp-egpu-prebuild")
-  assert selectable_tici_branches(REMOTE_BRANCHES, HardwareProfile.C3XL) == [
+  assert C3XL_COMPATIBLE_BRANCHES == (
     "dev-sp-egpu",
+    "dev-sp-egpu-lane",
     "dev-sp-egpu-nva",
     "dev-sp-egpu-prebuild",
+    "navassist-track-p0",
+  )
+  assert selectable_tici_branches(REMOTE_BRANCHES, HardwareProfile.C3XL) == [
+    "dev-sp-egpu",
+    "dev-sp-egpu-lane",
+    "dev-sp-egpu-nva",
+    "dev-sp-egpu-prebuild",
+    "navassist-track-p0",
   ]
 
 
