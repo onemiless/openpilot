@@ -22,6 +22,18 @@ MADSState = custom.ModularAssistiveDrivingSystem.ModularAssistiveDrivingSystemSt
 ONROAD_BRIGHTNESS_TIMER_PAUSED = -1
 
 
+def nav_assist_paired(pairing) -> bool:
+  if not isinstance(pairing, dict):
+    return False
+  # Accept the original single-app record and the current bounded v2 app set.
+  if isinstance(pairing.get("keyId"), str):
+    return True
+  apps = pairing.get("apps")
+  return isinstance(apps, list) and any(
+    isinstance(app, dict) and isinstance(app.get("keyId"), str) for app in apps
+  )
+
+
 class OnroadTimerStatus(Enum):
   NONE = 0
   PAUSE = 1
@@ -181,8 +193,7 @@ class UIStateSP:
     self.custom_interactive_timeout = self.params.get("InteractivityTimeout", return_default=True)
     self.developer_ui = self.params.get("DevUIInfo")
     self.hide_v_ego_ui = self.params.get_bool("HideVEgoUI")
-    pairing = self.params.get("NavAssistPairedApp")
-    self.nav_assist_track_mode = isinstance(pairing, dict) and isinstance(pairing.get("keyId"), str)
+    self.nav_assist_track_mode = nav_assist_paired(self.params.get("NavAssistPairedApp"))
     self.onroad_brightness = int(float(self.params.get("OnroadScreenOffBrightness", return_default=True)))
     self.onroad_brightness_timer_param = self.params.get("OnroadScreenOffTimer", return_default=True)
     self.rainbow_path = self.params.get_bool("RainbowMode")
