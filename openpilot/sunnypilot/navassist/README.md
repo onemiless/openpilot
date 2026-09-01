@@ -146,6 +146,10 @@ before another request. Fresh AMap LaneInfo is authoritative. While it is
 absent, ordinary/sharp/U-turns can target the visual leftmost/rightmost lane
 inside 1 km, and directional exit/ramp/merge events can do so inside 2 km;
 `slightLeft`/`slightRight` never force an extreme-lane fallback.
+Lane positioning itself never creates a speed target. A supported turn/exit
+maneuver may still activate its comfort-distance speed ceiling while a final
+lane change is in progress; the deceleration is attributed to the approaching
+maneuver, not to the lateral request.
 
 Follow the stationary gates and speed progression in
 [`docs/NAVASSIST_CLOSED_COURSE_P0.md`](../../../docs/NAVASSIST_CLOSED_COURSE_P0.md)

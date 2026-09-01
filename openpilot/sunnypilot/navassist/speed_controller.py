@@ -118,14 +118,6 @@ class NavigationSpeedController:
       self._release(v_cruise, a_ego)
       return
 
-    if lane_change_active:
-      # A navigation lane alignment is lateral-only. Keep an already admitted
-      # turn event pending, but never add a navigation speed ceiling until the
-      # lane-change cycle has completed. Lead, map, speed-limit, and other
-      # longitudinal sources remain untouched by this controller.
-      self._release(v_cruise, a_ego)
-      return
-
     temporarily_unavailable = (not long_enabled or not planner_verified or v_ego > MAX_TRACK_SPEED_MPS
                                or not self._sp_owns_longitudinal(sm))
     if temporarily_unavailable:

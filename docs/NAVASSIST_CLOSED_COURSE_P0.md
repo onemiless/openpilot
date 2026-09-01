@@ -26,6 +26,10 @@ directional ramp/exit maneuver from road text alone, phone/tici positions are
 not yet cross-correlated, and no intersection-turn curvature path is accepted
 from the phone. Lane positioning remains one visual lane at a time through
 SP's existing lane-change state machine.
+Lane positioning alone never creates a navigation speed target. If a supported
+turn or directional exit enters its computed comfort-braking window while the
+last lane change is still active, maneuver deceleration remains eligible; it is
+not suppressed merely because lateral motion is in progress.
 
 ## Preconditions
 

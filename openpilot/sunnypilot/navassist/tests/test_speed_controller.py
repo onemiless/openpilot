@@ -70,25 +70,23 @@ def test_early_event_is_admitted_then_activates_inside_comfort_window():
   assert controller.output_a_target == 0.0
 
 
-def test_navigation_lane_change_never_contributes_a_speed_ceiling():
+def test_navigation_lane_change_without_a_turn_never_contributes_a_speed_ceiling():
   controller = NavigationSpeedController(enabled=True)
-  sm = FakeSM(nav(distance=60.0))
+  sm = FakeSM(nav(distance=60.0, maneuver=custom.NavAssistStateSP.Maneuver.mergeRight))
   update(controller, sm, lane_change_active=True)
   assert not controller.is_active
   assert controller.output_v_target == V_CRUISE_UNSET
   assert not controller.event_rejected
 
 
-def test_turn_event_can_be_admitted_after_navigation_lane_change_completes():
+def test_imminent_turn_decelerates_while_navigation_lane_change_is_still_active():
   controller = NavigationSpeedController(enabled=True)
   sm = FakeSM(nav(distance=100.0))
   update(controller, sm, lane_change_active=True)
   assert controller.output_v_target == V_CRUISE_UNSET
-  assert not controller.event_rejected
-
-  update(controller, sm, lane_change_active=False)
   assert controller.event_admitted and not controller.is_active
-  update(controller, FakeSM(nav(distance=60.0)), lane_change_active=False)
+
+  update(controller, FakeSM(nav(distance=60.0)), lane_change_active=True)
   assert controller.is_active
   assert controller.output_v_target == pytest.approx(5.0)
 
