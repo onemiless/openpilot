@@ -74,7 +74,10 @@ class LaneNavigationOverlay:
 
   def _draw_navigation(self, box: rl.Rectangle, display: NavigationOverlayDisplay) -> None:
     background = rl.Color(8, 16, 24, 188)
-    accent = rl.Color(75, 224, 164, 245) if display.ready else rl.Color(255, 190, 74, 235) if display.receiving else rl.Color(170, 180, 190, 220)
+    accent = (rl.Color(75, 224, 164, 245) if display.ready else
+              rl.Color(75, 190, 224, 240) if display.linked else
+              rl.Color(255, 190, 74, 235) if display.receiving else
+              rl.Color(170, 180, 190, 220))
     rl.draw_rectangle_rounded(box, 0.22, 10, background)
     rl.draw_rectangle_rounded_lines_ex(box, 0.22, 10, 2, rl.Color(accent.r, accent.g, accent.b, 100))
     rl.draw_rectangle_rounded(rl.Rectangle(box.x + 12, box.y + 12, 7, box.height - 24), 1.0, 6, accent)

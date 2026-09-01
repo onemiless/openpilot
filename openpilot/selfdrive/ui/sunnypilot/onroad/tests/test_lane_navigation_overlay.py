@@ -47,7 +47,7 @@ def test_lane_overlay_reports_uncertainty_instead_of_disappearing():
   assert display is not None
   assert display.left == "左侧  未知"
   assert display.right == "右侧  实线"
-  assert display.center == "车道位置识别中 · 不确定"
+  assert display.center == "车道线未知 · 联动预览继续"
   assert not display.reliable
 
 
@@ -63,13 +63,16 @@ def test_lane_overlay_uses_display_only_ui_bridge_when_track_service_is_absent()
   assert display.reliable
 
 
-def test_navigation_overlay_keeps_route_information_visible_while_control_waits_for_localization():
+def test_navigation_overlay_treats_phone_gps_as_diagnostic_after_route_is_linked():
   nav = SimpleNamespace(
     maneuver="turnLeft",
     maneuverDistanceM=184,
     currentRoad="测试路",
     nextRoad="场地西路",
     lanes=[SimpleNamespace(index=1, recommended=True)],
+    routeActive=True,
+    routeMatched=True,
+    stale=False,
     valid=False,
     rejectReason="phoneLocalization",
   )
@@ -79,8 +82,31 @@ def test_navigation_overlay_keeps_route_information_visible_while_control_waits_
   assert display is not None
   assert display.title == "←  184 m  左转"
   assert display.subtitle == "测试路  →  场地西路"
-  assert display.detail == "等待手机定位 · 推荐第 2 车道"
+  assert display.detail == "导航联动已接入 · 手机 GPS 仅提示 · 推荐第 2 车道"
   assert display.receiving
+  assert display.linked
+  assert not display.ready
+
+
+def test_navigation_overlay_treats_device_gps_as_diagnostic_after_route_is_linked():
+  nav = SimpleNamespace(
+    maneuver="turnRight",
+    maneuverDistanceM=80,
+    currentRoad="测试路",
+    nextRoad="场地东路",
+    lanes=[],
+    routeActive=True,
+    routeMatched=True,
+    stale=False,
+    valid=False,
+    rejectReason="localLocalization",
+  )
+
+  display = navigation_display_from_service(nav, seen=True, alive=True, valid=True)
+
+  assert display is not None
+  assert display.detail == "导航联动已接入 · 设备 GPS 仅提示"
+  assert display.linked
   assert not display.ready
 
 

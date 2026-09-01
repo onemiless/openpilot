@@ -70,6 +70,7 @@ class NavigationOverlayDisplay:
   detail: str
   ready: bool = False
   receiving: bool = False
+  linked: bool = False
 
 
 @dataclass(frozen=True)
@@ -112,9 +113,9 @@ def lane_display_from_service(topology, *, seen: bool, alive: bool, valid: bool)
   lane_index = int(topology.egoLaneIndexFromLeft)
   lane_count = int(topology.visibleLaneCount)
   reliable = bool(topology.valid and not topology.stale and not topology.ambiguous)
-  center = f"当前 {lane_index + 1} / {lane_count} 车道" if lane_index >= 0 and lane_count > 0 else "车道位置识别中"
+  center = f"当前 {lane_index + 1} / {lane_count} 车道" if lane_index >= 0 and lane_count > 0 else "车道线未知"
   if not reliable:
-    center += " · 不确定"
+    center += " · 联动预览继续"
   elif topology.validForControl:
     center += " · 控制校验有效"
   else:
@@ -192,6 +193,22 @@ def navigation_display_from_service(
     details.append("导航减速生效")
 
   ready = bool(nav.valid)
-  status = "导航可用" if ready else REJECT_LABELS.get(str(nav.rejectReason), "导航等待")
+  reject_reason = str(nav.rejectReason)
+  linked = bool(
+    getattr(nav, "routeActive", False)
+    and getattr(nav, "routeMatched", False)
+    and not getattr(nav, "stale", True)
+  )
+  gps_diagnostic = {
+    "gpsWeak": "手机 GPS 仅提示",
+    "phoneLocalization": "手机 GPS 仅提示",
+    "localLocalization": "设备 GPS 仅提示",
+  }.get(reject_reason)
+  if ready:
+    status = "导航可用"
+  elif linked and gps_diagnostic is not None:
+    status = f"导航联动已接入 · {gps_diagnostic}"
+  else:
+    status = REJECT_LABELS.get(reject_reason, "导航等待")
   details.insert(0, status)
-  return NavigationOverlayDisplay(title, subtitle, " · ".join(details), ready=ready, receiving=True)
+  return NavigationOverlayDisplay(title, subtitle, " · ".join(details), ready=ready, receiving=True, linked=linked)
