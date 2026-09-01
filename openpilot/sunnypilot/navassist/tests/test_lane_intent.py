@@ -87,7 +87,10 @@ def test_navigation_turn_signal_cancels_on_stale_route_or_bounded_timeout():
 
 def test_signal_waits_at_solid_line_then_authorizes_after_dashed_is_stable():
   coordinator = NavLaneIntentCoordinator()
-  assert not coordinator.update(plan(), topology(), vehicle(), now_ns=0).signal_requested
+  first_mismatch = coordinator.update(plan(), topology(), vehicle(), now_ns=0)
+  assert first_mismatch.signal_requested and not first_mismatch.lane_change_authorized
+  assert first_mismatch.direction == LaneIntentDirection.left
+  assert first_mismatch.reason == "stabilizingLaneAlignment"
   waiting = coordinator.update(plan(), topology(), vehicle(), now_ns=500_000_000)
   assert waiting.signal_requested and not waiting.lane_change_authorized
   first_dashed = coordinator.update(plan(), topology(left_cross=True), vehicle(left_blinker=True), now_ns=600_000_000)
