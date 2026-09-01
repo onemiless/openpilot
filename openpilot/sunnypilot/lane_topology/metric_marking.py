@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import math
 
 import numpy as np
@@ -9,6 +9,10 @@ from openpilot.sunnypilot.lane_topology.types import LaneMarkingType
 
 
 REFERENCE_IMAGE_WIDTH = 526.0
+MIN_ADAPTIVE_CONTRAST = 6.0
+ADAPTIVE_PEAK_RATIO = 0.55
+MIN_COHERENT_SAMPLES = 6
+MAX_BLURRED_PROFILE_ROUGHNESS = 0.45
 
 
 def marking_sampling_parameters(image_width: int) -> tuple[int, int, int]:
@@ -124,6 +128,26 @@ def _strip_means(luminance: np.ndarray, uv: np.ndarray, normal: np.ndarray, tang
   return luminance[v_indices, u_indices].mean(axis=-1)
 
 
+def _offsets_are_coherent(distances: np.ndarray, offsets: np.ndarray, presence: np.ndarray,
+                          search_radius: int) -> bool:
+  selected_distances = distances[presence]
+  selected_offsets = offsets[presence]
+  if len(selected_offsets) < MIN_COHERENT_SAMPLES:
+    return False
+  trend = np.polyval(np.polyfit(selected_distances, selected_offsets, 1), selected_distances)
+  residual_limit_px = max(1.0, search_radius * 0.25)
+  return float(np.percentile(np.abs(selected_offsets - trend), 90)) <= residual_limit_px
+
+
+def _profiles_are_smooth(levels: np.ndarray, presence: np.ndarray) -> bool:
+  if np.count_nonzero(presence) < MIN_COHERENT_SAMPLES:
+    return False
+  span = np.ptp(levels, axis=1)
+  roughness = np.mean(np.abs(np.diff(levels, n=2, axis=1)), axis=1)
+  normalized = roughness / np.maximum(span, 1.0)
+  return float(np.median(normalized[presence])) <= MAX_BLURRED_PROFILE_ROUGHNESS
+
+
 def classify_metric_presence(distances_m: np.ndarray, presence: np.ndarray) -> MetricMarkingEvidence:
   distances = np.asarray(distances_m, dtype=np.float64)
   flags = np.asarray(presence, dtype=bool)
@@ -168,7 +192,8 @@ def classify_metric_presence(distances_m: np.ndarray, presence: np.ndarray) -> M
 
 def measure_metric_marking(image: np.ndarray, samples: tuple[MetricLaneSample, ...], *,
                            center_radius: int = 3, side_offset: int = 10,
-                           search_radius: int = 4, contrast_threshold: float = 14.0) -> MetricMarkingEvidence:
+                           search_radius: int = 4, contrast_threshold: float = 14.0,
+                           adaptive: bool = True) -> MetricMarkingEvidence:
   source = np.asarray(image)
   if source.dtype != np.uint8 or source.ndim not in (2, 3) or (source.ndim == 3 and source.shape[2] != 3):
     raise ValueError("metric marking requires HxW luma or HxWx3 uint8 image")
@@ -191,11 +216,31 @@ def measure_metric_marking(image: np.ndarray, samples: tuple[MetricLaneSample, .
   tangent_unit = tangent / norms[:, None]
   normal = np.stack((-tangent_unit[:, 1], tangent_unit[:, 0]), axis=1)
   center_offsets = np.arange(-search_radius, search_radius + 1, dtype=np.float64)
-  center_level = _strip_means(luminance, uv, normal, tangent_unit, center_offsets, center_radius).max(axis=1)
+  center_levels = _strip_means(luminance, uv, normal, tangent_unit, center_offsets, center_radius)
+  best_offsets = center_offsets[np.argmax(center_levels, axis=1)]
+  center_level = center_levels.max(axis=1)
   side_levels = _strip_means(luminance, uv, normal, tangent_unit,
                              np.array((-side_offset, side_offset)), center_radius)
-  presence = center_level - side_levels.mean(axis=1) >= contrast_threshold
-  return classify_metric_presence(distances, presence)
+  contrast = center_level - side_levels.mean(axis=1)
+  fixed_evidence = classify_metric_presence(distances, contrast >= contrast_threshold)
+  if fixed_evidence.marking_type != LaneMarkingType.unknown or not adaptive:
+    return fixed_evidence
+  peak_contrast = float(np.percentile(contrast, 90))
+  adaptive_floor = min(MIN_ADAPTIVE_CONTRAST, contrast_threshold)
+  adaptive_threshold = max(adaptive_floor, min(contrast_threshold, peak_contrast * ADAPTIVE_PEAK_RATIO))
+  presence = contrast >= adaptive_threshold
+  evidence = classify_metric_presence(distances, presence)
+  if evidence.marking_type == LaneMarkingType.unknown:
+    return evidence
+  strong_presence = contrast >= max(adaptive_threshold, peak_contrast * 0.80)
+  line_structure_valid = (
+    _offsets_are_coherent(distances, best_offsets, strong_presence, search_radius)
+    or _profiles_are_smooth(center_levels, presence)
+  )
+  if not line_structure_valid:
+    return MetricMarkingEvidence.unknown(len(distances))
+  quality = min(1.0, max(0.25, peak_contrast / max(contrast_threshold, 1e-3)))
+  return replace(evidence, confidence=evidence.confidence * quality)
 
 
 class TemporalMarkingFilter:

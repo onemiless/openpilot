@@ -82,11 +82,14 @@ def main() -> int:
   parser.add_argument("--segment-dir", type=Path, required=True)
   parser.add_argument("--video-name", default="qcamera.ts")
   parser.add_argument("--stride", type=int, default=5, help="analyze every Nth 20 Hz qcamera frame")
+  parser.add_argument("--blur-sigma", type=float, default=0.0, help="synthetic Gaussian blur for robustness A/B")
+  parser.add_argument("--disable-adaptive-marking", action="store_true",
+                      help="use only the original fixed contrast threshold")
   parser.add_argument("--report", type=Path, required=True)
   parser.add_argument("--overlay-dir", type=Path, required=True)
   parser.add_argument("--overlay-every", type=int, default=300)
   args = parser.parse_args()
-  if args.stride <= 0 or args.overlay_every <= 0:
+  if args.stride <= 0 or args.overlay_every <= 0 or args.blur_sigma < 0.0:
     raise ValueError("stride and overlay-every must be positive")
   if args.report.exists():
     raise FileExistsError(args.report)
@@ -151,7 +154,9 @@ def main() -> int:
       temporal_marking.reset()
       tracker.reset()
     ego_source_ids = current_ego_source_ids
-    rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+    marking_frame = (frame_bgr if args.blur_sigma == 0.0 else
+                     cv2.GaussianBlur(frame_bgr, (0, 0), sigmaX=args.blur_sigma, sigmaY=args.blur_sigma))
+    rgb = cv2.cvtColor(marking_frame, cv2.COLOR_BGR2RGB)
     evidence = {}
     types = {}
     for lane_index, lane in enumerate(model.laneLines):
@@ -163,7 +168,9 @@ def main() -> int:
         lane, camera_from_calib, width, height,
         image_margin_px=marking_kwargs["center_radius"] + marking_kwargs["side_offset"] + marking_kwargs["search_radius"],
       )
-      evidence[lane_index] = measure_metric_marking(rgb, samples, **marking_kwargs)
+      evidence[lane_index] = measure_metric_marking(
+        rgb, samples, adaptive=not args.disable_adaptive_marking, **marking_kwargs,
+      )
       types[lane_index] = temporal_marking.update(lane_index, evidence[lane_index])
     observations = model_v2_to_observations(
       model, confidence_threshold=0.0, visible_source_ids=visible_source_ids,
@@ -230,6 +237,8 @@ def main() -> int:
     "source": {"rlog": str(rlog), "video": str(video), "device_type": device_type, "sensor": sensor},
     "video": {"width": width, "height": height, "decoded_frames": frame_index},
     "marking_sampling": marking_kwargs,
+    "synthetic_blur_sigma": args.blur_sigma,
+    "adaptive_marking": not args.disable_adaptive_marking,
     "stride": args.stride,
     "analyzed_frames": analyzed,
     "exact_model_frame_matches": exact_matches,

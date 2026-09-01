@@ -40,6 +40,33 @@ The final real-time-equivalent replay is intentionally conservative. Manual over
 
 The target-device synthetic gate made all four model lines high-probability while requiring only the detected ego source pair `(1, 2)` to be classified. Across 300 iterations on a 1928x1208 Y plane, the outer lines remained `unknown`, the ego boundaries produced the expected `DASHED/SOLID` result, and timing was p50 6.36 ms, p95 7.45 ms, and p99 8.18 ms. Production runs at approximately 4 Hz and does not copy or convert the full Y plane.
 
+## Blur robustness follow-up
+
+The fixed 14-level contrast threshold remains authoritative whenever it yields
+a valid solid/dashed result. Only an otherwise-unknown frame enters a bounded
+adaptive path: its threshold is selected between 6 and 14 from the strip's
+90th-percentile contrast, and the recovered line must have either a coherent
+normal-offset trend or a smooth blurred normal profile. Adaptive evidence is
+down-weighted by measured contrast before entering the existing temporal
+dominance filter. Severe blur or unstructured evidence remains `unknown`; it is
+never forced to a lane type.
+
+Synthetic low-contrast solid and 3 m/6 m dashed fixtures remained correct
+through Gaussian blur sigma 4 at 526-pixel reference width. Across 24
+contrast/blur combinations, every result was the clear type or `unknown`; no
+solid/dashed flip occurred. One hundred independent textured-noise frames never
+produced a temporally confirmed marking.
+
+On the synchronized 1928x1208 route with synthetic Gaussian blur sigma 6, the
+original fixed path retained 40 of 158 clear known source-slot observations;
+the adaptive path retained 76 of 158, with zero solid/dashed flips. Stable
+dashed boundary observations increased from 52 to 133 while solid remained 15.
+At sigma 12, the adaptive path still retained 40 known observations with zero
+flips; erased evidence remained unknown. On the unblurred full-resolution
+route, dashed observations increased from the fixed-path 198 to 229 while
+solid stayed 15. Four clear 526x330 tici routes retained their prior results,
+apart from three additional dashed observations and no lost solid result.
+
 ## Release cleanup
 
 The failed neural candidates remain documented by their bound hashes, device reports, and the table above, but their implementation was removed before release. Deleted code includes YOLOP, UFLDv1, UFLDv2, the original image-row classifier, the abandoned auxiliary runner/scheduler, their benchmark CLIs, and their dedicated tests. The release package retains only the primary-model geometry, ego-boundary selection, metric/temporal marking classifier, UI bridge, real-route replay tool, primary CPU benchmark, and core regression tests. No rejected candidate can be imported or accidentally activated at runtime.
