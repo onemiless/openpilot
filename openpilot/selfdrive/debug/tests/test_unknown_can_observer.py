@@ -1,4 +1,62 @@
+from types import SimpleNamespace
+
+import pytest
+
+from openpilot.cereal import messaging
 from openpilot.selfdrive.debug.unknown_can_observer import UnknownCanObserver
+
+
+class StopObserverLoop(Exception):
+  pass
+
+
+def test_unknown_can_observer_uses_timeout_aware_blocking_receive(monkeypatch) -> None:
+  class FakeSocket:
+    def receive(self, non_blocking=False):
+      assert not non_blocking, "non-blocking receive bypasses the configured 250 ms timeout"
+      raise StopObserverLoop
+
+  def fake_sub_sock(endpoint, *, conflate, timeout):
+    assert endpoint == "can"
+    assert not conflate
+    assert timeout == 250
+    return FakeSocket()
+
+  monkeypatch.setattr(messaging, "sub_sock", fake_sub_sock)
+
+  with pytest.raises(StopObserverLoop):
+    UnknownCanObserver()._run()
+
+
+def test_unknown_can_observer_converts_only_target_can_payloads(monkeypatch) -> None:
+  class PoisonPayload:
+    def __bytes__(self):
+      raise AssertionError("unrelated CAN payload must not be copied")
+
+  event = SimpleNamespace(
+    logMonoTime=1_000_000_000,
+    can=[
+      SimpleNamespace(address=0x37A, dat=b"\x01\x02", src=2),
+      SimpleNamespace(address=0x123, dat=PoisonPayload(), src=2),
+    ],
+  )
+  events = iter((event,))
+
+  def receive_once(_sock):
+    try:
+      return next(events)
+    except StopIteration:
+      raise StopObserverLoop from None
+
+  monkeypatch.setattr(messaging, "sub_sock", lambda *args, **kwargs: object())
+  monkeypatch.setattr(messaging, "recv_one", receive_once)
+  monkeypatch.setattr(messaging, "recv_one_or_none", receive_once)
+  observer = UnknownCanObserver()
+
+  with pytest.raises(StopObserverLoop):
+    observer._run()
+
+  assert observer.snapshot(1_000_000_001)["lifetime_counts"] == {"0x37A/source2": 1}
 
 
 def test_unknown_can_observer_groups_bus_rate_bytes_and_recent_samples() -> None:
