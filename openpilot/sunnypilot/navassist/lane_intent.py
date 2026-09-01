@@ -25,6 +25,7 @@ class NavLanePlan:
   maneuver_event_id: int
   lane_count: int
   recommended_indices: tuple[int, ...]
+  heuristic: bool = False
 
 
 @dataclass(frozen=True)
@@ -190,6 +191,10 @@ class NavLaneIntentCoordinator:
   def _event_key(plan: NavLanePlan, target_index: int) -> tuple[str, int, int, tuple[int, ...], int]:
     return plan.session_id, plan.route_revision, plan.maneuver_event_id, plan.recommended_indices, target_index
 
+  @staticmethod
+  def _plan_reason(plan: NavLanePlan, reason: str) -> str:
+    return f"heuristic{reason[0].upper()}{reason[1:]}" if plan.heuristic and reason else reason
+
   def _reset(self) -> None:
     self._phase = "idle"
     self._candidate = None
@@ -236,7 +241,10 @@ class NavLaneIntentCoordinator:
           self._topology_invalid_since_ns = now_ns
         elif now_ns - self._topology_invalid_since_ns > self.TOPOLOGY_TRANSITION_GRACE_NS:
           return self._abort(event_key, "topologyTransitionTimeout")
-        return NavLaneIntent(True, True, direction, self._request_id, self._expected_lane_index, "topologyTransition")
+        return NavLaneIntent(
+          True, True, direction, self._request_id, self._expected_lane_index,
+          self._plan_reason(plan, "topologyTransition"),
+        )
       self._reset()
       return self._idle("health")
     self._topology_invalid_since_ns = 0
@@ -282,7 +290,7 @@ class NavLaneIntentCoordinator:
         direction=direction,
         request_id=self._request_id,
         target_lane_index=self._expected_lane_index,
-        reason=self._phase,
+        reason=self._plan_reason(plan, self._phase),
       )
 
     target_index = self._target(plan, topology.ego_lane_index)
@@ -316,7 +324,7 @@ class NavLaneIntentCoordinator:
           request_id=self._request_id,
           target_lane_index=(topology.ego_lane_index - 1 if direction == LaneIntentDirection.left
                              else topology.ego_lane_index + 1),
-          reason="stabilizingLaneAlignment",
+          reason=self._plan_reason(plan, "stabilizingLaneAlignment"),
         )
       if now_ns - self._candidate_since_ns < self.MISMATCH_STABLE_NS:
         return NavLaneIntent(
@@ -325,7 +333,7 @@ class NavLaneIntentCoordinator:
           request_id=self._request_id,
           target_lane_index=(topology.ego_lane_index - 1 if direction == LaneIntentDirection.left
                              else topology.ego_lane_index + 1),
-          reason="stabilizingLaneAlignment",
+          reason=self._plan_reason(plan, "stabilizingLaneAlignment"),
         )
       self._phase = "signaling"
       self._phase_since_ns = now_ns
@@ -380,5 +388,5 @@ class NavLaneIntentCoordinator:
       direction=direction,
       request_id=self._request_id,
       target_lane_index=topology.ego_lane_index - 1 if direction == LaneIntentDirection.left else topology.ego_lane_index + 1,
-      reason=self._phase,
+      reason=self._plan_reason(plan, self._phase),
     )

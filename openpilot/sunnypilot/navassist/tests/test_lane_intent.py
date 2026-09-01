@@ -41,6 +41,18 @@ def test_navigation_turn_signal_starts_before_turn_without_a_lane_target():
   assert intent.reason == "turnApproach"
 
 
+def test_heuristic_extreme_lane_mismatch_signals_immediately_one_lane_at_a_time():
+  coordinator = NavLaneIntentCoordinator()
+  heuristic = NavLanePlan(True, "session-a", 1, 7, 3, (0,), heuristic=True)
+
+  intent = coordinator.update(heuristic, topology(ego=2), vehicle(), now_ns=0)
+
+  assert intent.signal_requested and not intent.lane_change_authorized
+  assert intent.direction == LaneIntentDirection.left
+  assert intent.target_lane_index == 1
+  assert intent.reason == "heuristicStabilizingLaneAlignment"
+
+
 def test_navigation_turn_signal_supports_right_turns_and_waits_until_lookahead_window():
   coordinator = NavTurnSignalCoordinator()
 

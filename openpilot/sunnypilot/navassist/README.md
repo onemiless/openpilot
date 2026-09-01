@@ -142,12 +142,16 @@ after fresh lane-index alignment, ego-side dashed evidence, clear BSM, active
 SP lateral, Panda TX echo, and physical lamp feedback. A same-direction pre-turn
 lamp transfers to the lane-change request without blinking off. This path never
 accepts phone curvature or bypasses Panda safety, and every lane is re-observed
-before another request.
+before another request. Fresh AMap LaneInfo is authoritative. While it is
+absent, ordinary/sharp/U-turns can target the visual leftmost/rightmost lane
+inside 1 km, and directional exit/ramp/merge events can do so inside 2 km;
+`slightLeft`/`slightRight` never force an extreme-lane fallback.
 
 Follow the stationary gates and speed progression in
 [`docs/NAVASSIST_CLOSED_COURSE_P0.md`](../../../docs/NAVASSIST_CLOSED_COURSE_P0.md)
 before any active test.
 
-Android P0 does not infer a directional `exit_left/right` or `ramp_left/right`
+Android does not infer a directional `exit_left/right` or `ramp_left/right`
 event from road text alone. Android and iOS can both carry explicit directional
-maneuvers, but automatic highway-exit steering is not implemented.
+maneuvers; those events may request one-lane-at-a-time positioning through the
+same visual/dashed/BSM gates.

@@ -12,16 +12,20 @@ DesireHelper; lane-change authority additionally requires Panda TX echo plus
 physical lamp feedback.
 
 The phone never supplies curvature, steering angle, acceleration, CarState, or
-CAN. C3XL aligns AMap's recommended lane index with fresh visual topology,
-requests one physical turn signal, waits for ego-side dashed evidence and a
-clear blind spot, then lets the existing SP lane-change state machine act. It
-cancels the signal after a stable one-lane visual index transition and observes
-again before another request.
+CAN. C3XL aligns AMap's recommended lane index with fresh visual topology. When
+AMap has not yet published LaneInfo, an ordinary/sharp/U-turn may select the
+visual extreme lane in its direction inside 1 km; directional exit/ramp/merge
+maneuvers may do so inside 2 km. Explicit fresh AMap LaneInfo always takes
+priority. C3XL requests one physical turn signal, waits for ego-side dashed
+evidence and a clear blind spot, then lets the existing SP lane-change state
+machine act. It cancels the signal after a stable one-lane visual index
+transition and observes again before another request.
 
 This is not the full requested navigation stack. Android does not infer a
 directional ramp/exit maneuver from road text alone, phone/tici positions are
-not yet cross-correlated, and no intersection-turn curvature or highway-exit
-steering has been implemented.
+not yet cross-correlated, and no intersection-turn curvature path is accepted
+from the phone. Lane positioning remains one visual lane at a time through
+SP's existing lane-change state machine.
 
 ## Preconditions
 
