@@ -137,16 +137,19 @@ allowed only with the official longitudinal planner, whose cruise contribution
 is limited to -1.2 m/s²; the experimental and TN-NoDEC backends fail closed.
 Lead, FCW, or other existing safety sources may independently request stronger
 deceleration. An experimental typed `navLaneIntentSP` path can also request one
-Tesla physical turn signal and authorize the existing DesireHelper only after
-fresh lane-index alignment, ego-side dashed evidence, clear BSM, active SP
-lateral, Panda TX echo, and physical lamp feedback. It never accepts phone
-curvature or bypasses Panda safety, and every lane is re-observed before another
-request.
+Tesla physical turn signal. A linked left/right route maneuver may request a
+bounded pre-turn lamp with `targetLaneIndex = -1`; DesireHelper explicitly
+ignores that display/signal-only intent. A real lane change is authorized only
+after fresh lane-index alignment, ego-side dashed evidence, clear BSM, active
+SP lateral, Panda TX echo, and physical lamp feedback. A same-direction pre-turn
+lamp transfers to the lane-change request without blinking off. This path never
+accepts phone curvature or bypasses Panda safety, and every lane is re-observed
+before another request.
 
 Follow the stationary gates and speed progression in
 [`docs/NAVASSIST_CLOSED_COURSE_P0.md`](../../../docs/NAVASSIST_CLOSED_COURSE_P0.md)
 before any active test.
 
-Android P0 does not derive a directional `exit_left/right` or `ramp_left/right`
-event from road text or from road type 6/9, so automatic high-speed exit handling
-is not implemented. iOS is schema-reserved but has no client implementation yet.
+Android P0 does not infer a directional `exit_left/right` or `ramp_left/right`
+event from road text alone. Android and iOS can both carry explicit directional
+maneuvers, but automatic highway-exit steering is not implemented.

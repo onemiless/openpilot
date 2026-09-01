@@ -4,6 +4,8 @@ from openpilot.sunnypilot.navassist.lane_intent import (
   LaneVehicleInput,
   NavLaneIntentCoordinator,
   NavLanePlan,
+  NavTurnPlan,
+  NavTurnSignalCoordinator,
   ObservedLaneChangeState,
 )
 
@@ -20,6 +22,56 @@ def vehicle(*, bsm_left=False, bsm_right=False, state=ObservedLaneChangeState.of
             direction=LaneIntentDirection.none, lat=True, left_blinker=False, right_blinker=False):
   return LaneVehicleInput(lat, 15.0, bsm_left, bsm_right, left_blinker, right_blinker, lane_change_state=state,
                           lane_change_direction=direction)
+
+
+def turn_plan(*, valid=True, maneuver="turnLeft", distance=100.0, session="session-a", revision=1, event=11):
+  return NavTurnPlan(valid, session, revision, event, maneuver, distance)
+
+
+def test_navigation_turn_signal_starts_before_turn_without_a_lane_target():
+  coordinator = NavTurnSignalCoordinator()
+
+  intent = coordinator.update(turn_plan(), speed_mps=15.0, now_ns=0)
+
+  assert intent.signal_requested
+  assert not intent.lane_change_authorized
+  assert intent.direction == LaneIntentDirection.left
+  assert intent.target_lane_index == -1
+  assert intent.request_id == 11
+  assert intent.reason == "turnApproach"
+
+
+def test_navigation_turn_signal_supports_right_turns_and_waits_until_lookahead_window():
+  coordinator = NavTurnSignalCoordinator()
+
+  early = coordinator.update(turn_plan(maneuver="turnRight", distance=200.0), speed_mps=15.0, now_ns=0)
+  active = coordinator.update(turn_plan(maneuver="turnRight", distance=130.0), speed_mps=15.0, now_ns=1_000_000_000)
+
+  assert not early.signal_requested
+  assert active.signal_requested
+  assert active.direction == LaneIntentDirection.right
+
+
+def test_navigation_turn_signal_stays_on_through_zero_distance_then_cancels_on_event_change():
+  coordinator = NavTurnSignalCoordinator()
+  coordinator.update(turn_plan(distance=50.0), speed_mps=10.0, now_ns=0)
+
+  at_turn = coordinator.update(turn_plan(distance=0.0), speed_mps=8.0, now_ns=5_000_000_000)
+  changed = coordinator.update(turn_plan(maneuver="straight", distance=300.0, event=12), speed_mps=8.0,
+                               now_ns=6_000_000_000)
+
+  assert at_turn.signal_requested
+  assert not changed.signal_requested
+
+
+def test_navigation_turn_signal_cancels_on_stale_route_or_bounded_timeout():
+  coordinator = NavTurnSignalCoordinator()
+  coordinator.update(turn_plan(), speed_mps=15.0, now_ns=0)
+  assert not coordinator.update(turn_plan(valid=False), speed_mps=15.0, now_ns=1_000_000_000).signal_requested
+
+  coordinator.update(turn_plan(), speed_mps=15.0, now_ns=2_000_000_000)
+  timed_out = coordinator.update(turn_plan(), speed_mps=15.0, now_ns=32_000_000_001)
+  assert not timed_out.signal_requested
 
 
 def test_signal_waits_at_solid_line_then_authorizes_after_dashed_is_stable():

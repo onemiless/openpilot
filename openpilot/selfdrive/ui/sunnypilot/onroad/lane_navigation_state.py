@@ -185,7 +185,9 @@ def navigation_display_from_service(
     details.append(f"推荐第 {','.join(recommended)} 车道")
   if lane_intent_healthy and lane_intent is not None and lane_intent.signalRequested:
     direction = "左" if str(lane_intent.direction) == "left" else "右"
-    if lane_intent.laneChangeAuthorized:
+    if int(lane_intent.targetLaneIndex) < 0:
+      details.append(f"{direction}转灯已提前开启")
+    elif lane_intent.laneChangeAuthorized:
       details.append(f"{direction}变道已授权")
     else:
       details.append(f"{direction}变道等待虚线/盲区")

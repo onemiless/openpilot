@@ -2,12 +2,14 @@
 
 ## Scope
 
-This branch accepts authenticated Android navigation observations and exposes
-two closed-course behaviors: a bounded navigation speed ceiling before a
-supported maneuver, and an experimental one-lane-at-a-time navigation request
-through SP's existing DesireHelper. On Tesla, the latter uses the bounded
-0x3E9 turn-signal controller and requires Panda TX echo plus physical lamp
-feedback before lateral authority can become true.
+This branch accepts authenticated Android/iOS navigation observations and
+exposes three closed-course behaviors: a bounded navigation speed ceiling
+before a supported maneuver, a bounded physical pre-turn lamp, and an
+experimental one-lane-at-a-time navigation request through SP's existing
+DesireHelper. On Tesla, both signal paths use the bounded 0x3E9 turn-signal
+controller. The pre-turn lamp uses no lane-change target and cannot enter
+DesireHelper; lane-change authority additionally requires Panda TX echo plus
+physical lamp feedback.
 
 The phone never supplies curvature, steering angle, acceleration, CarState, or
 CAN. C3XL aligns AMap's recommended lane index with fresh visual topology,
@@ -16,10 +18,10 @@ clear blind spot, then lets the existing SP lane-change state machine act. It
 cancels the signal after a stable one-lane visual index transition and observes
 again before another request.
 
-This is not the full requested navigation stack. Android does not emit a
-directional ramp/exit maneuver from road text or `roadType`, iOS has not been
-implemented, phone/C3XL positions are not yet cross-correlated, and no
-intersection-turn curvature or highway-exit steering has been implemented.
+This is not the full requested navigation stack. Android does not infer a
+directional ramp/exit maneuver from road text alone, phone/tici positions are
+not yet cross-correlated, and no intersection-turn curvature or highway-exit
+steering has been implemented.
 
 ## Preconditions
 

@@ -38,7 +38,13 @@ class DesireHelper:
     self.alc.update_params()
     self.lane_turn_controller.update_params()
     v_ego = carstate.vEgo
-    nav_signal = bool(nav_lane_intent is not None and nav_lane_intent.valid and nav_lane_intent.signalRequested)
+    # targetLaneIndex < 0 is a physical pre-turn lamp request only. Keep it out
+    # of the lane-change state machine so an upcoming turn cannot become a
+    # lateral lane-change desire.
+    nav_signal = bool(
+      nav_lane_intent is not None and nav_lane_intent.valid and nav_lane_intent.signalRequested
+      and nav_lane_intent.targetLaneIndex >= 0
+    )
     nav_left = nav_signal and str(nav_lane_intent.direction) == "left"
     nav_right = nav_signal and str(nav_lane_intent.direction) == "right"
     physical_conflict = ((carstate.leftBlinker and nav_right) or (carstate.rightBlinker and nav_left))

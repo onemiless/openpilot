@@ -157,6 +157,19 @@ class TeslaCardAdapter:
     key = (session_id, int(intent.routeRevision), int(intent.requestId), direction)
     if key == self._last_nav_signal_request:
       return
+    if self._active_nav_signal_test_id is not None and self._last_nav_signal_request is not None:
+      previous_session, previous_revision, _previous_request, previous_direction = self._last_nav_signal_request
+      if (session_id, key[1], direction) == (previous_session, previous_revision, previous_direction):
+        # A pre-turn lamp may become a same-direction lane-change request once
+        # lane alignment stabilizes. Keep the physical lamp continuously on and
+        # transfer logical ownership without opening a second CAN session.
+        self._last_nav_signal_request = key
+        return
+      self.validation.request_cancel(self._active_nav_signal_test_id, now_nanos)
+      self._active_nav_signal_test_id = None
+      self._last_nav_signal_request = None
+      self._nav_signal_retry_after_ns = now_nanos + NAV_SIGNAL_RETRY_NS
+      return
     if now_nanos < self._nav_signal_retry_after_ns:
       return
     session_tag = hashlib.sha256(session_id.encode()).hexdigest()[:8]

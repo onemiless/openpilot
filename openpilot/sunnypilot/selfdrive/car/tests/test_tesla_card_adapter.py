@@ -161,3 +161,80 @@ def test_temporarily_busy_signal_controller_retries_with_bounded_backoff():
   adapter._update_nav_turn_signal(200)
   adapter._update_nav_turn_signal(500_000_100)
   assert len(validation.calls) == 2
+
+
+def test_pre_turn_lamp_transitions_to_same_direction_lane_change_without_blinking_off():
+  now = time.monotonic()
+  sm = FakeSubMaster(now=now)
+  sm.data["navLaneIntentSP"] = SimpleNamespace(
+    valid=True, signalRequested=True, direction="left", sessionId="session-a", routeRevision=7, requestId=11,
+  )
+  adapter = TeslaCardAdapter("tesla", SimpleNamespace(CS=FakeState()), sm)
+
+  class Validation:
+    configured = True
+
+    def __init__(self):
+      self.requests = []
+      self.cancels = []
+
+    def submit_request(self, test_id, direction, now_nanos, session_timeout_ns=None):
+      self.requests.append((test_id, direction, now_nanos, session_timeout_ns))
+      return True
+
+    def request_cancel(self, test_id, now_nanos):
+      self.cancels.append((test_id, now_nanos))
+      return True
+
+  validation = Validation()
+  adapter.validation = validation
+  adapter._update_nav_turn_signal(100)
+
+  # The lane coordinator takes ownership after the lamp is already on. A new
+  # request id in the same session/revision/direction must reuse that session.
+  sm.data["navLaneIntentSP"].requestId = 1
+  adapter._update_nav_turn_signal(101)
+
+  assert len(validation.requests) == 1
+  assert not validation.cancels
+
+  sm.data["navLaneIntentSP"].signalRequested = False
+  adapter._update_nav_turn_signal(102)
+  assert validation.cancels == [("nav-fa57a52d-7-11-left", 102)]
+
+
+def test_navigation_signal_direction_change_cancels_old_lamp_before_requesting_new_one():
+  now = time.monotonic()
+  sm = FakeSubMaster(now=now)
+  sm.data["navLaneIntentSP"] = SimpleNamespace(
+    valid=True, signalRequested=True, direction="left", sessionId="session-a", routeRevision=7, requestId=11,
+  )
+  adapter = TeslaCardAdapter("tesla", SimpleNamespace(CS=FakeState()), sm)
+
+  class Validation:
+    configured = True
+
+    def __init__(self):
+      self.requests = []
+      self.cancels = []
+
+    def submit_request(self, test_id, direction, now_nanos, session_timeout_ns=None):
+      self.requests.append((test_id, direction, now_nanos, session_timeout_ns))
+      return True
+
+    def request_cancel(self, test_id, now_nanos):
+      self.cancels.append((test_id, now_nanos))
+      return True
+
+  validation = Validation()
+  adapter.validation = validation
+  adapter._update_nav_turn_signal(100)
+
+  sm.data["navLaneIntentSP"].direction = "right"
+  sm.data["navLaneIntentSP"].requestId = 12
+  adapter._update_nav_turn_signal(101)
+  assert validation.cancels == [("nav-fa57a52d-7-11-left", 101)]
+  assert len(validation.requests) == 1
+
+  adapter._update_nav_turn_signal(101 + 500_000_000)
+  assert validation.requests[-1][1] == "right"
