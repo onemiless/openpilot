@@ -8,6 +8,21 @@ import numpy as np
 from openpilot.sunnypilot.lane_topology.types import LaneMarkingType
 
 
+REFERENCE_IMAGE_WIDTH = 526.0
+
+
+def marking_sampling_parameters(image_width: int) -> tuple[int, int, int]:
+  """Scale pixel-space strip geometry with camera resolution."""
+  if image_width <= 0:
+    raise ValueError("image width must be positive")
+  scale = max(1.0, image_width / REFERENCE_IMAGE_WIDTH)
+  return (
+    max(3, int(round(3 * scale))),
+    max(10, int(round(10 * scale))),
+    max(4, int(round(4 * scale))),
+  )
+
+
 @dataclass(frozen=True)
 class MetricLaneSample:
   distance_m: float

@@ -15,6 +15,7 @@ import numpy as np
 from openpilot.common.transformations.camera import DEVICE_CAMERAS, view_frame_from_device_frame
 from openpilot.common.transformations.orientation import rot_from_euler
 from openpilot.sunnypilot.lane_topology.metric_marking import measure_metric_marking, MetricMarkingEvidence, \
+                                                               marking_sampling_parameters, \
                                                                project_model_lane_metric_samples, TemporalMarkingFilter
 from openpilot.sunnypilot.lane_topology.primary_model import find_ego_source_ids, PrimaryLaneVisibilityFilter, \
                                                                model_v2_to_observations
@@ -98,11 +99,11 @@ def main() -> int:
   if not capture.isOpened():
     raise RuntimeError(f"cannot open {video}")
   width, height = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH)), int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
-  sampling_scale = max(1.0, float(np.sqrt(width / 526.0)))
+  center_radius, side_offset, search_radius = marking_sampling_parameters(width)
   marking_kwargs = {
-    "center_radius": max(3, int(round(3 * sampling_scale))),
-    "side_offset": max(10, int(round(10 * sampling_scale))),
-    "search_radius": max(4, int(round(4 * sampling_scale))),
+    "center_radius": center_radius,
+    "side_offset": side_offset,
+    "search_radius": search_radius,
   }
   tracker = LaneTopologyTracker(max_missed_frames=3)
   visibility = PrimaryLaneVisibilityFilter()

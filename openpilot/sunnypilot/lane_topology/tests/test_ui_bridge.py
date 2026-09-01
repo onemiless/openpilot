@@ -14,6 +14,13 @@ def model_fixture(frame_id: int, probabilities=(0.9, 0.9, 0.9, 0.9)):
                          laneLines=lines, laneLineProbs=probabilities)
 
 
+def shifted_model_fixture(frame_id: int):
+  lines = tuple(SimpleNamespace(x=(0.0, 5.0, 10.0, 40.0), y=(y,) * 4, z=(1.2,) * 4)
+                for y in (-1.8, 1.8, 5.4, 9.0))
+  return SimpleNamespace(frameId=frame_id, timestampEof=frame_id * 50_000_000,
+                         laneLines=lines, laneLineProbs=(0.9, 0.9, 0.9, 0.9))
+
+
 def test_ui_bridge_runs_at_four_hz_and_retains_last_result_between_frames():
   bridge = LaneTopologyUIBridge(frame_divisor=5)
   assert bridge.update(model_fixture(1)) is None
@@ -35,6 +42,30 @@ def test_ui_bridge_reset_drops_stale_onroad_state():
   assert bridge.update(model_fixture(1)) is not None
   bridge.reset()
   assert bridge.current is None
+
+
+def test_single_frame_ego_source_pair_flicker_does_not_clear_marking_history():
+  bridge = LaneTopologyUIBridge(frame_divisor=1)
+  for frame_id in range(1, 5):
+    bridge.update(model_fixture(frame_id))
+  assert bridge.ego_source_ids == (1, 2)
+  bridge.marking_types[1] = LaneMarkingType.dashed
+
+  bridge.update(shifted_model_fixture(5))
+
+  assert bridge.ego_source_ids == (1, 2)
+  assert bridge.marking_types[1] == LaneMarkingType.dashed
+
+
+def test_ego_markings_report_known_side_when_opposite_side_is_unknown():
+  bridge = LaneTopologyUIBridge(frame_divisor=1)
+  for frame_id in range(1, 5):
+    bridge.update(model_fixture(frame_id))
+  bridge.marking_types[1] = LaneMarkingType.unknown
+  bridge.marking_types[2] = LaneMarkingType.dashed
+  bridge.update(model_fixture(5))
+
+  assert bridge.ego_marking_types() == (LaneMarkingType.unknown, LaneMarkingType.dashed)
 
 
 def test_visionbuf_luma_returns_only_visible_width():

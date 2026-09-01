@@ -118,7 +118,7 @@ class TeslaCardAdapter:
   def control_sends(self, car_state, car_control, now_nanos: int) -> list:
     if self.validation is None:
       return []
-    self._update_nav_turn_signal(now_nanos)
+    self._update_nav_turn_signal(now_nanos, lateral_active=bool(car_control.latActive))
     now = time.monotonic()
     model_valid = (self.sm.seen["modelV2"] and self.sm.valid["modelV2"] and
                    now - self.sm.recv_time["modelV2"] <= CONTEXT_STALE_S)
@@ -133,9 +133,19 @@ class TeslaCardAdapter:
     )
     return self.validation.take_can_sends(now_nanos)
 
-  def _update_nav_turn_signal(self, now_nanos: int) -> None:
+  def _update_nav_turn_signal(self, now_nanos: int, *, lateral_active: bool = True) -> None:
     if self.validation is None:
       return
+    status_fn = getattr(self.validation, "status", None)
+    if self._active_nav_signal_test_id is not None and callable(status_fn):
+      status = status_fn()
+      if status is None or status.get("test_id") != self._active_nav_signal_test_id:
+        # The realtime controller can finish a session asynchronously after a
+        # context loss. Clear the adapter-side ownership so the same still-live
+        # navigation event may retry when lateral control becomes available.
+        self._active_nav_signal_test_id = None
+        self._last_nav_signal_request = None
+        self._nav_signal_retry_after_ns = 0
     now = time.monotonic()
     service = "navLaneIntentSP"
     fresh = bool(
@@ -149,6 +159,14 @@ class TeslaCardAdapter:
       if self._active_nav_signal_test_id is not None:
         self.validation.request_cancel(self._active_nav_signal_test_id, now_nanos)
         self._active_nav_signal_test_id = None
+      self._last_nav_signal_request = None
+      self._nav_signal_retry_after_ns = 0
+      return
+
+    if not lateral_active:
+      if self._active_nav_signal_test_id is not None:
+        self.validation.request_cancel(self._active_nav_signal_test_id, now_nanos)
+      self._active_nav_signal_test_id = None
       self._last_nav_signal_request = None
       self._nav_signal_retry_after_ns = 0
       return

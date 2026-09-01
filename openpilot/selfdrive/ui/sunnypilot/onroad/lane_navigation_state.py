@@ -49,6 +49,7 @@ REJECT_LABELS = {
   "gpsWeak": "GPS 信号弱",
   "localLocalization": "等待设备定位",
   "phoneLocalization": "等待手机定位",
+  "guidanceStale": "导航指令已过期",
   "outsideTrackDEPRECATED": "导航等待",
 }
 
@@ -206,7 +207,9 @@ def navigation_display_from_service(
     "phoneLocalization": "手机 GPS 仅提示",
     "localLocalization": "设备 GPS 仅提示",
   }.get(reject_reason)
-  if ready:
+  if ready and gps_diagnostic is not None:
+    status = f"导航可用 · {gps_diagnostic}"
+  elif ready:
     status = "导航可用"
   elif linked and gps_diagnostic is not None:
     status = f"导航联动已接入 · {gps_diagnostic}"

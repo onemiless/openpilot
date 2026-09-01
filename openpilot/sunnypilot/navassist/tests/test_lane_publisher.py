@@ -92,15 +92,22 @@ def test_control_validity_requires_fresh_synchronized_known_evidence():
   assert message.valid and state.valid and state.validForControl
   assert state.leftMarking == "dashed"
   assert state.rightMarking == "solid"
+  assert state.leftRawMarking == "dashed"
+  assert state.rightRawMarking == "solid"
+  assert state.leftEvidenceValid
+  assert state.rightEvidenceValid
+  assert state.imageModelSkewMs == pytest.approx(50.0)
   assert state.leftMarkingConfidence == pytest.approx(0.9)
 
 
-def test_unknown_current_evidence_immediately_fails_closed_even_if_tracker_remembers_dashed():
+def test_unknown_current_evidence_blocks_only_that_crossing_direction():
   message = build_lane_topology_message(
     bridge(raw_left=LaneMarkingType.unknown), now_ns=NOW_NS,
     image_mono_time=NOW_NS - 100_000_000, calibration_valid=True,
   )
-  assert not message.laneTopologyStateSP.validForControl
+  assert message.laneTopologyStateSP.validForControl
+  assert not message.laneTopologyStateSP.leftEvidenceValid
+  assert not message.laneTopologyStateSP.leftCrossingAllowed
 
 
 def test_mixed_lines_allow_crossing_only_when_ego_side_is_dashed():
@@ -140,7 +147,39 @@ def test_crossing_requires_current_raw_evidence_for_the_ego_side_component():
   ).laneTopologyStateSP
 
   assert state.validForControl
+  assert not state.leftEvidenceValid
+  assert state.rightEvidenceValid
   assert not state.leftCrossingAllowed
+
+
+def test_right_dashed_crossing_is_not_blocked_by_unknown_left_boundary():
+  state = build_lane_topology_message(
+    three_lane_bridge(
+      left_far=LaneMarkingType.solid,
+      left_ego=LaneMarkingType.unknown,
+      right_ego=LaneMarkingType.dashed,
+      right_far=LaneMarkingType.solid,
+    ),
+    now_ns=NOW_NS,
+    image_mono_time=NOW_NS - 100_000_000,
+    calibration_valid=True,
+  ).laneTopologyStateSP
+
+  assert state.validForControl
+  assert not state.leftCrossingAllowed
+  assert state.rightCrossingAllowed
+
+
+def test_fresh_but_time_mismatched_image_is_not_control_valid():
+  state = build_lane_topology_message(
+    bridge(timestamp_ns=NOW_NS - 20_000_000),
+    now_ns=NOW_NS,
+    image_mono_time=NOW_NS - 300_000_000,
+    calibration_valid=True,
+  ).laneTopologyStateSP
+
+  assert state.stale
+  assert not state.validForControl
 
 
 def test_stale_ambiguous_source_change_or_bad_calibration_fail_closed():

@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-import math
-
 import numpy as np
 
 from openpilot.sunnypilot.lane_topology.adapter import LaneTopologyFrame
 from openpilot.sunnypilot.lane_topology.metric_marking import measure_metric_marking, MetricMarkingEvidence, \
+                                                               marking_sampling_parameters, \
                                                                project_model_lane_metric_samples, TemporalMarkingFilter
 from openpilot.sunnypilot.lane_topology.primary_model import find_ego_source_ids, PrimaryModelLaneTopologyAdapter
 from openpilot.sunnypilot.lane_topology.tracker import LaneTopologyTracker
 from openpilot.sunnypilot.lane_topology.types import LaneBoundaryObservation, LaneMarkingType, LaneTopology
+
+
+SOURCE_PAIR_CONFIRM_FRAMES = 3
 
 
 def visionbuf_luma(frame: object) -> np.ndarray:
@@ -36,6 +38,8 @@ class LaneTopologyUIBridge:
     self.last_image_model_frame_id = -1
     self.model_v2: object | None = None
     self.ego_source_ids: tuple[int, int] | None = None
+    self._ego_source_candidate: tuple[int, int] | None = None
+    self._ego_source_candidate_frames = 0
     self.marking_evidence = [MetricMarkingEvidence.unknown() for _ in range(4)]
     self.last_error: str | None = None
 
@@ -50,6 +54,8 @@ class LaneTopologyUIBridge:
     self.last_image_model_frame_id = -1
     self.model_v2 = None
     self.ego_source_ids = None
+    self._ego_source_candidate = None
+    self._ego_source_candidate_frames = 0
     self.last_error = None
 
   def update(self, model_v2: object) -> LaneTopology | None:
@@ -63,7 +69,8 @@ class LaneTopologyUIBridge:
       frame = LaneTopologyFrame(frame_id, timestamp_ns, model_v2)
       observations = self.adapter.infer(frame)
       ego_source_ids = find_ego_source_ids(observations)
-      if ego_source_ids != self.ego_source_ids:
+      source_pair_changed = self._update_ego_source_ids(ego_source_ids)
+      if source_pair_changed:
         self.temporal_marking.reset()
         self.marking_types = [LaneMarkingType.unknown] * 4
         self.marking_evidence = [MetricMarkingEvidence.unknown() for _ in range(4)]
@@ -75,7 +82,6 @@ class LaneTopologyUIBridge:
           confidence=observation.confidence,
           visible=observation.visible,
         ) for observation in observations)
-      self.ego_source_ids = ego_source_ids
       self.current = self.tracker.update(observations, frame_id=frame_id, timestamp_ns=timestamp_ns)
       self.last_error = None
       return self.current
@@ -83,6 +89,23 @@ class LaneTopologyUIBridge:
       self.last_error = f"{type(error).__name__}: {error}"
       self.current = None
       return None
+
+  def _update_ego_source_ids(self, candidate: tuple[int, int] | None) -> bool:
+    if candidate == self.ego_source_ids:
+      self._ego_source_candidate = None
+      self._ego_source_candidate_frames = 0
+      return False
+    if candidate != self._ego_source_candidate:
+      self._ego_source_candidate = candidate
+      self._ego_source_candidate_frames = 1
+      return False
+    self._ego_source_candidate_frames += 1
+    if self._ego_source_candidate_frames < SOURCE_PAIR_CONFIRM_FRAMES:
+      return False
+    self.ego_source_ids = candidate
+    self._ego_source_candidate = None
+    self._ego_source_candidate_frames = 0
+    return True
 
   def needs_image(self, image_frame_id: int) -> bool:
     return (self.model_v2 is not None and self.last_frame_id >= 0 and self.last_image_model_frame_id != self.last_frame_id and
@@ -94,10 +117,7 @@ class LaneTopologyUIBridge:
     try:
       assert self.model_v2 is not None
       height, width = image.shape[:2]
-      sampling_scale = max(1.0, math.sqrt(width / 526.0))
-      center_radius = max(3, int(round(3 * sampling_scale)))
-      side_offset = max(10, int(round(10 * sampling_scale)))
-      search_radius = max(4, int(round(4 * sampling_scale)))
+      center_radius, side_offset, search_radius = marking_sampling_parameters(width)
       margin = center_radius + side_offset + search_radius
       probabilities = tuple(float(value) for value in self.model_v2.laneLineProbs)  # type: ignore[attr-defined]
       for lane_index, lane in enumerate(self.model_v2.laneLines):  # type: ignore[attr-defined]
@@ -125,6 +145,6 @@ class LaneTopologyUIBridge:
     space = topology.spaces[topology.ego_lane_index_from_left]
     by_track = {boundary.track_id: boundary for boundary in topology.boundaries}
     left, right = by_track.get(space.left_track_id), by_track.get(space.right_track_id)
-    if left is None or right is None or LaneMarkingType.unknown in (left.marking_type, right.marking_type):
+    if left is None or right is None:
       return None
     return left.marking_type, right.marking_type

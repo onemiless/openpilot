@@ -105,7 +105,7 @@ class NavigationSpeedController:
       self.output_v_target = V_CRUISE_UNSET
 
   def update(self, sm, *, long_enabled: bool, long_override: bool, v_ego: float, a_ego: float, v_cruise: float,
-             planner_verified: bool = True) -> None:
+             planner_verified: bool = True, lane_change_active: bool = False) -> None:
     if not self.enabled:
       self.output_v_target = V_CRUISE_UNSET
       self.output_a_target = a_ego
@@ -115,6 +115,14 @@ class NavigationSpeedController:
     driver_override = bool(long_override or sm["carState"].gasPressed or sm["carState"].brakePressed)
     if driver_override:
       self._reject_visible_event(sm)
+      self._release(v_cruise, a_ego)
+      return
+
+    if lane_change_active:
+      # A navigation lane alignment is lateral-only. Keep an already admitted
+      # turn event pending, but never add a navigation speed ceiling until the
+      # lane-change cycle has completed. Lead, map, speed-limit, and other
+      # longitudinal sources remain untouched by this controller.
       self._release(v_cruise, a_ego)
       return
 

@@ -20,11 +20,12 @@ class FakeSM(dict):
     self.valid = {"navAssistStateSP": healthy, "carStateSP": healthy}
 
 
-def nav(*, distance=100.0, event_id=1, valid=True, stale=False, advisory=None):
+def nav(*, distance=100.0, event_id=1, valid=True, stale=False, advisory=None,
+        maneuver=custom.NavAssistStateSP.Maneuver.turnRight):
   return SimpleNamespace(
     valid=valid,
     stale=stale,
-    maneuver=custom.NavAssistStateSP.Maneuver.turnRight,
+    maneuver=maneuver,
     maneuverDistanceM=distance,
     maneuverEventId=event_id,
     sessionId="session-a",
@@ -34,9 +35,11 @@ def nav(*, distance=100.0, event_id=1, valid=True, stale=False, advisory=None):
   )
 
 
-def update(controller, sm, *, v_ego=10.0, v_cruise=20.0, override=False, long_enabled=True, planner_verified=True):
+def update(controller, sm, *, v_ego=10.0, v_cruise=20.0, override=False, long_enabled=True, planner_verified=True,
+           lane_change_active=False):
   controller.update(sm, long_enabled=long_enabled, long_override=override,
-                    v_ego=v_ego, a_ego=0.0, v_cruise=v_cruise, planner_verified=planner_verified)
+                    v_ego=v_ego, a_ego=0.0, v_cruise=v_cruise, planner_verified=planner_verified,
+                    lane_change_active=lane_change_active)
 
 
 def test_disabled_controller_is_exactly_transparent_without_nav_service_state():
@@ -65,6 +68,29 @@ def test_early_event_is_admitted_then_activates_inside_comfort_window():
   assert controller.is_active
   assert controller.output_v_target == pytest.approx(5.0)
   assert controller.output_a_target == 0.0
+
+
+def test_navigation_lane_change_never_contributes_a_speed_ceiling():
+  controller = NavigationSpeedController(enabled=True)
+  sm = FakeSM(nav(distance=60.0))
+  update(controller, sm, lane_change_active=True)
+  assert not controller.is_active
+  assert controller.output_v_target == V_CRUISE_UNSET
+  assert not controller.event_rejected
+
+
+def test_turn_event_can_be_admitted_after_navigation_lane_change_completes():
+  controller = NavigationSpeedController(enabled=True)
+  sm = FakeSM(nav(distance=100.0))
+  update(controller, sm, lane_change_active=True)
+  assert controller.output_v_target == V_CRUISE_UNSET
+  assert not controller.event_rejected
+
+  update(controller, sm, lane_change_active=False)
+  assert controller.event_admitted and not controller.is_active
+  update(controller, FakeSM(nav(distance=60.0)), lane_change_active=False)
+  assert controller.is_active
+  assert controller.output_v_target == pytest.approx(5.0)
 
 
 def test_late_event_is_rejected_for_its_full_lifetime():
@@ -99,6 +125,14 @@ def test_phone_advisory_is_bounded_and_never_requests_a_stop():
   update(controller, FakeSM(nav(distance=100.0, advisory=0.5)))
   update(controller, FakeSM(nav(distance=60.0, advisory=0.5)))
   assert controller.output_v_target >= MIN_TARGET_SPEED_MPS
+
+
+def test_merge_signal_never_creates_a_navigation_speed_target():
+  controller = NavigationSpeedController(enabled=True)
+  merge = nav(distance=80.0, maneuver=custom.NavAssistStateSP.Maneuver.mergeRight)
+  update(controller, FakeSM(merge))
+  assert not controller.is_active
+  assert controller.output_v_target == V_CRUISE_UNSET
 
 
 def test_disengaging_rejects_the_current_event_until_a_new_event_arrives():

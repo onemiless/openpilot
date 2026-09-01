@@ -52,6 +52,17 @@ def test_navigation_turn_signal_supports_right_turns_and_waits_until_lookahead_w
   assert active.direction == LaneIntentDirection.right
 
 
+def test_navigation_merge_requests_directional_lamp_without_authorizing_lane_change():
+  coordinator = NavTurnSignalCoordinator()
+
+  intent = coordinator.update(turn_plan(maneuver="mergeRight", distance=80.0), speed_mps=10.0, now_ns=0)
+
+  assert intent.signal_requested
+  assert intent.direction == LaneIntentDirection.right
+  assert not intent.lane_change_authorized
+  assert intent.target_lane_index == -1
+
+
 def test_navigation_turn_signal_stays_on_through_zero_distance_then_cancels_on_event_change():
   coordinator = NavTurnSignalCoordinator()
   coordinator.update(turn_plan(distance=50.0), speed_mps=10.0, now_ns=0)

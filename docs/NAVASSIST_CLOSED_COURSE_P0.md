@@ -54,7 +54,7 @@ confidentiality; do not use P0 on a shared network.
 
 There is no per-drive Track Mode, shared-token, or geofence step. A fresh
 realtime TesNav route becomes eligible only while SP has the required control
-authority and every localization/data gate passes.
+authority and the authenticated realtime route/data gates pass.
 
 ## Mandatory stationary checks
 
@@ -71,15 +71,16 @@ authority and every localization/data gate passes.
    route-revision, expired source-wall timestamp, contradictory inactive mode,
    malformed, non-finite, and oversized requests. Every request must be rejected
    or remain control-invalid and must not make `navAssistStateSP.valid` true.
-5. Invalidate local localization. The state must report `localLocalization` and
-   remain unable to affect the planner. Repeat with GPS loss and local position
-   uncertainty above 10 m.
+5. Invalidate local localization. The state must report `localLocalization`
+   while fresh matched phone guidance remains control-valid. Repeat with weak
+   phone GPS and confirm the diagnostic remains visible without disabling the
+   admitted route event.
 6. Stop phone updates for more than 500 ms. The state must become stale and the
    speed ceiling must release upward at its bounded release rate, never jump to
    zero or command braking directly.
 7. Restart the manager. The already-paired App must automatically rediscover the
    receiver, while old snapshots remain unable to affect planning until fresh
-   realtime navigation, localization, and SP authority all return.
+   realtime navigation and SP authority return.
 8. Restart only `navassistd`, replay the last accepted signed request, and verify
    the persisted receive high-water mark rejects it.
 

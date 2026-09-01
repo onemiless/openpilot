@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from openpilot.sunnypilot.lane_topology.metric_marking import classify_metric_presence, \
+                                                                  marking_sampling_parameters, \
                                                                   project_model_lane_metric_samples, \
                                                                   TemporalMarkingFilter
 from openpilot.sunnypilot.lane_topology.types import LaneMarkingType
@@ -35,6 +36,12 @@ def test_metric_projection_interpolates_uniform_forward_distance():
                                               min_distance_m=5.0, max_distance_m=15.0,
                                               distance_step_m=0.5, image_margin_px=0.0)
   assert [sample.distance_m for sample in samples] == list(np.arange(5.0, 15.5, 0.5))
+
+
+def test_marking_sampling_geometry_scales_linearly_with_camera_resolution():
+  assert marking_sampling_parameters(526) == (3, 10, 4)
+  center, side, search = marking_sampling_parameters(1928)
+  assert (center, side, search) == (11, 37, 15)
 
 
 def test_temporal_filter_requires_repeated_dominant_evidence():

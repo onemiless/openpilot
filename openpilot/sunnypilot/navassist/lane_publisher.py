@@ -6,6 +6,7 @@ from openpilot.sunnypilot.lane_topology.types import LaneMarkingType, LaneTopolo
 
 MODEL_MAX_AGE_NS = 150_000_000
 MARKING_MAX_AGE_NS = 500_000_000
+MODEL_IMAGE_MAX_SKEW_NS = 100_000_000
 
 MARKING_TO_CEREAL = {
   LaneMarkingType.unknown: "unknown",
@@ -37,6 +38,7 @@ def raw_marking_matches(bridge, source_id: int, expected: LaneMarkingType) -> bo
 
 
 def build_lane_topology_message(bridge, *, now_ns: int, image_mono_time: int = 0, image_frame_id: int = 0,
+                                image_model_mono_time: int | None = None,
                                 calibration_valid: bool = False, source_pair_changed: bool = False):
   message = messaging.new_message("laneTopologyStateSP")
   state = message.laneTopologyStateSP
@@ -53,6 +55,15 @@ def build_lane_topology_message(bridge, *, now_ns: int, image_mono_time: int = 0
   model_fresh = 0 <= model_age_ns <= MODEL_MAX_AGE_NS
   image_age_ns = now_ns - image_mono_time if image_mono_time else MARKING_MAX_AGE_NS + 1
   image_fresh = 0 <= image_age_ns <= MARKING_MAX_AGE_NS
+  evidence_model_mono_time = topology.timestamp_ns if image_model_mono_time is None else image_model_mono_time
+  image_synchronized = bool(
+    image_mono_time and evidence_model_mono_time and
+    abs(int(image_mono_time) - int(evidence_model_mono_time)) <= MODEL_IMAGE_MAX_SKEW_NS
+  )
+  state.imageModelSkewMs = (
+    abs(int(image_mono_time) - int(evidence_model_mono_time)) / 1e6
+    if image_mono_time and evidence_model_mono_time else 0.0
+  )
   state.modelMonoTime = topology.timestamp_ns
   state.imageMonoTime = image_mono_time
   state.frameId = topology.frame_id
@@ -73,16 +84,15 @@ def build_lane_topology_message(bridge, *, now_ns: int, image_mono_time: int = 0
   state.leftEvidenceAgeMs = max(0.0, image_age_ns / 1e6)
   state.rightEvidenceAgeMs = max(0.0, image_age_ns / 1e6)
 
-  raw_evidence_known = False
   if bridge.ego_source_ids is not None:
     left_source, right_source = bridge.ego_source_ids
     left_evidence = bridge.marking_evidence[left_source]
     right_evidence = bridge.marking_evidence[right_source]
     state.leftMarkingConfidence = left_evidence.confidence
     state.rightMarkingConfidence = right_evidence.confidence
-    raw_evidence_known = LaneMarkingType.unknown not in (left_evidence.marking_type, right_evidence.marking_type)
 
   left_ego = left_far = right_ego = right_far = LaneMarkingType.unknown
+  left_raw = right_raw = LaneMarkingType.unknown
   left_ego_raw_known = right_ego_raw_known = False
   if topology.ego_lane_index_from_left >= 0:
     ego_space = topology.spaces[topology.ego_lane_index_from_left]
@@ -105,27 +115,31 @@ def build_lane_topology_message(bridge, *, now_ns: int, image_mono_time: int = 0
                         right_boundary.left_component_source_id >= 0 else right_fallback_source)
     left_ego_raw_known = raw_marking_matches(bridge, left_ego_source, left_ego or LaneMarkingType.unknown)
     right_ego_raw_known = raw_marking_matches(bridge, right_ego_source, right_ego or LaneMarkingType.unknown)
+    if 0 <= left_ego_source < len(bridge.marking_evidence):
+      left_raw = bridge.marking_evidence[left_ego_source].marking_type
+    if 0 <= right_ego_source < len(bridge.marking_evidence):
+      right_raw = bridge.marking_evidence[right_ego_source].marking_type
     state.leftEgoSideMarking = MARKING_TO_CEREAL[left_ego or LaneMarkingType.unknown]
     state.leftFarSideMarking = MARKING_TO_CEREAL[left_far or LaneMarkingType.unknown]
     state.rightEgoSideMarking = MARKING_TO_CEREAL[right_ego or LaneMarkingType.unknown]
     state.rightFarSideMarking = MARKING_TO_CEREAL[right_far or LaneMarkingType.unknown]
+  state.leftRawMarking = MARKING_TO_CEREAL[left_raw]
+  state.rightRawMarking = MARKING_TO_CEREAL[right_raw]
 
   ambiguous = topology.state != LaneTopologyState.normal or topology.ego_lane_index_from_left < 0
-  stale = bool(topology.stale or not model_fresh or not image_fresh)
+  stale = bool(topology.stale or not model_fresh or not image_fresh or not image_synchronized)
   state.ambiguous = ambiguous
   state.stale = stale
-  known_stable_markings = LaneMarkingType.unknown not in (left_type, right_type)
   state.validForControl = bool(
     calibration_valid and not stale and not ambiguous and not source_pair_changed
-    and known_stable_markings and raw_evidence_known
   )
+  state.leftEvidenceValid = bool(state.validForControl and left_ego != LaneMarkingType.unknown and left_ego_raw_known)
+  state.rightEvidenceValid = bool(state.validForControl and right_ego != LaneMarkingType.unknown and right_ego_raw_known)
   state.leftCrossingAllowed = bool(
-    state.validForControl and state.leftNeighborExists and
-    left_ego in CROSSABLE_EGO_MARKINGS and left_ego_raw_known
+    state.leftEvidenceValid and state.leftNeighborExists and left_ego in CROSSABLE_EGO_MARKINGS
   )
   state.rightCrossingAllowed = bool(
-    state.validForControl and state.rightNeighborExists and
-    right_ego in CROSSABLE_EGO_MARKINGS and right_ego_raw_known
+    state.rightEvidenceValid and state.rightNeighborExists and right_ego in CROSSABLE_EGO_MARKINGS
   )
   state.valid = bool(model_fresh and not topology.stale)
   message.valid = True

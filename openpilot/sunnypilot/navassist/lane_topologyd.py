@@ -12,7 +12,7 @@ from openpilot.common.swaglog import cloudlog
 from openpilot.common.transformations.camera import DEVICE_CAMERAS, view_frame_from_device_frame
 from openpilot.common.transformations.orientation import rot_from_euler
 from openpilot.sunnypilot.lane_topology.ui_bridge import LaneTopologyUIBridge, visionbuf_luma
-from openpilot.sunnypilot.navassist.lane_publisher import build_lane_topology_message
+from openpilot.sunnypilot.navassist.lane_publisher import build_lane_topology_message, MODEL_IMAGE_MAX_SKEW_NS
 
 
 CALIBRATED = log.ExtrinsicsCalibration.Status.calibrated
@@ -54,6 +54,7 @@ def main() -> None:
   camera_from_calib: np.ndarray | None = None
   calibration_geometry_valid = False
   image_mono_time = 0
+  image_model_mono_time = 0
   image_frame_id = 0
   previous_source_pair: tuple[int, int] | None = None
   source_pair_changed = False
@@ -95,6 +96,7 @@ def main() -> None:
       previous_source_pair = None
       source_pair_changed = True
       image_mono_time = 0
+      image_model_mono_time = 0
       image_frame_id = 0
     elif sm.updated["modelV2"]:
       bridge.update(sm["modelV2"])
@@ -103,15 +105,22 @@ def main() -> None:
 
     frame = client.recv(timeout_ms=0)
     image_due = bridge.last_frame_id >= 0 and bridge.last_frame_id % IMAGE_CLASSIFIER_DIVISOR == 0
+    frame_mono_time = int(client.timestamp_eof) if frame is not None else 0
+    model_mono_time = int(getattr(bridge.model_v2, "timestampEof", 0)) if bridge.model_v2 is not None else 0
+    image_model_synchronized = bool(
+      frame_mono_time and model_mono_time and abs(frame_mono_time - model_mono_time) <= MODEL_IMAGE_MAX_SKEW_NS
+    )
     if (frame is not None and image_due and calibration_valid and camera_from_calib is not None
-        and bridge.needs_image(frame.frame_id)):
+        and image_model_synchronized and bridge.needs_image(frame.frame_id)):
       if bridge.update_image(frame.frame_id, visionbuf_luma(frame), camera_from_calib):
-        image_mono_time = int(client.timestamp_eof)
+        image_mono_time = frame_mono_time
+        image_model_mono_time = model_mono_time
         image_frame_id = int(client.frame_id)
 
     now_ns = time.monotonic_ns()
     message = build_lane_topology_message(
       bridge, now_ns=now_ns, image_mono_time=image_mono_time, image_frame_id=image_frame_id,
+      image_model_mono_time=image_model_mono_time,
       calibration_valid=calibration_valid, source_pair_changed=source_pair_changed,
     )
     pm.send("laneTopologyStateSP", message)

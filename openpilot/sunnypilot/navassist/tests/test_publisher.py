@@ -41,11 +41,11 @@ def test_local_expiry_fails_closed_while_retaining_diagnostics():
   assert state.rejectReason == "stale"
 
 
-def test_local_localization_is_a_hard_gate():
+def test_local_localization_is_diagnostic_only_for_fresh_matched_phone_guidance():
   no_localization = build_nav_assist_message(
     accepted(), 1_100_000_000, local_localization_valid=False,
   ).navAssistStateSP
-  assert not no_localization.valid and no_localization.rejectReason == "localLocalization"
+  assert no_localization.valid and no_localization.rejectReason == "localLocalization"
 
 
 def test_phone_gps_weak_flag_is_diagnostic_not_a_control_gate():
@@ -89,22 +89,24 @@ def test_missing_phone_observation_blocks_are_retained_as_invalid_diagnostics():
   assert not state.valid and state.rejectReason == "noData"
 
 
-def test_stale_or_inaccurate_phone_observations_do_not_become_fresh_via_new_transport_snapshot():
+def test_stale_phone_guidance_remains_a_control_gate():
   raw = payload()
   raw["guidance"]["observedAtMs"] = raw["sourceWallTimeMs"] - 2_001
   old_guidance = AcceptedSnapshot(parse_snapshot(encode(raw)), 1_000_000_000, 1_500_000_000)
   state = build_nav_assist_message(
     old_guidance, 1_100_000_000, local_localization_valid=True,
   ).navAssistStateSP
-  assert not state.valid and state.rejectReason == "phoneLocalization"
+  assert not state.valid and state.rejectReason == "guidanceStale"
 
+
+def test_phone_location_quality_is_diagnostic_only_for_fresh_matched_guidance():
   raw = payload()
   raw["location"]["accuracyM"] = 26.0
   inaccurate = AcceptedSnapshot(parse_snapshot(encode(raw)), 1_000_000_000, 1_500_000_000)
   state = build_nav_assist_message(
     inaccurate, 1_100_000_000, local_localization_valid=True,
   ).navAssistStateSP
-  assert not state.valid and state.rejectReason == "phoneLocalization"
+  assert state.valid and state.rejectReason == "phoneLocalization"
 
 
 def test_stale_lane_guidance_is_hidden_without_disabling_longitudinal_guidance():

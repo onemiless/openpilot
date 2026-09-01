@@ -87,12 +87,14 @@ class NavTurnSignalCoordinator:
     "uTurnLeft": LaneIntentDirection.left,
     "exitLeft": LaneIntentDirection.left,
     "rampLeft": LaneIntentDirection.left,
+    "mergeLeft": LaneIntentDirection.left,
     "slightRight": LaneIntentDirection.right,
     "turnRight": LaneIntentDirection.right,
     "sharpRight": LaneIntentDirection.right,
     "uTurnRight": LaneIntentDirection.right,
     "exitRight": LaneIntentDirection.right,
     "rampRight": LaneIntentDirection.right,
+    "mergeRight": LaneIntentDirection.right,
   }
 
   def __init__(self) -> None:

@@ -163,6 +163,41 @@ def test_temporarily_busy_signal_controller_retries_with_bounded_backoff():
   assert len(validation.calls) == 2
 
 
+def test_navigation_signal_retries_after_realtime_controller_cancels_inactive_lateral_session():
+  now = time.monotonic()
+  sm = FakeSubMaster(now=now)
+  sm.data["navLaneIntentSP"] = SimpleNamespace(
+    valid=True, signalRequested=True, direction="right", sessionId="session-retry", routeRevision=3, requestId=9,
+  )
+  adapter = TeslaCardAdapter("tesla", SimpleNamespace(CS=FakeState()), sm)
+  adapter.validation.configured = True
+
+  adapter._update_nav_turn_signal(12_000_000_000)
+  assert adapter.validation.status() is not None
+  adapter.validation.update_lane_change_context(
+    12_000_000_001, valid=True, state=0, direction=0, lateral_active=False, brake_pressed=False,
+  )
+  assert adapter.validation.status() is None
+
+  adapter._update_nav_turn_signal(13_000_000_000)
+  assert adapter.validation.status() is not None
+
+
+def test_navigation_signal_waits_for_lateral_control_before_opening_session():
+  now = time.monotonic()
+  sm = FakeSubMaster(now=now)
+  sm.data["navLaneIntentSP"] = SimpleNamespace(
+    valid=True, signalRequested=True, direction="left", sessionId="session-wait", routeRevision=2, requestId=5,
+  )
+  adapter = TeslaCardAdapter("tesla", SimpleNamespace(CS=FakeState()), sm)
+  adapter.validation.configured = True
+
+  adapter._update_nav_turn_signal(12_000_000_000, lateral_active=False)
+  assert adapter.validation.status() is None
+  adapter._update_nav_turn_signal(12_500_000_000, lateral_active=True)
+  assert adapter.validation.status() is not None
+
+
 def test_pre_turn_lamp_transitions_to_same_direction_lane_change_without_blinking_off():
   now = time.monotonic()
   sm = FakeSubMaster(now=now)

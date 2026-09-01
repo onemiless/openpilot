@@ -9,11 +9,11 @@ acceleration, CarState, or CAN commands.
 The manager keeps the network-only `navassistd` receiver available on a Tesla
 C3XL so an installed TesNav App can reconnect without a manually copied token.
 `lane_topologyd` still runs only onroad. Network availability grants no control
-authority. Active use separately requires valid realtime navigation, SP control
-authority, and valid local localization. No per-drive Track Mode, token, or
-geofence configuration step exists. The normalized snapshot remains invalid
-unless C3XL's own `liveLocationKalman` is healthy; enabling SP never bypasses
-that condition.
+authority. Active use separately requires fresh matched realtime phone
+guidance and SP control authority. No per-drive Track Mode, token, or geofence
+configuration step exists. Phone observation quality and C3XL
+`liveLocationKalman` remain visible diagnostics, but they do not veto a fresh
+matched phone route.
 
 On first use, C3XL trusts a bounded set of up to four self-signed App identities,
 and it adds each new identity only while offroad. Those P-256 public keys are
@@ -115,14 +115,12 @@ already-paired Apps; transport availability never grants control authority. If
 one paired App owns a fresh active navigation session, snapshots from another
 paired App cannot preempt it until the active session expires.
 
-Transport freshness cannot make an old SDK callback fresh: active use also
-requires phone location accuracy no worse than 25 m, location observation age
-no more than 1 s, guidance observation age no more than 2 s, a known coordinate
-system, route matching, and healthy C3XL GPS/localization. The local ECEF
-position standard deviation must be at most 10 m.
-The phone SDK's `gpsWeak` flag remains visible as diagnostic state but is not a
-control gate; explicit accuracy/freshness checks and C3XL localization remain
-the control authority boundary.
+Transport freshness cannot make a stopped App or an expired route active.
+Active use still requires an authenticated unexpired snapshot, realtime mode,
+route matching, current guidance, a nonzero maneuver event, and phone-provided
+route progress. Phone accuracy/callback age and C3XL localization are published
+as diagnostics rather than independent planner vetoes. The phone SDK's
+`gpsWeak` flag is also diagnostic-only.
 Only Android/iOS `realtime` navigation can become control-valid; simulation and
 generic track sources remain diagnostic-only.
 

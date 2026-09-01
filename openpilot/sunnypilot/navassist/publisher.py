@@ -40,6 +40,11 @@ def _phone_observations_valid(snapshot) -> bool:
   )
 
 
+def _phone_guidance_fresh(snapshot) -> bool:
+  guidance_age_ms = snapshot.source_wall_time_ms - snapshot.guidance_observed_at_ms
+  return bool(snapshot.guidance_present and 0 <= guidance_age_ms <= MAX_PHONE_GUIDANCE_AGE_MS)
+
+
 def build_nav_assist_message(current: AcceptedSnapshot | None, now_ns: int, *, local_localization_valid: bool = False):
   message = messaging.new_message("navAssistStateSP")
   state = message.navAssistStateSP
@@ -101,11 +106,13 @@ def build_nav_assist_message(current: AcceptedSnapshot | None, now_ns: int, *, l
     target.recommended = source.recommended
 
   phone_observations_valid = _phone_observations_valid(snapshot)
+  phone_guidance_fresh = _phone_guidance_fresh(snapshot)
   control_source_valid = snapshot.source_platform in ("android", "ios") and snapshot.navigation_mode == "realtime"
+  # The phone SDK owns route progress and maneuver distance. C3XL localization
+  # and phone observation quality remain visible diagnostics, but they do not
+  # veto otherwise fresh, matched realtime guidance.
   state.valid = bool(not stale and control_source_valid and snapshot.route_active and snapshot.route_matched
-                     and snapshot.location_present and snapshot.guidance_present
-                     and phone_observations_valid
-                     and local_localization_valid)
+                     and snapshot.location_present and snapshot.guidance_present and phone_guidance_fresh)
   if stale:
     state.rejectReason = "stale"
   elif not control_source_valid:
@@ -116,6 +123,8 @@ def build_nav_assist_message(current: AcceptedSnapshot | None, now_ns: int, *, l
     state.rejectReason = "routeUnmatched"
   elif not snapshot.location_present or not snapshot.guidance_present:
     state.rejectReason = "noData"
+  elif not phone_guidance_fresh:
+    state.rejectReason = "guidanceStale"
   elif not phone_observations_valid:
     state.rejectReason = "phoneLocalization"
   elif not local_localization_valid:

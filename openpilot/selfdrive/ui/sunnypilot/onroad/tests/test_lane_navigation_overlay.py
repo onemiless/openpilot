@@ -110,6 +110,27 @@ def test_navigation_overlay_treats_device_gps_as_diagnostic_after_route_is_linke
   assert not display.ready
 
 
+def test_navigation_overlay_keeps_gps_diagnostic_visible_when_control_is_valid():
+  nav = SimpleNamespace(
+    maneuver="turnRight",
+    maneuverDistanceM=80,
+    currentRoad="测试路",
+    nextRoad="场地东路",
+    lanes=[],
+    routeActive=True,
+    routeMatched=True,
+    stale=False,
+    valid=True,
+    rejectReason="localLocalization",
+  )
+
+  display = navigation_display_from_service(nav, seen=True, alive=True, valid=True)
+
+  assert display is not None
+  assert display.detail == "导航可用 · 设备 GPS 仅提示"
+  assert display.ready
+
+
 def test_navigation_overlay_labels_pre_turn_lamp_without_calling_it_a_lane_change():
   nav = SimpleNamespace(
     maneuver="turnLeft",

@@ -709,6 +709,7 @@ struct NavAssistStateSP @0xc2243c65e0340384 {
     outsideTrackDEPRECATED @9;
     localLocalization @10;
     phoneLocalization @11;
+    guidanceStale @12;
   }
 }
 
@@ -744,6 +745,11 @@ struct LaneTopologyStateSP @0x9ccdc8676701b412 {
   rightFarSideMarking @28 :Marking;
   leftCrossingAllowed @29 :Bool;
   rightCrossingAllowed @30 :Bool;
+  leftRawMarking @31 :Marking;
+  rightRawMarking @32 :Marking;
+  imageModelSkewMs @33 :Float32;
+  leftEvidenceValid @34 :Bool;
+  rightEvidenceValid @35 :Bool;
 
   enum Marking {
     unknown @0;

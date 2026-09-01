@@ -46,6 +46,19 @@ class LongitudinalPlannerSP:
 
     return experimental_mode and self.dec.mode() == "blended"
 
+  @staticmethod
+  def navigation_lane_change_active(sm: messaging.SubMaster) -> bool:
+    service = "navLaneIntentSP"
+    intent_healthy = bool(
+      sm.seen[service] and sm.alive[service] and sm.valid[service] and sm[service].valid
+    )
+    intent = sm[service]
+    navigation_alignment = bool(
+      intent_healthy and intent.signalRequested and int(intent.targetLaneIndex) >= 0
+    )
+    model_lane_change = str(sm["modelV2"].meta.laneChangeState) != "off"
+    return navigation_alignment or model_lane_change
+
   def update_targets(self, sm: messaging.SubMaster, v_ego: float, a_ego: float, v_cruise: float) -> tuple[float, float]:
     CS = sm['carState']
     v_cruise_cluster_kph = min(CS.vCruiseCluster, V_CRUISE_MAX)
@@ -69,7 +82,8 @@ class LongitudinalPlannerSP:
     # Disabled/unhealthy input is V_CRUISE_UNSET and is therefore transparent.
     self.nav.update(sm, long_enabled=sm['carControl'].longActive, long_override=long_override,
                     v_ego=v_ego, a_ego=a_ego, v_cruise=v_cruise,
-                    planner_verified=getattr(self, "active_backend_id", None) == BackendId.OFFICIAL)
+                    planner_verified=getattr(self, "active_backend_id", None) == BackendId.OFFICIAL,
+                    lane_change_active=self.navigation_lane_change_active(sm))
 
     targets = {
       LongitudinalPlanSource.cruise: (v_cruise, a_ego),
