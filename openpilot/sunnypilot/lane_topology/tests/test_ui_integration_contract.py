@@ -21,3 +21,9 @@ def test_tici_big_onroad_hud_renders_lane_and_navigation_overlay():
   hud = (ROOT / "openpilot/selfdrive/ui/sunnypilot/onroad/hud_renderer.py").read_text()
   assert "LaneNavigationOverlay" in hud
   assert "lane_navigation_overlay.render(rect)" in hud
+
+
+def test_ui_accepts_current_bounded_navassist_pairing_record():
+  ui_state = (ROOT / "openpilot/selfdrive/ui/sunnypilot/ui_state.py").read_text()
+  assert 'apps = pairing.get("apps")' in ui_state
+  assert 'self.nav_assist_track_mode = nav_assist_paired(' in ui_state
