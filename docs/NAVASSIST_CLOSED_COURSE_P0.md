@@ -5,21 +5,26 @@
 This branch accepts authenticated Android/iOS navigation observations and
 exposes three closed-course behaviors: a bounded navigation speed ceiling
 before a supported maneuver, a bounded physical pre-turn lamp, and an
-experimental one-lane-at-a-time navigation request through SP's existing
-DesireHelper. On Tesla, both signal paths use the bounded 0x3E9 turn-signal
-controller. The pre-turn lamp uses no lane-change target and cannot enter
-DesireHelper; lane-change authority additionally requires Panda TX echo plus
-physical lamp feedback.
+experimental one-lane-at-a-time navigation target through SP's existing
+DesireHelper and AutoLaneChangeController. On Tesla, both signal paths use the
+bounded 0x3E9 turn-signal controller. The pre-turn lamp uses no lane-change
+target; its physical feedback and cancellation tail are suppressed at the ALC
+entrance while remaining available to SP's low-speed LaneTurnController.
 
 The phone never supplies curvature, steering angle, acceleration, CarState, or
-CAN. C3XL aligns AMap's recommended lane index with fresh visual topology. When
-AMap has not yet published LaneInfo, an ordinary/sharp/U-turn may select the
-visual extreme lane in its direction inside 1 km; directional exit/ramp/merge
-maneuvers may do so inside 2 km. Explicit fresh AMap LaneInfo always takes
-priority. C3XL requests one physical turn signal, waits for ego-side dashed
-evidence and a clear blind spot, then lets the existing SP lane-change state
-machine act. It cancels the signal after a stable one-lane visual index
-transition and observes again before another request.
+CAN. C3XL does not treat AMap's complete-road lane index as the same coordinate
+as modelV2's local visible index. A fresh LaneInfo recommendation qualifies
+active alignment only when it touches the maneuver-side road edge; unanchored
+middle-lane recommendations remain display-only. When AMap has not yet
+published LaneInfo, an ordinary/sharp/U-turn may select the visual extreme lane
+in its direction inside 1 km; directional exit/ramp/merge maneuvers may do so
+inside 2 km. C3XL requests one physical turn signal; SP requires current
+ego-side dashed evidence, a clear blind spot and its configured
+AutoLaneChangeController policy before starting. Relative edge alignment counts
+one completed SP lane-change cycle, then observes again before another request.
+For a continuous route revision, a changed maneuver event does not cancel the
+lamp until SP's model-derived turn geometry has remained clear for 0.5 seconds;
+a reroute/session change and the 60-second hard timeout still cancel directly.
 
 This is not the full requested navigation stack. Android does not infer a
 directional ramp/exit maneuver from road text alone, phone/tici positions are
@@ -28,8 +33,9 @@ from the phone. Lane positioning remains one visual lane at a time through
 SP's existing lane-change state machine.
 Lane positioning alone never creates a navigation speed target. If a supported
 turn or directional exit enters its computed comfort-braking window while the
-last lane change is still active, maneuver deceleration remains eligible; it is
-not suppressed merely because lateral motion is in progress.
+last lane change is still active, maneuver deceleration remains eligible. The
+navigation ceiling is retained through AMap distance zero; once SCC-V confirms
+the curve, navigation hands speed ownership to SP's existing vision controller.
 
 ## Preconditions
 
@@ -123,8 +129,9 @@ be more conservative and therefore produce stronger braking.
 This path is experimental and must progress from stationary signal validation
 to HIL/replay before any moving test. `TeslaTurnSignalValidation` must be
 enabled offroad and the onroad cycle restarted so the matching Panda safety
-capability is present. Without confirmed physical lamp feedback, the state may
-request a signal but must never authorize lateral motion.
+capability is present. SP `AutoLaneChangeTimer` must also be set to an automatic
+mode; `OFF` and `NUDGE` remain authoritative. Without confirmed physical lamp
+feedback and current dashed evidence, SP must never begin lateral motion.
 
 Use painted single dashed, single solid, and dashed-to-solid boundaries and
 keep the target lane physically empty. Confirm the independent
@@ -137,10 +144,13 @@ keep the target lane physically empty. Confirm the independent
 - distinguishes relative visible lane index from total road lane count.
 - preserves the left/right component order of mixed solid-dashed boundaries and
   allows crossing only when the ego-side component has current dashed evidence;
-- requires AMap and vision lane counts/indexes to match, a real neighboring
-  lane, physical one-sided lamp feedback, clear BSM, and active SP lateral;
-- tolerates at most one second of expected source-pair handoff while changing,
-  then requires a stable one-lane index transition before cancelling the lamp;
+- never compares an unanchored AMap middle-lane index with a visual index;
+  edge-qualified/fallback targets still require a real neighboring lane,
+  physical one-sided lamp feedback, current dashed evidence, clear BSM, active
+  SP lateral, and an automatic SP ALC mode;
+- tolerates at most one second of expected source-pair handoff while changing;
+  a relative edge target completes one step from the SP lane-change cycle,
+  while any future absolute target must prove a stable anchored index change;
 - cancels on route/session change, pedals, physical-signal loss, stale input,
   direction conflict, or bounded timeout.
 

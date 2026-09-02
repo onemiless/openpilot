@@ -71,9 +71,9 @@ A read-only interpretation of independently observed visible lane markings.
 It distinguishes physical markings from topology boundaries, derives visible
 lane spaces and the ego lane, and carries explicit ambiguous/stale state through
 merge, split, occlusion, and low-confidence scenes. It never replaces modelV2,
-becomes a Planner Backend or Plan Constraint, or supplies a trajectory. The UI
-bridge remains display-only; a separate Control Lane Observation may expose a
-fail-closed typed derivative without making Lane Topology a control owner.
+becomes a Planner Backend or Plan Constraint, or supplies a trajectory. A
+neutral observer may publish a fail-closed Control Lane Observation; UI fallback
+adapters remain display-only and never become a second control producer.
 _Avoid_: total road lanes, lane control model, modelV2 lane replacement
 
 **Control Lane Observation**:
@@ -92,8 +92,9 @@ _Avoid_: phone control command, mobile planner, navigation CAN
 **Track Navigation Speed Controller**:
 A closed-course-only common longitudinal target that can lower the base cruise
 speed ceiling for an admitted maneuver. It cannot request a stop, acceleration,
-or a less conservative target and is transparent unless NavAssistTrackMode was
-armed offroad for the current manager session.
+or a less conservative target. A fresh matched realtime route becomes eligible
+only while SP has active longitudinal authority; once SP vision confirms the
+curve, the existing SCC-V controller becomes the sole turn-speed owner.
 _Avoid_: navigation planner backend, phone acceleration command, route MPC
 
 **Model Platform**:

@@ -91,3 +91,24 @@ def test_ui_bridge_accumulates_metric_dashed_and_solid_evidence():
   bridge.update(SimpleNamespace(frameId=9, timestampEof=9, laneLines=lines, laneLineProbs=(0.1, 0.9, 0.9, 0.1)))
   assert bridge.marking_types[1] == LaneMarkingType.dashed
   assert bridge.marking_types[2] == LaneMarkingType.solid
+
+
+def test_control_observer_classifies_only_the_current_ego_boundaries():
+  bridge = LaneTopologyUIBridge(frame_divisor=1)
+  xs = tuple(np.arange(0.0, 61.0, 1.0))
+  lines = tuple(SimpleNamespace(x=xs, y=(y,) * len(xs), z=(1.0,) * len(xs)) for y in (-30.0, -10.0, 10.0, 30.0))
+  image = np.full((100, 300), 30, dtype=np.uint8)
+  for row in (20, 40, 60, 80):
+    image[row - 3:row + 4, 20:201] = 230
+  camera_from_calib = np.array(((4.0, 0.0, 0.0), (0.0, 1.0, 50.0), (0.0, 0.0, 1.0)))
+
+  for frame_id in range(1, 9):
+    model = SimpleNamespace(frameId=frame_id, timestampEof=frame_id, laneLines=lines, laneLineProbs=(0.9,) * 4)
+    bridge.update(model)
+    assert bridge.update_image(frame_id, image, camera_from_calib)
+
+  assert bridge.ego_source_ids == (1, 2)
+  assert bridge.marking_types[0] == LaneMarkingType.unknown
+  assert bridge.marking_types[3] == LaneMarkingType.unknown
+  assert bridge.marking_evidence[0].sample_count == 0
+  assert bridge.marking_evidence[3].sample_count == 0

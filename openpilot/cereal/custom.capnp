@@ -776,7 +776,7 @@ struct NavLaneIntentSP @0xcd96dafb67a082d0 {
   publishMonoTime @0 :UInt64;
   valid @1 :Bool;
   signalRequested @2 :Bool;
-  laneChangeAuthorized @3 :Bool;
+  laneChangeAuthorized @3 :Bool;  # Deprecated; navigation never grants SP lane-change authority.
   direction @4 :Direction;
   requestId @5 :UInt64;
   targetLaneIndex @6 :Int8 = -1;
@@ -784,6 +784,7 @@ struct NavLaneIntentSP @0xcd96dafb67a082d0 {
   maneuverEventId @8 :UInt64;
   reason @9 :Text;
   sessionId @10 :Text;
+  spLaneChangeReady @11 :Bool;  # Diagnostic only: fresh dashed/BSM/lamp qualification observed.
 
   enum Direction {
     none @0;

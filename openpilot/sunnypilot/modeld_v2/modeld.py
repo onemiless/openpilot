@@ -50,7 +50,7 @@ from openpilot.sunnypilot.modeld_v2.compile_modeld import derive_frame_skip, mak
 from openpilot.sunnypilot.livedelay.helpers import get_lat_delay
 from openpilot.sunnypilot.modeld_v2.modeld_base import ModelStateBase
 from openpilot.sunnypilot.models.helpers import get_active_bundle
-from openpilot.sunnypilot.selfdrive.controls.lib.lane_change_blocker import lane_topology_change_blocks
+from openpilot.sunnypilot.selfdrive.controls.lib.lane_change_blocker import LaneChangeBoundaryBlocker
 from openpilot.sunnypilot.selfdrive.controls.lib.relc import RoadEdgeLaneChangeController
 
 PROCESS_NAME = "openpilot.selfdrive.modeld.modeld_tinygrad"
@@ -480,6 +480,7 @@ def main(demo=False):
   DH = DesireHelper()
   meta_constants = load_meta_constants()
   RELC = RoadEdgeLaneChangeController()
+  LINE_BLOCKER = LaneChangeBoundaryBlocker()
 
   while True:
     # Keep receiving frames until we are at least 1 frame ahead of previous extra frame
@@ -612,13 +613,16 @@ def main(demo=False):
       lane_topology_healthy = bool(
         sm.seen['laneTopologyStateSP'] and sm.alive['laneTopologyStateSP'] and sm.valid['laneTopologyStateSP']
       )
-      left_line_blocked, right_line_blocked = lane_topology_change_blocks(
+      left_line_blocked, right_line_blocked = LINE_BLOCKER.update(
         sm['laneTopologyStateSP'], healthy=lane_topology_healthy,
       )
+      topology = sm['laneTopologyStateSP']
       DH.update(
         sm['carState'], sm['carControl'].latActive, lane_change_prob, left_edge, right_edge,
         nav_lane_intent=nav_lane_intent,
         left_line_blocked=left_line_blocked, right_line_blocked=right_line_blocked,
+        left_crossing_allowed=bool(lane_topology_healthy and topology.leftCrossingAllowed),
+        right_crossing_allowed=bool(lane_topology_healthy and topology.rightCrossingAllowed),
       )
       modelv2_send.modelV2.meta.laneChangeState = DH.lane_change_state
       modelv2_send.modelV2.meta.laneChangeDirection = DH.lane_change_direction

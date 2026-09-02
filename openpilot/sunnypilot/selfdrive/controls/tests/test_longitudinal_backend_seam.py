@@ -128,27 +128,6 @@ def test_default_backend_hooks_preserve_upstream_dec_behavior():
   assert plan.dec.enabled and plan.dec.active
 
 
-def test_navigation_lane_alignment_and_model_lane_change_suspend_only_nav_speed_source():
-  class FakeSM:
-    def __init__(self):
-      self.intent = SimpleNamespace(valid=True, signalRequested=True, targetLaneIndex=-1)
-      self.model = SimpleNamespace(meta=SimpleNamespace(laneChangeState="off"))
-      self.seen = {"navLaneIntentSP": True}
-      self.alive = {"navLaneIntentSP": True}
-      self.valid = {"navLaneIntentSP": True}
-
-    def __getitem__(self, service):
-      return self.intent if service == "navLaneIntentSP" else self.model
-
-  sm = FakeSM()
-  assert not LongitudinalPlannerSP.navigation_lane_change_active(sm)
-  sm.intent.targetLaneIndex = 2
-  assert LongitudinalPlannerSP.navigation_lane_change_active(sm)
-  sm.intent.signalRequested = False
-  sm.model.meta.laneChangeState = "laneChangeStarting"
-  assert LongitudinalPlannerSP.navigation_lane_change_active(sm)
-
-
 def test_tn_backend_does_not_depend_on_dynamic_experimental_control():
   root = Path(__file__).parents[1] / "lib" / "longitudinal_backends" / "tn_no_dec"
   source = "\n".join(path.read_text() for path in root.rglob("*.py"))

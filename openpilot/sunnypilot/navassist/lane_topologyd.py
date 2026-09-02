@@ -11,7 +11,7 @@ from openpilot.cereal.visionipc import VisionStreamType
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.transformations.camera import DEVICE_CAMERAS, view_frame_from_device_frame
 from openpilot.common.transformations.orientation import rot_from_euler
-from openpilot.sunnypilot.lane_topology.ui_bridge import LaneTopologyUIBridge, visionbuf_luma
+from openpilot.sunnypilot.lane_topology.ui_bridge import LaneTopologyObserver, visionbuf_luma
 from openpilot.sunnypilot.navassist.lane_publisher import build_lane_topology_message, MODEL_IMAGE_MAX_SKEW_NS
 
 
@@ -44,7 +44,7 @@ def main() -> None:
   # Geometry follows modelV2 at 20 Hz; metric image evidence remains bounded to
   # about 10 Hz. This keeps the 150 ms model-age gate satisfiable without running
   # the image classifier on every frame.
-  bridge = LaneTopologyUIBridge(frame_divisor=1)
+  bridge = LaneTopologyObserver(frame_divisor=1)
   pm = messaging.PubMaster(["laneTopologyStateSP"])
   sm = messaging.SubMaster(
     ["modelV2", "extrinsicsCalibration", "deviceState", camera_state_service],

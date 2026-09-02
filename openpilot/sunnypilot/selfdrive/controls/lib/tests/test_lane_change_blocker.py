@@ -2,7 +2,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from openpilot.sunnypilot.selfdrive.controls.lib.lane_change_blocker import lane_topology_change_blocks
+from openpilot.sunnypilot.selfdrive.controls.lib.lane_change_blocker import (
+  LaneChangeBoundaryBlocker,
+  lane_topology_change_blocks,
+)
 
 
 def topology(*, left="unknown", right="unknown", left_valid=False, right_valid=False, control_valid=True):
@@ -35,3 +38,20 @@ def test_unhealthy_or_observation_only_topology_is_not_used_as_a_global_block():
     topology(left="solid", right="solid", left_valid=True, right_valid=True, control_valid=False), healthy=True,
   ) == (False, False)
   assert lane_topology_change_blocks(topology(left="solid", right="solid"), healthy=True) == (False, False)
+
+
+def test_confirmed_solid_has_a_bounded_clear_grace_through_unknown_evidence():
+  blocker = LaneChangeBoundaryBlocker(clear_frames=3)
+
+  assert blocker.update(topology(left="solid", left_valid=True), healthy=True) == (True, False)
+  assert blocker.update(topology(control_valid=False), healthy=True) == (True, False)
+  assert blocker.update(topology(control_valid=False), healthy=True) == (True, False)
+  assert blocker.update(topology(control_valid=False), healthy=True) == (False, False)
+
+
+def test_solid_clear_grace_is_independent_per_side_and_does_not_latch_unknown_forever():
+  blocker = LaneChangeBoundaryBlocker(clear_frames=2)
+
+  assert blocker.update(topology(right="solid", right_valid=True), healthy=True) == (False, True)
+  assert blocker.update(topology(), healthy=False) == (False, True)
+  assert blocker.update(topology(), healthy=False) == (False, False)

@@ -194,6 +194,7 @@ class TeslaCardAdapter:
     test_id = f"nav-{session_tag}-{key[1]}-{key[2]}-{direction}"
     accepted = self.validation.submit_request(
       test_id, direction, now_nanos, session_timeout_ns=NAV_SIGNAL_SESSION_TIMEOUT_NS,
+      hold_until_cancel=True,
     )
     if accepted:
       self._last_nav_signal_request = key

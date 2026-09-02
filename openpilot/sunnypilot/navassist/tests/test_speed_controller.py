@@ -36,10 +36,10 @@ def nav(*, distance=100.0, event_id=1, valid=True, stale=False, advisory=None,
 
 
 def update(controller, sm, *, v_ego=10.0, v_cruise=20.0, override=False, long_enabled=True, planner_verified=True,
-           lane_change_active=False):
+           vision_turn_active=False):
   controller.update(sm, long_enabled=long_enabled, long_override=override,
                     v_ego=v_ego, a_ego=0.0, v_cruise=v_cruise, planner_verified=planner_verified,
-                    lane_change_active=lane_change_active)
+                    vision_turn_active=vision_turn_active)
 
 
 def test_disabled_controller_is_exactly_transparent_without_nav_service_state():
@@ -73,22 +73,46 @@ def test_early_event_is_admitted_then_activates_inside_comfort_window():
 def test_navigation_lane_change_without_a_turn_never_contributes_a_speed_ceiling():
   controller = NavigationSpeedController(enabled=True)
   sm = FakeSM(nav(distance=60.0, maneuver=custom.NavAssistStateSP.Maneuver.mergeRight))
-  update(controller, sm, lane_change_active=True)
+  update(controller, sm)
   assert not controller.is_active
   assert controller.output_v_target == V_CRUISE_UNSET
   assert not controller.event_rejected
 
 
-def test_imminent_turn_decelerates_while_navigation_lane_change_is_still_active():
+def test_imminent_turn_deceleration_is_independent_of_lane_alignment_state():
   controller = NavigationSpeedController(enabled=True)
   sm = FakeSM(nav(distance=100.0))
-  update(controller, sm, lane_change_active=True)
+  update(controller, sm)
   assert controller.output_v_target == V_CRUISE_UNSET
   assert controller.event_admitted and not controller.is_active
 
-  update(controller, FakeSM(nav(distance=60.0)), lane_change_active=True)
+  update(controller, FakeSM(nav(distance=60.0)))
   assert controller.is_active
   assert controller.output_v_target == pytest.approx(5.0)
+
+
+def test_admitted_turn_holds_navigation_ceiling_at_zero_distance_until_handoff():
+  controller = NavigationSpeedController(enabled=True)
+  update(controller, FakeSM(nav(distance=100.0)))
+  update(controller, FakeSM(nav(distance=60.0)))
+  assert controller.is_active
+
+  update(controller, FakeSM(nav(distance=0.0)))
+
+  assert controller.is_active
+  assert controller.output_v_target == pytest.approx(5.0)
+
+
+def test_existing_sp_vision_turn_controller_takes_ownership_from_navigation_ceiling():
+  controller = NavigationSpeedController(enabled=True)
+  update(controller, FakeSM(nav(distance=100.0)))
+  update(controller, FakeSM(nav(distance=60.0)))
+  assert controller.is_active
+
+  update(controller, FakeSM(nav(distance=40.0)), vision_turn_active=True)
+
+  assert not controller.is_active
+  assert controller.output_v_target == V_CRUISE_UNSET
 
 
 def test_late_event_is_rejected_for_its_full_lifetime():

@@ -1,12 +1,20 @@
 import json
+from pathlib import Path
 
 import pytest
 
-from openpilot.sunnypilot.navassist.protocol import LANE_ACTION_BITS, NavAssistProtocolError, NavAssistStore, parse_snapshot
+from openpilot.sunnypilot.navassist.protocol import SCHEMA_VERSION, LANE_ACTION_BITS, NavAssistProtocolError, NavAssistStore, parse_snapshot
 
 
 APP_KEY_ID = "a" * 32
 SOURCE_WALL_MS = 1_700_000_000_000
+
+
+def test_checked_in_schema_matches_the_runtime_protocol_version():
+  schema_path = Path(__file__).parents[1] / "nav-assist-v3.schema.json"
+  schema = json.loads(schema_path.read_text())
+  assert schema["properties"]["schemaVersion"]["const"] == SCHEMA_VERSION
+  assert schema["$id"].endswith("navassist-v3.schema.json")
 
 
 def store(**kwargs):

@@ -52,6 +52,7 @@ class NavigationSpeedController:
     self.event_key: tuple[str, int, int] | None = None
     self.target_speed = 0.0
     self.required_distance = 0.0
+    self.event_handed_off_to_vision = False
 
   @staticmethod
   def _healthy(sm) -> bool:
@@ -105,7 +106,7 @@ class NavigationSpeedController:
       self.output_v_target = V_CRUISE_UNSET
 
   def update(self, sm, *, long_enabled: bool, long_override: bool, v_ego: float, a_ego: float, v_cruise: float,
-             planner_verified: bool = True, lane_change_active: bool = False) -> None:
+             planner_verified: bool = True, vision_turn_active: bool = False) -> None:
     if not self.enabled:
       self.output_v_target = V_CRUISE_UNSET
       self.output_a_target = a_ego
@@ -138,7 +139,7 @@ class NavigationSpeedController:
     target_speed = self._target_for(nav)
     distance = float(nav.maneuverDistanceM)
     event_key = (str(nav.sessionId), int(nav.routeRevision), int(nav.maneuverEventId))
-    if target_speed is None or event_key[2] == 0 or not math.isfinite(distance) or not 0.0 < distance <= MAX_MANEUVER_DISTANCE_M:
+    if target_speed is None or event_key[2] == 0 or not math.isfinite(distance) or not 0.0 <= distance <= MAX_MANEUVER_DISTANCE_M:
       if self.event_key is not None:
         self.event_rejected = True
       self._release(v_cruise, a_ego)
@@ -151,9 +152,33 @@ class NavigationSpeedController:
       self.required_distance = required_distance
       self.event_admitted = distance >= required_distance + ADMISSION_MARGIN_M
       self.event_rejected = not self.event_admitted
+      self.event_handed_off_to_vision = False
 
     if self.event_rejected or not self.event_admitted:
       self._release(v_cruise, a_ego)
+      return
+
+    if self.event_handed_off_to_vision:
+      self.output_v_target = V_CRUISE_UNSET
+      self.output_a_target = a_ego
+      self.is_active = self.is_releasing = False
+      return
+    if vision_turn_active:
+      # Navigation extends the lookahead. Once SP's existing vision curve
+      # controller sees the turn, it becomes the sole turn-speed owner.
+      self.event_handed_off_to_vision = True
+      self.output_v_target = V_CRUISE_UNSET
+      self.output_a_target = a_ego
+      self.is_active = self.is_releasing = False
+      return
+    if distance == 0.0:
+      # AMap may report zero while the vehicle is still traversing the turn.
+      # Retain the admitted ceiling until the maneuver event changes or SCC-V
+      # takes ownership; do not release merely at the geometric turn point.
+      self.is_active = True
+      self.is_releasing = False
+      self.output_v_target = min(v_cruise, self.target_speed)
+      self.output_a_target = a_ego
       return
 
     self.required_distance = max(self.required_distance, required_distance)

@@ -6,6 +6,7 @@ from openpilot.sunnypilot.selfdrive.car.tesla.validation_controller import (
   is_original_body_controls_frame,
   tesla_body_controls_checksum,
 )
+from openpilot.cereal import log
 
 
 def idle_body_controls(counter: int = 4) -> bytes:
@@ -49,3 +50,27 @@ def test_enabled_controller_requires_fresh_original_template():
   assert sends[0].src == 1
   assert decode_body_controls(sends[0].dat)["turn_request"] == 2
   assert decode_body_controls(sends[0].dat)["counter"] == 10
+
+
+def test_navigation_signal_session_waits_for_explicit_cancel_after_lane_change_cycle():
+  controller = TeslaTurnSignalRealtimeController(configured=True)
+  assert controller.submit_request("nav", "left", 100, hold_until_cancel=True)
+
+  controller.update_lane_change_context(
+    200, valid=True, state=int(log.LaneChangeState.laneChangeStarting),
+    direction=int(log.LaneChangeDirection.left), lateral_active=True, brake_pressed=False,
+  )
+  controller.update_lane_change_context(
+    300, valid=True, state=int(log.LaneChangeState.laneChangeFinishing),
+    direction=int(log.LaneChangeDirection.left), lateral_active=True, brake_pressed=False,
+  )
+  controller.update_lane_change_context(
+    400, valid=True, state=int(log.LaneChangeState.off),
+    direction=int(log.LaneChangeDirection.none), lateral_active=True, brake_pressed=False,
+  )
+
+  assert controller.status() is not None
+  assert not controller.status()["cancel_requested"]
+  assert controller.request_cancel("nav", 500)
+  assert controller.status() is None
+  assert controller.drain_completed()[0][0]["result"] == "CANCELLED_BEFORE_SEND"

@@ -136,20 +136,27 @@ is limited to -1.2 m/s²; the experimental and TN-NoDEC backends fail closed.
 Lead, FCW, or other existing safety sources may independently request stronger
 deceleration. An experimental typed `navLaneIntentSP` path can also request one
 Tesla physical turn signal. A linked left/right route maneuver may request a
-bounded pre-turn lamp with `targetLaneIndex = -1`; DesireHelper explicitly
-ignores that display/signal-only intent. A real lane change is authorized only
-after fresh lane-index alignment, ego-side dashed evidence, clear BSM, active
-SP lateral, Panda TX echo, and physical lamp feedback. A same-direction pre-turn
-lamp transfers to the lane-change request without blinking off. This path never
+bounded pre-turn lamp with `targetLaneIndex = -1`; DesireHelper suppresses both
+its physical feedback and cancellation tail at the ALC entrance. Navigation
+publishes a target and diagnostic readiness only; SP's configured
+AutoLaneChangeController remains the sole start authority and requires current
+ego-side dashed evidence, clear BSM, active SP lateral, Panda TX echo, and
+physical lamp feedback. `OFF`/`NUDGE` remain authoritative. A same-direction
+pre-turn lamp transfers to the lane-change request without blinking off. This path never
 accepts phone curvature or bypasses Panda safety, and every lane is re-observed
-before another request. Fresh AMap LaneInfo is authoritative. While it is
-absent, ordinary/sharp/U-turns can target the visual leftmost/rightmost lane
+before another request. AMap complete-road indices are never equated with local
+visual indices: only a direction-consistent recommendation touching the road
+edge can qualify relative edge alignment; an unanchored middle recommendation
+is display-only. While LaneInfo is absent, ordinary/sharp/U-turns can target the visual leftmost/rightmost lane
 inside 1 km, and directional exit/ramp/merge events can do so inside 2 km;
 `slightLeft`/`slightRight` never force an extreme-lane fallback.
 Lane positioning itself never creates a speed target. A supported turn/exit
 maneuver may still activate its comfort-distance speed ceiling while a final
-lane change is in progress; the deceleration is attributed to the approaching
-maneuver, not to the lateral request.
+lane change is in progress. At distance zero the admitted ceiling remains; once
+SP SCC-V confirms the curve, it takes sole speed ownership. The deceleration is
+attributed to the approaching maneuver, not to the lateral request.
+Within one continuous route revision, maneuver-event advancement retains the
+lamp until model-derived turn geometry has stayed clear for 0.5 seconds.
 
 Follow the stationary gates and speed progression in
 [`docs/NAVASSIST_CLOSED_COURSE_P0.md`](../../../docs/NAVASSIST_CLOSED_COURSE_P0.md)

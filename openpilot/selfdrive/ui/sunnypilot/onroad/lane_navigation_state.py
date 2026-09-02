@@ -188,8 +188,8 @@ def navigation_display_from_service(
     direction = "左" if str(lane_intent.direction) == "left" else "右"
     if int(lane_intent.targetLaneIndex) < 0:
       details.append(f"{direction}转灯已提前开启")
-    elif lane_intent.laneChangeAuthorized:
-      details.append(f"{direction}变道已授权")
+    elif getattr(lane_intent, "spLaneChangeReady", False):
+      details.append(f"{direction}变道条件就绪")
     else:
       details.append(f"{direction}变道等待虚线/盲区")
   if decel_active:

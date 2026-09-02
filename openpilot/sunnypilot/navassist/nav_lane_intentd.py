@@ -16,10 +16,11 @@ from openpilot.sunnypilot.navassist.lane_intent import (
   NavTurnSignalCoordinator,
   ObservedLaneChangeState,
 )
+from openpilot.sunnypilot.selfdrive.controls.lib.nav_turn_completion import sp_turn_geometry_active
 
 
 PUBLISH_HZ = 20
-BASE_SERVICES = ("navAssistStateSP", "carState", "carControl")
+BASE_SERVICES = ("navAssistStateSP", "carState", "carControl", "controlsState")
 LANE_SERVICES = ("laneTopologyStateSP", "modelV2")
 SERVICES = BASE_SERVICES + LANE_SERVICES
 TURN_LANE_LOOKAHEAD_M = 1_000.0
@@ -45,11 +46,6 @@ def build_lane_plan(nav, topology, *, healthy: bool) -> NavLanePlan:
   nav_valid = bool(healthy and nav.valid and not nav.stale)
   lanes = tuple(nav.lanes)
   recommended = tuple(int(lane.index) for lane in lanes if lane.recommended)
-  if lanes:
-    return NavLanePlan(
-      nav_valid, str(nav.sessionId), int(nav.routeRevision), int(nav.maneuverEventId), len(lanes), recommended,
-    )
-
   maneuver = str(nav.maneuver)
   distance_m = float(nav.maneuverDistanceM)
   lane_count = int(topology.visibleLaneCount)
@@ -63,6 +59,25 @@ def build_lane_plan(nav, topology, *, healthy: bool) -> NavLanePlan:
     fallback_side, lookahead_m = "left", EXIT_LANE_LOOKAHEAD_M
   elif maneuver in RIGHT_EXIT_LANE_MANEUVERS:
     fallback_side, lookahead_m = "right", EXIT_LANE_LOOKAHEAD_M
+
+  if lanes:
+    amap_lane_count = len(lanes)
+    edge_recommended = bool(
+      (fallback_side == "left" and 0 in recommended)
+      or (fallback_side == "right" and amap_lane_count - 1 in recommended)
+    )
+    if nav_valid and lane_count > 0 and edge_recommended:
+      target = 0 if fallback_side == "left" else lane_count - 1
+      return NavLanePlan(
+        True, str(nav.sessionId), int(nav.routeRevision), int(nav.maneuverEventId),
+        lane_count, (target,), heuristic=True,
+      )
+    # AMap lane indices describe the complete road while modelV2 exposes only a
+    # local visible window. Without an edge-qualified directional target there
+    # is no common absolute index, so retain the observation but do not control.
+    return NavLanePlan(
+      False, str(nav.sessionId), int(nav.routeRevision), int(nav.maneuverEventId), amap_lane_count, (),
+    )
 
   heuristic_valid = bool(
     nav_valid and int(nav.maneuverEventId) != 0 and lane_count > 0 and fallback_side is not None
@@ -127,7 +142,10 @@ def main() -> None:
       maneuver=str(nav.maneuver),
       distance_m=float(nav.maneuverDistanceM),
     )
-    turn_intent = turn_signal_coordinator.update(turn_plan, speed_mps=float(car_state.vEgo), now_ns=now_ns)
+    turn_intent = turn_signal_coordinator.update(
+      turn_plan, speed_mps=float(car_state.vEgo), now_ns=now_ns,
+      turn_geometry_active=sp_turn_geometry_active(sm["controlsState"], float(car_state.vEgo)),
+    )
     intent = lane_intent if lane_intent.signal_requested else turn_intent
 
     message = messaging.new_message("navLaneIntentSP")
@@ -136,7 +154,8 @@ def main() -> None:
     state.publishMonoTime = now_ns
     state.valid = base_healthy
     state.signalRequested = intent.signal_requested
-    state.laneChangeAuthorized = intent.lane_change_authorized
+    state.laneChangeAuthorized = False
+    state.spLaneChangeReady = intent.lane_change_ready
     state.direction = {LaneIntentDirection.none: "none", LaneIntentDirection.left: "left",
                        LaneIntentDirection.right: "right"}[intent.direction]
     state.requestId = intent.request_id

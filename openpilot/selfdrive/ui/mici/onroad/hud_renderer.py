@@ -271,7 +271,7 @@ class HudRenderer(Widget):
         if lane_intent.targetLaneIndex < 0:
           lane_intent_text = f" · {direction}转灯已提前开启"
         else:
-          phase = "已授权" if lane_intent.laneChangeAuthorized else "等待虚线/物理灯/盲区"
+          phase = "条件就绪" if lane_intent.spLaneChangeReady else "等待虚线/物理灯/盲区"
           lane_intent_text = f" · {direction}变道{phase}"
     if service_healthy and nav.valid:
       longitudinal_sp_healthy = sm.alive["longitudinalPlanSP"] and sm.valid["longitudinalPlanSP"]

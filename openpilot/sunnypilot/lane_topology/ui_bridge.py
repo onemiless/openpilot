@@ -23,8 +23,8 @@ def visionbuf_luma(frame: object) -> np.ndarray:
   return luma.reshape(height, stride)[:, :width]
 
 
-class LaneTopologyUIBridge:
-  """Low-rate, fail-closed modelV2 consumer for read-only UI state."""
+class LaneTopologyObserver:
+  """Fail-closed model/image observer shared by control publication and UI fallback."""
 
   def __init__(self, *, frame_divisor: int = 5):
     if frame_divisor <= 0:
@@ -122,7 +122,8 @@ class LaneTopologyUIBridge:
       margin = center_radius + side_offset + search_radius
       probabilities = tuple(float(value) for value in self.model_v2.laneLineProbs)  # type: ignore[attr-defined]
       for lane_index, lane in enumerate(self.model_v2.laneLines):  # type: ignore[attr-defined]
-        if self.ego_source_ids is None or probabilities[lane_index] < MARKING_PROBABILITY_FLOOR:
+        if (self.ego_source_ids is None or lane_index not in self.ego_source_ids
+            or probabilities[lane_index] < MARKING_PROBABILITY_FLOOR):
           evidence = MetricMarkingEvidence.unknown()
           self.marking_types[lane_index] = LaneMarkingType.unknown
         else:
@@ -149,3 +150,8 @@ class LaneTopologyUIBridge:
     if left is None or right is None:
       return None
     return left.marking_type, right.marking_type
+
+
+# Compatibility name for the non-C3XL UI-only fallback. The onroad C3XL
+# control producer imports the neutral observer name above.
+LaneTopologyUIBridge = LaneTopologyObserver

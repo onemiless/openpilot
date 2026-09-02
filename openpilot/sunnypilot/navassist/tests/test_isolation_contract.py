@@ -38,7 +38,7 @@ def test_receiver_is_always_available_and_lane_observer_stays_onroad():
   lane_daemon = (NAVASSIST / "lane_topologyd.py").read_text()
   assert "client.timestamp_eof" in lane_daemon
   assert "frame.timestamp_eof" not in lane_daemon
-  assert "LaneTopologyUIBridge(frame_divisor=1)" in lane_daemon
+  assert "LaneTopologyObserver(frame_divisor=1)" in lane_daemon
   assert "bridge.last_frame_id % IMAGE_CLASSIFIER_DIVISOR" in lane_daemon
   assert IMAGE_CLASSIFIER_DIVISOR == 2
 
@@ -86,6 +86,8 @@ def test_planner_uses_common_target_seam_and_controlsd_is_untouched():
 
 
 def test_both_model_runners_consume_typed_navigation_intent_and_lane_change_blocks():
+  desire_helper = (ROOT / "selfdrive/controls/lib/desire_helper.py").read_text()
+  assert "laneChangeAuthorized" not in desire_helper
   runners = (
     ROOT / "selfdrive/modeld/modeld.py",
     ROOT / "sunnypilot/modeld_v2/modeld.py",
@@ -95,7 +97,10 @@ def test_both_model_runners_consume_typed_navigation_intent_and_lane_change_bloc
     assert '"navLaneIntentSP"' in source
     assert '"laneTopologyStateSP"' in source
     assert "nav_lane_intent=nav_lane_intent" in source
-    assert "lane_topology_change_blocks" in source
+    assert "LaneChangeBoundaryBlocker" in source
+    assert "LINE_BLOCKER.update(" in source
+    assert "left_crossing_allowed=" in source
+    assert "right_crossing_allowed=" in source
     assert "left_line_blocked=left_line_blocked" in source
     assert "right_line_blocked=right_line_blocked" in source
     assert "navAssistStateSP" not in source

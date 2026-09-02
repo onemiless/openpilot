@@ -34,7 +34,7 @@ def test_navigation_turn_signal_starts_before_turn_without_a_lane_target():
   intent = coordinator.update(turn_plan(), speed_mps=15.0, now_ns=0)
 
   assert intent.signal_requested
-  assert not intent.lane_change_authorized
+  assert not intent.lane_change_ready
   assert intent.direction == LaneIntentDirection.left
   assert intent.target_lane_index == -1
   assert intent.request_id == 11
@@ -47,7 +47,7 @@ def test_heuristic_extreme_lane_mismatch_signals_immediately_one_lane_at_a_time(
 
   intent = coordinator.update(heuristic, topology(ego=2), vehicle(), now_ns=0)
 
-  assert intent.signal_requested and not intent.lane_change_authorized
+  assert intent.signal_requested and not intent.lane_change_ready
   assert intent.direction == LaneIntentDirection.left
   assert intent.target_lane_index == 1
   assert intent.reason == "heuristicStabilizingLaneAlignment"
@@ -71,7 +71,7 @@ def test_navigation_merge_requests_directional_lamp_without_authorizing_lane_cha
 
   assert intent.signal_requested
   assert intent.direction == LaneIntentDirection.right
-  assert not intent.lane_change_authorized
+  assert not intent.lane_change_ready
   assert intent.target_lane_index == -1
 
 
@@ -85,6 +85,40 @@ def test_navigation_turn_signal_stays_on_through_zero_distance_then_cancels_on_e
 
   assert at_turn.signal_requested
   assert not changed.signal_requested
+
+
+def test_navigation_turn_signal_waits_for_sp_turn_geometry_to_clear_after_event_change():
+  coordinator = NavTurnSignalCoordinator()
+  coordinator.update(turn_plan(distance=80.0), speed_mps=12.0, now_ns=0)
+
+  changed_while_turning = coordinator.update(
+    turn_plan(maneuver="straight", distance=500.0, event=12), speed_mps=6.0,
+    now_ns=5_000_000_000, turn_geometry_active=True,
+  )
+  first_clear = coordinator.update(
+    turn_plan(maneuver="straight", distance=490.0, event=12), speed_mps=6.0,
+    now_ns=6_000_000_000, turn_geometry_active=False,
+  )
+  completed = coordinator.update(
+    turn_plan(maneuver="straight", distance=480.0, event=12), speed_mps=6.0,
+    now_ns=6_500_000_001, turn_geometry_active=False,
+  )
+
+  assert changed_while_turning.signal_requested and changed_while_turning.reason == "turnCompletion"
+  assert first_clear.signal_requested and first_clear.reason == "turnCompletion"
+  assert not completed.signal_requested
+
+
+def test_navigation_turn_signal_does_not_survive_a_route_revision_change():
+  coordinator = NavTurnSignalCoordinator()
+  coordinator.update(turn_plan(), speed_mps=10.0, now_ns=0)
+
+  changed = coordinator.update(
+    turn_plan(revision=2, event=12), speed_mps=6.0, now_ns=1_000_000_000,
+    turn_geometry_active=True,
+  )
+
+  assert not changed.signal_requested and changed.reason == "turnChanged"
 
 
 def test_navigation_turn_signal_holds_through_recorded_snapshot_gaps_until_maneuver_changes():
@@ -140,15 +174,15 @@ def test_navigation_turn_signal_drops_after_the_bounded_plan_gap_grace():
 def test_signal_waits_at_solid_line_then_authorizes_after_dashed_is_stable():
   coordinator = NavLaneIntentCoordinator()
   first_mismatch = coordinator.update(plan(), topology(), vehicle(), now_ns=0)
-  assert first_mismatch.signal_requested and not first_mismatch.lane_change_authorized
+  assert first_mismatch.signal_requested and not first_mismatch.lane_change_ready
   assert first_mismatch.direction == LaneIntentDirection.left
   assert first_mismatch.reason == "stabilizingLaneAlignment"
   waiting = coordinator.update(plan(), topology(), vehicle(), now_ns=500_000_000)
-  assert waiting.signal_requested and not waiting.lane_change_authorized
+  assert waiting.signal_requested and not waiting.lane_change_ready
   first_dashed = coordinator.update(plan(), topology(left_cross=True), vehicle(left_blinker=True), now_ns=600_000_000)
-  assert first_dashed.signal_requested and not first_dashed.lane_change_authorized
+  assert first_dashed.signal_requested and not first_dashed.lane_change_ready
   authorized = coordinator.update(plan(), topology(left_cross=True), vehicle(left_blinker=True), now_ns=900_000_000)
-  assert authorized.signal_requested and authorized.lane_change_authorized
+  assert authorized.signal_requested and authorized.lane_change_ready
   assert authorized.direction == LaneIntentDirection.left
 
 
@@ -159,7 +193,7 @@ def test_blindspot_keeps_signal_on_but_withholds_lane_change_authority():
                      vehicle(bsm_right=True, right_blinker=True), now_ns=500_000_000)
   blocked = coordinator.update(plan(recommended=(2,)), topology(right_cross=True),
                                vehicle(bsm_right=True, right_blinker=True), now_ns=900_000_000)
-  assert blocked.signal_requested and not blocked.lane_change_authorized
+  assert blocked.signal_requested and not blocked.lane_change_ready
 
 
 def test_software_signal_request_never_authorizes_without_physical_blinker_feedback():
@@ -167,7 +201,7 @@ def test_software_signal_request_never_authorizes_without_physical_blinker_feedb
   coordinator.update(plan(), topology(left_cross=True), vehicle(), now_ns=0)
   coordinator.update(plan(), topology(left_cross=True), vehicle(), now_ns=500_000_000)
   waiting = coordinator.update(plan(), topology(left_cross=True), vehicle(), now_ns=1_000_000_000)
-  assert waiting.signal_requested and not waiting.lane_change_authorized
+  assert waiting.signal_requested and not waiting.lane_change_ready
 
 
 def test_lane_count_mismatch_unknown_topology_and_no_neighbor_fail_closed():
@@ -204,6 +238,33 @@ def test_one_lane_change_completes_before_another_request_is_considered():
   complete = coordinator.update(plan(recommended=(0,)), topology(ego=1, left_cross=True), vehicle(),
                                 now_ns=2_300_000_000)
   assert not complete.signal_requested and complete.reason == "laneChangeComplete"
+
+
+def test_relative_extreme_lane_change_uses_sp_cycle_when_visual_index_recenters():
+  coordinator = NavLaneIntentCoordinator()
+  heuristic = NavLanePlan(True, "session-a", 1, 7, 3, (0,), heuristic=True)
+  coordinator.update(heuristic, topology(ego=1, left_cross=True), vehicle(), now_ns=0)
+  coordinator.update(heuristic, topology(ego=1, left_cross=True), vehicle(left_blinker=True), now_ns=500_000_000)
+  coordinator.update(heuristic, topology(ego=1, left_cross=True), vehicle(left_blinker=True), now_ns=800_000_000)
+  coordinator.update(
+    heuristic, topology(ego=1, left_cross=True),
+    vehicle(state=ObservedLaneChangeState.starting, direction=LaneIntentDirection.left, left_blinker=True),
+    now_ns=900_000_000,
+  )
+
+  completing = coordinator.update(
+    heuristic, topology(ego=1, left_cross=True),
+    vehicle(state=ObservedLaneChangeState.pre, direction=LaneIntentDirection.left, left_blinker=True),
+    now_ns=1_000_000_000,
+  )
+  completed = coordinator.update(
+    heuristic, topology(ego=1, left_cross=True),
+    vehicle(state=ObservedLaneChangeState.pre, direction=LaneIntentDirection.left, left_blinker=True),
+    now_ns=1_500_000_000,
+  )
+
+  assert completing.signal_requested
+  assert not completed.signal_requested and completed.reason == "laneChangeObserved"
 
 
 def test_wrong_observed_lane_change_direction_aborts_and_latches_event():
@@ -270,6 +331,6 @@ def test_long_solid_wait_gets_a_fresh_lane_change_timeout_when_dashed_appears():
   coordinator.update(plan(), topology(), vehicle(), now_ns=500_000_000)
   coordinator.update(plan(), topology(left_cross=True), vehicle(left_blinker=True), now_ns=11_000_000_000)
   authorized = coordinator.update(plan(), topology(left_cross=True), vehicle(left_blinker=True), now_ns=11_300_000_000)
-  assert authorized.lane_change_authorized
+  assert authorized.lane_change_ready
   still_authorized = coordinator.update(plan(), topology(left_cross=True), vehicle(left_blinker=True), now_ns=11_350_000_000)
-  assert still_authorized.lane_change_authorized
+  assert still_authorized.lane_change_ready

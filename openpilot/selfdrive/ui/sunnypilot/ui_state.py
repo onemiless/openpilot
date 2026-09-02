@@ -91,9 +91,9 @@ class UIStateSP:
       if self.lane_topology is not None:
         self.lane_topology_bridge.reset()
         self.lane_topology = None
-    elif self.nav_assist_track_mode:
-      # Track mode has an isolated lane_topologyd producer. Do not run the same
-      # image classifier a second time in UI.
+    elif self.sm.seen["laneTopologyStateSP"]:
+      # C3XL has an isolated lane_topologyd producer whether or not an App is
+      # paired. Do not run the same image classifier a second time in UI.
       if self.lane_topology_bridge.current is not None:
         self.lane_topology_bridge.reset()
       self.lane_topology = None

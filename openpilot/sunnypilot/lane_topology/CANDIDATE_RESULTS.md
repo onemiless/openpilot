@@ -36,7 +36,12 @@ The initial image-row continuity rule did **not** pass: low-resolution compressi
 
 The final real-time-equivalent replay is intentionally conservative. Manual overlays show only the current lane boundaries in green/yellow; outer lines stay grey and never contribute type evidence. A change in the ego source-ID pair resets all temporal marking scores so a lane change cannot inherit the previous lane's type. An occluded or one-sided result remains hidden. The live HUD is shown only when both boundaries of the ego lane have stable non-unknown types. Its compact label is `L:DASHED|SOLID · LANE current/total · R:DASHED|SOLID · LINES visible`.
 
-`LaneTopologyUIBridge` reads the already-subscribed modelV2 at approximately 4 Hz. `AugmentedRoadView` reuses its existing camerad `VisionBuf`, exposes only the zero-copy Y plane, and updates image evidence when camera/model frame IDs differ by no more than three. It does not add a camera client, service, schema field, parameter, process, GPU call, modeld hook, planner input, or control dependency. Offroad transition resets geometry and temporal marking state.
+The neutral `LaneTopologyObserver` is the single C3XL control producer inside
+`lane_topologyd`; the legacy `LaneTopologyUIBridge` name is retained only as a
+non-C3XL display fallback alias. The UI stops its local classifier as soon as
+the typed daemon service is observed. Both production and replay classify only
+the two ego boundaries. Offroad transition resets geometry and temporal marking
+state.
 
 The target-device synthetic gate made all four model lines high-probability while requiring only the detected ego source pair `(1, 2)` to be classified. Across 300 iterations on a 1928x1208 Y plane, the outer lines remained `unknown`, the ego boundaries produced the expected `DASHED/SOLID` result, and timing was p50 6.36 ms, p95 7.45 ms, and p99 8.18 ms. Production runs at approximately 4 Hz and does not copy or convert the full Y plane.
 
@@ -114,6 +119,14 @@ with a UOp verification error. A future QCOM ROI classifier therefore requires
 a specifically trained `solid/dashed/unknown` artifact, independent manual
 labels, and an onroad contention test with the QCOM warp. No untrained or
 geometry-only neural candidate is shipped in this change.
+
+The `90.6%` figure above is coverage, not ground-truth accuracy. Independent
+human labels use `lane-marking-ground-truth-v1` records containing `frame_index`,
+`source_id`, `expected`, and a scene `condition`. Run
+`tools/evaluate_lane_marking_labels.py --report ... --labels ...` to report
+coverage, selective accuracy, end-to-end accuracy, a confusion matrix, and the
+safety-critical `solid_as_dashed` count per condition. No accuracy claim is
+accepted until this evaluator runs on labels made without viewing predictions.
 
 ## Release cleanup
 

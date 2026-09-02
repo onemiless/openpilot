@@ -118,8 +118,8 @@ def test_navigation_lane_intent_requests_and_cancels_bounded_tesla_signal_sessio
       self.requests = []
       self.cancels = []
 
-    def submit_request(self, test_id, direction, now_nanos, session_timeout_ns=None):
-      self.requests.append((test_id, direction, now_nanos, session_timeout_ns))
+    def submit_request(self, test_id, direction, now_nanos, session_timeout_ns=None, **kwargs):
+      self.requests.append((test_id, direction, now_nanos, session_timeout_ns, kwargs))
       return True
 
     def request_cancel(self, test_id, now_nanos):
@@ -130,7 +130,9 @@ def test_navigation_lane_intent_requests_and_cancels_bounded_tesla_signal_sessio
   adapter.validation = validation
   adapter._update_nav_turn_signal(100)
   adapter._update_nav_turn_signal(101)
-  assert validation.requests == [("nav-fa57a52d-7-3-left", "left", 100, 60_000_000_000)]
+  assert validation.requests == [(
+    "nav-fa57a52d-7-3-left", "left", 100, 60_000_000_000, {"hold_until_cancel": True},
+  )]
 
   sm.data["navLaneIntentSP"].signalRequested = False
   adapter._update_nav_turn_signal(102)
@@ -213,8 +215,8 @@ def test_pre_turn_lamp_transitions_to_same_direction_lane_change_without_blinkin
       self.requests = []
       self.cancels = []
 
-    def submit_request(self, test_id, direction, now_nanos, session_timeout_ns=None):
-      self.requests.append((test_id, direction, now_nanos, session_timeout_ns))
+    def submit_request(self, test_id, direction, now_nanos, session_timeout_ns=None, **kwargs):
+      self.requests.append((test_id, direction, now_nanos, session_timeout_ns, kwargs))
       return True
 
     def request_cancel(self, test_id, now_nanos):
@@ -253,8 +255,8 @@ def test_navigation_signal_direction_change_cancels_old_lamp_before_requesting_n
       self.requests = []
       self.cancels = []
 
-    def submit_request(self, test_id, direction, now_nanos, session_timeout_ns=None):
-      self.requests.append((test_id, direction, now_nanos, session_timeout_ns))
+    def submit_request(self, test_id, direction, now_nanos, session_timeout_ns=None, **kwargs):
+      self.requests.append((test_id, direction, now_nanos, session_timeout_ns, kwargs))
       return True
 
     def request_cancel(self, test_id, now_nanos):
