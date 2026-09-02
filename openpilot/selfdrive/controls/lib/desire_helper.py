@@ -34,7 +34,7 @@ class DesireHelper:
     return LaneChangeDirection.left if left_blinker and not right_blinker else LaneChangeDirection.right
 
   def update(self, carstate, lateral_active, lane_change_prob, left_edge_detected=False, right_edge_detected=False,
-             nav_lane_intent=None):
+             nav_lane_intent=None, left_line_blocked=False, right_line_blocked=False):
     self.alc.update_params()
     self.lane_turn_controller.update_params()
     v_ego = carstate.vEgo
@@ -80,8 +80,10 @@ class DesireHelper:
                          ((carstate.steeringTorque > 0 and self.lane_change_direction == LaneChangeDirection.left) or
                           (carstate.steeringTorque < 0 and self.lane_change_direction == LaneChangeDirection.right))
 
-        blindspot_detected = (((carstate.leftBlindspot or left_edge_detected) and self.lane_change_direction == LaneChangeDirection.left) or
-                              ((carstate.rightBlindspot or right_edge_detected) and self.lane_change_direction == LaneChangeDirection.right))
+        left_blocked = carstate.leftBlindspot or left_edge_detected or left_line_blocked
+        right_blocked = carstate.rightBlindspot or right_edge_detected or right_line_blocked
+        blindspot_detected = ((left_blocked and self.lane_change_direction == LaneChangeDirection.left) or
+                              (right_blocked and self.lane_change_direction == LaneChangeDirection.right))
 
         self.alc.update_lane_change(blindspot_detected, carstate.brakePressed)
 

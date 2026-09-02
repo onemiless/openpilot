@@ -38,6 +38,7 @@ from openpilot.selfdrive.modeld.helpers import chestnut_present, chestnut_compil
 from openpilot.sunnypilot.livedelay.helpers import get_lat_delay
 from openpilot.sunnypilot.modeld_v2.egpu_loader import C3XL_MODEL_LOAD_TIMEOUT
 from openpilot.sunnypilot.modeld_v2.modeld_base import ModelStateBase
+from openpilot.sunnypilot.selfdrive.controls.lib.lane_change_blocker import lane_topology_change_blocks
 from openpilot.sunnypilot.selfdrive.controls.lib.relc import RoadEdgeLaneChangeController
 
 PROCESS_NAME = "openpilot.selfdrive.modeld.modeld"
@@ -307,7 +308,7 @@ def main(demo=False):
   pm = PubMaster(pub_socks)
   sm = SubMaster([
     "deviceState", "carState", "narrowRoadCameraState", "extrinsicsCalibration", "driverMonitoringState",
-    "carControl", "lateralDelay", "navLaneIntentSP",
+    "carControl", "lateralDelay", "navLaneIntentSP", "laneTopologyStateSP",
   ])
 
   publish_state = PublishState()
@@ -464,15 +465,25 @@ def main(demo=False):
       l_lane_change_prob = desire_state[log.Desire.laneChangeLeft]
       r_lane_change_prob = desire_state[log.Desire.laneChangeRight]
       lane_change_prob = l_lane_change_prob + r_lane_change_prob
+      mdv2sp_send = messaging.new_message('modelDataV2SP')
+      left_edge, right_edge = RELC.update_and_fill(modelv2_send.modelV2, mdv2sp_send.modelDataV2SP, v_ego)
       nav_lane_intent = sm['navLaneIntentSP'] if (
         sm.seen['navLaneIntentSP'] and sm.alive['navLaneIntentSP'] and sm.valid['navLaneIntentSP']
       ) else None
-      DH.update(sm['carState'], sm['carControl'].latActive, lane_change_prob, nav_lane_intent=nav_lane_intent)
+      lane_topology_healthy = bool(
+        sm.seen['laneTopologyStateSP'] and sm.alive['laneTopologyStateSP'] and sm.valid['laneTopologyStateSP']
+      )
+      left_line_blocked, right_line_blocked = lane_topology_change_blocks(
+        sm['laneTopologyStateSP'], healthy=lane_topology_healthy,
+      )
+      DH.update(
+        sm['carState'], sm['carControl'].latActive, lane_change_prob, left_edge, right_edge,
+        nav_lane_intent=nav_lane_intent,
+        left_line_blocked=left_line_blocked, right_line_blocked=right_line_blocked,
+      )
       modelv2_send.modelV2.meta.laneChangeState = DH.lane_change_state
       modelv2_send.modelV2.meta.laneChangeDirection = DH.lane_change_direction
 
-      mdv2sp_send = messaging.new_message('modelDataV2SP')
-      left_edge, right_edge = RELC.update_and_fill(modelv2_send.modelV2, mdv2sp_send.modelDataV2SP, v_ego)
       mdv2sp_send.modelDataV2SP.laneTurnDirection = DH.lane_turn_direction
 
       fill_driving_model_data(drivingdata_send, modelv2_send)

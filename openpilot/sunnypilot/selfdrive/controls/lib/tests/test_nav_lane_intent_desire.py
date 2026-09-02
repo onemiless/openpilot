@@ -57,6 +57,18 @@ def test_navigation_authority_never_overrides_blindspot_or_conflicting_driver_si
   assert conflict.lane_change_direction == LaneChangeDirection.right
 
 
+def test_navigation_authority_never_overrides_solid_line_or_road_edge():
+  for blockers in (
+    {"left_line_blocked": True},
+    {"left_edge_detected": True},
+  ):
+    desire = helper()
+    desire.update(car_state(), True, 1.0, nav_lane_intent=intent(authorized=True), **blockers)
+    desire.update(car_state(leftBlinker=True), True, 1.0, nav_lane_intent=intent(authorized=True), **blockers)
+
+    assert desire.lane_change_state == LaneChangeState.preLaneChange
+
+
 def test_navigation_turn_signal_does_not_enter_lane_change_state_machine():
   desire = helper()
 

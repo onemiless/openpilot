@@ -84,7 +84,7 @@ def test_planner_uses_common_target_seam_and_controlsd_is_untouched():
   assert "navAssistStateSP" not in controlsd
 
 
-def test_both_model_runners_consume_only_typed_navigation_lane_intent():
+def test_both_model_runners_consume_typed_navigation_intent_and_lane_change_blocks():
   runners = (
     ROOT / "selfdrive/modeld/modeld.py",
     ROOT / "sunnypilot/modeld_v2/modeld.py",
@@ -92,7 +92,11 @@ def test_both_model_runners_consume_only_typed_navigation_lane_intent():
   for runner in runners:
     source = runner.read_text()
     assert '"navLaneIntentSP"' in source
+    assert '"laneTopologyStateSP"' in source
     assert "nav_lane_intent=nav_lane_intent" in source
+    assert "lane_topology_change_blocks" in source
+    assert "left_line_blocked=left_line_blocked" in source
+    assert "right_line_blocked=right_line_blocked" in source
     assert "navAssistStateSP" not in source
 
 

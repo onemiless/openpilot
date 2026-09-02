@@ -50,6 +50,7 @@ from openpilot.sunnypilot.modeld_v2.compile_modeld import derive_frame_skip, mak
 from openpilot.sunnypilot.livedelay.helpers import get_lat_delay
 from openpilot.sunnypilot.modeld_v2.modeld_base import ModelStateBase
 from openpilot.sunnypilot.models.helpers import get_active_bundle
+from openpilot.sunnypilot.selfdrive.controls.lib.lane_change_blocker import lane_topology_change_blocks
 from openpilot.sunnypilot.selfdrive.controls.lib.relc import RoadEdgeLaneChangeController
 
 PROCESS_NAME = "openpilot.selfdrive.modeld.modeld_tinygrad"
@@ -443,7 +444,7 @@ def main(demo=False):
   pm = PubMaster(pub_socks)
   sm = SubMaster([
     "deviceState", "carState", "narrowRoadCameraState", "extrinsicsCalibration", "driverMonitoringState",
-    "carControl", "lateralDelay", "navLaneIntentSP",
+    "carControl", "lateralDelay", "navLaneIntentSP", "laneTopologyStateSP",
   ])
 
   publish_state = PublishState()
@@ -608,8 +609,17 @@ def main(demo=False):
       nav_lane_intent = sm['navLaneIntentSP'] if (
         sm.seen['navLaneIntentSP'] and sm.alive['navLaneIntentSP'] and sm.valid['navLaneIntentSP']
       ) else None
-      DH.update(sm['carState'], sm['carControl'].latActive, lane_change_prob, left_edge, right_edge,
-                nav_lane_intent=nav_lane_intent)
+      lane_topology_healthy = bool(
+        sm.seen['laneTopologyStateSP'] and sm.alive['laneTopologyStateSP'] and sm.valid['laneTopologyStateSP']
+      )
+      left_line_blocked, right_line_blocked = lane_topology_change_blocks(
+        sm['laneTopologyStateSP'], healthy=lane_topology_healthy,
+      )
+      DH.update(
+        sm['carState'], sm['carControl'].latActive, lane_change_prob, left_edge, right_edge,
+        nav_lane_intent=nav_lane_intent,
+        left_line_blocked=left_line_blocked, right_line_blocked=right_line_blocked,
+      )
       modelv2_send.modelV2.meta.laneChangeState = DH.lane_change_state
       modelv2_send.modelV2.meta.laneChangeDirection = DH.lane_change_direction
       mdv2sp_send.modelDataV2SP.laneTurnDirection = DH.lane_turn_direction
