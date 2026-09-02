@@ -22,7 +22,7 @@ def marking_sampling_parameters(image_width: int) -> tuple[int, int, int]:
     raise ValueError("image width must be positive")
   scale = max(1.0, image_width / REFERENCE_IMAGE_WIDTH)
   return (
-    max(3, int(round(3 * scale))),
+    max(2, int(round(2 * scale))),
     max(10, int(round(10 * scale))),
     max(4, int(round(4 * scale))),
   )
@@ -97,8 +97,10 @@ def project_model_lane_metric_samples(lane_line: object, camera_from_calib: np.n
 def _clean_binary_sequence(values: list[bool]) -> list[bool]:
   cleaned = values[:]
   for index in range(1, len(values) - 1):
-    if values[index - 1] == values[index + 1] != values[index]:
-      cleaned[index] = values[index - 1]
+    # Remove an isolated bright sample, but retain a one-metre dark gap. On
+    # 526x330 input that gap can be a compressed dashed-line interval.
+    if values[index] and not values[index - 1] and not values[index + 1]:
+      cleaned[index] = False
   return cleaned
 
 

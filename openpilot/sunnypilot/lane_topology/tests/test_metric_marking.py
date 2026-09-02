@@ -72,6 +72,21 @@ def test_metric_marking_uses_repeated_partial_dashes_as_low_confidence_evidence(
   assert 0.0 < recovered.confidence <= 0.45
 
 
+def test_partial_dashes_accept_a_two_metre_compression_gap():
+  image = np.full((120, 180), 50, dtype=np.uint8)
+  samples = tuple(MetricLaneSample(float(distance), 30 + (distance - 8) * 4, 60.0)
+                  for distance in np.arange(8.0, 25.0, 1.0))
+  for start_distance, end_distance in ((10.0, 15.0), (17.0, 22.0)):
+    start = int(30 + (start_distance - 8) * 4)
+    end = int(30 + (end_distance - 8) * 4)
+    image[57:64, start:end] = 90
+
+  evidence = measure_metric_marking(image, samples, adaptive=False)
+
+  assert evidence.marking_type == LaneMarkingType.dashed
+  assert evidence.confidence <= 0.45
+
+
 def test_metric_marking_blur_never_flips_solid_and_dashed():
   for expected in (LaneMarkingType.solid, LaneMarkingType.dashed):
     for contrast in (15, 20, 30, 40):
@@ -101,9 +116,9 @@ def test_metric_projection_interpolates_uniform_forward_distance():
 
 
 def test_marking_sampling_geometry_scales_linearly_with_camera_resolution():
-  assert marking_sampling_parameters(526) == (3, 10, 4)
+  assert marking_sampling_parameters(526) == (2, 10, 4)
   center, side, search = marking_sampling_parameters(1928)
-  assert (center, side, search) == (11, 37, 15)
+  assert (center, side, search) == (7, 37, 15)
 
 
 def test_temporal_filter_requires_repeated_dominant_evidence():

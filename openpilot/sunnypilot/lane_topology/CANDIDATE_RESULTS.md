@@ -73,9 +73,10 @@ The four original tici qcamera segments remain the primary recognition gate.
 Each contains 1,200 synchronized 526x330 frames at 20 Hz; 1928x1208 data is
 used only for timing and resolution comparison. Production image
 classification now runs at 10 Hz (`IMAGE_CLASSIFIER_DIVISOR = 2`) while
-geometry remains at 20 Hz. A complete two-boundary 1928x1208 bridge benchmark
-on the C3XL measured mean 14.180 ms, p95 15.329 ms, p99 16.515 ms, and maximum
-18.284 ms, leaving substantial margin in the 100 ms classifier period.
+geometry remains at 20 Hz. Final complete two-boundary C3XL bridge benchmarks
+measured mean 11.192 ms / p99 13.888 ms at 526x330 and mean 16.824 ms / p99
+20.146 ms at 1928x1208, leaving substantial margin in the 100 ms classifier
+period.
 
 The model-line enter threshold remains 0.50; only the already-confirmed-line
 exit threshold changed from 0.25 to 0.20. On the recorded route this raised the
@@ -86,7 +87,7 @@ retention.
 
 Low-resolution compression often leaves only two visible dash runs in the
 8-35 m metric window. Such a frame may now contribute bounded partial-dash
-evidence only when it still contains a physical internal gap and passes the
+evidence when it contains an internal gap of at least 1 metre and passes the
 existing coherent-offset or smooth-profile structure test. Its confidence is
 capped at 0.45; it is not a single-frame control result. Partial evidence may
 acquire `dashed` from `unknown`, but can never replace a previously confirmed
@@ -96,12 +97,12 @@ transitions).
 
 At the old 4 Hz configuration, stable known source-slot observations covered
 725 of 924 source slots with valid metric samples (78.5%). The final 10 Hz
-configuration covered 2,078 of 2,320 eligible source slots (89.6%). A
+configuration covered 2,102 of 2,320 eligible source slots (90.6%). A
 same-frame 10 Hz differential against the old classifier increased stable
-known source slots from 1,870 to 2,078 (+11.1%): 211 observations were added,
-three were lost, and there were zero solid/dashed flips. Manual inspection of
+known source slots from 1,870 to 2,102 (+12.4%): 240 observations were added,
+eight were lost, and there were zero solid/dashed flips. Manual inspection of
 added 526x330 frames showed visible dashed markings. With synthetic Gaussian
-blur sigma 4 applied to all four qcamera routes, 1,414 of 2,078 clear known
+blur sigma 4 applied to all four qcamera routes, 1,449 of 2,102 clear known
 slots retained the same type and there were zero solid/dashed flips.
 
 Using the Snapdragon 845 GPU beside the external Chestnut GPU is
