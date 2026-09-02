@@ -92,6 +92,9 @@ def use_copyparty(started, params, CP: car.CarParams) -> bool:
 def use_device_console(started: bool, params: Params, CP: car.CarParams) -> bool:
   return not PC
 
+def use_c3xl_tesla_hotspot(started: bool, params: Params, CP: car.CarParams) -> bool:
+  return not PC and get_hardware_profile() == HardwareProfile.C3XL
+
 def use_external_buzzer(started: bool, params: Params, CP: car.CarParams) -> bool:
   return not PC and get_hardware_profile() == HardwareProfile.C3XL
 
@@ -204,6 +207,7 @@ procs += [
   # Optional C3XL integrations are isolated processes; disabling them restores
   # the upstream process graph and control behavior.
   PythonProcess("device_console", "openpilot.selfdrive.debug.device_console", use_device_console),
+  PythonProcess("tesla_hotspotd", "openpilot.selfdrive.debug.tesla_hotspotd", use_c3xl_tesla_hotspot),
   PythonProcess("alert_output", "openpilot.sunnypilot.system.alert_output", use_external_buzzer),
   PythonProcess("chestnut_statusd", "openpilot.system.hardware.chestnut.statusd", only_offroad),
 

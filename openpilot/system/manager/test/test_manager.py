@@ -74,8 +74,21 @@ class TestManager(OpenpilotTestCase):
     assert managed_processes["webrtcd"].should_run(True, params, CP)
 
   def test_local_process_seams_remain_registered(self):
-    for name in ("device_console", "alert_output", "chestnut_statusd", "trafficcontrold", "local_diagnosticsd"):
+    for name in ("device_console", "tesla_hotspotd", "alert_output", "chestnut_statusd", "trafficcontrold", "local_diagnosticsd"):
       assert name in managed_processes
+
+  def test_tesla_hotspot_process_is_c3xl_profile_scoped(self, monkeypatch):
+    params = Params()
+    CP = car.CarParams.new_message()
+    predicate = managed_processes["tesla_hotspotd"].should_run
+    monkeypatch.setattr(process_config, "PC", False)
+
+    monkeypatch.setattr(process_config, "get_hardware_profile", lambda: process_config.HardwareProfile.C3XL)
+    assert predicate(True, params, CP)
+    assert predicate(False, params, CP)
+
+    monkeypatch.setattr(process_config, "get_hardware_profile", lambda: process_config.HardwareProfile.STANDARD)
+    assert not predicate(True, params, CP)
 
   def test_github_runner_process_is_retired(self):
     assert "github_runner_start" not in managed_processes

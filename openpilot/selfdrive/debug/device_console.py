@@ -146,7 +146,9 @@ function renderSettings(data) {
   if (selectedCategory === '设备' && hotspotState?.available) {
     const card = element('div', {className:'card'}), description = element('div');
     description.append(element('h2', {}, '设备 Wi-Fi 热点'));
-    description.append(element('p', {}, hotspotState.active ? '热点已开启。连接后访问 ' + hotspotState.url : '开启后设备会切换为热点；连接手机或电脑后访问 ' + hotspotState.url));
+    const accessText = '普通设备：' + hotspotState.url + '；Tesla：' + hotspotState.tesla_url;
+    const readiness = hotspotState.tesla_address_ready ? '' : '（Tesla 地址正在准备）';
+    description.append(element('p', {}, hotspotState.active ? '热点已开启。' + accessText + readiness : '开启后连接热点并访问。' + accessText));
     const control = element('input', {type:'checkbox', checked:hotspotState.active});
     control.onchange = () => saveHotspot(control.checked, control); card.append(description, control); root.append(card);
   }
