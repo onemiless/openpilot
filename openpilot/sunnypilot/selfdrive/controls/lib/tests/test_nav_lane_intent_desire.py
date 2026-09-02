@@ -87,6 +87,34 @@ def test_navigation_turn_signal_does_not_enter_lane_change_state_machine():
   assert desire.lane_change_direction == LaneChangeDirection.none
 
 
+def test_navigation_lane_change_lamp_does_not_trigger_lane_turn_desire():
+  desire = helper()
+  desire.lane_turn_controller.enabled = True
+  desire.lane_turn_controller.update_params = lambda: None
+  desire.lane_turn_controller.lane_turn_value = 20.0
+  lane_target = intent(target=0)
+
+  desire.update(car_state(vEgo=5.0), True, 1.0, nav_lane_intent=lane_target)
+  desire.update(car_state(vEgo=5.0, leftBlinker=True), True, 1.0, nav_lane_intent=lane_target,
+                left_crossing_allowed=True)
+
+  assert desire.lane_turn_direction == 0
+  assert desire.desire == 0
+
+
+def test_navigation_turn_only_lamp_retains_lane_turn_desire():
+  desire = helper()
+  desire.lane_turn_controller.enabled = True
+  desire.lane_turn_controller.update_params = lambda: None
+  desire.lane_turn_controller.lane_turn_value = 20.0
+  turn_only = intent(target=-1)
+
+  desire.update(car_state(vEgo=5.0), True, 1.0, nav_lane_intent=turn_only)
+  desire.update(car_state(vEgo=5.0, leftBlinker=True), True, 1.0, nav_lane_intent=turn_only)
+
+  assert int(desire.lane_turn_direction) != 0
+
+
 def test_navigation_lane_target_respects_sp_alc_off():
   desire = helper()
   desire.alc.lane_change_set_timer = AutoLaneChangeMode.OFF

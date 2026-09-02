@@ -166,6 +166,11 @@ Relative alignment adopts CP's temporal consistency without its global
 fail-open behavior: 0.5-second neighbor stability, 5-second edge confirmation,
 3-second new-lane stability after an edge, 2-second post-change cooldown, pause
 during lateral transition/driver steering, and at most five changes per event.
+Lane alignment remains an internal preparation state while the crossing or BSM
+gate is blocked. It requests the physical lamp only when one SP lane-change
+attempt can start, then holds that lamp through the existing SP cycle. A
+navigation lane-change lamp is excluded from LaneTurnDesire; only a true
+turn-only request or a driver lamp may create turnLeft/turnRight desire.
 An ordinary navigation lane request applies CP's unknown-is-open policy but
 still blocks confirmed solid paint. The explicitly requested `forkNow`
 exception is limited to a fresh directional exit/ramp/merge at 50 metres or

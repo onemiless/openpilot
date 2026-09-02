@@ -418,26 +418,19 @@ class NavLaneIntentCoordinator:
       if candidate != self._candidate:
         self._candidate = candidate
         self._candidate_since_ns = now_ns
-        self._signal_since_ns = now_ns
-        self._request_id += 1
-        return NavLaneIntent(
-          signal_requested=True,
-          direction=direction,
-          request_id=self._request_id,
-          target_lane_index=self._adjacent_target_index(topology.ego_lane_index, direction),
-          reason=self._plan_reason(plan, "stabilizingLaneAlignment"),
-        )
-      if now_ns - self._candidate_since_ns < self.MISMATCH_STABLE_NS:
-        return NavLaneIntent(
-          signal_requested=True,
-          direction=direction,
-          request_id=self._request_id,
-          target_lane_index=self._adjacent_target_index(topology.ego_lane_index, direction),
-          reason=self._plan_reason(plan, "stabilizingLaneAlignment"),
-        )
+        if not plan.force_fork:
+          return self._idle(self._plan_reason(plan, "stabilizingLaneAlignment"))
+      if not plan.force_fork and now_ns - self._candidate_since_ns < self.MISMATCH_STABLE_NS:
+        return self._idle(self._plan_reason(plan, "stabilizingLaneAlignment"))
+      crossing_allowed = topology.left_crossing_allowed if direction == LaneIntentDirection.left else topology.right_crossing_allowed
+      blindspot = vehicle.left_blindspot if direction == LaneIntentDirection.left else vehicle.right_blindspot
+      if not crossing_allowed or blindspot:
+        return self._idle(self._plan_reason(plan, "waitingCrossing" if not crossing_allowed else "waitingBlindspot"))
       self._phase = "signaling"
       self._phase_since_ns = now_ns
+      self._signal_since_ns = now_ns
       self._crossing_since_ns = 0
+      self._request_id += 1
 
     if self._candidate != candidate and self._phase != "cooldown":
       self._reset()

@@ -17,6 +17,7 @@ from openpilot.sunnypilot.navassist.lane_intent import (
   ObservedLaneChangeState,
 )
 from openpilot.sunnypilot.selfdrive.controls.lib.nav_turn_completion import sp_turn_geometry_active
+from openpilot.sunnypilot.selfdrive.controls.lib.lane_change_blocker import lane_topology_nav_crossing_allowed
 
 
 PUBLISH_HZ = 20
@@ -126,8 +127,16 @@ def main() -> None:
       ego_lane_index=int(topology.egoLaneIndexFromLeft),
       left_neighbor_exists=bool(topology.leftNeighborExists),
       right_neighbor_exists=bool(topology.rightNeighborExists),
-      left_crossing_allowed=bool(topology.leftCrossingAllowed),
-      right_crossing_allowed=bool(topology.rightCrossingAllowed),
+      left_crossing_allowed=lane_topology_nav_crossing_allowed(
+        topology, side="left", healthy=lane_services_healthy,
+        allow_unknown=plan.edge_direction == LaneIntentDirection.left and plan.allow_unknown_crossing,
+        ignore_solid=plan.edge_direction == LaneIntentDirection.left and plan.ignore_solid_boundary,
+      ),
+      right_crossing_allowed=lane_topology_nav_crossing_allowed(
+        topology, side="right", healthy=lane_services_healthy,
+        allow_unknown=plan.edge_direction == LaneIntentDirection.right and plan.allow_unknown_crossing,
+        ignore_solid=plan.edge_direction == LaneIntentDirection.right and plan.ignore_solid_boundary,
+      ),
     )
     vehicle = LaneVehicleInput(
       lateral_active=bool(healthy and car_control.latActive),

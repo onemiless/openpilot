@@ -32,6 +32,7 @@ class DesireHelper:
     self._active_nav_signal_turn_only = False
     self._active_nav_signal_feedback = False
     self._nav_signal_tail_direction: str | None = None
+    self._nav_signal_tail_turn_only = False
 
   @staticmethod
   def get_lane_change_direction(left_blinker, right_blinker):
@@ -56,6 +57,7 @@ class DesireHelper:
         and (not nav_requested or nav_direction != self._active_nav_signal_direction)):
       if self._active_nav_signal_feedback:
         self._nav_signal_tail_direction = self._active_nav_signal_direction
+        self._nav_signal_tail_turn_only = self._active_nav_signal_turn_only
       self._active_nav_signal_direction = None
       self._active_nav_signal_turn_only = False
       self._active_nav_signal_feedback = False
@@ -72,6 +74,7 @@ class DesireHelper:
                         or (self._nav_signal_tail_direction == "right" and carstate.rightBlinker and not carstate.leftBlinker))
       if not tail_signal_on:
         self._nav_signal_tail_direction = None
+        self._nav_signal_tail_turn_only = False
 
     nav_left = nav_signal and str(nav_lane_intent.direction) == "left"
     nav_right = nav_signal and str(nav_lane_intent.direction) == "right"
@@ -91,9 +94,28 @@ class DesireHelper:
     one_blinker = left_blinker != right_blinker
     below_lane_change_speed = v_ego < LANE_CHANGE_SPEED_MIN
 
+    # A navigation lane-change lamp must not look like an intersection turn to
+    # LaneTurnDesire. Turn-only navigation lamps and driver lamps retain the
+    # existing SP behavior.
+    nav_lane_signal_left = bool(
+      self._active_nav_signal_direction == "left" and not self._active_nav_signal_turn_only
+    )
+    nav_lane_signal_right = bool(
+      self._active_nav_signal_direction == "right" and not self._active_nav_signal_turn_only
+    )
+    nav_lane_tail_left = bool(
+      self._nav_signal_tail_direction == "left" and not self._nav_signal_tail_turn_only
+    )
+    nav_lane_tail_right = bool(
+      self._nav_signal_tail_direction == "right" and not self._nav_signal_tail_turn_only
+    )
+    lane_turn_left_blinker = bool(carstate.leftBlinker and not (nav_lane_signal_left or nav_lane_tail_left))
+    lane_turn_right_blinker = bool(carstate.rightBlinker and not (nav_lane_signal_right or nav_lane_tail_right))
+
     # Lane turn controller update
     self.lane_turn_controller.update_lane_turn(blindspot_left=carstate.leftBlindspot, blindspot_right=carstate.rightBlindspot,
-                                               left_blinker=carstate.leftBlinker, right_blinker=carstate.rightBlinker, v_ego=v_ego)
+                                               left_blinker=lane_turn_left_blinker,
+                                               right_blinker=lane_turn_right_blinker, v_ego=v_ego)
     self.lane_turn_direction = self.lane_turn_controller.get_turn_direction()
 
     if (not lateral_active or self.lane_change_timer > LANE_CHANGE_TIME_MAX or

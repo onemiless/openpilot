@@ -46,13 +46,15 @@ def test_heuristic_extreme_lane_waits_for_stable_neighbor_then_signals_one_lane_
   heuristic = NavLanePlan(True, "session-a", 1, 7, 3, (0,), heuristic=True)
 
   first = coordinator.update(heuristic, topology(ego=2), vehicle(), now_ns=0)
-  intent = coordinator.update(heuristic, topology(ego=2), vehicle(), now_ns=500_000_000)
+  stable_neighbor = coordinator.update(heuristic, topology(ego=2), vehicle(), now_ns=500_000_000)
+  intent = coordinator.update(heuristic, topology(ego=2, left_cross=True), vehicle(), now_ns=1_000_000_000)
 
   assert not first.signal_requested and first.reason == "heuristicStabilizingNeighbor"
+  assert not stable_neighbor.signal_requested and stable_neighbor.reason == "heuristicStabilizingLaneAlignment"
   assert intent.signal_requested and not intent.lane_change_ready
   assert intent.direction == LaneIntentDirection.left
   assert intent.target_lane_index == 1
-  assert intent.reason == "heuristicStabilizingLaneAlignment"
+  assert intent.reason == "heuristicSignaling"
 
 
 def test_fork_now_can_signal_without_a_visible_neighbor_but_keeps_lane_change_state_machine():
@@ -63,7 +65,9 @@ def test_fork_now_can_signal_without_a_visible_neighbor_but_keeps_lane_change_st
     allow_unknown_crossing=True, ignore_solid_boundary=True,
   )
 
-  intent = coordinator.update(forced, topology(ego=0, count=1, left=False, right=False), vehicle(), now_ns=0)
+  intent = coordinator.update(
+    forced, topology(ego=0, count=1, left=False, right=False, right_cross=True), vehicle(), now_ns=0,
+  )
 
   assert intent.signal_requested
   assert intent.direction == LaneIntentDirection.right
@@ -192,11 +196,10 @@ def test_navigation_turn_signal_drops_after_the_bounded_plan_gap_grace():
 def test_signal_waits_at_solid_line_then_authorizes_after_dashed_is_stable():
   coordinator = NavLaneIntentCoordinator()
   first_mismatch = coordinator.update(plan(), topology(), vehicle(), now_ns=0)
-  assert first_mismatch.signal_requested and not first_mismatch.lane_change_ready
-  assert first_mismatch.direction == LaneIntentDirection.left
+  assert not first_mismatch.signal_requested and not first_mismatch.lane_change_ready
   assert first_mismatch.reason == "stabilizingLaneAlignment"
   waiting = coordinator.update(plan(), topology(), vehicle(), now_ns=500_000_000)
-  assert waiting.signal_requested and not waiting.lane_change_ready
+  assert not waiting.signal_requested and waiting.reason == "waitingCrossing"
   first_dashed = coordinator.update(plan(), topology(left_cross=True), vehicle(left_blinker=True), now_ns=600_000_000)
   assert first_dashed.signal_requested and not first_dashed.lane_change_ready
   authorized = coordinator.update(plan(), topology(left_cross=True), vehicle(left_blinker=True), now_ns=900_000_000)
@@ -204,14 +207,19 @@ def test_signal_waits_at_solid_line_then_authorizes_after_dashed_is_stable():
   assert authorized.direction == LaneIntentDirection.left
 
 
-def test_blindspot_keeps_signal_on_but_withholds_lane_change_authority():
+def test_blindspot_delays_physical_signal_until_the_lane_change_can_start():
   coordinator = NavLaneIntentCoordinator()
   coordinator.update(plan(recommended=(2,)), topology(right_cross=True), vehicle(), now_ns=0)
   coordinator.update(plan(recommended=(2,)), topology(right_cross=True),
                      vehicle(bsm_right=True, right_blinker=True), now_ns=500_000_000)
   blocked = coordinator.update(plan(recommended=(2,)), topology(right_cross=True),
                                vehicle(bsm_right=True, right_blinker=True), now_ns=900_000_000)
-  assert blocked.signal_requested and not blocked.lane_change_ready
+  assert not blocked.signal_requested and blocked.reason == "waitingBlindspot"
+
+  signaling = coordinator.update(
+    plan(recommended=(2,)), topology(right_cross=True), vehicle(right_blinker=True), now_ns=1_000_000_000,
+  )
+  assert signaling.signal_requested and not signaling.lane_change_ready
 
 
 def test_software_signal_request_never_authorizes_without_physical_blinker_feedback():

@@ -203,6 +203,10 @@ def navigation_display_from_service(
       "heuristicCooldown": "连续变道冷却",
       "heuristicChangeLimit": "连续变道次数已达上限",
       "heuristicDriverSteering": "驾驶员转向，暂停车道判断",
+      "waitingCrossing": "等待可变道路段，不提前打灯",
+      "heuristicWaitingCrossing": "等待可变道路段，不提前打灯",
+      "waitingBlindspot": "等待盲区清除，不提前打灯",
+      "heuristicWaitingBlindspot": "等待盲区清除，不提前打灯",
     }.get(str(lane_intent.reason))
     if consistency is not None:
       details.append(consistency)

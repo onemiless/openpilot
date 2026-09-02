@@ -163,6 +163,9 @@ keep the target lane physically empty. Confirm the independent
   SP lateral, and an automatic SP ALC mode;
 - requires ordinary relative-edge observations to pass neighbor/edge stability,
   post-change cooldown, and the five-change event limit;
+- keeps blocked lane alignment internal without lighting the physical signal;
+  the lamp begins only when the crossing and BSM gates permit an immediate SP
+  attempt, remains on through that attempt, and cannot trigger LaneTurnDesire;
 - exposes `forkNow`, `allowUnknownCrossing`, and `ignoreSolidBoundary` on the HUD
   whenever the final-fork exception is active; verify that stale/ambiguous
   geometry, road edge, BSM, pedals, and missing physical lamp still block it;
