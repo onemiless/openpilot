@@ -76,7 +76,8 @@ class NavLaneIntent:
 class NavTurnSignalCoordinator:
   """Requests a physical lamp for a route turn without authorizing a lane change."""
 
-  SIGNAL_TIMEOUT_NS = 30_000_000_000
+  SIGNAL_TIMEOUT_NS = 60_000_000_000
+  PLAN_GAP_GRACE_NS = 1_500_000_000
   LOOKAHEAD_TIME_S = 8.0
   MIN_LOOKAHEAD_M = 40.0
   MAX_LOOKAHEAD_M = 250.0
@@ -102,25 +103,38 @@ class NavTurnSignalCoordinator:
     self._active_key: tuple[str, int, int] | None = None
     self._active_direction = LaneIntentDirection.none
     self._active_since_ns = 0
+    self._plan_gap_since_ns: int | None = None
 
   def _reset(self, reason: str = "idle") -> NavLaneIntent:
     self._active_key = None
     self._active_direction = LaneIntentDirection.none
     self._active_since_ns = 0
+    self._plan_gap_since_ns = None
     return NavLaneIntent(reason=reason)
 
   def update(self, plan: NavTurnPlan, *, speed_mps: float, now_ns: int) -> NavLaneIntent:
     direction = self.MANEUVER_DIRECTIONS.get(plan.maneuver, LaneIntentDirection.none)
     event_key = (plan.session_id, plan.route_revision, plan.maneuver_event_id)
-    if not plan.valid or direction == LaneIntentDirection.none or plan.maneuver_event_id == 0:
-      return self._reset("turnUnavailable")
 
     if self._active_key is not None:
       if event_key != self._active_key or direction != self._active_direction:
         self._reset("turnChanged")
       elif now_ns - self._active_since_ns > self.SIGNAL_TIMEOUT_NS:
         return self._reset("turnSignalTimeout")
+      elif not plan.valid:
+        if self._plan_gap_since_ns is None:
+          self._plan_gap_since_ns = now_ns
+        if now_ns - self._plan_gap_since_ns <= self.PLAN_GAP_GRACE_NS:
+          return NavLaneIntent(
+            signal_requested=True,
+            direction=self._active_direction,
+            request_id=plan.maneuver_event_id,
+            target_lane_index=-1,
+            reason="turnApproachGrace",
+          )
+        return self._reset("turnUnavailable")
       else:
+        self._plan_gap_since_ns = None
         return NavLaneIntent(
           signal_requested=True,
           direction=self._active_direction,
@@ -128,6 +142,9 @@ class NavTurnSignalCoordinator:
           target_lane_index=-1,
           reason="turnApproach",
         )
+
+    if not plan.valid or direction == LaneIntentDirection.none or plan.maneuver_event_id == 0:
+      return self._reset("turnUnavailable")
 
     lookahead_m = max(self.MIN_LOOKAHEAD_M, min(
       self.MAX_LOOKAHEAD_M, max(0.0, speed_mps) * self.LOOKAHEAD_TIME_S + self.LOOKAHEAD_MARGIN_M,
@@ -138,6 +155,7 @@ class NavTurnSignalCoordinator:
     self._active_key = event_key
     self._active_direction = direction
     self._active_since_ns = now_ns
+    self._plan_gap_since_ns = None
     return NavLaneIntent(
       signal_requested=True,
       direction=direction,

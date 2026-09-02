@@ -87,14 +87,54 @@ def test_navigation_turn_signal_stays_on_through_zero_distance_then_cancels_on_e
   assert not changed.signal_requested
 
 
-def test_navigation_turn_signal_cancels_on_stale_route_or_bounded_timeout():
+def test_navigation_turn_signal_holds_through_recorded_snapshot_gaps_until_maneuver_changes():
+  coordinator = NavTurnSignalCoordinator()
+  started = coordinator.update(turn_plan(maneuver="turnRight", distance=120.0), speed_mps=13.5, now_ns=0)
+  first_gap = coordinator.update(
+    turn_plan(valid=False, maneuver="turnRight", distance=11.0), speed_mps=2.0, now_ns=17_946_000_000,
+  )
+  recovered = coordinator.update(
+    turn_plan(maneuver="turnRight", distance=10.0), speed_mps=2.0, now_ns=18_046_000_000,
+  )
+  second_gap = coordinator.update(
+    turn_plan(valid=False, maneuver="turnRight", distance=8.0), speed_mps=2.0, now_ns=19_747_000_000,
+  )
+  at_turn = coordinator.update(
+    turn_plan(maneuver="turnRight", distance=0.0), speed_mps=1.0, now_ns=24_046_000_000,
+  )
+  completed = coordinator.update(
+    turn_plan(maneuver="straight", distance=4_964.0, event=12), speed_mps=6.0, now_ns=29_446_000_000,
+  )
+
+  assert started.signal_requested
+  assert first_gap.signal_requested and first_gap.reason == "turnApproachGrace"
+  assert recovered.signal_requested
+  assert second_gap.signal_requested and second_gap.reason == "turnApproachGrace"
+  assert at_turn.signal_requested
+  assert not completed.signal_requested
+
+
+def test_navigation_turn_signal_retains_a_bounded_hard_timeout():
   coordinator = NavTurnSignalCoordinator()
   coordinator.update(turn_plan(), speed_mps=15.0, now_ns=0)
-  assert not coordinator.update(turn_plan(valid=False), speed_mps=15.0, now_ns=1_000_000_000).signal_requested
 
-  coordinator.update(turn_plan(), speed_mps=15.0, now_ns=2_000_000_000)
-  timed_out = coordinator.update(turn_plan(), speed_mps=15.0, now_ns=32_000_000_001)
+  timed_out = coordinator.update(
+    turn_plan(), speed_mps=15.0, now_ns=NavTurnSignalCoordinator.SIGNAL_TIMEOUT_NS + 1,
+  )
   assert not timed_out.signal_requested
+
+
+def test_navigation_turn_signal_drops_after_the_bounded_plan_gap_grace():
+  coordinator = NavTurnSignalCoordinator()
+  coordinator.update(turn_plan(), speed_mps=15.0, now_ns=0)
+  first_gap = coordinator.update(turn_plan(valid=False), speed_mps=15.0, now_ns=1_000_000_000)
+  expired = coordinator.update(
+    turn_plan(valid=False), speed_mps=15.0,
+    now_ns=1_000_000_000 + NavTurnSignalCoordinator.PLAN_GAP_GRACE_NS + 1,
+  )
+
+  assert first_gap.signal_requested
+  assert not expired.signal_requested and expired.reason == "turnUnavailable"
 
 
 def test_signal_waits_at_solid_line_then_authorizes_after_dashed_is_stable():
