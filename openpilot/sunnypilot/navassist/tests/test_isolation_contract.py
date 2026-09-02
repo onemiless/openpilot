@@ -2,7 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from openpilot.cereal import log
-from openpilot.sunnypilot.navassist.lane_topologyd import services_healthy
+from openpilot.sunnypilot.navassist.lane_topologyd import IMAGE_CLASSIFIER_DIVISOR, services_healthy
 from openpilot.sunnypilot.navassist.navassistd import LOCALIZATION_MAX_AGE_NS, local_localization_valid
 from openpilot.sunnypilot.hardware.profile import HardwareProfile
 from openpilot.system.manager import process_config
@@ -40,6 +40,7 @@ def test_receiver_is_always_available_and_lane_observer_stays_onroad():
   assert "frame.timestamp_eof" not in lane_daemon
   assert "LaneTopologyUIBridge(frame_divisor=1)" in lane_daemon
   assert "bridge.last_frame_id % IMAGE_CLASSIFIER_DIVISOR" in lane_daemon
+  assert IMAGE_CLASSIFIER_DIVISOR == 2
 
   navassist_daemon = (NAVASSIST / "navassistd.py").read_text()
   assert "NavAssistDeviceIdentity.load_or_create(params=params)" in navassist_daemon

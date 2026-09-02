@@ -60,6 +60,18 @@ def test_metric_marking_recovers_moderately_blurred_low_contrast_lines():
     assert 0.0 < evidence.confidence < 1.0
 
 
+def test_metric_marking_uses_repeated_partial_dashes_as_low_confidence_evidence():
+  image, samples = synthetic_marking(LaneMarkingType.dashed, contrast=40, blur_sigma=0.0)
+  low_resolution_window = tuple(sample for sample in samples if 8.0 <= sample.distance_m <= 24.0)
+
+  strict = measure_metric_marking(image, low_resolution_window, adaptive=False, partial_dashed=False)
+  recovered = measure_metric_marking(image, low_resolution_window, adaptive=False)
+
+  assert strict.marking_type == LaneMarkingType.unknown
+  assert recovered.marking_type == LaneMarkingType.dashed
+  assert 0.0 < recovered.confidence <= 0.45
+
+
 def test_metric_marking_blur_never_flips_solid_and_dashed():
   for expected in (LaneMarkingType.solid, LaneMarkingType.dashed):
     for contrast in (15, 20, 30, 40):
@@ -102,4 +114,24 @@ def test_temporal_filter_requires_repeated_dominant_evidence():
   result = LaneMarkingType.unknown
   for _ in range(5):
     result = temporal.update(1, evidence)
+  assert result == LaneMarkingType.dashed
+
+
+def test_partial_dashes_never_replace_a_confirmed_solid_without_full_dash_evidence():
+  temporal = TemporalMarkingFilter()
+  distances = np.arange(12.0)
+  solid = classify_metric_presence(distances, np.ones(12, dtype=bool))
+  full_dashed = classify_metric_presence(np.arange(5.0, 35.0, 0.5), (np.arange(5.0, 35.0, 0.5) % 9.0) < 3.0)
+  image, samples = synthetic_marking(LaneMarkingType.dashed, contrast=40, blur_sigma=0.0)
+  partial_dashed = measure_metric_marking(
+    image, tuple(sample for sample in samples if 8.0 <= sample.distance_m <= 24.0), adaptive=False,
+  )
+
+  for _ in range(6):
+    temporal.update(1, solid)
+  assert all(temporal.update(1, partial_dashed) != LaneMarkingType.dashed for _ in range(20))
+
+  result = LaneMarkingType.unknown
+  for _ in range(20):
+    result = temporal.update(1, full_dashed)
   assert result == LaneMarkingType.dashed

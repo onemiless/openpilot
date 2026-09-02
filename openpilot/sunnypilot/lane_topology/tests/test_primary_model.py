@@ -45,6 +45,13 @@ def test_visibility_hysteresis_retains_a_line_until_exit_threshold():
   assert visibility.update((0.1, 0.2, 0.4, 0.1)) == frozenset((2,))
 
 
+def test_default_visibility_keeps_confirmed_lines_down_to_twenty_percent():
+  visibility = PrimaryLaneVisibilityFilter()
+  assert visibility.update((0.9, 0.9, 0.9, 0.9)) == frozenset((0, 1, 2, 3))
+  assert visibility.update((0.21, 0.21, 0.21, 0.21)) == frozenset((0, 1, 2, 3))
+  assert visibility.update((0.19, 0.19, 0.19, 0.19)) == frozenset()
+
+
 def test_primary_model_rejects_incomplete_contract():
   with pytest.raises(ValueError, match="exactly four"):
     model_v2_to_observations(SimpleNamespace(laneLines=(), laneLineProbs=()))

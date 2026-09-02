@@ -67,6 +67,53 @@ route, dashed observations increased from the fixed-path 198 to 229 while
 solid stayed 15. Four clear 526x330 tici routes retained their prior results,
 apart from three additional dashed observations and no lost solid result.
 
+## Low-resolution recall and frame-rate follow-up
+
+The four original tici qcamera segments remain the primary recognition gate.
+Each contains 1,200 synchronized 526x330 frames at 20 Hz; 1928x1208 data is
+used only for timing and resolution comparison. Production image
+classification now runs at 10 Hz (`IMAGE_CLASSIFIER_DIVISOR = 2`) while
+geometry remains at 20 Hz. A complete two-boundary 1928x1208 bridge benchmark
+on the C3XL measured mean 14.180 ms, p95 15.329 ms, p99 16.515 ms, and maximum
+18.284 ms, leaving substantial margin in the 100 ms classifier period.
+
+The model-line enter threshold remains 0.50; only the already-confirmed-line
+exit threshold changed from 0.25 to 0.20. On the recorded route this raised the
+approximate simultaneous inner-line visibility from 47.4% to 48.3% while
+reducing visibility transitions from 133 to 121. More aggressive 0.35/0.15
+thresholds were rejected because the earlier overlays showed intersection-line
+retention.
+
+Low-resolution compression often leaves only two visible dash runs in the
+8-35 m metric window. Such a frame may now contribute bounded partial-dash
+evidence only when it still contains a physical internal gap and passes the
+existing coherent-offset or smooth-profile structure test. Its confidence is
+capped at 0.45; it is not a single-frame control result. Partial evidence may
+acquire `dashed` from `unknown`, but can never replace a previously confirmed
+`solid`. A transition away from confirmed solid still requires the original
+complete dashed evidence (at least three lit runs, two complete gaps, and five
+transitions).
+
+At the old 4 Hz configuration, stable known source-slot observations covered
+725 of 924 source slots with valid metric samples (78.5%). The final 10 Hz
+configuration covered 2,078 of 2,320 eligible source slots (89.6%). A
+same-frame 10 Hz differential against the old classifier increased stable
+known source slots from 1,870 to 2,078 (+11.1%): 211 observations were added,
+three were lost, and there were zero solid/dashed flips. Manual inspection of
+added 526x330 frames showed visible dashed markings. With synthetic Gaussian
+blur sigma 4 applied to all four qcamera routes, 1,414 of 2,078 clear known
+slots retained the same type and there were zero solid/dashed flips.
+
+Using the Snapdragon 845 GPU beside the external Chestnut GPU is
+computationally plausible but is not yet a production source. A random-weight
+1x1x32x256 three-layer ROI CNN on tinygrad QCOM measured mean 8.158 ms, p95
+8.797 ms, and p99 11.196 ms. Existing YOLOP and UFLD assets do not publish
+marking type; the YOLOP lane-only ONNX also failed current QCOM code generation
+with a UOp verification error. A future QCOM ROI classifier therefore requires
+a specifically trained `solid/dashed/unknown` artifact, independent manual
+labels, and an onroad contention test with the QCOM warp. No untrained or
+geometry-only neural candidate is shipped in this change.
+
 ## Release cleanup
 
 The failed neural candidates remain documented by their bound hashes, device reports, and the table above, but their implementation was removed before release. Deleted code includes YOLOP, UFLDv1, UFLDv2, the original image-row classifier, the abandoned auxiliary runner/scheduler, their benchmark CLIs, and their dedicated tests. The release package retains only the primary-model geometry, ego-boundary selection, metric/temporal marking classifier, UI bridge, real-route replay tool, primary CPU benchmark, and core regression tests. No rejected candidate can be imported or accidentally activated at runtime.

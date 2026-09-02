@@ -85,6 +85,8 @@ def main() -> int:
   parser.add_argument("--blur-sigma", type=float, default=0.0, help="synthetic Gaussian blur for robustness A/B")
   parser.add_argument("--disable-adaptive-marking", action="store_true",
                       help="use only the original fixed contrast threshold")
+  parser.add_argument("--disable-partial-dashed", action="store_true",
+                      help="require three complete dash runs instead of low-confidence partial evidence")
   parser.add_argument("--report", type=Path, required=True)
   parser.add_argument("--overlay-dir", type=Path, required=True)
   parser.add_argument("--overlay-every", type=int, default=300)
@@ -169,7 +171,8 @@ def main() -> int:
         image_margin_px=marking_kwargs["center_radius"] + marking_kwargs["side_offset"] + marking_kwargs["search_radius"],
       )
       evidence[lane_index] = measure_metric_marking(
-        rgb, samples, adaptive=not args.disable_adaptive_marking, **marking_kwargs,
+        rgb, samples, adaptive=not args.disable_adaptive_marking,
+        partial_dashed=not args.disable_partial_dashed, **marking_kwargs,
       )
       types[lane_index] = temporal_marking.update(lane_index, evidence[lane_index])
     observations = model_v2_to_observations(
@@ -239,6 +242,7 @@ def main() -> int:
     "marking_sampling": marking_kwargs,
     "synthetic_blur_sigma": args.blur_sigma,
     "adaptive_marking": not args.disable_adaptive_marking,
+    "partial_dashed": not args.disable_partial_dashed,
     "stride": args.stride,
     "analyzed_frames": analyzed,
     "exact_model_frame_matches": exact_matches,

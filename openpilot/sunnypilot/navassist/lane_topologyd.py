@@ -16,7 +16,7 @@ from openpilot.sunnypilot.navassist.lane_publisher import build_lane_topology_me
 
 
 CALIBRATED = log.ExtrinsicsCalibration.Status.calibrated
-IMAGE_CLASSIFIER_DIVISOR = 5
+IMAGE_CLASSIFIER_DIVISOR = 2
 
 
 def services_healthy(sm, services: tuple[str, ...]) -> bool:
@@ -42,7 +42,7 @@ def main() -> None:
   is_wide = stream == VisionStreamType.VISION_STREAM_WIDE_ROAD
   camera_state_service = "wideRoadCameraState" if is_wide else "narrowRoadCameraState"
   # Geometry follows modelV2 at 20 Hz; metric image evidence remains bounded to
-  # about 4 Hz. This keeps the 150 ms model-age gate satisfiable without running
+  # about 10 Hz. This keeps the 150 ms model-age gate satisfiable without running
   # the image classifier on every frame.
   bridge = LaneTopologyUIBridge(frame_divisor=1)
   pm = messaging.PubMaster(["laneTopologyStateSP"])

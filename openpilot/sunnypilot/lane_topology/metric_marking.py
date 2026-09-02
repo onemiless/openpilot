@@ -13,6 +13,7 @@ MIN_ADAPTIVE_CONTRAST = 6.0
 ADAPTIVE_PEAK_RATIO = 0.55
 MIN_COHERENT_SAMPLES = 6
 MAX_BLURRED_PROFILE_ROUGHNESS = 0.45
+PARTIAL_DASHED_CONFIDENCE = 0.45
 
 
 def marking_sampling_parameters(image_width: int) -> tuple[int, int, int]:
@@ -148,6 +149,21 @@ def _profiles_are_smooth(levels: np.ndarray, presence: np.ndarray) -> bool:
   return float(np.median(normalized[presence])) <= MAX_BLURRED_PROFILE_ROUGHNESS
 
 
+def _recover_partial_dashed(evidence: MetricMarkingEvidence) -> MetricMarkingEvidence:
+  partial = bool(
+    0.12 <= evidence.coverage <= 0.82
+    and evidence.lit_runs >= 2
+    and evidence.complete_lit_runs >= 1
+    and evidence.internal_dark_runs >= 1
+    and evidence.max_internal_dark_gap_m >= 1.0
+    and 0.5 <= evidence.median_lit_run_m <= 10.0
+    and evidence.transitions >= 3
+  )
+  return replace(
+    evidence, marking_type=LaneMarkingType.dashed, confidence=PARTIAL_DASHED_CONFIDENCE,
+  ) if partial else evidence
+
+
 def classify_metric_presence(distances_m: np.ndarray, presence: np.ndarray) -> MetricMarkingEvidence:
   distances = np.asarray(distances_m, dtype=np.float64)
   flags = np.asarray(presence, dtype=bool)
@@ -193,7 +209,7 @@ def classify_metric_presence(distances_m: np.ndarray, presence: np.ndarray) -> M
 def measure_metric_marking(image: np.ndarray, samples: tuple[MetricLaneSample, ...], *,
                            center_radius: int = 3, side_offset: int = 10,
                            search_radius: int = 4, contrast_threshold: float = 14.0,
-                           adaptive: bool = True) -> MetricMarkingEvidence:
+                           adaptive: bool = True, partial_dashed: bool = True) -> MetricMarkingEvidence:
   source = np.asarray(image)
   if source.dtype != np.uint8 or source.ndim not in (2, 3) or (source.ndim == 3 and source.shape[2] != 3):
     raise ValueError("metric marking requires HxW luma or HxWx3 uint8 image")
@@ -222,23 +238,36 @@ def measure_metric_marking(image: np.ndarray, samples: tuple[MetricLaneSample, .
   side_levels = _strip_means(luminance, uv, normal, tangent_unit,
                              np.array((-side_offset, side_offset)), center_radius)
   contrast = center_level - side_levels.mean(axis=1)
-  fixed_evidence = classify_metric_presence(distances, contrast >= contrast_threshold)
-  if fixed_evidence.marking_type != LaneMarkingType.unknown or not adaptive:
+  fixed_presence = contrast >= contrast_threshold
+  fixed_evidence = classify_metric_presence(distances, fixed_presence)
+  if fixed_evidence.marking_type != LaneMarkingType.unknown:
     return fixed_evidence
+  fixed_partial = _recover_partial_dashed(fixed_evidence) if partial_dashed else fixed_evidence
+  fixed_structure_valid = bool(
+    fixed_partial.marking_type != LaneMarkingType.unknown
+    and (_offsets_are_coherent(distances, best_offsets, fixed_presence, search_radius)
+         or _profiles_are_smooth(center_levels, fixed_presence))
+  )
+  if not fixed_structure_valid:
+    fixed_partial = MetricMarkingEvidence.unknown(len(distances))
+  if not adaptive:
+    return fixed_partial if fixed_partial.marking_type != LaneMarkingType.unknown else fixed_evidence
   peak_contrast = float(np.percentile(contrast, 90))
   adaptive_floor = min(MIN_ADAPTIVE_CONTRAST, contrast_threshold)
   adaptive_threshold = max(adaptive_floor, min(contrast_threshold, peak_contrast * ADAPTIVE_PEAK_RATIO))
   presence = contrast >= adaptive_threshold
   evidence = classify_metric_presence(distances, presence)
+  if evidence.marking_type == LaneMarkingType.unknown and partial_dashed:
+    evidence = _recover_partial_dashed(evidence)
   if evidence.marking_type == LaneMarkingType.unknown:
-    return evidence
+    return fixed_partial if fixed_partial.marking_type != LaneMarkingType.unknown else evidence
   strong_presence = contrast >= max(adaptive_threshold, peak_contrast * 0.80)
   line_structure_valid = (
     _offsets_are_coherent(distances, best_offsets, strong_presence, search_radius)
     or _profiles_are_smooth(center_levels, presence)
   )
   if not line_structure_valid:
-    return MetricMarkingEvidence.unknown(len(distances))
+    return fixed_partial if fixed_partial.marking_type != LaneMarkingType.unknown else MetricMarkingEvidence.unknown(len(distances))
   quality = min(1.0, max(0.25, peak_contrast / max(contrast_threshold, 1e-3)))
   return replace(evidence, confidence=evidence.confidence * quality)
 
@@ -251,19 +280,29 @@ class TemporalMarkingFilter:
     self.dominance_ratio = dominance_ratio
     self.decay = decay
     self._scores = [{LaneMarkingType.solid: 0.0, LaneMarkingType.dashed: 0.0} for _ in range(4)]
+    self._confirmed = [LaneMarkingType.unknown] * 4
 
   def reset(self) -> None:
-    for scores in self._scores:
+    for source_id, scores in enumerate(self._scores):
       scores[LaneMarkingType.solid] = scores[LaneMarkingType.dashed] = 0.0
+      self._confirmed[source_id] = LaneMarkingType.unknown
 
   def update(self, source_id: int, evidence: MetricMarkingEvidence) -> LaneMarkingType:
     scores = self._scores[source_id]
     for marking_type in scores:
       scores[marking_type] *= self.decay
-    if evidence.marking_type in scores:
+    partial_dashed = bool(
+      evidence.marking_type == LaneMarkingType.dashed
+      and (evidence.lit_runs < 3 or evidence.complete_lit_runs < 2
+           or evidence.internal_dark_runs < 2 or evidence.transitions < 5)
+    )
+    if evidence.marking_type in scores and not (
+      partial_dashed and self._confirmed[source_id] == LaneMarkingType.solid
+    ):
       scores[evidence.marking_type] += evidence.confidence
     winner = max(scores, key=scores.get)
     loser = LaneMarkingType.dashed if winner == LaneMarkingType.solid else LaneMarkingType.solid
     if scores[winner] >= self.minimum_score and scores[winner] >= max(0.01, scores[loser]) * self.dominance_ratio:
+      self._confirmed[source_id] = winner
       return winner
     return LaneMarkingType.unknown

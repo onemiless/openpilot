@@ -83,7 +83,7 @@ def model_v2_to_observations(model_v2: ModelV2Like, *, confidence_threshold: flo
 class PrimaryLaneVisibilityFilter:
   """Per-slot probability hysteresis for the primary model's four lines."""
 
-  def __init__(self, *, enter_threshold: float = 0.5, exit_threshold: float = 0.25):
+  def __init__(self, *, enter_threshold: float = 0.5, exit_threshold: float = 0.20):
     if not 0.0 <= exit_threshold < enter_threshold <= 1.0:
       raise ValueError("lane visibility requires 0 <= exit < enter <= 1")
     self.enter_threshold = enter_threshold
@@ -106,7 +106,7 @@ class PrimaryLaneVisibilityFilter:
 class PrimaryModelLaneTopologyAdapter:
   """Shadow adapter for already-published modelV2 data; owns no GPU resources."""
 
-  def __init__(self, *, enter_threshold: float = 0.5, exit_threshold: float = 0.25,
+  def __init__(self, *, enter_threshold: float = 0.5, exit_threshold: float = 0.20,
                marking_classifier: MarkingClassifier | None = None):
     self.visibility = PrimaryLaneVisibilityFilter(enter_threshold=enter_threshold, exit_threshold=exit_threshold)
     self.marking_classifier = marking_classifier
