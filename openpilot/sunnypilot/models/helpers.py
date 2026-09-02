@@ -16,7 +16,8 @@ from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.sunnypilot.models.constants import Meta, MetaSimPose, MetaTombRaider
 from openpilot.common.hardware.hw import Paths
-from openpilot.selfdrive.modeld.helpers import chestnut_present
+from openpilot.selfdrive.modeld.helpers import chestnut_compiled, chestnut_present
+from openpilot.sunnypilot.models.artifact_status import bundle_artifacts_ready
 
 # SET ME TO THE EXACT JSON VERSION WE SET IN SUNNYPILOT_MODELS REPO
 REQUIRED_JSON_VERSION = 19
@@ -140,6 +141,16 @@ def get_active_bundle(params: Params | None = None, *, chestnut: bool | None = N
   # only stock modeld can run - modeld_v2 requires a real bundle
   params = params or Params()
   return get_selected_bundle(params, get_active_source(chestnut=chestnut))
+
+
+def chestnut_model_ready(params: Params | None = None) -> bool:
+  """Recognize either the stock big model or the selected downloaded bundle."""
+  if chestnut_compiled():
+    return True
+  params = params or Params()
+  bundle = get_selected_bundle(params, "chestnut")
+  return bool(bundle is not None and bundle.runner == custom.ModelManagerSP.Runner.tinygrad and
+              bundle_artifacts_ready(bundle, Paths.model_root()))
 
 
 def resolve_bundle_by_ref(
