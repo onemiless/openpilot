@@ -74,8 +74,8 @@ Each contains 1,200 synchronized 526x330 frames at 20 Hz; 1928x1208 data is
 used only for timing and resolution comparison. Production image
 classification now runs at 10 Hz (`IMAGE_CLASSIFIER_DIVISOR = 2`) while
 geometry remains at 20 Hz. Final complete two-boundary C3XL bridge benchmarks
-measured mean 11.192 ms / p99 13.888 ms at 526x330 and mean 16.824 ms / p99
-20.146 ms at 1928x1208, leaving substantial margin in the 100 ms classifier
+measured mean 11.216 ms / p99 14.053 ms at 526x330 and mean 14.575 ms / p99
+16.665 ms at 1928x1208, leaving substantial margin in the 100 ms classifier
 period.
 
 The model-line enter threshold remains 0.50; only the already-confirmed-line
