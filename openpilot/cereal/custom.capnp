@@ -785,6 +785,9 @@ struct NavLaneIntentSP @0xcd96dafb67a082d0 {
   reason @9 :Text;
   sessionId @10 :Text;
   spLaneChangeReady @11 :Bool;  # Diagnostic only: fresh dashed/BSM/lamp qualification observed.
+  forkNow @12 :Bool;  # Fresh exit/ramp/merge inside the bounded final-fork window.
+  allowUnknownCrossing @13 :Bool;  # SP policy input; never bypasses stale geometry or road edge.
+  ignoreSolidBoundary @14 :Bool;  # SP policy input for forkNow only; road edge remains non-crossable.
 
   enum Direction {
     none @0;

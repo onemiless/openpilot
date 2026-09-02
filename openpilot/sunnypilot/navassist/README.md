@@ -27,6 +27,18 @@ private LAN.
 
 ## Transport
 
+The closed-course phone default is a zero-configuration, unauthenticated UDP
+4213 broadcast carrying the canonical v3 snapshot itself. `navassistd` accepts
+only 1..8192 byte datagrams, limits each source to 20 packets/second, applies
+the same strict schema, source-wall freshness, session/sequence/revision and
+short TTL rules, then acknowledges the accepted session and sequence. No
+command field or generic command dispatcher exists. Any host on the same LAN
+can inject navigation observations, so this mode is suitable only for the
+authorized closed-course setup described here.
+
+The signed discovery/HTTP path below remains available as a compatibility and
+explicit-URL override; it is not the Android/iOS default when the URL is blank.
+
 The phone discovers C3XL without scanning every HTTP address. It sends a signed
 IPv4 UDP broadcast to port 7765, then constructs the HTTP URL
 from the source IP of a verified unicast offer. The offer never supplies a host
@@ -116,7 +128,7 @@ one paired App owns a fresh active navigation session, snapshots from another
 paired App cannot preempt it until the active session expires.
 
 Transport freshness cannot make a stopped App or an expired route active.
-Active use still requires an authenticated unexpired snapshot, realtime mode,
+Active use still requires an accepted unexpired snapshot, realtime mode,
 route matching, current guidance, a nonzero maneuver event, and phone-provided
 route progress. Phone accuracy/callback age and C3XL localization are published
 as diagnostics rather than independent planner vetoes. The phone SDK's
@@ -150,6 +162,16 @@ edge can qualify relative edge alignment; an unanchored middle recommendation
 is display-only. While LaneInfo is absent, ordinary/sharp/U-turns can target the visual leftmost/rightmost lane
 inside 1 km, and directional exit/ramp/merge events can do so inside 2 km;
 `slightLeft`/`slightRight` never force an extreme-lane fallback.
+Relative alignment adopts CP's temporal consistency without its global
+fail-open behavior: 0.5-second neighbor stability, 5-second edge confirmation,
+3-second new-lane stability after an edge, 2-second post-change cooldown, pause
+during lateral transition/driver steering, and at most five changes per event.
+An ordinary navigation lane request applies CP's unknown-is-open policy but
+still blocks confirmed solid paint. The explicitly requested `forkNow`
+exception is limited to a fresh directional exit/ramp/merge at 50 metres or
+less. It can skip neighbor stability and additionally ignore solid paint, while
+stale/ambiguous topology, SP road
+edge, BSM, pedals, lateral authority, and physical-lamp gates remain mandatory.
 Lane positioning itself never creates a speed target. A supported turn/exit
 maneuver may still activate its comfort-distance speed ceiling while a final
 lane change is in progress. At distance zero the admitted ceiling remains; once

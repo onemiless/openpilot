@@ -164,6 +164,25 @@ def test_navigation_overlay_labels_pre_turn_lamp_without_calling_it_a_lane_chang
   assert display.detail == "导航可用 · 左转灯已提前开启"
 
 
+def test_navigation_overlay_makes_fork_now_bypass_visible():
+  nav = SimpleNamespace(
+    maneuver="exitRight", maneuverDistanceM=40, currentRoad="主路", nextRoad="出口",
+    lanes=[], routeActive=True, routeMatched=True, stale=False, valid=True, rejectReason="none",
+  )
+  lane_intent = SimpleNamespace(
+    signalRequested=True, direction="right", targetLaneIndex=1,
+    forkNow=True, spLaneChangeReady=False,
+  )
+
+  display = navigation_display_from_service(
+    nav, seen=True, alive=True, valid=True,
+    lane_intent=lane_intent, lane_intent_healthy=True,
+  )
+
+  assert display is not None
+  assert "右分叉强制模式 · 未知/实线放行" in display.detail
+
+
 def test_tici_overlay_layout_is_bounded_and_keeps_navigation_above_lane_pills():
   layout = overlay_layout(2160, 1080)
   nav_x, nav_y, nav_width, nav_height = layout.navigation

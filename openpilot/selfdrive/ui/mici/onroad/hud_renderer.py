@@ -270,6 +270,8 @@ class HudRenderer(Widget):
         direction = "左" if str(lane_intent.direction) == "left" else "右"
         if lane_intent.targetLaneIndex < 0:
           lane_intent_text = f" · {direction}转灯已提前开启"
+        elif lane_intent.forkNow:
+          lane_intent_text = f" · {direction}分叉强制 · 未知/实线放行"
         else:
           phase = "条件就绪" if lane_intent.spLaneChangeReady else "等待虚线/物理灯/盲区"
           lane_intent_text = f" · {direction}变道{phase}"

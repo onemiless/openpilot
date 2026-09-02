@@ -99,6 +99,9 @@ def test_both_model_runners_consume_typed_navigation_intent_and_lane_change_bloc
     assert "nav_lane_intent=nav_lane_intent" in source
     assert "LaneChangeBoundaryBlocker" in source
     assert "LINE_BLOCKER.update(" in source
+    assert "lane_topology_nav_crossing_allowed" in source
+    assert "ignoreSolidBoundary" in source
+    assert "allowUnknownCrossing" in source
     assert "left_crossing_allowed=" in source
     assert "right_crossing_allowed=" in source
     assert "left_line_blocked=left_line_blocked" in source

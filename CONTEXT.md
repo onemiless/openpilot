@@ -78,9 +78,13 @@ _Avoid_: total road lanes, lane control model, modelV2 lane replacement
 
 **Control Lane Observation**:
 The closed-course, typed, freshness-bounded derivative of Lane Topology. It
-publishes synchronized source ages and raw marking evidence, invalidates on any
-unknown/stale/ambiguous input, and may only veto or qualify a high-level
-maneuver. It never writes curvature, actuators, CarState, or CAN.
+publishes synchronized source ages and raw marking evidence, keeps unknown
+distinct from stale/ambiguous geometry, and may only veto or qualify a
+high-level maneuver. Ordinary navigation alignment treats unknown paint as
+open but still blocks confirmed solid paint. A bounded final-fork policy may
+also accept solid paint, but never stale/ambiguous
+geometry or a reported road edge. It never writes curvature, actuators,
+CarState, or CAN.
 _Avoid_: lane permission command, UI lane state, steering input
 
 **Mobile Navigation Observation**:

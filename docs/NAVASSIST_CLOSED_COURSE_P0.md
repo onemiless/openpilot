@@ -22,6 +22,19 @@ inside 2 km. C3XL requests one physical turn signal; SP requires current
 ego-side dashed evidence, a clear blind spot and its configured
 AutoLaneChangeController policy before starting. Relative edge alignment counts
 one completed SP lane-change cycle, then observes again before another request.
+The CP-inspired consistency filter requires a neighbor to remain stable for
+0.5 seconds, pauses evidence while changing or while the driver steers, waits
+2 seconds between completed changes, limits one maneuver event to five changes,
+confirms an apparent road edge for 5 seconds, and requires a newly appearing
+lane beyond that edge to remain stable for 3 seconds.
+
+An ordinary navigation lane request follows CP's unknown-is-open policy but
+still blocks confirmed solid paint. For a fresh `exit`/`ramp`/`merge` inside 50
+metres, `forkNow` may additionally skip neighbor stability and ignore a solid
+paint boundary.
+It still requires fresh non-ambiguous topology, SP lateral authority, physical
+lamp feedback, no pedal override, a clear blind spot, and no road-edge veto from
+the existing SP detector. Ordinary lane alignment never receives this bypass.
 For a continuous route revision, a changed maneuver event does not cancel the
 lamp until SP's model-derived turn geometry has remained clear for 0.5 seconds;
 a reroute/session change and the 60-second hard timeout still cancel directly.
@@ -79,8 +92,8 @@ authority and the authenticated realtime route/data gates pass.
    no speed target may change.
 3. Broadcast malformed, oversized, unknown-field, and wrong-signature discovery
    requests. C3XL must remain silent. A valid request must receive a
-   nonce-matched, authenticated unicast offer from UDP source port 7765, but the
-   App must not report `ONLINE` until its HTTP POST on port 7766 succeeds.
+   matching UDP 4213 acknowledgement for the sent session/sequence. Signed
+   discovery on 7765 plus HTTP 7766 remains an explicit compatibility path.
 4. Send missing-signature, wrong-signature, duplicate-sequence, decreasing
    route-revision, expired source-wall timestamp, contradictory inactive mode,
    malformed, non-finite, and oversized requests. Every request must be rejected
@@ -146,8 +159,13 @@ keep the target lane physically empty. Confirm the independent
   allows crossing only when the ego-side component has current dashed evidence;
 - never compares an unanchored AMap middle-lane index with a visual index;
   edge-qualified/fallback targets still require a real neighboring lane,
-  physical one-sided lamp feedback, current dashed evidence, clear BSM, active
+  physical one-sided lamp feedback, current dashed or unknown evidence, clear BSM, active
   SP lateral, and an automatic SP ALC mode;
+- requires ordinary relative-edge observations to pass neighbor/edge stability,
+  post-change cooldown, and the five-change event limit;
+- exposes `forkNow`, `allowUnknownCrossing`, and `ignoreSolidBoundary` on the HUD
+  whenever the final-fork exception is active; verify that stale/ambiguous
+  geometry, road edge, BSM, pedals, and missing physical lamp still block it;
 - tolerates at most one second of expected source-pair handoff while changing;
   a relative edge target completes one step from the SP lane-change cycle,
   while any future absolute target must prove a stable anchored index change;
@@ -171,6 +189,7 @@ Stop the active test and return to HIL/root-cause analysis after any:
 - any behavior difference while navigation is invalid or SP is disengaged;
 - model, camera, calibration, Panda, EPS, or longitudinal ownership fault.
 
-Missing an instruction is the required fallback. The vehicle must never use
-hard braking, a solid-line crossing, or a gore crossing to recover a missed
-turn or exit.
+Missing an instruction is the ordinary fallback. The vehicle must never use
+hard braking or a reported road-edge/gore crossing to recover a missed turn or
+exit. A solid-line crossing is permitted only in the explicit, HUD-visible
+50-metre `forkNow` exception requested for this branch.

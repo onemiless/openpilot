@@ -14,6 +14,7 @@ from openpilot.sunnypilot.navassist.identity import NavAssistDeviceIdentity, Nav
 from openpilot.sunnypilot.navassist.protocol import NavAssistStore
 from openpilot.sunnypilot.navassist.publisher import build_nav_assist_message
 from openpilot.sunnypilot.navassist.server import NavAssistHTTPServer
+from openpilot.sunnypilot.navassist.udp_receiver import NavAssistUDPServer, UDP_SNAPSHOT_PORT
 
 
 LISTEN_HOST = "0.0.0.0"
@@ -56,27 +57,33 @@ def main() -> None:
 
   store = NavAssistStore(checkpoint_path=REPLAY_CHECKPOINT_PATH)
   server = NavAssistHTTPServer((LISTEN_HOST, LISTEN_PORT), store, identity, pairing)
+  udp_server = NavAssistUDPServer((LISTEN_HOST, UDP_SNAPSHOT_PORT), store)
   try:
     discovery_server = NavAssistDiscoveryServer(
       (DISCOVERY_HOST, DISCOVERY_PORT), identity, pairing, is_offroad=lambda: params.get_bool("IsOffroad"),
     )
   except BaseException:
+    udp_server.server_close()
     server.server_close()
     raise
   server_thread = threading.Thread(target=server.serve_forever, name="navassist-http", daemon=True)
   discovery_thread = threading.Thread(
     target=discovery_server.serve_forever, name="navassist-discovery", daemon=True,
   )
+  udp_thread = threading.Thread(target=udp_server.serve_forever, name="navassist-udp", daemon=True)
   server_started = False
   discovery_started = False
+  udp_started = False
   try:
     server_thread.start()
     server_started = True
     discovery_thread.start()
     discovery_started = True
+    udp_thread.start()
+    udp_started = True
     cloudlog.warning(
-      "navassistd receiver online on HTTP port %d and discovery port %d",
-      LISTEN_PORT, DISCOVERY_PORT,
+      "navassistd receiver online on HTTP port %d, discovery port %d and data-only UDP port %d",
+      LISTEN_PORT, DISCOVERY_PORT, UDP_SNAPSHOT_PORT,
     )
 
     pm = messaging.PubMaster(["navAssistStateSP"])
@@ -99,6 +106,8 @@ def main() -> None:
       pm.send("navAssistStateSP", message)
       ratekeeper.keep_time()
   finally:
+    if udp_started:
+      udp_server.shutdown()
     if discovery_started:
       discovery_server.shutdown()
     if server_started:
@@ -107,7 +116,10 @@ def main() -> None:
       discovery_thread.join(timeout=2)
     if server_started:
       server_thread.join(timeout=2)
+    if udp_started:
+      udp_thread.join(timeout=2)
     discovery_server.server_close()
+    udp_server.server_close()
     server.server_close()
 
 

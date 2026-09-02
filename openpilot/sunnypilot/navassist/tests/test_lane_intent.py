@@ -41,16 +41,34 @@ def test_navigation_turn_signal_starts_before_turn_without_a_lane_target():
   assert intent.reason == "turnApproach"
 
 
-def test_heuristic_extreme_lane_mismatch_signals_immediately_one_lane_at_a_time():
+def test_heuristic_extreme_lane_waits_for_stable_neighbor_then_signals_one_lane_at_a_time():
   coordinator = NavLaneIntentCoordinator()
   heuristic = NavLanePlan(True, "session-a", 1, 7, 3, (0,), heuristic=True)
 
-  intent = coordinator.update(heuristic, topology(ego=2), vehicle(), now_ns=0)
+  first = coordinator.update(heuristic, topology(ego=2), vehicle(), now_ns=0)
+  intent = coordinator.update(heuristic, topology(ego=2), vehicle(), now_ns=500_000_000)
 
+  assert not first.signal_requested and first.reason == "heuristicStabilizingNeighbor"
   assert intent.signal_requested and not intent.lane_change_ready
   assert intent.direction == LaneIntentDirection.left
   assert intent.target_lane_index == 1
   assert intent.reason == "heuristicStabilizingLaneAlignment"
+
+
+def test_fork_now_can_signal_without_a_visible_neighbor_but_keeps_lane_change_state_machine():
+  coordinator = NavLaneIntentCoordinator()
+  forced = NavLanePlan(
+    True, "session-a", 1, 7, 1, (0,), heuristic=True,
+    edge_direction=LaneIntentDirection.right, force_fork=True,
+    allow_unknown_crossing=True, ignore_solid_boundary=True,
+  )
+
+  intent = coordinator.update(forced, topology(ego=0, count=1, left=False, right=False), vehicle(), now_ns=0)
+
+  assert intent.signal_requested
+  assert intent.direction == LaneIntentDirection.right
+  assert intent.target_lane_index == 1
+  assert not intent.lane_change_ready
 
 
 def test_navigation_turn_signal_supports_right_turns_and_waits_until_lookahead_window():
@@ -244,23 +262,24 @@ def test_relative_extreme_lane_change_uses_sp_cycle_when_visual_index_recenters(
   coordinator = NavLaneIntentCoordinator()
   heuristic = NavLanePlan(True, "session-a", 1, 7, 3, (0,), heuristic=True)
   coordinator.update(heuristic, topology(ego=1, left_cross=True), vehicle(), now_ns=0)
-  coordinator.update(heuristic, topology(ego=1, left_cross=True), vehicle(left_blinker=True), now_ns=500_000_000)
-  coordinator.update(heuristic, topology(ego=1, left_cross=True), vehicle(left_blinker=True), now_ns=800_000_000)
+  coordinator.update(heuristic, topology(ego=1, left_cross=True), vehicle(), now_ns=500_000_000)
+  coordinator.update(heuristic, topology(ego=1, left_cross=True), vehicle(left_blinker=True), now_ns=1_000_000_000)
+  coordinator.update(heuristic, topology(ego=1, left_cross=True), vehicle(left_blinker=True), now_ns=1_300_000_000)
   coordinator.update(
     heuristic, topology(ego=1, left_cross=True),
     vehicle(state=ObservedLaneChangeState.starting, direction=LaneIntentDirection.left, left_blinker=True),
-    now_ns=900_000_000,
+    now_ns=1_400_000_000,
   )
 
   completing = coordinator.update(
     heuristic, topology(ego=1, left_cross=True),
     vehicle(state=ObservedLaneChangeState.pre, direction=LaneIntentDirection.left, left_blinker=True),
-    now_ns=1_000_000_000,
+    now_ns=1_500_000_000,
   )
   completed = coordinator.update(
     heuristic, topology(ego=1, left_cross=True),
     vehicle(state=ObservedLaneChangeState.pre, direction=LaneIntentDirection.left, left_blinker=True),
-    now_ns=1_500_000_000,
+    now_ns=2_000_000_000,
   )
 
   assert completing.signal_requested

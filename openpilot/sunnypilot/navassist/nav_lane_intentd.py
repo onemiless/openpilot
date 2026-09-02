@@ -29,6 +29,7 @@ LEFT_TURN_LANE_MANEUVERS = frozenset(("turnLeft", "sharpLeft", "uTurnLeft"))
 RIGHT_TURN_LANE_MANEUVERS = frozenset(("turnRight", "sharpRight", "uTurnRight"))
 LEFT_EXIT_LANE_MANEUVERS = frozenset(("exitLeft", "rampLeft", "mergeLeft"))
 RIGHT_EXIT_LANE_MANEUVERS = frozenset(("exitRight", "rampRight", "mergeRight"))
+FORK_NOW_DISTANCE_M = 50.0
 
 
 def selected_services_healthy(sm, services: tuple[str, ...]) -> bool:
@@ -59,6 +60,10 @@ def build_lane_plan(nav, topology, *, healthy: bool) -> NavLanePlan:
     fallback_side, lookahead_m = "left", EXIT_LANE_LOOKAHEAD_M
   elif maneuver in RIGHT_EXIT_LANE_MANEUVERS:
     fallback_side, lookahead_m = "right", EXIT_LANE_LOOKAHEAD_M
+  fork_now = bool(
+    maneuver in LEFT_EXIT_LANE_MANEUVERS | RIGHT_EXIT_LANE_MANEUVERS
+    and math.isfinite(distance_m) and 0.0 < distance_m <= FORK_NOW_DISTANCE_M
+  )
 
   if lanes:
     amap_lane_count = len(lanes)
@@ -71,6 +76,8 @@ def build_lane_plan(nav, topology, *, healthy: bool) -> NavLanePlan:
       return NavLanePlan(
         True, str(nav.sessionId), int(nav.routeRevision), int(nav.maneuverEventId),
         lane_count, (target,), heuristic=True,
+        edge_direction=LaneIntentDirection.left if fallback_side == "left" else LaneIntentDirection.right,
+        force_fork=fork_now, allow_unknown_crossing=True, ignore_solid_boundary=fork_now,
       )
     # AMap lane indices describe the complete road while modelV2 exposes only a
     # local visible window. Without an edge-qualified directional target there
@@ -87,6 +94,8 @@ def build_lane_plan(nav, topology, *, healthy: bool) -> NavLanePlan:
     target = 0 if fallback_side == "left" else lane_count - 1
     return NavLanePlan(
       True, str(nav.sessionId), int(nav.routeRevision), int(nav.maneuverEventId), lane_count, (target,), heuristic=True,
+      edge_direction=LaneIntentDirection.left if fallback_side == "left" else LaneIntentDirection.right,
+      force_fork=fork_now, allow_unknown_crossing=True, ignore_solid_boundary=fork_now,
     )
 
   return NavLanePlan(
@@ -129,6 +138,7 @@ def main() -> None:
       right_blinker=bool(car_state.rightBlinker),
       brake_pressed=bool(car_state.brakePressed),
       gas_pressed=bool(car_state.gasPressed),
+      steering_pressed=bool(car_state.steeringPressed),
       lane_change_state=ObservedLaneChangeState(int(model_meta.laneChangeState.raw)),
       lane_change_direction=LaneIntentDirection(int(model_meta.laneChangeDirection.raw)),
     )
@@ -160,6 +170,10 @@ def main() -> None:
                        LaneIntentDirection.right: "right"}[intent.direction]
     state.requestId = intent.request_id
     state.targetLaneIndex = intent.target_lane_index
+    lane_request_active = bool(lane_intent.signal_requested and lane_intent.target_lane_index >= 0)
+    state.forkNow = bool(lane_request_active and plan.force_fork)
+    state.allowUnknownCrossing = bool(lane_request_active and plan.allow_unknown_crossing)
+    state.ignoreSolidBoundary = bool(lane_request_active and plan.ignore_solid_boundary)
     state.routeRevision = plan.route_revision
     state.maneuverEventId = plan.maneuver_event_id
     state.reason = intent.reason

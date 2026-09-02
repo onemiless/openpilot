@@ -38,7 +38,10 @@ from openpilot.selfdrive.modeld.helpers import chestnut_present, chestnut_compil
 from openpilot.sunnypilot.livedelay.helpers import get_lat_delay
 from openpilot.sunnypilot.modeld_v2.egpu_loader import C3XL_MODEL_LOAD_TIMEOUT
 from openpilot.sunnypilot.modeld_v2.modeld_base import ModelStateBase
-from openpilot.sunnypilot.selfdrive.controls.lib.lane_change_blocker import LaneChangeBoundaryBlocker
+from openpilot.sunnypilot.selfdrive.controls.lib.lane_change_blocker import (
+  LaneChangeBoundaryBlocker,
+  lane_topology_nav_crossing_allowed,
+)
 from openpilot.sunnypilot.selfdrive.controls.lib.relc import RoadEdgeLaneChangeController
 
 PROCESS_NAME = "openpilot.selfdrive.modeld.modeld"
@@ -474,16 +477,34 @@ def main(demo=False):
       lane_topology_healthy = bool(
         sm.seen['laneTopologyStateSP'] and sm.alive['laneTopologyStateSP'] and sm.valid['laneTopologyStateSP']
       )
+      fork_left = bool(
+        nav_lane_intent is not None and nav_lane_intent.forkNow and str(nav_lane_intent.direction) == "left"
+      )
+      fork_right = bool(
+        nav_lane_intent is not None and nav_lane_intent.forkNow and str(nav_lane_intent.direction) == "right"
+      )
       left_line_blocked, right_line_blocked = LINE_BLOCKER.update(
         sm['laneTopologyStateSP'], healthy=lane_topology_healthy,
+        ignore_left_solid=fork_left and bool(nav_lane_intent.ignoreSolidBoundary),
+        ignore_right_solid=fork_right and bool(nav_lane_intent.ignoreSolidBoundary),
       )
       topology = sm['laneTopologyStateSP']
+      left_crossing_allowed = lane_topology_nav_crossing_allowed(
+        topology, side="left", healthy=lane_topology_healthy,
+        allow_unknown=fork_left and bool(nav_lane_intent.allowUnknownCrossing),
+        ignore_solid=fork_left and bool(nav_lane_intent.ignoreSolidBoundary),
+      )
+      right_crossing_allowed = lane_topology_nav_crossing_allowed(
+        topology, side="right", healthy=lane_topology_healthy,
+        allow_unknown=fork_right and bool(nav_lane_intent.allowUnknownCrossing),
+        ignore_solid=fork_right and bool(nav_lane_intent.ignoreSolidBoundary),
+      )
       DH.update(
         sm['carState'], sm['carControl'].latActive, lane_change_prob, left_edge, right_edge,
         nav_lane_intent=nav_lane_intent,
         left_line_blocked=left_line_blocked, right_line_blocked=right_line_blocked,
-        left_crossing_allowed=bool(lane_topology_healthy and topology.leftCrossingAllowed),
-        right_crossing_allowed=bool(lane_topology_healthy and topology.rightCrossingAllowed),
+        left_crossing_allowed=left_crossing_allowed,
+        right_crossing_allowed=right_crossing_allowed,
       )
       modelv2_send.modelV2.meta.laneChangeState = DH.lane_change_state
       modelv2_send.modelV2.meta.laneChangeDirection = DH.lane_change_direction

@@ -4,6 +4,7 @@ import pytest
 
 from openpilot.sunnypilot.selfdrive.controls.lib.lane_change_blocker import (
   LaneChangeBoundaryBlocker,
+  lane_topology_nav_crossing_allowed,
   lane_topology_change_blocks,
 )
 
@@ -55,3 +56,27 @@ def test_solid_clear_grace_is_independent_per_side_and_does_not_latch_unknown_fo
   assert blocker.update(topology(right="solid", right_valid=True), healthy=True) == (False, True)
   assert blocker.update(topology(), healthy=False) == (False, True)
   assert blocker.update(topology(), healthy=False) == (False, False)
+
+
+def test_fork_policy_allows_unknown_or_solid_but_never_stale_geometry_or_road_edge():
+  unknown = topology(left="unknown", left_valid=False)
+  solid = topology(left="solid", left_valid=True)
+  road_edge = topology(left="roadEdge", left_valid=True)
+
+  assert lane_topology_nav_crossing_allowed(unknown, side="left", healthy=True, allow_unknown=True)
+  assert lane_topology_nav_crossing_allowed(solid, side="left", healthy=True, ignore_solid=True)
+  assert not lane_topology_nav_crossing_allowed(road_edge, side="left", healthy=True, ignore_solid=True)
+  assert not lane_topology_nav_crossing_allowed(
+    topology(left="unknown", left_valid=False, control_valid=False),
+    side="left", healthy=True, allow_unknown=True,
+  )
+
+
+def test_fork_policy_clears_a_solid_hold_but_not_a_road_edge_hold():
+  blocker = LaneChangeBoundaryBlocker(clear_frames=3)
+  assert blocker.update(topology(left="solid", left_valid=True), healthy=True) == (True, False)
+  assert blocker.update(topology(), healthy=True, ignore_left_solid=True) == (False, False)
+
+  assert blocker.update(topology(left="roadEdge", left_valid=True), healthy=True) == (True, False)
+  assert blocker.update(topology(left="roadEdge", left_valid=True), healthy=True,
+                        ignore_left_solid=True) == (True, False)

@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from openpilot.sunnypilot.navassist.lane_intent import LaneIntentDirection
 from openpilot.sunnypilot.navassist.nav_lane_intentd import build_lane_plan, navigation_linked
 from openpilot.sunnypilot.selfdrive.controls.lib.nav_turn_completion import sp_turn_geometry_active
 
@@ -61,6 +62,8 @@ def test_missing_lane_info_uses_visual_extreme_lane_for_ordinary_turns():
 
   assert left.valid and left.heuristic and left.lane_count == 3 and left.recommended_indices == (0,)
   assert right.valid and right.heuristic and right.lane_count == 3 and right.recommended_indices == (2,)
+  assert left.allow_unknown_crossing and right.allow_unknown_crossing
+  assert not left.ignore_solid_boundary and not right.ignore_solid_boundary
 
 
 def test_unanchored_middle_amap_lane_is_not_treated_as_a_visual_absolute_index():
@@ -96,6 +99,18 @@ def test_turn_fallback_is_bounded_while_exit_fallback_starts_farther_out():
 
   assert not far_turn.heuristic and far_turn.recommended_indices == ()
   assert far_exit.heuristic and far_exit.recommended_indices == (2,)
+
+
+def test_imminent_exit_builds_a_bounded_cp_style_fork_now_policy():
+  plan = build_lane_plan(
+    lane_guidance_nav(maneuver="exitRight", maneuverDistanceM=50.0), topology(count=1), healthy=True,
+  )
+
+  assert plan.valid and plan.heuristic
+  assert plan.edge_direction == LaneIntentDirection.right
+  assert plan.force_fork
+  assert plan.allow_unknown_crossing
+  assert plan.ignore_solid_boundary
 
 
 def test_slight_turn_without_lane_info_does_not_force_an_extreme_lane():

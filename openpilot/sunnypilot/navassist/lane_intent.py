@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import IntEnum
 
+from openpilot.sunnypilot.selfdrive.controls.lib.relative_lane_consistency import RelativeLaneConsistencyFilter
+
 
 class LaneIntentDirection(IntEnum):
   none = 0
@@ -26,6 +28,10 @@ class NavLanePlan:
   lane_count: int
   recommended_indices: tuple[int, ...]
   heuristic: bool = False
+  edge_direction: LaneIntentDirection = LaneIntentDirection.none
+  force_fork: bool = False
+  allow_unknown_crossing: bool = False
+  ignore_solid_boundary: bool = False
 
 
 @dataclass(frozen=True)
@@ -49,6 +55,7 @@ class LaneVehicleInput:
   right_blinker: bool = False
   brake_pressed: bool = False
   gas_pressed: bool = False
+  steering_pressed: bool = False
   lane_change_state: ObservedLaneChangeState = ObservedLaneChangeState.off
   lane_change_direction: LaneIntentDirection = LaneIntentDirection.none
 
@@ -215,6 +222,7 @@ class NavLaneIntentCoordinator:
     self._expected_lane_index = -1
     self._completion_since_ns = 0
     self._topology_invalid_since_ns = 0
+    self._relative_consistency = RelativeLaneConsistencyFilter()
 
   def _idle(self, reason: str = "idle") -> NavLaneIntent:
     return NavLaneIntent(reason=reason)
@@ -233,6 +241,10 @@ class NavLaneIntentCoordinator:
     return LaneIntentDirection.none
 
   @staticmethod
+  def _adjacent_target_index(ego_index: int, direction: LaneIntentDirection) -> int:
+    return max(0, ego_index - 1) if direction == LaneIntentDirection.left else ego_index + 1
+
+  @staticmethod
   def _event_key(plan: NavLanePlan, target_index: int) -> tuple[str, int, int, int, tuple[int, ...], int]:
     return (plan.session_id, plan.route_revision, plan.maneuver_event_id,
             plan.lane_count, plan.recommended_indices, target_index)
@@ -240,6 +252,18 @@ class NavLaneIntentCoordinator:
   @staticmethod
   def _plan_reason(plan: NavLanePlan, reason: str) -> str:
     return f"heuristic{reason[0].upper()}{reason[1:]}" if plan.heuristic and reason else reason
+
+  @staticmethod
+  def _relative_direction(plan: NavLanePlan) -> LaneIntentDirection:
+    if not plan.heuristic:
+      return LaneIntentDirection.none
+    if plan.edge_direction != LaneIntentDirection.none:
+      return plan.edge_direction
+    if plan.lane_count > 1 and plan.recommended_indices == (0,):
+      return LaneIntentDirection.left
+    if plan.lane_count > 1 and plan.recommended_indices == (plan.lane_count - 1,):
+      return LaneIntentDirection.right
+    return LaneIntentDirection.none
 
   def _reset(self) -> None:
     self._phase = "idle"
@@ -267,6 +291,14 @@ class NavLaneIntentCoordinator:
       topology.valid_for_control and plan.lane_count == topology.visible_lane_count
       and 0 <= topology.ego_lane_index < topology.visible_lane_count
     )
+    relative_direction = self._relative_direction(plan)
+    if relative_direction != LaneIntentDirection.none and (not base_healthy or not topology_healthy):
+      self._relative_consistency.update(
+        (plan.session_id, plan.route_revision, plan.maneuver_event_id),
+        direction="left" if relative_direction == LaneIntentDirection.left else "right",
+        neighbor_exists=False, observation_valid=False, lane_change_active=False,
+        steering_pressed=vehicle.steering_pressed, now_ns=now_ns,
+      )
     if not base_healthy:
       if self._phase not in ("idle", "cooldown") and self._candidate is not None:
         return self._abort(self._candidate[0], "health")
@@ -295,6 +327,20 @@ class NavLaneIntentCoordinator:
       self._reset()
       return self._idle("health")
     self._topology_invalid_since_ns = 0
+
+    relative_status = None
+    if relative_direction != LaneIntentDirection.none:
+      relative_neighbor = (topology.left_neighbor_exists if relative_direction == LaneIntentDirection.left
+                           else topology.right_neighbor_exists)
+      relative_status = self._relative_consistency.update(
+        (plan.session_id, plan.route_revision, plan.maneuver_event_id),
+        direction="left" if relative_direction == LaneIntentDirection.left else "right",
+        neighbor_exists=relative_neighbor,
+        observation_valid=topology_healthy,
+        lane_change_active=vehicle.lane_change_state in (ObservedLaneChangeState.starting, ObservedLaneChangeState.finishing),
+        steering_pressed=vehicle.steering_pressed,
+        now_ns=now_ns,
+      )
 
     if self._phase == "cooldown":
       if now_ns - self._phase_since_ns < self.COOLDOWN_NS:
@@ -327,6 +373,8 @@ class NavLaneIntentCoordinator:
         if self._completion_since_ns == 0:
           self._completion_since_ns = now_ns
         elif now_ns - self._completion_since_ns >= self.LANE_INDEX_STABLE_NS:
+          if relative_edge:
+            self._relative_consistency.note_lane_change_completed(now_ns)
           self._phase = "cooldown"
           self._phase_since_ns = now_ns
           return self._idle("laneChangeObserved")
@@ -345,7 +393,13 @@ class NavLaneIntentCoordinator:
     if target_index is None:
       self._reset()
       return self._idle("noRecommendedLane")
-    direction = self._direction(topology.ego_lane_index, target_index)
+    direction = relative_direction if relative_direction != LaneIntentDirection.none else self._direction(topology.ego_lane_index, target_index)
+    relative_cycle_active = vehicle.lane_change_state in (ObservedLaneChangeState.starting, ObservedLaneChangeState.finishing)
+    if (relative_status is not None and not relative_status.ready and not plan.force_fork
+        and self._phase != "changing" and not relative_cycle_active):
+      self._blocked_key = None
+      self._reset()
+      return self._idle(self._plan_reason(plan, relative_status.reason))
     if direction == LaneIntentDirection.none:
       self._blocked_key = None
       self._reset()
@@ -356,7 +410,7 @@ class NavLaneIntentCoordinator:
       return self._idle("blockedEvent")
 
     neighbor_exists = topology.left_neighbor_exists if direction == LaneIntentDirection.left else topology.right_neighbor_exists
-    if not neighbor_exists:
+    if not neighbor_exists and not plan.force_fork:
       return self._abort(event_key, "noNeighbor")
 
     candidate = (event_key, topology.ego_lane_index, direction, target_index, plan.heuristic)
@@ -370,8 +424,7 @@ class NavLaneIntentCoordinator:
           signal_requested=True,
           direction=direction,
           request_id=self._request_id,
-          target_lane_index=(topology.ego_lane_index - 1 if direction == LaneIntentDirection.left
-                             else topology.ego_lane_index + 1),
+          target_lane_index=self._adjacent_target_index(topology.ego_lane_index, direction),
           reason=self._plan_reason(plan, "stabilizingLaneAlignment"),
         )
       if now_ns - self._candidate_since_ns < self.MISMATCH_STABLE_NS:
@@ -379,8 +432,7 @@ class NavLaneIntentCoordinator:
           signal_requested=True,
           direction=direction,
           request_id=self._request_id,
-          target_lane_index=(topology.ego_lane_index - 1 if direction == LaneIntentDirection.left
-                             else topology.ego_lane_index + 1),
+          target_lane_index=self._adjacent_target_index(topology.ego_lane_index, direction),
           reason=self._plan_reason(plan, "stabilizingLaneAlignment"),
         )
       self._phase = "signaling"
@@ -402,7 +454,7 @@ class NavLaneIntentCoordinator:
       if vehicle.lane_change_state == ObservedLaneChangeState.starting:
         self._phase = "changing"
         self._phase_since_ns = now_ns
-        self._expected_lane_index = topology.ego_lane_index - 1 if direction == LaneIntentDirection.left else topology.ego_lane_index + 1
+        self._expected_lane_index = self._adjacent_target_index(topology.ego_lane_index, direction)
         self._completion_since_ns = 0
       else:
         # DesireHelper implementations differ on whether finishing is emitted.
@@ -437,6 +489,6 @@ class NavLaneIntentCoordinator:
       lane_change_ready=ready,
       direction=direction,
       request_id=self._request_id,
-      target_lane_index=topology.ego_lane_index - 1 if direction == LaneIntentDirection.left else topology.ego_lane_index + 1,
+      target_lane_index=self._adjacent_target_index(topology.ego_lane_index, direction),
       reason=self._plan_reason(plan, self._phase),
     )
