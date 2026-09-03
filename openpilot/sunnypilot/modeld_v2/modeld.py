@@ -43,7 +43,7 @@ from openpilot.sunnypilot.modeld_v2.meta_helper import load_meta_constants
 from openpilot.sunnypilot.modeld_v2.camera_offset_helper import CameraOffsetHelper
 from openpilot.sunnypilot.modeld_v2.compile_modeld import derive_frame_skip, make_split_input_queues, make_supercombo_input_queues, WARP_INPUTS, POLICY_INPUTS
 from openpilot.sunnypilot.livedelay.helpers import get_lat_delay
-from openpilot.sunnypilot.modeld_v2.egpu_loader import C3XL_MODEL_LOAD_TIMEOUT
+from openpilot.sunnypilot.modeld_v2.egpu_loader import C3XL_MODEL_LOAD_TIMEOUT, finish_model_loading, require_runtime_fallback
 from openpilot.sunnypilot.modeld_v2.modeld_base import ModelStateBase
 from openpilot.sunnypilot.models.helpers import get_active_bundle
 from openpilot.sunnypilot.selfdrive.controls.lib.relc import RoadEdgeLaneChangeController
@@ -376,11 +376,14 @@ def main(demo=False):
     model = big_model
     params.put_bool("ChestnutActive", model is not None)
 
-  small_model = ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=False) if model is None or CHESTNUT else None
-  if model is None:
-    model = small_model
+  model, small_model, fallback_error = finish_model_loading(
+    model,
+    CHESTNUT,
+    lambda: ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=False),
+  )
+  if fallback_error is not None:
+    cloudlog.error(f"small fallback preload failed; continuing with chestnut: {fallback_error!r}")
   params.put_bool("ChestnutLoading", False)
-  assert model is not None
   cloudlog.warning(f"models loaded in {time.monotonic() - st:.1f}s, modeld starting")
 
   # messaging
@@ -514,13 +517,12 @@ def main(demo=False):
     mt1 = time.perf_counter()
     try:
       model_output = model.run(bufs, transforms, inputs, prepare_only)
-    except Exception:
+    except Exception as error:
       if not params.get_bool("ChestnutActive"):
         raise
-      cloudlog.exception("chestnut failed, falling back to small")
       params.put_bool("ChestnutActive", False)
-      assert small_model is not None
-      model = small_model
+      model = require_runtime_fallback(small_model, error)
+      cloudlog.exception("chestnut failed, falling back to small")
       if chestnut_state is not None:
         chestnut_state.big = False
       run_count = 0
