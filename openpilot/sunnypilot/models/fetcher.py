@@ -12,7 +12,11 @@ from requests.exceptions import (SSLError, RequestException, HTTPError)
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.hardware.hw import Paths
+from openpilot.sunnypilot.models.catalog_compat import (
+  MODEL_URL as COMPAT_MODEL_URL, MODEL_URL_CHESTNUT as COMPAT_MODEL_URL_CHESTNUT, catalog_matches_runtime,
+)
 from openpilot.sunnypilot.models.helpers import is_bundle_version_compatible
+from openpilot.sunnypilot.models.tinygrad_ref import get_tinygrad_ref
 from openpilot.cereal import custom
 
 
@@ -138,8 +142,8 @@ class ModelCache:
 
 class ModelFetcher:
   """Handles fetching and caching of model data from remote source"""
-  MODEL_URL = "https://raw.githubusercontent.com/sunnypilot/sunnypilot-models/refs/heads/gh-pages/docs/driving_models_v22.json"
-  MODEL_URL_CHESTNUT = "https://raw.githubusercontent.com/sunnypilot/sunnypilot-models/refs/heads/gh-pages/docs/driving_models_chestnut_v23.json"
+  MODEL_URL = COMPAT_MODEL_URL
+  MODEL_URL_CHESTNUT = COMPAT_MODEL_URL_CHESTNUT
 
   MODEL_SOURCES = {
     "qcom": (MODEL_URL, ""),
@@ -163,6 +167,10 @@ class ModelFetcher:
   def active_source(chestnut_present: bool) -> str:
     return "chestnut" if chestnut_present else "qcom"
 
+  @staticmethod
+  def _catalog_matches_runtime(json_data: dict) -> bool:
+    return catalog_matches_runtime(json_data, get_tinygrad_ref())
+
   def _fetch_and_cache_models(self, source: str) -> list[custom.ModelManagerSP.ModelBundle] | None:
     """Fetches fresh model data from remote and updates cache.
     Returns None on transport errors. Raises on 404 and other fatal HTTP errors.
@@ -180,6 +188,10 @@ class ModelFetcher:
       response.raise_for_status()
 
       json_data = response.json()
+      if not self._catalog_matches_runtime(json_data):
+        cloudlog.error(f"Rejecting models catalog with incompatible tinygrad ref: "
+                       f"catalog={json_data.get('tinygrad_ref')} runtime={get_tinygrad_ref()}")
+        return []
       parsed = self.model_parser.parse_models(json_data)
       if parsed:
         self.model_caches[source].set(json_data)
@@ -210,6 +222,11 @@ class ModelFetcher:
       return []
 
     cached_data, is_expired = self.model_caches[source].get()
+
+    if cached_data and not is_expired:
+      if not self._catalog_matches_runtime(cached_data):
+        cloudlog.warning(f"Cached models for {source} use an incompatible tinygrad ref; refetching")
+        is_expired = True
 
     if cached_data and not is_expired:
       # a source is refetched over a mismatch at most once per process: if the fresh

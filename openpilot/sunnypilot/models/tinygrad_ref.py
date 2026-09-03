@@ -20,8 +20,13 @@ def get_tinygrad_ref():
         return f.read().strip()
     return ref
   except Exception as e:
-    print(f"Error getting tinygrad_repo ref: {e}")
-    return None
+    marker_path = os.path.join(repo_path, "TINYGRAD_REF")
+    try:
+      with open(marker_path) as f:
+        return f.read().strip() or None
+    except Exception:
+      print(f"Error getting tinygrad_repo ref: {e}")
+      return None
 
 
 def main():
