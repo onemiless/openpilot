@@ -112,24 +112,20 @@ class TeslaTrafficControlObserver:
 
   def update(self, can_packets: list[tuple[int, list[tuple[int, bytes, int]]]], now_ns: int) -> None:
     del now_ns  # packet monotonic time is authoritative
-    raw_latest: dict[int, tuple[int, int]] = {}
     for packet_mono_time, frames in can_packets:
       for address, data, source in frames:
-        if source in self.parsers and address == TRAFFIC_CONTROL_ADDRESS and len(data) >= TRAFFIC_CONTROL_MIN_DLC:
-          previous = raw_latest.get(source)
-          if previous is None or packet_mono_time >= previous[0]:
-            raw_latest[source] = (packet_mono_time, len(data))
-
-    for bus, parser in self.parsers.items():
-      parser.update(can_packets)
-      raw = raw_latest.get(bus)
-      if raw is None:
-        continue
-      timestamp_ns, dlc = raw
-      observation = self._build(dict(parser.vl["APP_trafficControl"]), bus, dlc, timestamp_ns)
-      previous = self.latest_by_bus.get(bus)
-      if previous is None or observation.frame_mono_time >= previous.frame_mono_time:
-        self.latest_by_bus[bus] = observation
+        if source not in self.parsers or address != TRAFFIC_CONTROL_ADDRESS or len(data) < TRAFFIC_CONTROL_MIN_DLC:
+          continue
+        previous = self.latest_by_bus.get(source)
+        if previous is not None and packet_mono_time < previous.frame_mono_time:
+          continue
+        # Keep payload, timestamp and DLC atomic. A short/older trailing frame
+        # must not borrow fresh metadata, and a rejected decode must not mask
+        # the newest successfully decoded frame (even within the same batch).
+        parser = self.parsers[source]
+        if address not in parser.update([(packet_mono_time, [(address, data, source)])]):
+          continue
+        self.latest_by_bus[source] = self._build(dict(parser.vl["APP_trafficControl"]), source, len(data), packet_mono_time)
 
   def snapshot(self, now_ns: int) -> TeslaTrafficControlObservation:
     for bus in TRAFFIC_CONTROL_BUSES:
