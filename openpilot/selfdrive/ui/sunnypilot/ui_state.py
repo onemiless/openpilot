@@ -54,6 +54,7 @@ class UIStateSP:
     self.lane_topology_bridge = LaneTopologyUIBridge(frame_divisor=5)
     self.lane_topology = None
     self.nav_assist_track_mode = False
+    self.tesla_turn_signal_configured: bool | None = None
 
     self.sunnylink_state = SunnylinkState()
 
@@ -194,6 +195,8 @@ class UIStateSP:
     self.developer_ui = self.params.get("DevUIInfo")
     self.hide_v_ego_ui = self.params.get_bool("HideVEgoUI")
     self.nav_assist_track_mode = nav_assist_paired(self.params.get("NavAssistPairedApp"))
+    self.tesla_turn_signal_configured = (self.params.get_bool("TeslaTurnSignalValidation")
+                                         if getattr(getattr(self, "CP", None), "brand", None) == "tesla" else None)
     self.onroad_brightness = int(float(self.params.get("OnroadScreenOffBrightness", return_default=True)))
     self.onroad_brightness_timer_param = self.params.get("OnroadScreenOffTimer", return_default=True)
     self.rainbow_path = self.params.get_bool("RainbowMode")

@@ -24,9 +24,9 @@ def test_lane_overlay_shows_markings_and_lane_position_when_control_is_observati
   display = lane_display_from_service(topology, seen=True, alive=True, valid=True)
 
   assert display is not None
-  assert display.left == "左侧  虚线"
-  assert display.center == "当前 2 / 3 车道 · 仅显示"
-  assert display.right == "右侧  实线"
+  assert display.left == "左  虚线"
+  assert display.center == "可见车道  2 / 3"
+  assert display.right == "右  实线"
   assert display.reliable
 
 
@@ -45,9 +45,9 @@ def test_lane_overlay_reports_uncertainty_instead_of_disappearing():
   display = lane_display_from_service(topology, seen=True, alive=True, valid=True)
 
   assert display is not None
-  assert display.left == "左侧  未知"
-  assert display.right == "右侧  实线"
-  assert display.center == "车道线未知 · 联动预览继续"
+  assert display.left == "左  未知"
+  assert display.right == "右  未知"
+  assert display.center == "车道识别中"
   assert not display.reliable
 
 
@@ -57,9 +57,9 @@ def test_lane_overlay_uses_display_only_ui_bridge_when_track_service_is_absent()
   display = lane_display_from_ui_bridge(topology, (LaneMarkingType.solid, LaneMarkingType.dashed))
 
   assert display is not None
-  assert display.left == "左侧  实线"
-  assert display.center == "当前 1 / 2 车道 · 仅显示"
-  assert display.right == "右侧  虚线"
+  assert display.left == "左  实线"
+  assert display.center == "可见车道  1 / 2"
+  assert display.right == "右  虚线"
   assert display.reliable
 
 
@@ -82,7 +82,7 @@ def test_navigation_overlay_treats_phone_gps_as_diagnostic_after_route_is_linked
   assert display is not None
   assert display.title == "←  184 m  左转"
   assert display.subtitle == "测试路  →  场地西路"
-  assert display.detail == "导航联动已接入 · 手机 GPS 仅提示 · 推荐第 2 车道"
+  assert display.detail == "手机 GPS 仅提示 · 推荐 2 车道"
   assert display.receiving
   assert display.linked
   assert not display.ready
@@ -105,7 +105,7 @@ def test_navigation_overlay_treats_device_gps_as_diagnostic_after_route_is_linke
   display = navigation_display_from_service(nav, seen=True, alive=True, valid=True)
 
   assert display is not None
-  assert display.detail == "导航联动已接入 · 设备 GPS 仅提示"
+  assert display.detail == "设备 GPS 仅提示"
   assert display.linked
   assert not display.ready
 
@@ -127,7 +127,7 @@ def test_navigation_overlay_keeps_gps_diagnostic_visible_when_control_is_valid()
   display = navigation_display_from_service(nav, seen=True, alive=True, valid=True)
 
   assert display is not None
-  assert display.detail == "导航可用 · 设备 GPS 仅提示"
+  assert display.detail == "设备 GPS 仅提示"
   assert display.ready
 
 
@@ -161,7 +161,8 @@ def test_navigation_overlay_labels_pre_turn_lamp_without_calling_it_a_lane_chang
   )
 
   assert display is not None
-  assert display.detail == "导航可用 · 左转灯已提前开启"
+  assert display.detail == "请求左转灯"
+  assert "开启" not in display.detail
 
 
 def test_navigation_overlay_makes_fork_now_bypass_visible():
@@ -180,10 +181,10 @@ def test_navigation_overlay_makes_fork_now_bypass_visible():
   )
 
   assert display is not None
-  assert "右分叉强制模式 · 未知/实线放行" in display.detail
+  assert display.detail == "右分叉请求 · 实线放行"
 
 
-def test_tici_overlay_layout_is_bounded_and_keeps_navigation_above_lane_pills():
+def test_tici_overlay_layout_is_bounded_and_embeds_lane_footer_in_navigation_card():
   layout = overlay_layout(2160, 1080)
   nav_x, nav_y, nav_width, nav_height = layout.navigation
   left_x, lane_y, left_width, lane_height = layout.left_lane
@@ -192,9 +193,38 @@ def test_tici_overlay_layout_is_bounded_and_keeps_navigation_above_lane_pills():
 
   assert 0 <= nav_x and nav_x + nav_width <= 2160
   assert 0 <= left_x and right_x + right_width <= 2160
-  assert nav_y + nav_height < lane_y
+  assert nav_y < lane_y < nav_y + nav_height
   assert lane_y == center_y == right_y
   assert lane_height == center_height == right_height
-  assert left_x + left_width < center_x
-  assert center_x + center_width < right_x
-  assert lane_y + lane_height <= 1080
+  assert left_x + left_width == center_x
+  assert center_x + center_width == right_x
+  assert lane_y + lane_height == nav_y + nav_height
+
+
+def test_stale_and_unmatched_guidance_never_retains_an_old_arrow_or_distance():
+  for updates in ({"stale": True}, {"rejectReason": "guidanceStale"}, {"routeMatched": False}, {"routeActive": False}):
+    values = {"maneuver": "turnLeft", "maneuverDistanceM": 80, "currentRoad": "旧道路", "nextRoad": "旧路口",
+              "lanes": [], "routeActive": True, "routeMatched": True, "stale": False, "valid": True, "rejectReason": "none"}
+    values.update(updates)
+    display = navigation_display_from_service(SimpleNamespace(**values), seen=True, alive=True, valid=True)
+    assert not display.current_guidance and not display.distance
+    assert display.maneuver == "none"
+    assert "80" not in display.title and "旧" not in display.subtitle
+
+
+def test_disabled_signal_configuration_is_visible_without_claiming_a_physical_lamp():
+  nav = SimpleNamespace(maneuver="turnLeft", maneuverDistanceM=80, currentRoad="测试路", nextRoad="场地西路",
+                        lanes=[], routeActive=True, routeMatched=True, stale=False, valid=True, rejectReason="none")
+  intent = SimpleNamespace(signalRequested=True, direction="left", targetLaneIndex=-1)
+  display = navigation_display_from_service(nav, seen=True, alive=True, valid=True, lane_intent=intent,
+                                             lane_intent_healthy=True, signal_configured=False)
+  assert display.current_guidance and display.warning
+  assert display.detail == "自动打灯未启用"
+
+
+def test_sidebar_and_narrow_layouts_keep_every_card_inside_the_available_hud():
+  for width, height, inset in ((2160, 1080, 84), (1860, 1080, 24), (960, 540, 24), (640, 480, 84)):
+    layout = overlay_layout(width, height, bottom_inset=inset)
+    for x, y, box_width, box_height in (layout.navigation, layout.left_lane, layout.center_lane, layout.right_lane):
+      assert 0 <= x < x + box_width <= width
+      assert 0 <= y < y + box_height <= height - inset

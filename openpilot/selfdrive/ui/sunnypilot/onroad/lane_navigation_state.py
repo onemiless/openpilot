@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 
 
 MARKING_LABELS = {
@@ -72,6 +73,11 @@ class NavigationOverlayDisplay:
   ready: bool = False
   receiving: bool = False
   linked: bool = False
+  maneuver: str = "none"
+  distance: str = ""
+  instruction: str = ""
+  current_guidance: bool = False
+  warning: bool = False
 
 
 @dataclass(frozen=True)
@@ -83,14 +89,15 @@ class OverlayLayout:
 
 
 def overlay_layout(width: float, height: float, *, bottom_inset: float = 24) -> OverlayLayout:
-  nav_width = min(1120.0, max(640.0, width - 680.0))
-  nav_height = 112.0
-  lane_widths = (250.0, 320.0, 250.0)
-  lane_gap = 16.0
-  lane_height = 62.0
+  nav_width = min(920.0, max(0.0, width - 48.0))
+  nav_height = 172.0
+  lane_gap = 0.0
+  lane_content = nav_width
+  lane_widths = (lane_content * 0.36, lane_content * 0.28, lane_content * 0.36)
+  lane_height = 44.0
   lane_total = sum(lane_widths) + 2 * lane_gap
-  lane_y = height - bottom_inset - lane_height
-  nav_y = lane_y - 16.0 - nav_height
+  nav_y = max(0.0, height - bottom_inset - nav_height)
+  lane_y = nav_y + nav_height - lane_height
   nav_x = (width - nav_width) / 2
   lane_x = (width - lane_total) / 2
   return OverlayLayout(
@@ -105,26 +112,20 @@ def lane_display_from_service(topology, *, seen: bool, alive: bool, valid: bool)
   if not seen:
     return None
   if not alive or not valid:
-    return LaneOverlayDisplay("左侧  未知", "车道线识别连接中", "右侧  未知")
+    return LaneOverlayDisplay("左侧  未知", "车道识别中", "右侧  未知")
 
-  left_marking = str(topology.leftMarking)
-  right_marking = str(topology.rightMarking)
+  reliable = bool(topology.valid and not topology.stale and not topology.ambiguous)
+  left_marking = str(topology.leftMarking) if reliable else "unknown"
+  right_marking = str(topology.rightMarking) if reliable else "unknown"
   left = MARKING_LABELS.get(left_marking, "未知")
   right = MARKING_LABELS.get(right_marking, "未知")
   lane_index = int(topology.egoLaneIndexFromLeft)
   lane_count = int(topology.visibleLaneCount)
-  reliable = bool(topology.valid and not topology.stale and not topology.ambiguous)
-  center = f"当前 {lane_index + 1} / {lane_count} 车道" if lane_index >= 0 and lane_count > 0 else "车道线未知"
-  if not reliable:
-    center += " · 联动预览继续"
-  elif topology.validForControl:
-    center += " · 控制校验有效"
-  else:
-    center += " · 仅显示"
+  center = f"可见车道  {lane_index + 1} / {lane_count}" if reliable and 0 <= lane_index < lane_count else "车道识别中"
   return LaneOverlayDisplay(
-    left=f"左侧  {left}",
+    left=f"左  {left}",
     center=center,
-    right=f"右侧  {right}",
+    right=f"右  {right}",
     left_marking=left_marking,
     right_marking=right_marking,
     reliable=reliable,
@@ -142,11 +143,14 @@ def lane_display_from_ui_bridge(topology, marking_types) -> LaneOverlayDisplay |
   lane_index = int(topology.ego_lane_index_from_left)
   lane_count = int(topology.visible_lane_count)
   reliable = bool(not topology.stale and lane_index >= 0 and lane_count > 0)
-  center = f"当前 {lane_index + 1} / {lane_count} 车道 · 仅显示" if reliable else "车道位置识别中 · 不确定"
+  if not reliable:
+    left_marking = right_marking = "unknown"
+    left = right = "未知"
+  center = f"可见车道  {lane_index + 1} / {lane_count}" if reliable else "车道识别中"
   return LaneOverlayDisplay(
-    left=f"左侧  {left}",
+    left=f"左  {left}",
     center=center,
-    right=f"右侧  {right}",
+    right=f"右  {right}",
     left_marking=left_marking,
     right_marking=right_marking,
     reliable=reliable,
@@ -162,14 +166,27 @@ def navigation_display_from_service(
   lane_intent=None,
   lane_intent_healthy: bool = False,
   decel_active: bool = False,
+  signal_configured: bool | None = None,
 ) -> NavigationOverlayDisplay | None:
   if not seen:
     return None
   if not alive or not valid:
-    return NavigationOverlayDisplay("手机导航连接中", "请保持手机与 tici 在同一局域网", "导航服务等待", receiving=False)
+    return NavigationOverlayDisplay("导航连接中断", "等待手机重新连接", "请保持 TesNav 运行", warning=True)
 
-  symbol, maneuver = MANEUVER_LABELS.get(str(nav.maneuver), MANEUVER_LABELS["unknown"])
-  distance = max(0, int(nav.maneuverDistanceM))
+  reject_reason = str(nav.rejectReason)
+  if bool(nav.stale) or reject_reason in ("stale", "guidanceStale"):
+    return NavigationOverlayDisplay("导航已过期", "等待手机更新路线", "当前没有有效指引", receiving=True, warning=True)
+  if not bool(nav.routeActive):
+    return NavigationOverlayDisplay("等待开始导航", "在手机上选择目的地", "手机已连接", receiving=True)
+  if not bool(nav.routeMatched):
+    return NavigationOverlayDisplay("正在匹配路线", "等待手机更新路线", "暂不显示转向指引", receiving=True, warning=True)
+  distance_value = float(nav.maneuverDistanceM)
+  if not math.isfinite(distance_value) or distance_value < 0:
+    return NavigationOverlayDisplay("导航距离待更新", "等待手机更新路线", "当前没有有效指引", receiving=True, warning=True)
+
+  maneuver_key = str(nav.maneuver)
+  symbol, maneuver = MANEUVER_LABELS.get(maneuver_key, MANEUVER_LABELS["unknown"])
+  distance = int(distance_value)
   distance_text = f"{distance / 1000:.1f} km" if distance >= 1000 else f"{distance} m"
   title = f"{symbol}  {distance_text}  {maneuver}"
 
@@ -182,39 +199,39 @@ def navigation_display_from_service(
 
   details: list[str] = []
   recommended = [str(int(lane.index) + 1) for lane in nav.lanes if lane.recommended]
-  if recommended:
-    details.append(f"推荐第 {','.join(recommended)} 车道")
-  if lane_intent_healthy and lane_intent is not None and lane_intent.signalRequested:
+  if signal_configured is False:
+    details.append("自动打灯未启用")
+  elif lane_intent_healthy and lane_intent is not None and lane_intent.signalRequested:
     direction = "左" if str(lane_intent.direction) == "left" else "右"
     if int(lane_intent.targetLaneIndex) < 0:
-      details.append(f"{direction}转灯已提前开启")
+      details.append(f"请求{direction}转灯")
     elif getattr(lane_intent, "forkNow", False):
-      details.append(f"{direction}分叉强制模式 · 未知/实线放行")
+      details.append(f"{direction}分叉请求 · 实线放行")
     elif getattr(lane_intent, "spLaneChangeReady", False):
-      details.append(f"{direction}变道条件就绪")
+      details.append(f"请求向{direction}变道")
     else:
-      details.append(f"{direction}变道等待虚线/盲区")
+      details.append(f"请求{direction}灯 · 等待 SP")
   elif lane_intent_healthy and lane_intent is not None:
     consistency = {
-      "heuristicStabilizingNeighbor": "等待邻车道稳定",
-      "heuristicStabilizingEdge": "正在确认已靠边",
-      "heuristicEdgeConfirmed": "已确认目标侧边缘",
-      "heuristicStabilizingNewNeighbor": "等待新车道稳定",
-      "heuristicCooldown": "连续变道冷却",
-      "heuristicChangeLimit": "连续变道次数已达上限",
-      "heuristicDriverSteering": "驾驶员转向，暂停车道判断",
-      "waitingCrossing": "等待可变道路段，不提前打灯",
-      "heuristicWaitingCrossing": "等待可变道路段，不提前打灯",
-      "waitingBlindspot": "等待盲区清除，不提前打灯",
-      "heuristicWaitingBlindspot": "等待盲区清除，不提前打灯",
+      "heuristicStabilizingNeighbor": "确认邻车道",
+      "heuristicStabilizingEdge": "确认已靠边",
+      "heuristicEdgeConfirmed": "已靠近目标侧",
+      "heuristicStabilizingNewNeighbor": "确认新增车道",
+      "heuristicCooldown": "变道间隔中",
+      "heuristicChangeLimit": "暂停连续变道",
+      "heuristicDriverSteering": "驾驶员转向中",
+      "waitingCrossing": "等待可变道路段",
+      "heuristicWaitingCrossing": "等待可变道路段",
+      "waitingBlindspot": "等待盲区清除",
+      "heuristicWaitingBlindspot": "等待盲区清除",
+      "turnApproachHandoff": "路口转向准备",
     }.get(str(lane_intent.reason))
     if consistency is not None:
       details.append(consistency)
   if decel_active:
-    details.append("导航减速生效")
+    details.append("转弯减速中")
 
   ready = bool(nav.valid)
-  reject_reason = str(nav.rejectReason)
   linked = bool(
     getattr(nav, "routeActive", False)
     and getattr(nav, "routeMatched", False)
@@ -226,12 +243,19 @@ def navigation_display_from_service(
     "localLocalization": "设备 GPS 仅提示",
   }.get(reject_reason)
   if ready and gps_diagnostic is not None:
-    status = f"导航可用 · {gps_diagnostic}"
+    status = gps_diagnostic
   elif ready:
     status = "导航可用"
   elif linked and gps_diagnostic is not None:
-    status = f"导航联动已接入 · {gps_diagnostic}"
+    status = gps_diagnostic
   else:
     status = REJECT_LABELS.get(reject_reason, "导航等待")
-  details.insert(0, status)
-  return NavigationOverlayDisplay(title, subtitle, " · ".join(details), ready=ready, receiving=True, linked=linked)
+  if not details:
+    details.append(status)
+  if recommended and len(details) < 2:
+    details.append(f"推荐 {','.join(recommended)} 车道")
+  return NavigationOverlayDisplay(
+    title, subtitle, " · ".join(details[:2]), ready=ready, receiving=True, linked=linked,
+    maneuver=maneuver_key, distance=distance_text, instruction=maneuver,
+    current_guidance=maneuver_key not in ("none", "unknown"), warning=signal_configured is False,
+  )
