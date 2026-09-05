@@ -131,10 +131,7 @@ class TeslaTrafficControlController:
     self.pending_first_ns = 0
     self.pending_replacement_farther = False
     self.green_count = 0
-    self.first_off_ns = 0
-    self.green_between_off = False
-    self.flash_pulse_count = 0
-    self.flash_pattern_confirmed = False
+    self._clear_flash_candidate()
     self.flash_latched = False
     self.stable_green_since_ns = 0
     self.yellow_latched: bool | None = None
@@ -162,6 +159,12 @@ class TeslaTrafficControlController:
     self.pending_count = 0
     self.pending_first_ns = 0
     self.pending_replacement_farther = False
+
+  def _clear_flash_candidate(self) -> None:
+    self.first_off_ns = 0
+    self.green_between_off = False
+    self.flash_pulse_count = 0
+    self.flash_pattern_confirmed = False
 
   def set_config(self, config: TrafficControlConfig) -> None:
     previous_mode = self.config.mode
@@ -199,10 +202,7 @@ class TeslaTrafficControlController:
     self.pending_first_ns = 0
     self.pending_replacement_farther = False
     self.green_count = 0
-    self.first_off_ns = 0
-    self.green_between_off = False
-    self.flash_pulse_count = 0
-    self.flash_pattern_confirmed = False
+    self._clear_flash_candidate()
     self.flash_latched = False
     self.stable_green_since_ns = 0
     self.yellow_latched = None
@@ -306,10 +306,7 @@ class TeslaTrafficControlController:
       self.stop_session_id = self.stop_session_seq
       self.yellow_latched = phase == TrafficControlPhase.yellowStop
       self.flash_latched = phase == TrafficControlPhase.flashingGreenStop
-      self.first_off_ns = 0
-      self.green_between_off = False
-      self.flash_pulse_count = 0
-      self.flash_pattern_confirmed = False
+      self._clear_flash_candidate()
       self.stable_green_since_ns = 0
       self.green_count = 0
       self.pending_distance = 0.0
@@ -379,18 +376,12 @@ class TeslaTrafficControlController:
     """Confirm three in-range GREEN/OFF pulses on one continuous target."""
     color = observation.light_state
     if observation.distance > self.config.max_control_distance:
-      self.first_off_ns = 0
-      self.green_between_off = False
-      self.flash_pulse_count = 0
-      self.flash_pattern_confirmed = False
+      self._clear_flash_candidate()
       return False
     if color == 0 and self.last_real_color == 2:
       finite_off_continuous = self._same_track(observation)
       if not finite_off_continuous:
-        self.first_off_ns = 0
-        self.green_between_off = False
-        self.flash_pulse_count = 0
-        self.flash_pattern_confirmed = False
+        self._clear_flash_candidate()
         return False
       if self.first_off_ns and self.green_between_off:
         interval_s = (now_ns - self.first_off_ns) / 1e9
@@ -414,15 +405,9 @@ class TeslaTrafficControlController:
       if since_off_s <= self.config.flash_interval_max_s:
         self.green_between_off = True
       else:
-        self.first_off_ns = 0
-        self.green_between_off = False
-        self.flash_pulse_count = 0
-        self.flash_pattern_confirmed = False
+        self._clear_flash_candidate()
     elif color in (1, 3):
-      self.first_off_ns = 0
-      self.green_between_off = False
-      self.flash_pulse_count = 0
-      self.flash_pattern_confirmed = False
+      self._clear_flash_candidate()
       self.stable_green_since_ns = 0
     return bool(
       self.flash_pattern_confirmed and self.first_off_ns
@@ -549,10 +534,7 @@ class TeslaTrafficControlController:
         self.candidate_last_ns = 0
         self._clear_pending_replacement()
         if not self.flash_latched:
-          self.first_off_ns = 0
-          self.green_between_off = False
-          self.flash_pulse_count = 0
-          self.flash_pattern_confirmed = False
+          self._clear_flash_candidate()
       if long_dropout and self.phase in self.ACTIVE_PHASES:
         self.stop_reconfirm_required = True
         self.stop_reconfirm_count = 0
@@ -627,10 +609,7 @@ class TeslaTrafficControlController:
         self.stop_station = None
         self.yellow_latched = None
         self.flash_latched = False
-        self.first_off_ns = 0
-        self.green_between_off = False
-        self.flash_pulse_count = 0
-        self.flash_pattern_confirmed = False
+        self._clear_flash_candidate()
         self.stable_green_since_ns = 0
         self.stop_evidence_lost_since_ns = 0
         self.remaining_distance = 0.0
