@@ -143,13 +143,7 @@ class FinalPlanArbitrator:
     self._active_start_session_id = 0
     self._completed_start_session_id = 0
     self._start_started_ns = 0
-    self._lead_delegated_session_id = 0
-    self._lead_candidate_session_id = 0
-    self._lead_candidate_since_ns = 0
-    self._lead_candidate_last_ns = 0
-    self._near_lead_blocked_session_id = 0
-    self._lead_clear_since_ns = 0
-    self._lead_clear_last_ns = 0
+    self._reset_lead_gate()
     self._was_stopping = False
     self._hold_latched = False
     self._hold_latched_should_stop = False
@@ -157,6 +151,15 @@ class FinalPlanArbitrator:
     self._rejected_stop_session_id = 0
     self._traffic_service_gap = False
     self.diagnostics = TrafficPlanDiagnostics()
+
+  def _reset_lead_gate(self) -> None:
+    self._lead_delegated_session_id = 0
+    self._lead_candidate_session_id = 0
+    self._lead_candidate_since_ns = 0
+    self._lead_candidate_last_ns = 0
+    self._near_lead_blocked_session_id = 0
+    self._lead_clear_since_ns = 0
+    self._lead_clear_last_ns = 0
 
   def _reset_control_state(self) -> None:
     self._held_event_id = 0
@@ -166,13 +169,7 @@ class FinalPlanArbitrator:
     self._active_start_session_id = 0
     self._completed_start_session_id = 0
     self._start_started_ns = 0
-    self._lead_delegated_session_id = 0
-    self._lead_candidate_session_id = 0
-    self._lead_candidate_since_ns = 0
-    self._lead_candidate_last_ns = 0
-    self._near_lead_blocked_session_id = 0
-    self._lead_clear_since_ns = 0
-    self._lead_clear_last_ns = 0
+    self._reset_lead_gate()
     self._was_stopping = False
     self._hold_latched = False
     self._hold_latched_should_stop = False
@@ -496,13 +493,7 @@ class FinalPlanArbitrator:
       self._near_lead_blocked_session_id,
     )
     if any(tracked not in (0, session_id) for tracked in tracked_ids):
-      self._lead_delegated_session_id = 0
-      self._lead_candidate_session_id = 0
-      self._lead_candidate_since_ns = 0
-      self._lead_candidate_last_ns = 0
-      self._near_lead_blocked_session_id = 0
-      self._lead_clear_since_ns = 0
-      self._lead_clear_last_ns = 0
+      self._reset_lead_gate()
 
     healthy, any_near, selected_near = self._lead_gate_state(plan, sm)
     if not healthy:
@@ -893,11 +884,7 @@ class FinalPlanArbitrator:
           and driver_allows_stop):
       self._apply_latched_hold(plan, sm)
     else:
-      same_release_start = bool(
-        signal_release and traffic is not None
-        and int(traffic.stopSessionId) == self._active_start_session_id
-      )
-      if self._active_start_session_id != 0 and not same_release_start:
+      if self._active_start_session_id != 0:
         self._finish_start(self._active_start_session_id)
       self._apply_release(plan, sm)
 

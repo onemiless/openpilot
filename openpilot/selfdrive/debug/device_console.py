@@ -30,7 +30,7 @@ from openpilot.selfdrive.debug.device_system_diagnostics import (
   collect_system_diagnostics,
 )
 from openpilot.selfdrive.debug.device_terminal import change_password, run_command, terminal_status
-from openpilot.selfdrive.debug.driving_status import driving_status_enabled, driving_status_snapshot
+from openpilot.selfdrive.debug.driving_status import driving_status_snapshot
 from openpilot.selfdrive.debug.unknown_can_observer import start_unknown_can_observer
 from openpilot.selfdrive.debug.tesla_speed_button_test import SpeedButtonAction, run_validation
 
@@ -53,7 +53,6 @@ def _clear_active_session(test_id: str) -> None:
 
 
 def render_page() -> bytes:
-  driving_tab_state = "" if driving_status_enabled() else 'disabled title="请先在设备设置中开启浏览器行驶信息"'
   return """<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -90,7 +89,7 @@ def render_page() -> bytes:
   </style>
 </head><body><main>
   <h1>车载设置</h1><p>连接设备局域网后可直接访问普通设置；任意 Bash 终端单独使用密码。</p>
-  <div class="tabs"><button class="tab active" id="settings-tab" onclick="showPanel('settings')">设置</button><button class="tab" id="driving-tab" __DRIVING_TAB_STATE__ onclick="showPanel('driving')">行驶信息</button><button class="tab" id="logs-tab" onclick="showPanel('logs')">日志下载</button><button class="tab" id="turn-tab" onclick="showPanel('turn')">Tesla 验证</button><button class="tab" id="terminal-tab" onclick="showPanel('terminal')">终端</button></div>
+  <div class="tabs"><button class="tab active" id="settings-tab" onclick="showPanel('settings')">设置</button><button class="tab" id="driving-tab" onclick="showPanel('driving')">行驶信息</button><button class="tab" id="logs-tab" onclick="showPanel('logs')">日志下载</button><button class="tab" id="turn-tab" onclick="showPanel('turn')">Tesla 验证</button><button class="tab" id="terminal-tab" onclick="showPanel('terminal')">终端</button></div>
   <section id="settings-panel"><div id="mode" class="notice">正在读取设置…</div><div id="category-nav" class="category-nav"></div><div id="settings"></div></section>
   <section id="driving-panel" hidden><h1>行驶道路视图</h1><p>只读实时视图；融合 SP 模型与 HW4 Model Y 原车 CAN，不启动视频或屏幕采集。</p><div id="driving-state" class="notice">正在连接车辆数据…</div><div class="ped-coordinate-lab"><strong>行人坐标</strong><select id="pedestrian-coordinate-mode" onchange="setPedestrianCoordinateMode(this.value)"><option value="off">关闭（默认）</option><option value="dx_forward_dy_left">dX 前后 / dY 左右</option><option value="dx_forward_dy_right">dX 前后 / -dY 左右</option><option value="dy_forward_dx_left">dY 前后 / dX 左右</option><option value="dy_forward_dx_right">dY 前后 / -dX 左右</option></select><span>黄色/蓝色/粉色对应行人 #1/#2/#3；坐标单位为米。</span></div><canvas id="driving-canvas" aria-label="预测道路轨迹与原车感知"></canvas><div class="chart-grid"><article class="chart-card"><h2>横向 · OEM 0x488 / SP</h2><p>原车请求、SP 最终输出与实际方向盘转角；单位 deg，最近 60 秒。</p><canvas class="signal-chart" id="lateral-chart"></canvas></article><article class="chart-card"><h2>纵向加速度 · 0x2B9 / 0x209 / SP</h2><p>巡航上下限、FSD velocity profile、SP 规划/命令与实车；单位 m/s²。</p><canvas class="signal-chart" id="accel-chart"></canvas></article><article class="chart-card"><h2>纵向目标速度 · 0x2B9 / 0x209 / SP</h2><p>原车巡航、FSD 未来目标和 SP 速度输出；单位 km/h。</p><canvas class="signal-chart" id="speed-chart"></canvas></article><article class="chart-card"><h2>SP / FSD 车道线</h2><p>20m 前视横向偏移；SP modelV2 始终可用，FSD 0x239 仅在 CH 报文真实到达时显示。</p><canvas class="signal-chart" id="lane-chart"></canvas></article></div><div class="log-actions"><button id="unknown-export" onclick="exportUnknownCan()">导出 0x37A / 0x3A9 / 0x3B1 采样 JSON</button></div><div id="unknown-can-state" class="notice">后台采集最近 60 秒；等待目标报文。</div><details id="can-diagnostics" class="can-diagnostics"><summary>CAN 诊断详情（可选）</summary><div id="can-details" class="can-grid"></div></details><div id="driving-alert" class="notice drive-alert" hidden></div></section>
   <section id="turn-panel" hidden>
@@ -346,7 +345,7 @@ async function pollStatus() { if (!activeTestId) return; try { const response = 
 async function cancelSession() { if (!activeTestId) return; document.getElementById('status').textContent = '正在请求关闭转向灯…'; try { await apiFetch('/api/cancel/' + activeTestId, {method:'POST'}); } catch (error) { finishTurnUi('取消请求失败：' + error); } }
 function finishTurnUi(message) { document.getElementById('status').textContent = message; document.querySelectorAll('#left,#right').forEach(button => button.disabled = false); document.getElementById('cancel').style.display = 'none'; activeTestId = null; }
 async function runSpeed(action) { const status = document.getElementById('status'); status.textContent = '正在发送速度按钮模板…'; try { const response = await apiFetch('/api/speed/' + action, {method:'POST'}); const result = await response.json(); if (!response.ok) throw new Error(result.message || '测试失败'); status.textContent = result.message; } catch (error) { status.textContent = '速度按钮测试失败：' + error; } }
-</script></main></body></html>""".replace("__DRIVING_TAB_STATE__", driving_tab_state).encode()
+</script></main></body></html>""".encode()
 
 
 class DeviceConsoleHandler(BaseHTTPRequestHandler):

@@ -1,7 +1,7 @@
 from types import SimpleNamespace as ns
 
 from openpilot.selfdrive.debug.driving_status import (COMPARISON_SERVICES, comparison_services_available, control_comparison,
-                                                       discover_ch_bus, driving_status_enabled)
+                                                       discover_ch_bus)
 
 
 def test_control_comparison_aligns_oem_sp_fsd_and_lane_signals() -> None:
@@ -60,10 +60,6 @@ def test_ch_lane_bus_is_discovered_only_on_a_dedicated_source() -> None:
 
   assert discover_ch_bus(packets) == 4
   assert discover_ch_bus([(1_000_000_000, [(0x239, b"\x00" * 8, 2)])]) is None
-
-
-def test_driving_status_is_always_available_without_a_toggle() -> None:
-  assert driving_status_enabled()
 
 
 def test_comparison_requires_every_live_sp_service() -> None:

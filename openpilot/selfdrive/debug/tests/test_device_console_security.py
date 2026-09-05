@@ -42,17 +42,16 @@ def test_console_is_completely_unauthenticated_in_this_test_version():
   authorize("wrong", FakeParams())
 
 
-def test_console_page_exposes_driving_information(monkeypatch):
-  monkeypatch.setattr("openpilot.selfdrive.debug.device_console.driving_status_enabled", lambda: True)
+def test_console_page_exposes_driving_information_without_a_toggle():
   page = render_page().decode()
 
   assert "driving-tab" in page
+  assert "disabled" not in page.split('id="driving-tab"', 1)[1].split(">", 1)[0]
   assert "driving-panel" in page
   assert "/api/driving-status" in page
 
 
-def test_console_page_exposes_requested_vehicle_can_diagnostics(monkeypatch):
-  monkeypatch.setattr("openpilot.selfdrive.debug.device_console.driving_status_enabled", lambda: True)
+def test_console_page_exposes_requested_vehicle_can_diagnostics():
   page = render_page().decode()
 
   for address in ("0x238", "0x23E", "0x1FC", "0x132", "0x212", "0x219", "0x25A", "0x31F",
@@ -60,8 +59,7 @@ def test_console_page_exposes_requested_vehicle_can_diagnostics(monkeypatch):
     assert address in page
 
 
-def test_console_page_exposes_tesla_turn_signal_validation(monkeypatch):
-  monkeypatch.setattr("openpilot.selfdrive.debug.device_console.driving_status_enabled", lambda: True)
+def test_console_page_exposes_tesla_turn_signal_validation():
   page = render_page().decode()
 
   assert "turn-tab" in page
@@ -71,11 +69,10 @@ def test_console_page_exposes_tesla_turn_signal_validation(monkeypatch):
   assert "立即取消" in page
 
 
-def test_console_embedded_javascript_parses(monkeypatch):
+def test_console_embedded_javascript_parses():
   node = shutil.which("node")
   if node is None:
     pytest.skip("node is required to parse the embedded browser script")
-  monkeypatch.setattr("openpilot.selfdrive.debug.device_console.driving_status_enabled", lambda: True)
   page = render_page().decode()
   script = page.split("<script>", 1)[1].split("</script>", 1)[0]
 

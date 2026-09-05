@@ -36,6 +36,13 @@ Tesla continuation state, and physical/vision leads do not veto or create a
 Traffic STOP. Frames beyond 200 metres remain diagnostic-only. A STOP is merged
 as a more conservative post-plan constraint.
 
+The Observer selects a qualifying bus/address/minimum-DLC frame before decoding
+it. Color, distance, timestamp and DLC must all come from that same successful
+decode, not from independently selected batch values and metadata. Six-byte
+frames remain supported. Out-of-order older frames cannot replace a newer
+observation; tied timestamps select the last successfully decoded input frame. A rejected
+decode cannot refresh the last observation's timestamp or control eligibility.
+
 Each new `stopSessionId` owns fresh geometry derived from the confirming
 bus-2 CAN distance; it never inherits a stop station tracked while GREEN or
 owned by an earlier session. During an ordinary approach/braking/yellow STOP,
@@ -111,11 +118,18 @@ including a future-only trajectory constraint; a Traffic candidate completely
 dominated by an unchanged base plan is not active. `applied` is narrower:
 Traffic changed the current actuator contract consumed by controls (`aTarget`
 by more than the `1e-3 m/s²` diagnostic noise tolerance, or any `shouldStop`
-change). The UI attributes current control only from `applied`; a two-second,
-same-session UI-only notice may report a recent applied action in past tense,
-but never turns an `active`-only future constraint into current Traffic
-control. RELEASE wording also follows the current color and phase rather than
-assuming every trajectory handoff was caused by GREEN.
+change). The compact onroad icon attributes current control only from `applied`
+through its blue outline; driver override and inactive/passed phases suppress
+that outline. No text notice or past-action latch remains in the UI. Raw color
+is independent of whether Traffic owns current control, and loss of a healthy
+plan hides the icon rather than retaining stale control attribution.
+
+The Planner Backend publish contract is ordered: the normal longitudinal plan
+passes through final arbitration before its SP companion is annotated. Both
+messages must describe the same cycle's final aTarget and shouldStop, while the
+diagnostic baseATarget retains the unmodified backend value. Tests exercise each
+real backend's publish method and transport-facing sink to protect this Seam
+when updating upstream; these tests do not substitute for MPC/route validation.
 
 ## Consequences
 
