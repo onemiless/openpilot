@@ -35,9 +35,7 @@ def test_driving_status_route_returns_snapshot(monkeypatch, server):
     assert json.loads(response.read()) == snapshot
 
 
-def test_driving_page_contains_oem_sp_comparison_charts(monkeypatch):
-  monkeypatch.setattr(device_console, "driving_status_enabled", lambda: True)
-
+def test_driving_page_contains_oem_sp_comparison_charts():
   page = device_console.render_page().decode()
 
   for chart_id in ("lateral-chart", "accel-chart", "speed-chart", "lane-chart"):

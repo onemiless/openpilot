@@ -210,8 +210,7 @@ def console_server(monkeypatch):
     thread.join(timeout=2)
 
 
-def test_console_page_exposes_time_range_log_download(monkeypatch):
-  monkeypatch.setattr(device_console, "driving_status_enabled", lambda: True)
+def test_console_page_exposes_time_range_log_download():
   page = device_console.render_page().decode()
 
   assert "logs-tab" in page
