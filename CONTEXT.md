@@ -54,16 +54,18 @@ structure without copying either old platform-specific generated tree.
 _Avoid_: old Official solver, duplicated TN solver
 
 **Traffic Radar**:
-A typed, planner-only Traffic target produced by `trafficcontrold`. It may be an
-independent obstacle candidate but is never a physical radar lead, model input,
-FCW target, vehicle state, or CAN signal.
+A typed Traffic input produced by `trafficcontrold` and consumed by the common
+post-planner Plan Constraint. It is never an MPC obstacle candidate, physical
+radar lead, model input, FCW target, vehicle state, or CAN signal. The message
+name is retained for diagnostic compatibility.
 _Avoid_: fake leadTwo, virtual vehicle, traffic radarState
 
 **Plan Constraint**:
 A decorator that can observe context and return a bounded change to a base
 longitudinal plan without becoming a Planner Backend. The direct Stop Profile
-is a Plan Constraint; the Traffic Radar strategy uses the same producer through
-the planner's optional target seam.
+is a Plan Constraint; Traffic Radar reaches it through the common post-planner
+publish Seam, after the selected Planner Backend produces its normal plan.
+No Traffic target is injected into a planner or MPC.
 _Avoid_: traffic planner, duplicated traffic controller
 
 **Model Platform**:
