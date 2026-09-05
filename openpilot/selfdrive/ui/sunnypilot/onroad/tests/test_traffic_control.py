@@ -108,17 +108,19 @@ def test_card_is_raised_above_legacy_position_without_overlapping_egpu_panel():
   card = traffic_card_rect(rl.Rectangle(0, 0, 2160, 1080))
   assert card.x == 46
   assert card.y == 347
-  assert card.width == 64
-  assert card.height == 128
+  assert card.width == 128
+  assert card.height == 256
   assert card.y == 427 - 80
   bottom_status_top = 1080 - 61
   assert card.y + card.height <= bottom_status_top - 40
 
 
-def test_traffic_signal_is_a_small_icon():
-  assert TRAFFIC_LIGHT_HOUSING_WIDTH < TRAFFIC_CARD_WIDTH <= 64
-  assert TRAFFIC_LIGHT_HOUSING_HEIGHT < TRAFFIC_CARD_HEIGHT <= 128
-  assert TRAFFIC_LIGHT_RADIUS == 10
+def test_traffic_signal_is_doubled_for_onroad_readability():
+  assert TRAFFIC_LIGHT_HOUSING_WIDTH == 104
+  assert TRAFFIC_CARD_WIDTH == 128
+  assert TRAFFIC_LIGHT_HOUSING_HEIGHT == 232
+  assert TRAFFIC_CARD_HEIGHT == 256
+  assert TRAFFIC_LIGHT_RADIUS == 20
 
 
 @pytest.mark.parametrize(("values", "blue"), [

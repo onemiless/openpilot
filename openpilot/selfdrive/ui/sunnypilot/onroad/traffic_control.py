@@ -16,12 +16,12 @@ AMBER = rl.Color(255, 190, 50, 255)
 GREEN = rl.Color(53, 220, 118, 255)
 LAMP_OFF = rl.Color(65, 69, 76, 220)
 BORDER = rl.Color(255, 255, 255, 38)
-TRAFFIC_CARD_WIDTH = 64.0
-TRAFFIC_CARD_HEIGHT = 128.0
+TRAFFIC_CARD_WIDTH = 128.0
+TRAFFIC_CARD_HEIGHT = 256.0
 TRAFFIC_CARD_TOP_OFFSET = 47.0
-TRAFFIC_LIGHT_HOUSING_WIDTH = 52.0
-TRAFFIC_LIGHT_HOUSING_HEIGHT = 116.0
-TRAFFIC_LIGHT_RADIUS = 10.0
+TRAFFIC_LIGHT_HOUSING_WIDTH = 104.0
+TRAFFIC_LIGHT_HOUSING_HEIGHT = 232.0
+TRAFFIC_LIGHT_RADIUS = 20.0
 CONTROL_OUTLINE = rl.Color(64, 156, 255, 255)
 
 
@@ -98,7 +98,7 @@ class TrafficControlRenderer(Widget):
       return
 
     icon = traffic_card_rect(rect)
-    housing = rl.Rectangle(icon.x + 6, icon.y + 6, TRAFFIC_LIGHT_HOUSING_WIDTH, TRAFFIC_LIGHT_HOUSING_HEIGHT)
+    housing = rl.Rectangle(icon.x + 12, icon.y + 12, TRAFFIC_LIGHT_HOUSING_WIDTH, TRAFFIC_LIGHT_HOUSING_HEIGHT)
     highlighted = traffic_control_highlighted(self.state)
     if highlighted:
       rl.draw_rectangle_rounded(icon, 0.6, 12, rl.Color(CONTROL_OUTLINE.r, CONTROL_OUTLINE.g, CONTROL_OUTLINE.b, 38))
@@ -112,5 +112,5 @@ class TrafficControlRenderer(Widget):
       if self.state.has_signal and self.state.flashing and light == 2:
         active = int(gui_app.frame / max(1, gui_app.target_fps // 2)) % 2 == 0
       if active:
-        rl.draw_circle_v(center, TRAFFIC_LIGHT_RADIUS + 3, rl.Color(color.r, color.g, color.b, 35))
+        rl.draw_circle_v(center, TRAFFIC_LIGHT_RADIUS + 6, rl.Color(color.r, color.g, color.b, 35))
       rl.draw_circle_v(center, TRAFFIC_LIGHT_RADIUS, color if active else LAMP_OFF)
