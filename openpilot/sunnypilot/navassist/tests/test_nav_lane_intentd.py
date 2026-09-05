@@ -1,7 +1,11 @@
+from dataclasses import replace
 from types import SimpleNamespace
 
-from openpilot.sunnypilot.navassist.lane_intent import LaneIntentDirection
-from openpilot.sunnypilot.navassist.nav_lane_intentd import build_lane_plan, navigation_linked
+from openpilot.sunnypilot.navassist.lane_intent import (
+  LaneIntentDirection, LaneTopologyInput, LaneVehicleInput, NavLaneIntentCoordinator,
+  NavTurnPlan, NavTurnSignalCoordinator, ObservedLaneChangeState,
+)
+from openpilot.sunnypilot.navassist.nav_lane_intentd import build_lane_plan, lane_alignment_may_start, navigation_linked
 from openpilot.sunnypilot.selfdrive.controls.lib.nav_turn_completion import sp_turn_geometry_active
 
 
@@ -118,3 +122,112 @@ def test_slight_turn_without_lane_info_does_not_force_an_extreme_lane():
 
   assert not plan.heuristic
   assert plan.recommended_indices == ()
+
+
+def test_started_relative_change_keeps_identity_through_local_lane_count_change_and_observation_gap():
+  coordinator = NavLaneIntentCoordinator()
+  guidance = lane_guidance_nav(maneuver="turnRight")
+  current_plan = build_lane_plan(guidance, topology(count=3), healthy=True)
+  observed = LaneTopologyInput(True, 3, 1, True, True, True, True)
+  car = LaneVehicleInput(True, 15.0)
+  for now_ns in (0, 500_000_000, 1_000_000_000):
+    coordinator.update(current_plan, observed, car, now_ns=now_ns)
+  changing_car = replace(car, right_blinker=True, lane_change_state=ObservedLaneChangeState.starting,
+                         lane_change_direction=LaneIntentDirection.right)
+  assert coordinator.update(current_plan, observed, changing_car, now_ns=1_200_000_000).signal_requested
+
+  # The route and physical lateral state remain valid while visible lanes
+  # recenter and then disappear briefly from the observation.
+  recentered_plan = build_lane_plan(guidance, topology(count=2), healthy=True)
+  recentered = coordinator.update(recentered_plan, replace(observed, visible_lane_count=2), changing_car,
+                                 now_ns=1_300_000_000)
+  assert recentered.signal_requested and recentered.reason == "heuristicChanging"
+  missing_plan = build_lane_plan(guidance, topology(count=0), healthy=True)
+  assert missing_plan.valid
+  unavailable = replace(observed, valid_for_control=False, visible_lane_count=0, ego_lane_index=-1)
+  gap = coordinator.update(missing_plan, unavailable, changing_car, now_ns=1_400_000_000)
+  assert gap.signal_requested and gap.reason == "heuristicTopologyTransition"
+  expired = coordinator.update(missing_plan, unavailable, changing_car, now_ns=2_400_000_001)
+  assert not expired.signal_requested and expired.reason == "topologyTransitionTimeout"
+
+
+def test_existing_turn_window_hands_off_after_started_sp_cycle_without_another_lane_change():
+  coordinator = NavLaneIntentCoordinator()
+  turn_coordinator = NavTurnSignalCoordinator()
+  guidance = lane_guidance_nav(maneuver="turnLeft", maneuverDistanceM=500.0)
+  current_plan = build_lane_plan(guidance, topology(), healthy=True)
+  observed = LaneTopologyInput(True, 3, 1, True, True, True, True)
+  car = LaneVehicleInput(True, 15.0)
+  for now_ns in (0, 500_000_000, 1_000_000_000):
+    coordinator.update(current_plan, observed, car, now_ns=now_ns)
+
+  # At 15 m/s the existing pre-turn window is 140 m. Reaching it while
+  # SP reports starting must retain the same lane-change lamp and desire.
+  guidance.maneuverDistanceM = 140.0
+  turn = turn_coordinator.update(NavTurnPlan(True, "session-a", 3, 17, "turnLeft", 140.0),
+                                 speed_mps=15.0, now_ns=1_200_000_000)
+  assert turn.signal_requested and turn.target_lane_index == -1
+  changing_car = replace(car, left_blinker=True, lane_change_state=ObservedLaneChangeState.starting,
+                         lane_change_direction=LaneIntentDirection.left)
+  started = coordinator.update(build_lane_plan(guidance, topology(), healthy=True), observed, changing_car,
+                               now_ns=1_200_000_000, allow_new_lane_change=lane_alignment_may_start(guidance, turn))
+  assert started.signal_requested and started.target_lane_index >= 0
+
+  # Deceleration below the start threshold must not cut an SP action already
+  # underway. The real SP state cycle ends at pre, then gets stable confirmation.
+  finishing_car = replace(changing_car, speed_mps=8.0, lane_change_state=ObservedLaneChangeState.finishing)
+  for now_ns in (1_500_000_000, 2_000_000_000):
+    assert coordinator.update(current_plan, observed, finishing_car, now_ns=now_ns,
+                              allow_new_lane_change=False).signal_requested
+  completed_car = replace(finishing_car, lane_change_state=ObservedLaneChangeState.pre)
+  assert coordinator.update(current_plan, observed, completed_car, now_ns=2_100_000_000,
+                            allow_new_lane_change=False).signal_requested
+  completed = coordinator.update(current_plan, observed, completed_car, now_ns=2_600_000_000,
+                                 allow_new_lane_change=False)
+  assert not completed.signal_requested and completed.reason == "laneChangeObserved"
+  selected = completed if completed.signal_requested else turn
+  assert selected.target_lane_index == -1 and selected.signal_requested
+
+  next_request = coordinator.update(current_plan, observed, car, now_ns=6_000_000_000,
+                                    allow_new_lane_change=False)
+  assert not next_request.signal_requested
+
+
+def test_turn_window_releases_pending_lane_signal_before_sp_starts():
+  coordinator = NavLaneIntentCoordinator()
+  current_plan = build_lane_plan(lane_guidance_nav(), topology(), healthy=True)
+  observed = LaneTopologyInput(True, 3, 1, True, True, True, True)
+  car = LaneVehicleInput(True, 15.0)
+  for now_ns in (0, 500_000_000):
+    coordinator.update(current_plan, observed, car, now_ns=now_ns)
+  assert coordinator.update(current_plan, observed, car, now_ns=1_000_000_000).signal_requested
+  approaching = coordinator.update(current_plan, observed, car, now_ns=1_200_000_000,
+                                   allow_new_lane_change=False)
+  assert not approaching.signal_requested and approaching.reason == "turnApproachHandoff"
+
+
+def test_zero_distance_allows_existing_plan_to_finish_but_never_starts_a_new_change():
+  for maneuver in ("turnLeft", "exitRight"):
+    guidance = lane_guidance_nav(maneuver=maneuver, maneuverDistanceM=0.0)
+    turn = NavTurnSignalCoordinator().update(NavTurnPlan(True, "session-a", 3, 17, maneuver, 0.0),
+                                            speed_mps=15.0, now_ns=0)
+    assert not turn.signal_requested
+    assert build_lane_plan(guidance, topology(), healthy=True).valid
+    assert not lane_alignment_may_start(guidance, turn)
+
+
+def test_lane_change_hard_timeout_still_applies_during_observation_grace():
+  coordinator = NavLaneIntentCoordinator()
+  current_plan = build_lane_plan(lane_guidance_nav(), topology(), healthy=True)
+  observed = LaneTopologyInput(True, 3, 1, True, True, True, True)
+  car = LaneVehicleInput(True, 15.0)
+  for now_ns in (0, 500_000_000, 1_000_000_000):
+    coordinator.update(current_plan, observed, car, now_ns=now_ns)
+  changing_car = replace(car, left_blinker=True, lane_change_state=ObservedLaneChangeState.starting,
+                         lane_change_direction=LaneIntentDirection.left)
+  coordinator.update(current_plan, observed, changing_car, now_ns=1_200_000_000)
+  missing = replace(observed, valid_for_control=False)
+  grace = coordinator.update(current_plan, missing, changing_car, now_ns=11_000_000_000)
+  assert grace.signal_requested
+  expired = coordinator.update(current_plan, missing, changing_car, now_ns=11_200_000_001)
+  assert not expired.signal_requested and expired.reason == "laneChangeTimeout"

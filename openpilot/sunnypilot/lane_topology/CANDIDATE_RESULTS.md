@@ -1,5 +1,31 @@
 # Lane-topology candidate decision
 
+## Current signal/marking follow-up (2026-09-05)
+
+The measurements below are historical screening and replay results. The current
+production path is `LaneTopologyObserver` in `lane_topologyd`, with geometry at
+20 Hz and image classification at 10 Hz. It uses the camera Y plane and only
+the ego boundaries identified by the driving model. The model does not expose
+solid/dashed semantics, and no additional learned classifier has been added.
+
+Repeated regular 1–2 m gaps now reach the dashed rule before the high-coverage
+solid rule. Short-gap image evidence also checks lane-normal structure and
+whether the neighboring road darkens with the alleged gap, to reject broad
+shadows. A single isolated defect is not enough to establish dashed paint.
+The temporal classifier uses a two-second timestamped evidence window: weak
+but consistent structured observations can settle, and old solid evidence
+expires instead of permanently preventing later partial-dashed acquisition.
+The observer's geometry tracker does not apply a second marking-type vote.
+
+The replay tool now calls the same observer and control publisher, feeds all
+available model frames, and samples decoded video Y at the selected image
+cadence (default 10 Hz). Reports preserve frame/stable marking fields and also
+include published marking validity and source ages. Decoded qcamera Y remains
+compressed evidence, not a byte-identical reconstruction of live camera Y.
+The earlier 90.6% number must not be reused as the accuracy of this revision.
+Motion-aligned evidence and an independently trained ROI classification head
+remain subsequent work; this revision fixes the reproduced rule/state defects.
+
 Baseline: `dev-sp-egpu` at `10c9442f479356b2e0f43e33ce2d8be999b4d4f2`.
 
 All neural-network measurements below were executed Offroad on the target C3XL with a UT3G USBGPU at 5000 Mbps. They are screening results, not claims derived from desktop-GPU benchmarks.

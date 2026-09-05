@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass, replace
 import math
 
@@ -192,14 +193,18 @@ def classify_metric_presence(distances_m: np.ndarray, presence: np.ndarray) -> M
   dark_cv = float(np.std(internal_dark) / max(np.mean(internal_dark), 1e-3)) if len(internal_dark) >= 2 else math.inf
   run_regularity = 1.0 / (1.0 + lit_cv + dark_cv) if math.isfinite(lit_cv + dark_cv) else 0.0
 
-  if coverage >= 0.72 and max_dark_gap <= 1.5:
-    marking_type = LaneMarkingType.solid
-    confidence = min(1.0, max(0.0, (coverage - 0.65) / 0.30))
-  elif (0.12 <= coverage <= 0.82 and lit_runs >= 3 and len(complete_lit_lengths) >= 2 and len(internal_dark) >= 2 and
-        max_dark_gap >= 1.0 and 0.5 <= median_lit <= 10.0 and transitions >= 5 and
-        lit_cv <= 0.80 and dark_cv <= 0.80):
+  # Repeated, regularly spaced short gaps must not be swallowed by the solid
+  # coverage rule. A lone missing sample still does not establish dashed paint.
+  repeated_short_gaps = bool(max_dark_gap <= 2.0 and lit_cv <= 0.35 and dark_cv <= 0.35)
+  if (0.12 <= coverage <= (0.94 if repeated_short_gaps else 0.82) and
+      lit_runs >= 3 and len(complete_lit_lengths) >= 2 and len(internal_dark) >= 2 and
+      max_dark_gap >= 1.0 and 0.5 <= median_lit <= 10.0 and transitions >= 5 and
+      lit_cv <= 0.80 and dark_cv <= 0.80):
     marking_type = LaneMarkingType.dashed
     confidence = min(1.0, 0.30 + 0.10 * min(lit_runs, 5) + 0.30 * run_regularity)
+  elif coverage >= 0.72 and max_dark_gap <= 1.5:
+    marking_type = LaneMarkingType.solid
+    confidence = min(1.0, max(0.0, (coverage - 0.65) / 0.30))
   else:
     marking_type = LaneMarkingType.unknown
     confidence = 0.0
@@ -240,15 +245,36 @@ def measure_metric_marking(image: np.ndarray, samples: tuple[MetricLaneSample, .
   side_levels = _strip_means(luminance, uv, normal, tangent_unit,
                              np.array((-side_offset, side_offset)), center_radius)
   contrast = center_level - side_levels.mean(axis=1)
+
+  def structure_valid(evidence: MetricMarkingEvidence, presence: np.ndarray) -> bool:
+    coherent = (_offsets_are_coherent(distances, best_offsets, presence, search_radius)
+                or _profiles_are_smooth(center_levels, presence))
+    if not coherent:
+      return False
+    if evidence.marking_type == LaneMarkingType.dashed and evidence.max_internal_dark_gap_m <= 2.0:
+      # A short dark region across the paint AND both adjacent road strips is
+      # compatible with a shadow, not independent evidence of a paint gap.
+      lit_indices = np.flatnonzero(presence)
+      internal_dark = ~presence & (np.arange(len(presence)) > lit_indices[0]) & (np.arange(len(presence)) < lit_indices[-1])
+      if np.any(internal_dark):
+        road_lit = float(np.median(side_levels[presence]))
+        road_dark = float(np.median(side_levels[internal_dark]))
+        if road_lit - road_dark > max(MIN_ADAPTIVE_CONTRAST, road_lit * 0.25):
+          return False
+    return True
+
   fixed_presence = contrast >= contrast_threshold
   fixed_evidence = classify_metric_presence(distances, fixed_presence)
-  if fixed_evidence.marking_type != LaneMarkingType.unknown:
+  if fixed_evidence.marking_type == LaneMarkingType.solid:
     return fixed_evidence
+  if fixed_evidence.marking_type == LaneMarkingType.dashed:
+    if structure_valid(fixed_evidence, fixed_presence):
+      return fixed_evidence
+    fixed_evidence = MetricMarkingEvidence.unknown(len(distances))
   fixed_partial = _recover_partial_dashed(fixed_evidence) if partial_dashed else fixed_evidence
   fixed_structure_valid = bool(
     fixed_partial.marking_type != LaneMarkingType.unknown
-    and (_offsets_are_coherent(distances, best_offsets, fixed_presence, search_radius)
-         or _profiles_are_smooth(center_levels, fixed_presence))
+    and structure_valid(fixed_partial, fixed_presence)
   )
   if not fixed_structure_valid:
     fixed_partial = MetricMarkingEvidence.unknown(len(distances))
@@ -263,48 +289,80 @@ def measure_metric_marking(image: np.ndarray, samples: tuple[MetricLaneSample, .
     evidence = _recover_partial_dashed(evidence)
   if evidence.marking_type == LaneMarkingType.unknown:
     return fixed_partial if fixed_partial.marking_type != LaneMarkingType.unknown else evidence
-  strong_presence = contrast >= max(adaptive_threshold, peak_contrast * 0.80)
-  line_structure_valid = (
-    _offsets_are_coherent(distances, best_offsets, strong_presence, search_radius)
-    or _profiles_are_smooth(center_levels, presence)
-  )
-  if not line_structure_valid:
+  if not structure_valid(evidence, presence):
     return fixed_partial if fixed_partial.marking_type != LaneMarkingType.unknown else MetricMarkingEvidence.unknown(len(distances))
   quality = min(1.0, max(0.25, peak_contrast / max(contrast_threshold, 1e-3)))
   return replace(evidence, confidence=evidence.confidence * quality)
 
 
 class TemporalMarkingFilter:
-  """Accumulate independent per-boundary marking evidence over time."""
+  """Bounded, timestamped evidence; confidence changes settling time, not reachability."""
 
   def __init__(self, *, minimum_score: float = 3.0, dominance_ratio: float = 2.0, decay: float = 0.90):
     self.minimum_score = minimum_score
     self.dominance_ratio = dominance_ratio
     self.decay = decay
-    self._scores = [{LaneMarkingType.solid: 0.0, LaneMarkingType.dashed: 0.0} for _ in range(4)]
+    self._history: list[deque[tuple[int, MetricMarkingEvidence]]] = [deque(maxlen=64) for _ in range(4)]
+    self._last_timestamp_ns: list[int | None] = [None] * 4
     self._confirmed = [LaneMarkingType.unknown] * 4
+    self.window_ns = 2_000_000_000
+    self.max_evidence_gap_ns = 500_000_000
 
   def reset(self) -> None:
-    for source_id, scores in enumerate(self._scores):
-      scores[LaneMarkingType.solid] = scores[LaneMarkingType.dashed] = 0.0
+    for source_id, history in enumerate(self._history):
+      history.clear()
+      self._last_timestamp_ns[source_id] = None
       self._confirmed[source_id] = LaneMarkingType.unknown
 
-  def update(self, source_id: int, evidence: MetricMarkingEvidence) -> LaneMarkingType:
-    scores = self._scores[source_id]
-    for marking_type in scores:
-      scores[marking_type] *= self.decay
+  def update(self, source_id: int, evidence: MetricMarkingEvidence, *, timestamp_ns: int | None = None) -> LaneMarkingType:
+    history = self._history[source_id]
+    previous_ns = self._last_timestamp_ns[source_id]
+    # Compatibility for isolated callers without a camera clock: one sample at
+    # the production classifier's 100 ms period. Live/replay callers pass EOF.
+    now_ns = int(timestamp_ns) if timestamp_ns is not None else (previous_ns or 0) + 100_000_000
+    if previous_ns is not None:
+      if now_ns == previous_ns:
+        return self._confirmed[source_id]
+      if now_ns < previous_ns or now_ns - previous_ns > self.max_evidence_gap_ns:
+        history.clear()
+        self._confirmed[source_id] = LaneMarkingType.unknown
+    self._last_timestamp_ns[source_id] = now_ns
+    while history and now_ns - history[0][0] > self.window_ns:
+      history.popleft()
+
     partial_dashed = bool(
       evidence.marking_type == LaneMarkingType.dashed
       and (evidence.lit_runs < 3 or evidence.complete_lit_runs < 2
            or evidence.internal_dark_runs < 2 or evidence.transitions < 5)
     )
-    if evidence.marking_type in scores and not (
-      partial_dashed and self._confirmed[source_id] == LaneMarkingType.solid
-    ):
-      scores[evidence.marking_type] += evidence.confidence
+    recent_solid = any(now_ns - ts <= self.max_evidence_gap_ns and item.marking_type == LaneMarkingType.solid
+                       for ts, item in history)
+    if partial_dashed and recent_solid:
+      evidence = MetricMarkingEvidence.unknown(evidence.sample_count)
+    history.append((now_ns, evidence))
+    scores = {LaneMarkingType.solid: 0.0, LaneMarkingType.dashed: 0.0}
+    support = dict.fromkeys(scores, 0.0)
+    first_ns: dict[LaneMarkingType, int] = {}
+    last_ns: dict[LaneMarkingType, int] = {}
+    total_support = 0.0
+    for ts, item in history:
+      weight = self.decay ** ((now_ns - ts) / 100_000_000)
+      total_support += weight
+      if item.marking_type in scores and math.isfinite(item.confidence) and 0.0 < item.confidence <= 1.0:
+        scores[item.marking_type] += weight * item.confidence
+        support[item.marking_type] += weight
+        first_ns.setdefault(item.marking_type, ts)
+        last_ns[item.marking_type] = ts
     winner = max(scores, key=scores.get)
     loser = LaneMarkingType.dashed if winner == LaneMarkingType.solid else LaneMarkingType.solid
-    if scores[winner] >= self.minimum_score and scores[winner] >= max(0.01, scores[loser]) * self.dominance_ratio:
+    mean_confidence = scores[winner] / max(support[winner], 1e-12)
+    settling_seconds = self.minimum_score * 0.1 + 0.7 * (1.0 - mean_confidence) + (0.2 if partial_dashed else 0.0)
+    duration_ns = last_ns.get(winner, now_ns) - first_ns.get(winner, now_ns)
+    fresh = winner in last_ns and now_ns - last_ns[winner] <= self.max_evidence_gap_ns
+    if (fresh and duration_ns >= settling_seconds * 1e9 and support[winner] >= self.minimum_score
+        and support[winner] >= total_support * self.dominance_ratio / (1.0 + self.dominance_ratio)
+        and scores[winner] >= max(1e-12, scores[loser]) * self.dominance_ratio):
       self._confirmed[source_id] = winner
       return winner
+    self._confirmed[source_id] = LaneMarkingType.unknown
     return LaneMarkingType.unknown

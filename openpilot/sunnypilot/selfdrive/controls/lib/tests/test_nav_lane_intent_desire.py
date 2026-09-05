@@ -1,5 +1,8 @@
 from types import SimpleNamespace
 
+import pytest
+
+from openpilot.cereal import log
 from openpilot.selfdrive.controls.lib.desire_helper import DesireHelper, LaneChangeDirection, LaneChangeState
 from openpilot.sunnypilot.selfdrive.controls.lib.auto_lane_change import AutoLaneChangeMode
 
@@ -159,3 +162,49 @@ def test_navigation_physical_lamp_tail_cannot_start_an_extra_lane_change():
 
   assert desire.lane_change_state == LaneChangeState.off
   assert desire.desire == 0
+
+
+@pytest.mark.parametrize("direction", ["left", "right"])
+def test_completed_lane_change_tail_transfers_to_same_direction_turn(direction):
+  desire = helper()
+  desire.lane_turn_controller.enabled = True
+  desire.lane_turn_controller.lane_turn_value = 19 * 0.44704
+  lane_target = intent(direction=direction, target=0)
+  lamp_on = {f"{direction}Blinker": True}
+  crossing_allowed = {f"{direction}_crossing_allowed": True}
+  expected_turn = log.Desire.turnLeft if direction == "left" else log.Desire.turnRight
+
+  desire.update(car_state(), True, 1.0, nav_lane_intent=lane_target, **crossing_allowed)
+  for _ in range(3):
+    desire.update(car_state(**lamp_on), True, 1.0, nav_lane_intent=lane_target, **crossing_allowed)
+  assert desire.lane_change_state == LaneChangeState.laneChangeStarting
+
+  for _ in range(15):
+    desire.update(car_state(**lamp_on), True, 0.0, nav_lane_intent=lane_target, **crossing_allowed)
+  assert desire.lane_change_state == LaneChangeState.preLaneChange
+
+  # Cancellation reaches the model before the physical lamp switches off.
+  stopped = intent(direction=direction, signal=False)
+  desire.update(car_state(**lamp_on), True, 0.0, nav_lane_intent=stopped, **crossing_allowed)
+  assert desire.lane_change_state == LaneChangeState.off
+  assert desire.desire == log.Desire.none
+  desire.update(car_state(vEgo=5.0, **lamp_on), True, 0.0, nav_lane_intent=stopped)
+  assert desire.desire == log.Desire.none
+
+  # The approaching turn takes over the still-lit lamp. It must not inherit
+  # the old lane-change tail's suppression of the model's turn input.
+  turn_only = intent(direction=direction, target=-1)
+  desire.update(car_state(vEgo=5.0, **lamp_on), True, 0.0, nav_lane_intent=turn_only)
+  assert desire.desire == expected_turn
+  assert desire.lane_change_state == LaneChangeState.off
+  desire.update(car_state(**lamp_on), True, 0.0, nav_lane_intent=turn_only, **crossing_allowed)
+  assert desire.lane_change_state == LaneChangeState.off
+
+  # A later cancellation retains turn-only lamp semantics, and once the lamp
+  # clears an ordinary driver signal still follows SP's original behavior.
+  desire.update(car_state(vEgo=5.0, **lamp_on), True, 0.0, nav_lane_intent=stopped)
+  assert desire.desire == expected_turn
+  desire.update(car_state(vEgo=5.0), True, 0.0)
+  assert desire.desire == log.Desire.none
+  desire.update(car_state(vEgo=5.0, **lamp_on), True, 0.0)
+  assert desire.desire == expected_turn

@@ -171,6 +171,16 @@ gate is blocked. It requests the physical lamp only when one SP lane-change
 attempt can start, then holds that lamp through the existing SP cycle. A
 navigation lane-change lamp is excluded from LaneTurnDesire; only a true
 turn-only request or a driver lamp may create turnLeft/turnRight desire.
+When a new same-direction turn request takes ownership of a still-lit lamp,
+the previous lane-change tail no longer masks that turn from the model. The
+model's original rising-edge desire input is preserved. Entering the existing
+ordinary-turn approach window stops new edge-alignment attempts; a started SP
+lane-change cycle completes before handing ownership to the turn request.
+The navigation action identity uses route/session/maneuver identity, independent
+of changes in visible lane count. A short topology observation gap does not
+pretend that actual lateral control became inactive. The existing Tesla signal
+controller honors navigation's hold policy for starting-to-pre transitions as
+well as finishing/off, so the coordinator owns normal completion cancellation.
 An ordinary navigation lane request applies CP's unknown-is-open policy but
 still blocks confirmed solid paint. The explicitly requested `forkNow`
 exception is limited to a fresh directional exit/ramp/merge at 50 metres or

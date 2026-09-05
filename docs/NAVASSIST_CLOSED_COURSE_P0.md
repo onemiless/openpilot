@@ -2,7 +2,8 @@
 
 ## Scope
 
-This branch accepts authenticated Android/iOS navigation observations and
+This branch accepts Android/iOS navigation observations over canonical v3 UDP
+(or the compatible authenticated HTTP transport) and
 exposes three closed-course behaviors: a bounded navigation speed ceiling
 before a supported maneuver, a bounded physical pre-turn lamp, and an
 experimental one-lane-at-a-time navigation target through SP's existing
@@ -166,6 +167,15 @@ keep the target lane physically empty. Confirm the independent
 - keeps blocked lane alignment internal without lighting the physical signal;
   the lamp begins only when the crossing and BSM gates permit an immediate SP
   attempt, remains on through that attempt, and cannot trigger LaneTurnDesire;
+- transfers a still-lit lamp from a completed lane change to a same-direction
+  turn without masking the new model turn desire with the old lamp tail;
+- stops new ordinary-turn edge alignment inside the existing turn approach
+  window, while letting a started SP cycle finish before handing off;
+- does not treat a change in the visible lane count as a route change or a
+  temporary topology observation gap as real lateral-control loss;
+- honors hold-until-cancel across SP's real starting-to-pre/off cycle; the
+  coordinator performs stable completion confirmation and then cancels the
+  physical lamp through the same controller used by the manual test action;
 - exposes `forkNow`, `allowUnknownCrossing`, and `ignoreSolidBoundary` on the HUD
   whenever the final-fork exception is active; verify that stale/ambiguous
   geometry, road edge, BSM, pedals, and missing physical lamp still block it;

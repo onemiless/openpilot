@@ -293,7 +293,8 @@ class TeslaTurnSignalRealtimeController:
         self._request_cancel_locked("lane_change_direction_mismatch", now_nanos)
       elif state == int(log.LaneChangeState.preLaneChange):
         if self._active["lane_change_started"]:
-          self._request_cancel_locked("lane_change_cycle_complete", now_nanos)
+          if not self._active["hold_until_cancel"]:
+            self._request_cancel_locked("lane_change_cycle_complete", now_nanos)
         else:
           self._active["phase"] = "waiting_sp_start"
       elif state == int(log.LaneChangeState.laneChangeStarting):

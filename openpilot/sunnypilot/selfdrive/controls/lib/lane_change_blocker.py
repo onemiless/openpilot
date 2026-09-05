@@ -6,6 +6,16 @@ SOLID_EGO_MARKINGS = frozenset(("solid", "doubleSolid", "solidDashed"))
 CROSSABLE_EGO_MARKINGS = frozenset(("dashed", "doubleDashed"))
 
 
+def nav_lane_crossing_policy(intent: object | None, side: str) -> tuple[bool, bool]:
+  """Unknown paint is a directional lane policy; solid bypass additionally needs forkNow."""
+  if side not in ("left", "right"):
+    raise ValueError("side must be left or right")
+  if (intent is None or not intent.valid or not intent.signalRequested  # type: ignore[attr-defined]
+      or intent.targetLaneIndex < 0 or str(intent.direction) != side):  # type: ignore[attr-defined]
+    return False, False
+  return bool(intent.allowUnknownCrossing), bool(intent.forkNow and intent.ignoreSolidBoundary)  # type: ignore[attr-defined]
+
+
 def lane_topology_change_blocks(topology: object, *, healthy: bool) -> tuple[bool, bool]:
   """Return reliable per-side lane-boundary vetoes for SP lane-change entry."""
 

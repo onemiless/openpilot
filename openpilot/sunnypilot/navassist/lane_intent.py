@@ -245,9 +245,10 @@ class NavLaneIntentCoordinator:
     return max(0, ego_index - 1) if direction == LaneIntentDirection.left else ego_index + 1
 
   @staticmethod
-  def _event_key(plan: NavLanePlan, target_index: int) -> tuple[str, int, int, int, tuple[int, ...], int]:
-    return (plan.session_id, plan.route_revision, plan.maneuver_event_id,
-            plan.lane_count, plan.recommended_indices, target_index)
+  def _event_key(plan: NavLanePlan) -> tuple[str, int, int]:
+    # Visible lane indices recenter while crossing a boundary. They describe an
+    # observation, not a new navigation event or a reason to cancel its lamp.
+    return (plan.session_id, plan.route_revision, plan.maneuver_event_id)
 
   @staticmethod
   def _plan_reason(plan: NavLanePlan, reason: str) -> str:
@@ -282,10 +283,20 @@ class NavLaneIntentCoordinator:
     return self._idle(reason)
 
   def update(self, plan: NavLanePlan, topology: LaneTopologyInput, vehicle: LaneVehicleInput,
-             *, now_ns: int) -> NavLaneIntent:
+             *, now_ns: int, allow_new_lane_change: bool = True) -> NavLaneIntent:
+    if self._phase in ("signaling", "ready") and self._candidate is not None:
+      _event_key, start_ego, direction, _target_index, _relative_edge = self._candidate
+      if vehicle.lane_change_state == ObservedLaneChangeState.starting and vehicle.lane_change_direction == direction:
+        # Observe the SP transition before deciding whether a new action may
+        # start: reaching the turn window must not cut an action already begun.
+        self._phase = "changing"
+        self._phase_since_ns = now_ns
+        self._expected_lane_index = self._adjacent_target_index(start_ego, direction)
+        self._completion_since_ns = 0
     base_healthy = bool(
       plan.valid and vehicle.lateral_active and not vehicle.brake_pressed and not vehicle.gas_pressed
-      and self.MIN_SPEED_MPS <= vehicle.speed_mps <= self.MAX_SPEED_MPS
+      and vehicle.speed_mps <= self.MAX_SPEED_MPS
+      and (self._phase == "changing" or vehicle.speed_mps >= self.MIN_SPEED_MPS)
     )
     topology_healthy = bool(
       topology.valid_for_control and plan.lane_count == topology.visible_lane_count
@@ -305,10 +316,15 @@ class NavLaneIntentCoordinator:
       self._reset()
       return self._idle("health")
 
+    if self._phase == "changing" and self._candidate is not None:
+      if now_ns - self._phase_since_ns > self.LANE_CHANGE_TIMEOUT_NS:
+        return self._abort(self._candidate[0], "laneChangeTimeout")
+
     if not topology_healthy:
       if self._phase == "changing" and self._candidate is not None:
+        self._completion_since_ns = 0
         event_key, _start_ego, direction, target_index, _relative_edge = self._candidate
-        if self._event_key(plan, target_index) != event_key:
+        if self._event_key(plan) != event_key:
           return self._abort(event_key, "routeChanged")
         physical_signal_on = ((vehicle.left_blinker and not vehicle.right_blinker)
                               if direction == LaneIntentDirection.left else
@@ -353,21 +369,19 @@ class NavLaneIntentCoordinator:
 
     if self._phase == "changing" and self._candidate is not None:
       event_key, _start_ego, direction, target_index, relative_edge = self._candidate
-      if self._event_key(plan, target_index) != event_key:
+      if self._event_key(plan) != event_key:
         return self._abort(event_key, "routeChanged")
       if (vehicle.lane_change_state in (ObservedLaneChangeState.pre, ObservedLaneChangeState.starting,
                                         ObservedLaneChangeState.finishing) and
           vehicle.lane_change_direction != direction):
         return self._abort(event_key, "directionMismatch")
-      if now_ns - self._phase_since_ns > self.LANE_CHANGE_TIMEOUT_NS:
-        return self._abort(event_key, "laneChangeTimeout")
       physical_signal_on = ((vehicle.left_blinker and not vehicle.right_blinker)
                             if direction == LaneIntentDirection.left else
                             (vehicle.right_blinker and not vehicle.left_blinker))
       if not physical_signal_on:
         return self._abort(event_key, "physicalSignalLost")
       model_cycle_complete = vehicle.lane_change_state in (
-        ObservedLaneChangeState.off, ObservedLaneChangeState.pre, ObservedLaneChangeState.finishing,
+        ObservedLaneChangeState.off, ObservedLaneChangeState.pre,
       )
       if (relative_edge or topology.ego_lane_index == self._expected_lane_index) and model_cycle_complete:
         if self._completion_since_ns == 0:
@@ -389,6 +403,10 @@ class NavLaneIntentCoordinator:
         reason=self._plan_reason(plan, self._phase),
       )
 
+    if not allow_new_lane_change:
+      self._reset()
+      return self._idle("turnApproachHandoff")
+
     target_index = self._target(plan, topology.ego_lane_index)
     if target_index is None:
       self._reset()
@@ -405,7 +423,7 @@ class NavLaneIntentCoordinator:
       self._reset()
       return self._idle("alreadyInRecommendedLane")
 
-    event_key = self._event_key(plan, target_index)
+    event_key = self._event_key(plan)
     if self._blocked_key == event_key:
       return self._idle("blockedEvent")
 

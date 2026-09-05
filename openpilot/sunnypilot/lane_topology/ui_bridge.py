@@ -26,13 +26,15 @@ def visionbuf_luma(frame: object) -> np.ndarray:
 class LaneTopologyObserver:
   """Fail-closed model/image observer shared by control publication and UI fallback."""
 
-  def __init__(self, *, frame_divisor: int = 5):
+  def __init__(self, *, frame_divisor: int = 5, adaptive_marking: bool = True, partial_dashed: bool = True):
     if frame_divisor <= 0:
       raise ValueError("frame_divisor must be positive")
     self.frame_divisor = frame_divisor
+    self.adaptive_marking = adaptive_marking
+    self.partial_dashed = partial_dashed
     self.marking_types = [LaneMarkingType.unknown] * 4
     self.adapter = PrimaryModelLaneTopologyAdapter(marking_classifier=lambda index, lane: self.marking_types[index])
-    self.tracker = LaneTopologyTracker(max_missed_frames=3)
+    self.tracker = LaneTopologyTracker(max_missed_frames=3, smooth_marking_types=False)
     self.temporal_marking = TemporalMarkingFilter()
     self.current: LaneTopology | None = None
     self.last_frame_id = -1
@@ -121,17 +123,20 @@ class LaneTopologyObserver:
       center_radius, side_offset, search_radius = marking_sampling_parameters(width)
       margin = center_radius + side_offset + search_radius
       probabilities = tuple(float(value) for value in self.model_v2.laneLineProbs)  # type: ignore[attr-defined]
+      timestamp_ns = int(self.model_v2.timestampEof)  # type: ignore[attr-defined]
       for lane_index, lane in enumerate(self.model_v2.laneLines):  # type: ignore[attr-defined]
         if (self.ego_source_ids is None or lane_index not in self.ego_source_ids
             or probabilities[lane_index] < MARKING_PROBABILITY_FLOOR):
           evidence = MetricMarkingEvidence.unknown()
           self.marking_types[lane_index] = LaneMarkingType.unknown
+          self.temporal_marking.update(lane_index, evidence, timestamp_ns=timestamp_ns)
         else:
           samples = project_model_lane_metric_samples(lane, camera_from_calib, width, height, image_margin_px=margin)
           evidence = measure_metric_marking(
             image, samples, center_radius=center_radius, side_offset=side_offset, search_radius=search_radius,
+            adaptive=self.adaptive_marking, partial_dashed=self.partial_dashed,
           )
-          self.marking_types[lane_index] = self.temporal_marking.update(lane_index, evidence)
+          self.marking_types[lane_index] = self.temporal_marking.update(lane_index, evidence, timestamp_ns=timestamp_ns)
         self.marking_evidence[lane_index] = evidence
       self.last_image_model_frame_id = self.last_frame_id
       return True

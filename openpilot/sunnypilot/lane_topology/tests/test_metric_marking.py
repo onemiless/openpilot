@@ -1,3 +1,4 @@
+from dataclasses import replace
 from types import SimpleNamespace
 
 import cv2
@@ -42,6 +43,34 @@ def test_metric_presence_classifies_solid_and_physical_dash_gaps():
   assert dashed.complete_lit_runs >= 2
   assert dashed.internal_dark_runs >= 2
   assert dashed.run_regularity > 0.5
+
+
+def test_repeated_one_metre_gaps_are_not_swallowed_by_high_solid_coverage():
+  distances = np.arange(28.0)
+  presence = np.ones(28, dtype=bool)
+  presence[[7, 15, 23]] = False
+  evidence = classify_metric_presence(distances, presence)
+
+  assert evidence.coverage > 0.82
+  assert evidence.marking_type == LaneMarkingType.dashed
+  presence[:] = True
+  presence[15] = False
+  assert classify_metric_presence(distances, presence).marking_type == LaneMarkingType.solid
+
+
+def test_short_gap_classification_rejects_shadow_across_paint_and_adjacent_road():
+  samples = tuple(MetricLaneSample(float(distance), 30.0 + distance * 4.0, 60.0) for distance in range(28))
+  paint_gap = np.full((120, 180), 40, dtype=np.uint8)
+  paint_gap[59:62, :] = 100
+  shadow = paint_gap.copy()
+  for distance in (7, 15, 23):
+    column = int(samples[distance].u)
+    paint_gap[59:62, column - 1:column + 2] = 40
+    shadow[:, column - 1:column + 2] = 20
+    shadow[59:62, column - 1:column + 2] = 25
+
+  assert measure_metric_marking(paint_gap, samples, center_radius=1).marking_type == LaneMarkingType.dashed
+  assert measure_metric_marking(shadow, samples, center_radius=1).marking_type == LaneMarkingType.unknown
 
 
 def test_metric_presence_fails_closed_on_sparse_or_irregular_samples():
@@ -132,11 +161,10 @@ def test_temporal_filter_requires_repeated_dominant_evidence():
   assert result == LaneMarkingType.dashed
 
 
-def test_partial_dashes_never_replace_a_confirmed_solid_without_full_dash_evidence():
+def test_partial_dashes_can_reacquire_after_recent_solid_evidence_expires():
   temporal = TemporalMarkingFilter()
   distances = np.arange(12.0)
   solid = classify_metric_presence(distances, np.ones(12, dtype=bool))
-  full_dashed = classify_metric_presence(np.arange(5.0, 35.0, 0.5), (np.arange(5.0, 35.0, 0.5) % 9.0) < 3.0)
   image, samples = synthetic_marking(LaneMarkingType.dashed, contrast=40, blur_sigma=0.0)
   partial_dashed = measure_metric_marking(
     image, tuple(sample for sample in samples if 8.0 <= sample.distance_m <= 24.0), adaptive=False,
@@ -144,9 +172,42 @@ def test_partial_dashes_never_replace_a_confirmed_solid_without_full_dash_eviden
 
   for _ in range(6):
     temporal.update(1, solid)
-  assert all(temporal.update(1, partial_dashed) != LaneMarkingType.dashed for _ in range(20))
+  assert all(temporal.update(1, partial_dashed) != LaneMarkingType.dashed for _ in range(4))
 
   result = LaneMarkingType.unknown
-  for _ in range(20):
-    result = temporal.update(1, full_dashed)
+  for _ in range(30):
+    result = temporal.update(1, partial_dashed)
   assert result == LaneMarkingType.dashed
+
+
+def test_repeated_low_confidence_evidence_can_confirm_at_four_and_ten_hz():
+  image, samples = synthetic_marking(LaneMarkingType.dashed, contrast=40, blur_sigma=0.0)
+  evidence = measure_metric_marking(image, tuple(sample for sample in samples if sample.distance_m <= 24.0))
+  weak = replace(evidence, confidence=0.2)
+  for period_ns in (100_000_000, 250_000_000):
+    temporal = TemporalMarkingFilter()
+    result = LaneMarkingType.unknown
+    for timestamp_ns in range(period_ns, 2_000_000_001, period_ns):
+      result = temporal.update(1, weak, timestamp_ns=timestamp_ns)
+    assert result == LaneMarkingType.dashed
+
+
+def test_timestamp_gap_and_unknown_frames_expire_prior_confirmation():
+  temporal = TemporalMarkingFilter()
+  solid = classify_metric_presence(np.arange(28.0), np.ones(28, dtype=bool))
+  for timestamp_ns in range(100_000_000, 900_000_000, 100_000_000):
+    result = temporal.update(1, solid, timestamp_ns=timestamp_ns)
+  assert result == LaneMarkingType.solid
+  assert temporal.update(1, solid, timestamp_ns=2_000_000_000) == LaneMarkingType.unknown
+  for timestamp_ns in range(2_100_000_000, 2_900_000_000, 100_000_000):
+    result = temporal.update(1, solid, timestamp_ns=timestamp_ns)
+  assert result == LaneMarkingType.solid
+  for timestamp_ns in range(2_900_000_000, 3_600_000_000, 100_000_000):
+    result = temporal.update(1, replace(solid, marking_type=LaneMarkingType.unknown, confidence=0.0), timestamp_ns=timestamp_ns)
+  assert result == LaneMarkingType.unknown
+
+
+def test_duplicate_timestamps_do_not_create_independent_evidence():
+  temporal = TemporalMarkingFilter()
+  solid = classify_metric_presence(np.arange(28.0), np.ones(28, dtype=bool))
+  assert all(temporal.update(1, solid, timestamp_ns=100_000_000) == LaneMarkingType.unknown for _ in range(20))

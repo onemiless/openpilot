@@ -6,6 +6,7 @@ from openpilot.sunnypilot.selfdrive.controls.lib.lane_change_blocker import (
   LaneChangeBoundaryBlocker,
   lane_topology_nav_crossing_allowed,
   lane_topology_change_blocks,
+  nav_lane_crossing_policy,
 )
 
 
@@ -80,3 +81,22 @@ def test_fork_policy_clears_a_solid_hold_but_not_a_road_edge_hold():
   assert blocker.update(topology(left="roadEdge", left_valid=True), healthy=True) == (True, False)
   assert blocker.update(topology(left="roadEdge", left_valid=True), healthy=True,
                         ignore_left_solid=True) == (True, False)
+
+
+def test_model_policy_accepts_ordinary_unknown_without_applying_it_to_turn_only_or_opposite_side():
+  intent = SimpleNamespace(valid=True, signalRequested=True, direction="left", targetLaneIndex=0,
+                           allowUnknownCrossing=True, ignoreSolidBoundary=True, forkNow=False)
+  assert nav_lane_crossing_policy(intent, "left") == (True, False)
+  assert nav_lane_crossing_policy(intent, "right") == (False, False)
+  allow_unknown, ignore_solid = nav_lane_crossing_policy(intent, "left")
+  assert lane_topology_nav_crossing_allowed(topology(), side="left", healthy=True,
+                                          allow_unknown=allow_unknown, ignore_solid=ignore_solid)
+  assert not lane_topology_nav_crossing_allowed(topology(left="solid", left_valid=True), side="left", healthy=True,
+                                              allow_unknown=allow_unknown, ignore_solid=ignore_solid)
+  intent.forkNow = True
+  assert nav_lane_crossing_policy(intent, "left") == (True, True)
+  intent.targetLaneIndex = -1
+  assert nav_lane_crossing_policy(intent, "left") == (False, False)
+  intent.targetLaneIndex = 0
+  intent.valid = False
+  assert nav_lane_crossing_policy(intent, "left") == (False, False)

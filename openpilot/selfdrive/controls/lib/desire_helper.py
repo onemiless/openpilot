@@ -66,6 +66,12 @@ class DesireHelper:
         self._active_nav_signal_feedback = False
       self._active_nav_signal_direction = nav_direction
       self._active_nav_signal_turn_only = nav_turn_only
+      # A new request owns a same-direction lamp even if the previous request's
+      # cancellation has not turned it off. Its current purpose replaces the
+      # old tail; turn-only requests still suppress the ALC entrance below.
+      if self._nav_signal_tail_direction == nav_direction:
+        self._nav_signal_tail_direction = None
+        self._nav_signal_tail_turn_only = False
       physical_nav_signal_on = ((nav_direction == "left" and carstate.leftBlinker and not carstate.rightBlinker)
                                 or (nav_direction == "right" and carstate.rightBlinker and not carstate.leftBlinker))
       self._active_nav_signal_feedback |= physical_nav_signal_on

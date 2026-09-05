@@ -10,6 +10,7 @@ from openpilot.sunnypilot.navassist.lane_intent import (
   LaneIntentDirection,
   LaneTopologyInput,
   LaneVehicleInput,
+  NavLaneIntent,
   NavLaneIntentCoordinator,
   NavLanePlan,
   NavTurnPlan,
@@ -72,8 +73,8 @@ def build_lane_plan(nav, topology, *, healthy: bool) -> NavLanePlan:
       (fallback_side == "left" and 0 in recommended)
       or (fallback_side == "right" and amap_lane_count - 1 in recommended)
     )
-    if nav_valid and lane_count > 0 and edge_recommended:
-      target = 0 if fallback_side == "left" else lane_count - 1
+    if nav_valid and edge_recommended:
+      target = 0 if fallback_side == "left" else max(0, lane_count - 1)
       return NavLanePlan(
         True, str(nav.sessionId), int(nav.routeRevision), int(nav.maneuverEventId),
         lane_count, (target,), heuristic=True,
@@ -88,11 +89,11 @@ def build_lane_plan(nav, topology, *, healthy: bool) -> NavLanePlan:
     )
 
   heuristic_valid = bool(
-    nav_valid and int(nav.maneuverEventId) != 0 and lane_count > 0 and fallback_side is not None
-    and math.isfinite(distance_m) and 0.0 < distance_m <= lookahead_m
+    nav_valid and int(nav.maneuverEventId) != 0 and fallback_side is not None
+    and math.isfinite(distance_m) and 0.0 <= distance_m <= lookahead_m
   )
   if heuristic_valid:
-    target = 0 if fallback_side == "left" else lane_count - 1
+    target = 0 if fallback_side == "left" else max(0, lane_count - 1)
     return NavLanePlan(
       True, str(nav.sessionId), int(nav.routeRevision), int(nav.maneuverEventId), lane_count, (target,), heuristic=True,
       edge_direction=LaneIntentDirection.left if fallback_side == "left" else LaneIntentDirection.right,
@@ -102,6 +103,14 @@ def build_lane_plan(nav, topology, *, healthy: bool) -> NavLanePlan:
   return NavLanePlan(
     nav_valid, str(nav.sessionId), int(nav.routeRevision), int(nav.maneuverEventId), len(lanes), recommended,
   )
+
+
+def lane_alignment_may_start(nav, turn_intent: NavLaneIntent) -> bool:
+  distance_m = float(nav.maneuverDistanceM)
+  approaching_turn = bool(
+    turn_intent.signal_requested and str(nav.maneuver) in LEFT_TURN_LANE_MANEUVERS | RIGHT_TURN_LANE_MANEUVERS
+  )
+  return math.isfinite(distance_m) and distance_m > 0.0 and not approaching_turn
 
 
 def main() -> None:
@@ -120,7 +129,9 @@ def main() -> None:
     car_state = sm["carState"]
     car_control = sm["carControl"]
     model_meta = sm["modelV2"].meta
-    plan = build_lane_plan(nav, topology, healthy=healthy)
+    # A brief lane-observation gap is not a navigation outage or a loss of
+    # actual lateral control. The coordinator bounds it with its existing grace.
+    plan = build_lane_plan(nav, topology, healthy=base_healthy)
     topology_input = LaneTopologyInput(
       valid_for_control=bool(healthy and topology.validForControl),
       visible_lane_count=int(topology.visibleLaneCount),
@@ -139,7 +150,7 @@ def main() -> None:
       ),
     )
     vehicle = LaneVehicleInput(
-      lateral_active=bool(healthy and car_control.latActive),
+      lateral_active=bool(base_healthy and car_control.latActive),
       speed_mps=float(car_state.vEgo),
       left_blindspot=bool(car_state.leftBlindspot),
       right_blindspot=bool(car_state.rightBlindspot),
@@ -152,7 +163,6 @@ def main() -> None:
       lane_change_direction=LaneIntentDirection(int(model_meta.laneChangeDirection.raw)),
     )
     now_ns = time.monotonic_ns()
-    lane_intent = coordinator.update(plan, topology_input, vehicle, now_ns=now_ns)
     turn_plan = NavTurnPlan(
       valid=navigation_linked(nav, base_healthy=base_healthy),
       session_id=str(nav.sessionId),
@@ -164,6 +174,12 @@ def main() -> None:
     turn_intent = turn_signal_coordinator.update(
       turn_plan, speed_mps=float(car_state.vEgo), now_ns=now_ns,
       turn_geometry_active=sp_turn_geometry_active(sm["controlsState"], float(car_state.vEgo)),
+    )
+    # Reuse the existing pre-turn window. An SP change already in progress
+    # finishes before handoff; a further approach-lane change must not suppress
+    # the model's turn desire at the intersection.
+    lane_intent = coordinator.update(
+      plan, topology_input, vehicle, now_ns=now_ns, allow_new_lane_change=lane_alignment_may_start(nav, turn_intent),
     )
     intent = lane_intent if lane_intent.signal_requested else turn_intent
 

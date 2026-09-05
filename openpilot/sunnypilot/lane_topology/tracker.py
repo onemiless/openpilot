@@ -22,9 +22,10 @@ class _Track:
 
 
 class LaneTopologyTracker:
-  def __init__(self, *, association_distance_m: float = 0.9, max_missed_frames: int = 3):
+  def __init__(self, *, association_distance_m: float = 0.9, max_missed_frames: int = 3, smooth_marking_types: bool = True):
     self.association_distance_m = association_distance_m
     self.max_missed_frames = max_missed_frames
+    self.smooth_marking_types = smooth_marking_types
     self._tracks: dict[int, _Track] = {}
     self._next_track_id = 1
 
@@ -70,7 +71,8 @@ class LaneTopologyTracker:
         track = self._tracks[track_id] = _Track(track_id, boundary)
       else:
         track = self._tracks[track_id]
-      stable_type = track.update_type(observation.marking_type, observation.confidence)
+      stable_type = (track.update_type(observation.marking_type, observation.confidence)
+                     if self.smooth_marking_types else observation.marking_type)
       track.boundary = LaneBoundary(track_id, canonical_points(observation.points), stable_type,
                                     observation.confidence, visible=True,
                                     left_component_source_id=observation.source_id,

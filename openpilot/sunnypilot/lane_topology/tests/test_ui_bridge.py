@@ -84,11 +84,11 @@ def test_ui_bridge_accumulates_metric_dashed_and_solid_evidence():
   for start in range(5, 50, 9):
     image[37:44, start * 4:(start + 3) * 4] = 230  # source 1: 3 m line / 6 m gap
   camera_from_calib = np.array(((4.0, 0.0, 0.0), (0.0, 1.0, 50.0), (0.0, 0.0, 1.0)))
-  for frame_id in range(1, 9):
-    model = SimpleNamespace(frameId=frame_id, timestampEof=frame_id, laneLines=lines, laneLineProbs=(0.1, 0.9, 0.9, 0.1))
+  for frame_id in range(1, 15):
+    model = SimpleNamespace(frameId=frame_id, timestampEof=frame_id * 50_000_000, laneLines=lines, laneLineProbs=(0.1, 0.9, 0.9, 0.1))
     bridge.update(model)
     assert bridge.update_image(frame_id, image, camera_from_calib)
-  bridge.update(SimpleNamespace(frameId=9, timestampEof=9, laneLines=lines, laneLineProbs=(0.1, 0.9, 0.9, 0.1)))
+  bridge.update(SimpleNamespace(frameId=15, timestampEof=750_000_000, laneLines=lines, laneLineProbs=(0.1, 0.9, 0.9, 0.1)))
   assert bridge.marking_types[1] == LaneMarkingType.dashed
   assert bridge.marking_types[2] == LaneMarkingType.solid
 
@@ -102,8 +102,8 @@ def test_control_observer_classifies_only_the_current_ego_boundaries():
     image[row - 3:row + 4, 20:201] = 230
   camera_from_calib = np.array(((4.0, 0.0, 0.0), (0.0, 1.0, 50.0), (0.0, 0.0, 1.0)))
 
-  for frame_id in range(1, 9):
-    model = SimpleNamespace(frameId=frame_id, timestampEof=frame_id, laneLines=lines, laneLineProbs=(0.9,) * 4)
+  for frame_id in range(1, 15):
+    model = SimpleNamespace(frameId=frame_id, timestampEof=frame_id * 50_000_000, laneLines=lines, laneLineProbs=(0.9,) * 4)
     bridge.update(model)
     assert bridge.update_image(frame_id, image, camera_from_calib)
 
@@ -112,3 +112,19 @@ def test_control_observer_classifies_only_the_current_ego_boundaries():
   assert bridge.marking_types[3] == LaneMarkingType.unknown
   assert bridge.marking_evidence[0].sample_count == 0
   assert bridge.marking_evidence[3].sample_count == 0
+
+
+def test_observer_does_not_restore_expired_type_with_geometry_tracker_votes():
+  bridge = LaneTopologyUIBridge(frame_divisor=1)
+  for frame_id in range(1, 5):
+    bridge.update(model_fixture(frame_id))
+  for frame_id in range(5, 15):
+    bridge.marking_types[1] = LaneMarkingType.solid
+    bridge.marking_types[2] = LaneMarkingType.dashed
+    bridge.update(model_fixture(frame_id))
+  assert bridge.ego_marking_types() == (LaneMarkingType.solid, LaneMarkingType.dashed)
+
+  bridge.marking_types[1] = LaneMarkingType.unknown
+  bridge.update(model_fixture(15))
+
+  assert bridge.ego_marking_types() == (LaneMarkingType.unknown, LaneMarkingType.dashed)
