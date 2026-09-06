@@ -38,6 +38,7 @@ class FakeSubMaster:
       "navLaneIntentSP": SimpleNamespace(
         valid=False, signalRequested=False, direction="none", sessionId="", routeRevision=0, requestId=0,
       ),
+      "modelV2": SimpleNamespace(meta=SimpleNamespace(laneChangeState=SimpleNamespace(raw=0), laneChangeDirection=SimpleNamespace(raw=0))),
     }
     self.recv_time = dict.fromkeys(self.data, now)
     self.seen = dict.fromkeys(self.data, True)
@@ -91,6 +92,16 @@ def test_non_assist_mode_never_exposes_automatic_speed_target():
   sm = FakeSubMaster()
 
   assert speed_limit_context(sm, 10.0, assist_configured=False) == (0.0, False)
+
+
+def test_blindspot_state_is_forwarded_to_ambient_controller():
+  adapter = TeslaCardAdapter("tesla", SimpleNamespace(CS=FakeState()), FakeSubMaster())
+  car_state = SimpleNamespace(brakePressed=False, leftBlindspot=True, rightBlindspot=False)
+  car_control = SimpleNamespace(latActive=False)
+
+  adapter.control_sends(car_state, car_control, 1_000_000_000)
+
+  assert adapter.ambient.blindspot_side == "left"
 
 
 def test_non_tesla_adapter_is_inert():
