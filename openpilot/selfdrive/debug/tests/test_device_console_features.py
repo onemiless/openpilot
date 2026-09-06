@@ -35,9 +35,7 @@ def test_driving_status_route_returns_snapshot(monkeypatch, server):
     assert json.loads(response.read()) == snapshot
 
 
-def test_driving_page_contains_oem_sp_comparison_charts(monkeypatch):
-  monkeypatch.setattr(device_console, "driving_status_enabled", lambda: True)
-
+def test_driving_page_contains_oem_sp_comparison_charts():
   page = device_console.render_page().decode()
 
   for chart_id in ("lateral-chart", "accel-chart", "speed-chart", "lane-chart"):
@@ -91,3 +89,35 @@ def test_speed_validation_reports_safety_block(monkeypatch, server):
 
   assert exc_info.value.code == 503
   assert "测试被阻止" in json.loads(exc_info.value.read())["message"]
+
+
+def test_vehicle_route_returns_shared_summary(monkeypatch, server):
+  monkeypatch.setattr(device_console, "device_ip_address", lambda: "192.168.10.179")
+  snapshot = {"vehicle": {"soc": "72.5 %"}, "ambient_test_available": True, "ambient_test_ready": False, "geometry": {}}
+  monkeypatch.setattr(device_console, "driving_status_snapshot", lambda: snapshot)
+  with urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/api/vehicle", timeout=2) as response:
+    assert json.loads(response.read()) == {"vehicle": snapshot["vehicle"], "ambient_test_available": True,
+                                           "ambient_test_ready": False, "device_ip": "192.168.10.179"}
+
+
+def test_ambient_route_fixed_color_and_input_validation(monkeypatch, server):
+  calls = []
+  monkeypatch.setattr(device_console, "run_ambient_test", lambda side: calls.append(side) or {"state": "sent", "message": "回显"})
+  for payload, expected in (({"side": "left"}, 200), ({"side": "right"}, 200),
+                            ({"side": "left", "color": "blue"}, 400), ([], 400)):
+    request = urllib.request.Request(f"http://127.0.0.1:{server.server_port}/api/tesla/ambient",
+                                     data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"})
+    try:
+      response = urllib.request.urlopen(request, timeout=2)
+    except urllib.error.HTTPError as error:
+      response = error
+    with response:
+      assert response.status == expected
+  assert calls == ["left", "right"]
+
+
+def test_ambient_buttons_remain_clickable_to_surface_readiness_errors():
+  page = device_console.render_page().decode()
+  assert 'aria-label="左侧氛围灯，红色测试三秒" disabled' not in page
+  assert 'aria-label="右侧氛围灯，红色测试三秒" disabled' not in page
+  assert "result.message||'暂不可测试'" in page

@@ -1,4 +1,7 @@
+from itertools import permutations
+
 from opendbc.can import CANPacker
+import pytest
 
 from openpilot.sunnypilot.selfdrive.traffic_control.tesla_observer import TeslaTrafficControlObserver
 
@@ -170,3 +173,83 @@ def test_observer_accepts_200m_boundary_and_rejects_201m_for_control():
     })
     observer.update([(timestamp, [(address, data, 2)])], timestamp)
     assert observer.snapshot(timestamp).valid_for_control == (distance == 200)
+
+
+def test_observer_does_not_mix_valid_frame_metadata_with_short_tail_values():
+  observer = TeslaTrafficControlObserver()
+  red = _frame({"APP_tcControlType": 3, "APP_tcControlDistance": 80, "APP_tcControlLightState": 1})
+  address, data, bus = _frame({"APP_tcControlType": 3, "APP_tcControlDistance": 20, "APP_tcControlLightState": 2})
+  observer.update([(2_000_000_000, [red, (address, data[:4], bus)])], 2_000_000_000)
+
+  observation = observer.snapshot(2_000_000_000)
+  assert (observation.light_state, observation.distance, observation.dlc, observation.frame_mono_time) == (
+    1, 80, 8, 2_000_000_000,
+  )
+  assert observation.valid_for_control
+
+
+def test_observer_uses_latest_qualified_frame_regardless_of_batch_order():
+  red_address, red_data, red_bus = _frame({
+    "APP_tcControlType": 3, "APP_tcControlDistance": 80, "APP_tcControlLightState": 1,
+  })
+  green = _frame({"APP_tcControlType": 3, "APP_tcControlDistance": 20, "APP_tcControlLightState": 2})
+  yellow = _frame({"APP_tcControlType": 3, "APP_tcControlDistance": 40, "APP_tcControlLightState": 3})
+  packets = [
+    (3_000_000_000, [(red_address, red_data[:6], red_bus)]),
+    (2_800_000_000, [green]),
+    (2_900_000_000, [yellow]),
+    (3_100_000_000, [(green[0], green[1][:4], green[2])]),
+    (3_200_000_000, [(green[0], green[1], 1)]),
+  ]
+  for batch in permutations(packets):
+    observer = TeslaTrafficControlObserver()
+    observer.update(list(batch), 3_200_000_000)
+    observation = observer.snapshot(3_200_000_000)
+    assert (observation.light_state, observation.distance, observation.dlc, observation.frame_mono_time) == (
+      1, 80, 6, 3_000_000_000,
+    )
+    assert observation.valid_for_control
+
+
+def test_observer_same_timestamp_uses_last_qualified_frame_as_one_tuple():
+  observer = TeslaTrafficControlObserver()
+  red = _frame({"APP_tcControlType": 3, "APP_tcControlDistance": 80, "APP_tcControlLightState": 1})
+  address, data, bus = _frame({"APP_tcControlType": 3, "APP_tcControlDistance": 20, "APP_tcControlLightState": 2})
+  observer.update([(2_000_000_000, [red, (address, data[:6], bus), (red[0], red[1][:4], red[2])])], 2_000_000_000)
+  observation = observer.snapshot(2_000_000_000)
+  assert (observation.light_state, observation.distance, observation.dlc) == (2, 20, 6)
+
+
+def test_rejected_or_older_frames_cannot_refresh_the_observation():
+  observer = TeslaTrafficControlObserver()
+  red = _frame({"APP_tcControlType": 3, "APP_tcControlDistance": 80, "APP_tcControlLightState": 1})
+  green = _frame({"APP_tcControlType": 3, "APP_tcControlDistance": 20, "APP_tcControlLightState": 2})
+  observer.update([(2_000_000_000, [red])], 2_000_000_000)
+  original = observer.snapshot(2_000_000_000)
+  observer.update([(1_900_000_000, [green])], 2_100_000_000)
+  assert observer.snapshot(2_100_000_000) == original
+
+  # The real parser rejects payloads over 64 bytes; it must not pair its
+  # previous decoded values with the new rejected frame's timestamp/DLC.
+  observer.update([(3_000_000_000, [(green[0], green[1] + bytes(57), green[2])])], 3_000_000_000)
+  expired = observer.snapshot(3_000_000_000)
+  assert not expired.available
+  assert not expired.valid_for_control
+  assert (expired.distance, expired.frame_mono_time, expired.dlc) == (80, 2_000_000_000, 8)
+
+
+@pytest.mark.parametrize(("rejected_time", "rejected_first"), [
+  (2_000_000_000, False), (2_100_000_000, False), (2_100_000_000, True),
+])
+def test_rejected_latest_decode_does_not_mask_a_valid_frame_in_the_same_batch(rejected_time, rejected_first):
+  observer = TeslaTrafficControlObserver()
+  red = _frame({"APP_tcControlType": 3, "APP_tcControlDistance": 80, "APP_tcControlLightState": 1})
+  green = _frame({"APP_tcControlType": 3, "APP_tcControlDistance": 20, "APP_tcControlLightState": 2})
+  packets = [
+    (2_000_000_000, [red]),
+    (rejected_time, [(green[0], green[1] + bytes(57), green[2])]),
+  ]
+  observer.update(packets[::-1] if rejected_first else packets, 2_100_000_000)
+  result = observer.snapshot(2_100_000_000)
+  assert result.available and result.valid_for_control
+  assert (result.light_state, result.distance, result.frame_mono_time) == (1, 80, 2_000_000_000)

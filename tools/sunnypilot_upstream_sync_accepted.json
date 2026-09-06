@@ -33,5 +33,30 @@
   "2d6cc4c065c4d1833dc267fff60ebae48b444817": {
     "reason": "semantically ported model selector upgrades, verification state, resumable downloads, and UI while preserving explicit user-selected QCOM/USBGPU routing",
     "local_commits": ["5faa388d99"]
+  },
+  "de197ba6fab5b99f8d322139ca156d111f8cfec1": {
+    "reason": "semantically ported the big-model-ready edge while preserving the C3XL GPIO buzzer output",
+    "local_commits": ["08c14a36e2"]
+  },
+  "98ed8111f6bb5136aa1c7f0cf3078f3ac3a43210": {
+    "reason": "semantically ported big-to-small model fallback while preserving C3XL load timeout, progress, cache, and single warmup seams"
+  },
+  "51987a62d07c44cc9e14b4d85dcb445edecd17d3": {
+    "reason": "synchronized model build runner routing by target hardware"
+  },
+  "ab389498a8808e8ea82808adabe355af7475b749": {
+    "reason": "ported selector 19 and v22/v23 model catalogs with in-place previous-selector migration; tinygrad is integrated separately"
+  },
+  "68be7773955e2a0dd7901ea604ba3301bed13daf": {
+    "reason": "integrated official tinygrad e837e367 as the model ABI base while preserving the audited USB/UT3G runtime patch"
+  },
+  "047ae41c0d9fe3ae5656d1541a376d6fbf17c9a3": {
+    "reason": "ported same-device warp metadata, enqueue telemetry and v24 catalog; retained downloaded legacy bundle support, fallback and C3XL controls; exclude warp_dev from policy metadata"
+  },
+  "302f3ad892038144edabc5626bda2294a4ff9b11": {
+    "reason": "adapted DM artifact completeness to the local native-SCons release flow: existing SConscript builds both DM warps, release gates now require both; official HF publishing workflow is not used locally"
+  },
+  "47db84ebfb47f82bfe3ebb3d78cb13d4bc9a91a3": {
+    "reason": "ported big-model ONNX LFS hash generation and regression coverage without replacing local default-model selection semantics"
   }
 }

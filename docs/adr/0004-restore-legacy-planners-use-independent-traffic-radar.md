@@ -36,14 +36,39 @@ Tesla continuation state, and physical/vision leads do not veto or create a
 Traffic STOP. Frames beyond 200 metres remain diagnostic-only. A STOP is merged
 as a more conservative post-plan constraint.
 
+The Observer selects a qualifying bus/address/minimum-DLC frame before decoding
+it. Color, distance, timestamp and DLC must all come from that same successful
+decode, not from independently selected batch values and metadata. Six-byte
+frames remain supported. Out-of-order older frames cannot replace a newer
+observation; tied timestamps select the last successfully decoded input frame. A rejected
+decode cannot refresh the last observation's timestamp or control eligibility.
+
 Each new `stopSessionId` owns fresh geometry derived from the confirming
 bus-2 CAN distance; it never inherits a stop station tracked while GREEN or
 owned by an earlier session. During an ordinary approach/braking/yellow STOP,
-one discontinuous RED/YELLOW tuple is evidence only. A second distinct,
-motion-consistent tuple confirms that Tesla recalculated the current control
-point, creates a new stop session, and lets the final arbitrator repeat its
-one-time feasibility decision. A stationary HOLD and a confirmed flashing
-STOP do not move to a discontinuous RED/YELLOW distance.
+one discontinuous RED/YELLOW tuple is evidence only. A nearer recalculation
+keeps the existing fast confirmation path so Traffic does not delay a more
+conservative stop point. A farther recalculation, which would relax braking,
+must instead remain motion-consistent for at least three distinct frames and
+one second before it creates a new stop session. Every confirmed replacement
+lets the final arbitrator repeat its one-time feasibility decision. A
+stationary HOLD and a confirmed flashing STOP do not move to a discontinuous
+RED/YELLOW distance.
+
+Only a fresh, in-range RED or YELLOW frame supports an ordinary moving STOP.
+NONE/OFF, unsupported colors, and non-wrap out-of-range observations freeze the
+last confirmed stop station rather than changing its geometry. An ordinary
+approach/braking/yellow STOP retains that frozen station for a two-second
+evidence-loss grace and then enters the existing jerk-limited RELEASE. A
+stationary HOLD and a confirmed flashing-green STOP remain latched; a genuine
+near-to-254 distance wrap still passes the event immediately. RED recovered
+after an evidence-loss RELEASE creates a fresh stop session, so motion during
+the release cannot reuse the earlier feasibility decision. A multi-second CAN
+transport gap clears all uncommitted color, flash, candidate, and replacement
+evidence; an ordinary moving STOP recovered as RED/YELLOW also receives a new
+session after two fresh frames. A HOLD that reaches its frozen absolute stop
+station remains latched even though the last raw CAN distance is intentionally
+not updated during the evidence gap.
 
 Ordinary GREEN release is authoritative independently of stop-station geometry:
 a moving vehicle releases on the first fresh GREEN frame, while standstill
@@ -51,6 +76,37 @@ still requires two distinct fresh GREEN frames. This color decision is made
 before a geometry-conflict early return, so a stale stop station cannot
 permanently retain STOP after Tesla reports GREEN. A confirmed flashing-green
 STOP keeps its separate stable-GREEN exit rule.
+
+Flashing-green advance STOP reuses this same controller and final-plan seam.
+The current DBC names color 0 NONE and color 4 OFF; neither color alone is a
+STOP or GO instruction. Only explicit OFF (4) can provide the dark half of a
+flashing candidate. NONE (0) is missing color evidence: it never counts as a
+blink and clears any unconfirmed candidate. Confirmation occurs on the second
+OFF edge after a complete GREEN/OFF/GREEN cycle on one in-range,
+motion-consistent control point. The initial GREEN, first OFF and intervening
+GREEN must each last at least 150 ms, and the two OFF edges must be 0.5 to
+1.5 seconds apart. Do not wait for the second OFF to finish or for a third
+pulse: that delay consumes the advance stopping margin. Repeated planner
+snapshots never prove duration or a new edge, and dispatch latency never
+supplies the flash clock. An isolated OFF or GREEN/OFF/OFF cannot confirm.
+Per-frame and whole-candidate station continuity prevent different targets or
+a frozen distance during motion from sharing evidence. Unsupported frames,
+out-of-range distances and real-frame gaps over the existing 750 ms freshness
+bound clear unconfirmed evidence without releasing an owned STOP.
+
+After confirmation the detector no longer collects a new candidate. The existing flash
+STOP remains in one session through continued blinking; continuous same-track
+GREEN releases it after 1.5 seconds measured from the first real GREEN frame.
+OFF, NONE, invalid observations and target discontinuities restart that exit timer.
+Confirmed flash uses the existing yellow comfort admission/horizon before
+applying the ordinary stop profile, so advance warning cannot introduce a late
+emergency-style stop. A rejected session remains rejected when it turns RED.
+These evidence gates reduce known false-trigger patterns; no color/distance
+stream can distinguish an identically shaped OEM error from a physical blink,
+or reconstruct blink edges that were never sampled. The 150 ms half-cycle is
+a filtering policy and needs actual flashing-signal log validation. The second
+OFF edge is intentionally not duration-confirmed; a second short OFF error
+after an otherwise qualifying cycle remains the explicit earlier-response tradeoff.
 
 The traffic-light state machine remains independent of `radarState`, but the
 post-plan bounded START uses a separate fail-closed lead gate. Any current lead
@@ -61,6 +117,12 @@ of healthy no-lead observations. Leads beyond eight metres do not veto the
 bounded low-speed START, and unhealthy lead sensing leaves the base plan
 unchanged. A moving same-session GREEN removes the Traffic STOP immediately and
 returns the complete plan to the selected base planner.
+
+The moving-GREEN threshold distinguishes a vehicle that was already rolling
+when GREEN arrived from a START that Traffic initiated from standstill. The
+former remains output-transparent after STOP removal. The latter continues
+past the rolling threshold within the existing 2.5 m/s and three-second bounds,
+and rechecks the lead and driver gates every cycle.
 
 For a confirmed selected queue lead, the base lead planner also owns queue
 motion while the Traffic stop point remains outside a dynamic guard: the larger
@@ -73,16 +135,32 @@ from pinning a vehicle behind a departing queue, avoids a hard ownership switch
 at 0.3 m/s, and does not give a stale or far lead slot authority over the final
 stop-line guard.
 
+The production switch now selects Off or Stop/Go. Off clears the Traffic
+controller's candidate/session state; it no longer runs online Observe. Raw
+Tesla CAN observations and web diagnostics remain independent and available.
+Legacy Observe mode value 1 is retained for historical diagnostics and must
+remain output-transparent; existing offline replay can explicitly run Stop/Go.
+
 The GO request is bounded and deduplicated per stop session and never modifies
-Tesla vehicle state, CAN, or other vehicle signals. Traffic Off and Observe are
+Tesla vehicle state, CAN, or other vehicle signals. Traffic Off and legacy Observe are
 output-transparent even if a prior STOP/HOLD/START was latched. `active` means
-that Traffic changed the complete published plan, including a future-only
-trajectory constraint. `applied` is narrower: Traffic changed the current
-actuator contract consumed by controls (`aTarget` by more than the
-`1e-3 m/s²` diagnostic noise tolerance, or any `shouldStop` change). An
-eligible future constraint already dominated at the current actuator horizon
-therefore remains observable as active but is not attributed to Traffic as
-current vehicle control in the UI.
+that Traffic changed or maintains part of the complete published plan,
+including a future-only trajectory constraint; a Traffic candidate completely
+dominated by an unchanged base plan is not active. `applied` is narrower:
+Traffic changed the current actuator contract consumed by controls (`aTarget`
+by more than the `1e-3 m/s²` diagnostic noise tolerance, or any `shouldStop`
+change). The compact onroad icon attributes current control only from `applied`
+through its blue outline; driver override and inactive/passed phases suppress
+that outline. No text notice or past-action latch remains in the UI. Raw color
+is independent of whether Traffic owns current control, and loss of a healthy
+plan hides the icon rather than retaining stale control attribution.
+
+The Planner Backend publish contract is ordered: the normal longitudinal plan
+passes through final arbitration before its SP companion is annotated. Both
+messages must describe the same cycle's final aTarget and shouldStop, while the
+diagnostic baseATarget retains the unmodified backend value. Tests exercise each
+real backend's publish method and transport-facing sink to protect this Seam
+when updating upstream; these tests do not substitute for MPC/route validation.
 
 ## Consequences
 
@@ -99,13 +177,25 @@ current vehicle control in the UI.
   seam.
 - Yellow PASS, driver gas override, and the configured maximum-speed bypass are
   event-scoped: the same intersection cannot reacquire STOP ownership late.
-- Flashing green requires three in-range, motion-consistent GREEN/OFF pulses;
-  one or two pulses remain internal evidence and never become a control phase;
-  stable same-track GREEN for the maximum flash interval releases a confirmed
-  flashing stop.
+- Flashing green confirms on the second OFF(4) edge after sustained
+  GREEN(2)/OFF(4)/GREEN(2), with real-frame timing and a continuous stop station.
+  An isolated OFF, short initial OFF/GREEN, partial sequence or GREEN/NONE
+  sequence cannot create a control phase. The second OFF needs no extra sample.
+  Confirmed flash reuses yellow comfort admission; stable same-track GREEN for
+  the maximum flash interval releases it without repeating candidate detection.
 - A new stop session always rebases to its confirming CAN distance. A sustained
   recalculated RED/YELLOW track creates a new session instead of being fused
   into or permanently rejected by the previous session.
+- A nearer replacement retains fast confirmation. A farther replacement needs
+  three real frames spanning one second, so a short jump cannot relax an
+  already confirmed STOP before returning to the original track.
+- Ordinary moving STOP geometry freezes when its supporting signal evidence is
+  lost and releases smoothly after two seconds. HOLD, confirmed flashing STOP,
+  and genuine passed-distance wraps retain their stricter dedicated behavior.
+- Traffic-initiated GO continues across the 0.3 m/s rolling threshold; a vehicle
+  that was already moving when GREEN arrived remains transparent to Traffic.
+  The existing speed/time hard bounds still return the untouched base plan and
+  never extend Traffic control.
 - Yellow receives STOP ownership only when the personality-aware comfortable,
   jerk-limited stopping envelope plus a bounded uncertainty margin fits inside
   the remaining distance. A rejected yellow session cannot reacquire ownership

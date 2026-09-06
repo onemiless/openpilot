@@ -8,6 +8,8 @@ from collections.abc import Callable, MutableMapping
 # Keep a bounded 44.42 s margin for cold starts and USB scheduling variance.
 C3XL_MODEL_LOAD_TIMEOUT = 120
 C3XL_TINYGRAD_CACHE_HOME = "/data/cache"
+C3XL_AM_POWER_LIMIT_W = 100
+C3XL_AMD_USB_POLL_US = 500
 
 
 class EgpuModelLoadError(RuntimeError):
@@ -22,6 +24,11 @@ def configure_default_device(comma_hardware: bool, environment: MutableMapping[s
     # /home is an ephemeral overlay on C3XL. Keep AMD firmware and compiler
     # caches across reboots so model startup never depends on a live download.
     environment.setdefault("XDG_CACHE_HOME", C3XL_TINYGRAD_CACHE_HOME)
+    # Limit the volatile SMU PPT before clocks are opened up. An explicit
+    # environment override remains available for controlled testing.
+    environment.setdefault("AM_POWER_LIMIT", str(C3XL_AM_POWER_LIMIT_W))
+    # Follow the SP/OP Chestnut default. Keep tinygrad's other devices unchanged.
+    environment.setdefault("AMD_USB_POLL_US", str(C3XL_AMD_USB_POLL_US))
 
 
 def load_with_timeout[T](load: Callable[[], T], timeout: float) -> T:

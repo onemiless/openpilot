@@ -7,7 +7,7 @@
         "language": "c++",
         "name": "msgq.visionipc.visionipc_pyx",
         "sources": [
-            "/data/dev-sp-egpu-prebuild-build/msgq_repo/msgq/visionipc/visionipc_pyx.pyx"
+            "/data/prebuild-20260906/tree/msgq_repo/msgq/visionipc/visionipc_pyx.pyx"
         ]
     },
     "module_name": "msgq.visionipc.visionipc_pyx"

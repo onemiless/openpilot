@@ -1,12 +1,17 @@
 import threading
 import unittest
 
+from openpilot.common.params import Params
 from openpilot.sunnypilot.modeld_v2.egpu_loader import (
-  C3XL_MODEL_LOAD_TIMEOUT, C3XL_TINYGRAD_CACHE_HOME, EgpuModelLoadError, configure_default_device, load_with_timeout,
+  C3XL_AM_POWER_LIMIT_W, C3XL_AMD_USB_POLL_US, C3XL_MODEL_LOAD_TIMEOUT, C3XL_TINYGRAD_CACHE_HOME,
+  EgpuModelLoadError, configure_default_device, load_with_timeout,
 )
 
 
 class TestEgpuLoading(unittest.TestCase):
+  def test_chestnut_model_error_param_is_registered(self):
+    self.assertIn(b"ChestnutModelError", Params().all_keys())
+
   def test_timeout_covers_measured_c3xl_model_loads(self):
     measured_max_seconds = 75.58
     self.assertEqual(C3XL_MODEL_LOAD_TIMEOUT, 120)
@@ -29,6 +34,35 @@ class TestEgpuLoading(unittest.TestCase):
     environment = {"XDG_CACHE_HOME": "/custom/cache"}
     configure_default_device(True, environment, c3xl=True)
     self.assertEqual(environment["XDG_CACHE_HOME"], "/custom/cache")
+
+  def test_c3xl_defaults_amd_power_limit_to_100w_without_overriding_explicit_value(self):
+    environment = {}
+    configure_default_device(True, environment, c3xl=True)
+    self.assertEqual(C3XL_AM_POWER_LIMIT_W, 100)
+    self.assertEqual(environment["AM_POWER_LIMIT"], "100")
+
+    environment = {"AM_POWER_LIMIT": "85"}
+    configure_default_device(True, environment, c3xl=True)
+    self.assertEqual(environment["AM_POWER_LIMIT"], "85")
+
+  def test_standard_hardware_does_not_set_amd_power_limit(self):
+    environment = {}
+    configure_default_device(True, environment, c3xl=False)
+    self.assertNotIn("AM_POWER_LIMIT", environment)
+
+  def test_c3xl_defaults_usb_poll_to_official_500us_without_overriding_explicit_value(self):
+    environment = {}
+    configure_default_device(True, environment, c3xl=True)
+    self.assertEqual(C3XL_AMD_USB_POLL_US, 500)
+    self.assertEqual(environment["AMD_USB_POLL_US"], "500")
+    environment = {"AMD_USB_POLL_US": "750"}
+    configure_default_device(True, environment, c3xl=True)
+    self.assertEqual(environment["AMD_USB_POLL_US"], "750")
+
+  def test_standard_hardware_does_not_set_usb_poll_interval(self):
+    environment = {}
+    configure_default_device(True, environment)
+    self.assertNotIn("AMD_USB_POLL_US", environment)
 
   def test_propagates_loader_exception(self):
     original = RuntimeError("USB AMD initialization failed")

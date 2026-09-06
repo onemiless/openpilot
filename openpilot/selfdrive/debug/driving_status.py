@@ -6,6 +6,7 @@ from opendbc.car.structs import car
 from openpilot.cereal import messaging
 from openpilot.common.params import Params
 from openpilot.selfdrive.debug.tesla_can_visualization import TeslaCanVisualization
+from openpilot.selfdrive.debug.tesla_vehicle_summary import VehicleSummary
 from openpilot.selfdrive.debug.unknown_can_observer import unknown_can_snapshot
 
 
@@ -171,6 +172,7 @@ class DrivingStatus:
     self.sm = messaging.SubMaster(SERVICES)
     self.can_sock = messaging.sub_sock("can", conflate=False)
     self.tesla_can = TeslaCanVisualization()
+    self.vehicle_summary = VehicleSummary()
     self.lock = threading.Lock()
 
   def _is_tesla_model_y(self) -> bool:
@@ -209,6 +211,11 @@ class DrivingStatus:
       alert = " ".join(text for text in (selfdrive_state.alertText1, selfdrive_state.alertText2) if text)
       cruise_speed = _set_speed_kph(float(car_state.vCruiseCluster), float(controls_state.deprecated.vCruise))
       return {
+        "vehicle": self.vehicle_summary.snapshot(oem_can, time.monotonic()),
+        "ambient_test_available": self._is_tesla_model_y() and oem_can.get("ambient_lighting", {}).get("available", False),
+        "ambient_test_ready": (self._is_tesla_model_y() and self.sm.alive["carState"] and self.sm.valid["carState"]
+                               and car_state.gearShifter == car.CarState.GearShifter.park and abs(car_state.vEgo) < 0.01
+                               and not self.params.get_bool("IsOffroad") and oem_can.get("ambient_lighting", {}).get("available", False)),
         "onroad": not self.params.get_bool("IsOffroad"),
         "connected": {service: self.sm.alive[service] for service in SERVICES},
         "speed_kph": _number(car_state.vEgo * 3.6),
@@ -226,17 +233,8 @@ _STATUS: DrivingStatus | None = None
 _STATUS_LOCK = threading.Lock()
 
 
-def driving_status_enabled() -> bool:
-  return True
-
-
 def driving_status_snapshot() -> dict[str, object]:
   global _STATUS
-  if not driving_status_enabled():
-    with _STATUS_LOCK:
-      _STATUS = None
-    raise PermissionError("请先在设备的 Tesla 设置中开启“浏览器行驶信息”")
-
   with _STATUS_LOCK:
     if _STATUS is None:
       _STATUS = DrivingStatus()

@@ -1,8 +1,13 @@
 from enum import StrEnum
+import os
 from pathlib import Path
 
 
-HARDWARE_PROFILE_FILE = Path(__file__).parents[3] / "hardware_profile"
+# Hardware capabilities belong to the physical device, not to a Git branch.
+# The persistent file is authoritative. A raw `comma tici` model without that
+# file is the C3XL recovery/install case; other hardware keeps upstream defaults.
+HARDWARE_PROFILE_FILE = Path(os.getenv("SUNNYPILOT_HARDWARE_PROFILE_FILE", "/data/hardware_profile"))
+HARDWARE_MODEL_FILE = Path(os.getenv("SUNNYPILOT_HARDWARE_MODEL_FILE", "/sys/firmware/devicetree/base/model"))
 
 
 class HardwareProfile(StrEnum):
@@ -14,13 +19,23 @@ PANDA_TYPE_UNKNOWN = b"\x00"
 PANDA_TYPE_TRES = b"\x09"
 
 
+def infer_hardware_profile(model_file: Path | None = None) -> HardwareProfile:
+  try:
+    raw_model = (model_file or HARDWARE_MODEL_FILE).read_bytes().rstrip(b"\x00\r\n ")
+  except OSError:
+    return HardwareProfile.STANDARD
+  return HardwareProfile.C3XL if raw_model == b"comma tici" else HardwareProfile.STANDARD
+
+
 def get_hardware_profile(value: str | None = None) -> HardwareProfile:
   if value is not None:
     raw_value = value
+  elif env_value := os.getenv("SUNNYPILOT_HARDWARE_PROFILE"):
+    raw_value = env_value
   elif HARDWARE_PROFILE_FILE.is_file():
     raw_value = HARDWARE_PROFILE_FILE.read_text().strip()
   else:
-    raw_value = HardwareProfile.STANDARD
+    raw_value = infer_hardware_profile()
   return HardwareProfile(raw_value)
 
 

@@ -13,7 +13,7 @@ The orphan `dev` release tree containing compiled artifacts and the `prebuilt` m
 _Avoid_: dev branch, source branch
 
 **Hardware Profile**:
-An explicit description of hardware capabilities and compatibility overrides consumed through a small seam. A profile does not replace the device's reported identity.
+An explicit, device-local description of hardware capabilities and compatibility overrides consumed through a small seam. The persistent value lives at `/data/hardware_profile`; it is authoritative when present. If absent, raw `comma tici` hardware is inferred as C3XL while other hardware defaults to standard. A profile does not replace the device's reported identity.
 _Avoid_: hardware hack, device spoof
 
 **C3XL Profile**:
@@ -54,16 +54,18 @@ structure without copying either old platform-specific generated tree.
 _Avoid_: old Official solver, duplicated TN solver
 
 **Traffic Radar**:
-A typed, planner-only Traffic target produced by `trafficcontrold`. It may be an
-independent obstacle candidate but is never a physical radar lead, model input,
-FCW target, vehicle state, or CAN signal.
+A typed Traffic input produced by `trafficcontrold` and consumed by the common
+post-planner Plan Constraint. It is never an MPC obstacle candidate, physical
+radar lead, model input, FCW target, vehicle state, or CAN signal. The message
+name is retained for diagnostic compatibility.
 _Avoid_: fake leadTwo, virtual vehicle, traffic radarState
 
 **Plan Constraint**:
 A decorator that can observe context and return a bounded change to a base
 longitudinal plan without becoming a Planner Backend. The direct Stop Profile
-is a Plan Constraint; the Traffic Radar strategy uses the same producer through
-the planner's optional target seam.
+is a Plan Constraint; Traffic Radar reaches it through the common post-planner
+publish Seam, after the selected Planner Backend produces its normal plan.
+No Traffic target is injected into a planner or MPC.
 _Avoid_: traffic planner, duplicated traffic controller
 
 **Model Platform**:

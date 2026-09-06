@@ -7306,6 +7306,10 @@ public:
 
   inline float getModelFps() const;
 
+  inline bool getMetricsValid() const;
+
+  inline bool getSupplyValid() const;
+
 private:
   ::capnp::_::StructReader _reader;
   template <typename, ::capnp::Kind>
@@ -7372,6 +7376,12 @@ public:
 
   inline float getModelFps();
   inline void setModelFps(float value);
+
+  inline bool getMetricsValid();
+  inline void setMetricsValid(bool value);
+
+  inline bool getSupplyValid();
+  inline void setSupplyValid(bool value);
 
 private:
   ::capnp::_::StructBuilder _builder;
@@ -30468,6 +30478,34 @@ inline float ChestnutState::Builder::getModelFps() {
 inline void ChestnutState::Builder::setModelFps(float value) {
   _builder.setDataField<float>(
       ::capnp::bounded<9>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool ChestnutState::Reader::getMetricsValid() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<208>() * ::capnp::ELEMENTS);
+}
+
+inline bool ChestnutState::Builder::getMetricsValid() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<208>() * ::capnp::ELEMENTS);
+}
+inline void ChestnutState::Builder::setMetricsValid(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<208>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool ChestnutState::Reader::getSupplyValid() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<209>() * ::capnp::ELEMENTS);
+}
+
+inline bool ChestnutState::Builder::getSupplyValid() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<209>() * ::capnp::ELEMENTS);
+}
+inline void ChestnutState::Builder::setSupplyValid(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<209>() * ::capnp::ELEMENTS, value);
 }
 
 inline typename RadarState::Deprecated::Reader RadarState::Reader::getDeprecated() const {

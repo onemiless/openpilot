@@ -1,6 +1,15 @@
-import collections, functools, dataclasses, enum
+from __future__ import annotations
+import collections, functools, dataclasses, enum, struct
 from typing import Any, ClassVar
-from tinygrad.helpers import round_up, getenv
+from tinygrad.helpers import round_up, getenv, to_mv
+
+class MMIOInterface:
+  def __init__(self, addr:int, nbytes:int, fmt='B'): self.mv, self.addr, self.nbytes, self.fmt = to_mv(addr, nbytes).cast(fmt), addr, nbytes, fmt
+  def __len__(self): return self.nbytes // struct.calcsize(self.fmt)
+  def __getitem__(self, k): return (self.mv[k] if self.fmt == 'B' else self.mv[k].tolist()) if isinstance(k, slice) else self.mv[k]
+  def __setitem__(self, k, v): self.mv[k] = v
+  def view(self, offset:int=0, size:int|None=None, fmt=None) -> MMIOInterface:
+    return MMIOInterface(self.addr+offset, (self.nbytes - offset) if size is None else size, fmt=fmt or self.fmt)
 
 class BumpAllocator:
   def __init__(self, size:int, base:int=0, wrap:bool=True): self.size, self.ptr, self.base, self.wrap = size, 0, base, wrap
@@ -203,22 +212,14 @@ class MemoryManager:
 
     ctx = PageTableTraverseContext(self.dev, self.root_page_table, vaddr, boot=boot, inspect=True)
     for _, pt, pte_idx, pte_cnt, _ in ctx.next(size):
-      if hasattr(pt, "any_valid"):
-        assert not pt.any_valid(pte_idx, pte_cnt), f"PTE range already mapped: {pte_idx=} {pte_cnt=}"
-      else:
-        for pte_off in range(pte_cnt): assert not pt.valid(pte_idx + pte_off), f"PTE already mapped: {pt.entry(pte_idx + pte_off):#x}"
+      for pte_off in range(pte_cnt): assert not pt.valid(pte_idx + pte_off), f"PTE already mapped: {pt.entry(pte_idx + pte_off):#x}"
 
     ctx = PageTableTraverseContext(self.dev, self.root_page_table, vaddr, create_pts=True, boot=boot)
     for paddr, psize in paddrs:
       for off, pt, pte_idx, pte_cnt, pte_covers in ctx.next(psize, paddr=paddr):
-        frag = self._frag_size(ctx.vaddr+off, pte_cnt * pte_covers)
-        if hasattr(pt, "set_entries"):
-          pt.set_entries(pte_idx, (paddr + off + pte_off * pte_covers for pte_off in range(pte_cnt)),
-                         uncached=uncached, aspace=aspace, snooped=snooped, frag=frag, valid=True)
-        else:
-          for pte_off in range(pte_cnt):
-            pt.set_entry(pte_idx + pte_off, paddr + off + pte_off * pte_covers, uncached=uncached, aspace=aspace, snooped=snooped,
-                         frag=frag, valid=True)
+        for pte_off in range(pte_cnt):
+          pt.set_entry(pte_idx + pte_off, paddr + off + pte_off * pte_covers, uncached=uncached, aspace=aspace, snooped=snooped,
+                       frag=self._frag_size(ctx.vaddr+off, pte_cnt * pte_covers), valid=True)
 
     self.on_range_mapped()
     return VirtMapping(vaddr, size, paddrs, aspace=aspace, uncached=uncached, snooped=snooped)
@@ -228,13 +229,9 @@ class MemoryManager:
 
     ctx = PageTableTraverseContext(self.dev, self.root_page_table, vaddr, free_pts=True)
     for _, pt, pte_idx, pte_cnt, _ in ctx.next(size):
-      if hasattr(pt, "all_valid") and hasattr(pt, "set_entries"):
-        assert pt.all_valid(pte_idx, pte_cnt), f"PTE range not mapped: {pte_idx=} {pte_cnt=}"
-        pt.set_entries(pte_idx, (0 for _ in range(pte_cnt)), valid=False)
-      else:
-        for pte_id in range(pte_idx, pte_idx + pte_cnt):
-          assert pt.valid(pte_id), f"PTE not mapped: {pt.entry(pte_id):#x}"
-          pt.set_entry(pte_id, paddr=0x0, valid=False)
+      for pte_id in range(pte_idx, pte_idx + pte_cnt):
+        assert pt.valid(pte_id), f"PTE not mapped: {pt.entry(pte_id):#x}"
+        pt.set_entry(pte_id, paddr=0x0, valid=False)
 
   def on_range_mapped(self): pass
 
@@ -248,7 +245,7 @@ class MemoryManager:
     self.map_range(va:=self.alloc_vaddr(self.vram_size, self.vram_size), self.vram_size, [(0, self.vram_size)], AddrSpace.PHYS, uncached=uncached)
     return va
 
-  def valloc(self, size:int, align=0x1000, uncached=False, contiguous=False) -> VirtMapping:
+  def valloc(self, size:int, align=0x1000, uncached=False, contiguous=False, zero=False) -> VirtMapping:
     if not getenv("GMMU", 1):
       paddr = self.palloc(size:=round_up(size, 0x1000), align, zero=False)
       return VirtMapping(self.identity_va(uncached) + paddr, size, [(paddr, size)], aspace=AddrSpace.PHYS, uncached=uncached)
@@ -263,7 +260,7 @@ class MemoryManager:
       while rem_size > 0:
         while self.palloc_ranges[nxt_range][0] > rem_size: nxt_range += 1
 
-        try: paddrs += [(self.palloc(try_sz:=self.palloc_ranges[nxt_range][0], self.palloc_ranges[nxt_range][1], zero=False), try_sz)]
+        try: paddrs += [(self.palloc(try_sz:=self.palloc_ranges[nxt_range][0], self.palloc_ranges[nxt_range][1], zero=zero), try_sz)]
         except MemoryError:
           # Move to a smaller size and try again.
           nxt_range += 1

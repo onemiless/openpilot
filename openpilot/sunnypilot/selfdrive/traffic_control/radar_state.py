@@ -43,6 +43,8 @@ TRANSITION_REASON_CODES = {
   "yellow_pass": 15,
   "distance_wrap_passed": 16,
   "red_after_release": 17,
+  "signal_lost_release": 18,
+  "dropout_reconfirmed": 19,
 }
 
 
@@ -96,9 +98,12 @@ class TrafficRadarSource:
     msg = messaging.new_message('trafficRadarState')
     target = msg.trafficRadarState
     target.targetPresent = bool(active_stop)
+    # The confirmed STOP owns geometry even when the current raw frame is
+    # explicit OFF (quality zero). Preserve its reference without promoting
+    # that raw frame to an independently eligible traffic instruction.
     target.oemTargetDistance = float(
       decision.remaining_distance + decision.stop_reference
-      if decision.quality > 0 and 0.0 <= raw_distance <= self.controller.config.max_control_distance
+      if (active_stop or decision.quality > 0) and 0.0 <= raw_distance <= self.controller.config.max_control_distance
       else 0.0
     )
     target.targetRelativeVelocity = -float(car_state.vEgo) if active_stop else 0.0

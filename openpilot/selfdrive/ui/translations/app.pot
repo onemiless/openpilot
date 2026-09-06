@@ -2224,7 +2224,7 @@ msgid "Adjust how far before Tesla's reported traffic-control point the vehicle 
 msgstr ""
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/vehicle/brands/tesla_control.py
-msgid "When off, traffic-light data is recorded in the background without changing control. When on, confirmed red lights can stop the vehicle and confirmed green lights can start it when the path is clear."
+msgid "When off, Traffic control is fully disabled; raw Tesla traffic-light data remains available for diagnostics. When on, confirmed red lights can stop the vehicle and confirmed green lights can start it when the path is clear."
 msgstr ""
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/vehicle/brands/tesla_control.py
@@ -2643,104 +2643,12 @@ msgstr ""
 msgid "Speed Limit Source"
 msgstr ""
 
-#: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
-msgid "No traffic signal"
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
-msgid "Red detected · brake pending"
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
-msgid "Red detected · waiting"
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
-msgid "Red · slowing to stop"
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
-msgid "Red · holding"
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
-msgid "Green · auto start"
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
-msgid "Green · releasing brakes"
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
-msgid "Green · continuing"
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
-msgid "Signal changing · stopping"
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
-msgid "Direction unclear · monitoring"
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
-msgid "Driver override · paused"
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
-msgid "Signal lost · slowing continues"
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
-msgid "Signal lost · holding stop"
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
-msgid "Signal expired · control idle"
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
-msgid "Green · planner control"
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
-msgid "Green · lead blocks auto start"
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
-msgid "Green · planner holding"
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
-msgid "Green · confirming release"
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
-msgid "Signal unclear · planner holding"
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
-msgid "Signal detected · monitoring"
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/onroad/traffic_control.py
-msgid "Traffic signals · monitoring"
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/vehicle/brands/tesla_control.py
-msgid "Allow the local browser on port 8088 to read and display live SP model and Tesla CAN information."
-msgstr ""
-
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/vehicle/brands/tesla_control.py
 msgid "Allow the local browser to send bounded turn-signal validation frames using fresh OEM templates. Restart after changing."
 msgstr ""
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/vehicle/brands/tesla_control.py
 msgid "Allow the local browser to send one bounded speed-button validation tick using a fresh OEM template. Restart after changing."
-msgstr ""
-
-#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/vehicle/brands/tesla_control.py
-msgid "Browser Driving Information"
 msgstr ""
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/models.py
