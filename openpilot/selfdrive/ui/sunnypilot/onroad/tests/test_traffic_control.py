@@ -157,7 +157,7 @@ def test_renderer_draws_only_lamps_and_no_text_or_large_card(monkeypatch):
   monkeypatch.setattr(rl, "draw_text_ex", lambda *args: pytest.fail("icon must not draw text"))
   rect = rl.Rectangle(0, 0, 2160, 1080)
   renderer._render(rect)
-  assert all(box.width <= 64 and box.height <= 128 for box in boxes)
+  assert all(box.width <= TRAFFIC_CARD_WIDTH and box.height <= TRAFFIC_CARD_HEIGHT for box in boxes)
   assert len([lamp for lamp in lamps if lamp[1] == TRAFFIC_LIGHT_RADIUS]) == 3
   assert outlines[-1][-1].b == traffic_control_module.CONTROL_OUTLINE.b
 
