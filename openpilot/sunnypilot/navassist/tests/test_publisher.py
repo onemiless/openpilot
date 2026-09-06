@@ -89,14 +89,15 @@ def test_missing_phone_observation_blocks_are_retained_as_invalid_diagnostics():
   assert not state.valid and state.rejectReason == "noData"
 
 
-def test_stale_phone_guidance_remains_a_control_gate():
+def test_unchanged_phone_guidance_remains_valid_while_transport_and_route_are_fresh():
   raw = payload()
-  raw["guidance"]["observedAtMs"] = raw["sourceWallTimeMs"] - 2_001
+  raw["guidance"]["observedAtMs"] = raw["sourceWallTimeMs"] - 45_000
+  raw["location"]["observedAtMs"] = raw["sourceWallTimeMs"] - 45_000
   old_guidance = AcceptedSnapshot(parse_snapshot(encode(raw)), 1_000_000_000, 1_500_000_000)
   state = build_nav_assist_message(
     old_guidance, 1_100_000_000, local_localization_valid=True,
   ).navAssistStateSP
-  assert not state.valid and state.rejectReason == "guidanceStale"
+  assert state.valid and state.rejectReason == "phoneLocalization"
 
 
 def test_phone_location_quality_is_diagnostic_only_for_fresh_matched_guidance():

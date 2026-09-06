@@ -11,9 +11,9 @@ C3XL so an installed TesNav App can reconnect without a manually copied token.
 `lane_topologyd` still runs only onroad. Network availability grants no control
 authority. Active use separately requires fresh matched realtime phone
 guidance and SP control authority. No per-drive Track Mode, token, or geofence
-configuration step exists. Phone observation quality and C3XL
-`liveLocationKalman` remain visible diagnostics, but they do not veto a fresh
-matched phone route.
+configuration step exists. Phone observation quality, unchanged-guidance age,
+and C3XL `liveLocationKalman` remain visible diagnostics, but they do not veto
+an unexpired matched phone route.
 
 On first use, C3XL trusts a bounded set of up to four self-signed App identities,
 and it adds each new identity only while offroad. Those P-256 public keys are
@@ -129,10 +129,12 @@ paired App cannot preempt it until the active session expires.
 
 Transport freshness cannot make a stopped App or an expired route active.
 Active use still requires an accepted unexpired snapshot, realtime mode,
-route matching, current guidance, a nonzero maneuver event, and phone-provided
-route progress. Phone accuracy/callback age and C3XL localization are published
-as diagnostics rather than independent planner vetoes. The phone SDK's
-`gpsWeak` flag is also diagnostic-only.
+route matching, received guidance, a nonzero maneuver event, and phone-provided
+route progress. Guidance and location callback ages remain diagnostics because
+AMap may leave both timestamps unchanged while an instruction is unchanged;
+the receiver-assigned snapshot TTL is the liveness boundary. Phone accuracy and
+C3XL localization are also diagnostics rather than independent planner vetoes.
+The phone SDK's `gpsWeak` flag is diagnostic-only.
 Only Android/iOS `realtime` navigation can become control-valid; simulation and
 generic track sources remain diagnostic-only.
 
