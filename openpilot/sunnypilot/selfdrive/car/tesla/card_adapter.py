@@ -10,6 +10,7 @@ import time
 from typing import Any
 
 from opendbc.sunnypilot.car.tesla.values import TeslaSafetyFlagsSP
+from openpilot.sunnypilot.selfdrive.car.tesla.ambient_lighting import AmbientLightingController
 from openpilot.sunnypilot.selfdrive.car.tesla.validation_controller import TeslaTurnSignalRealtimeController
 from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.common import Mode
 
@@ -77,6 +78,7 @@ class TeslaCardAdapter:
     self._last_nav_signal_request: tuple[str, int, int, str] | None = None
     self._active_nav_signal_test_id: str | None = None
     self._nav_signal_retry_after_ns = 0
+    self.ambient = AmbientLightingController() if self.enabled else None
 
   def _create_road_context_parser(self):
     try:
@@ -103,6 +105,8 @@ class TeslaCardAdapter:
 
     for mono_time, frames in can_list:
       for address, data, source in frames:
+        if self.ambient is not None:
+          self.ambient.observe_frame(mono_time, address, data, source)
         if self.validation is not None:
           self.validation.observe_frame(mono_time, address, data, source)
         if update_template is not None and source == self.VEHICLE_BUS and address == self.SPEED_BUTTON_ADDRESS:
@@ -113,7 +117,7 @@ class TeslaCardAdapter:
     now_nanos = time.monotonic_ns()
     self.validation.advance_time(now_nanos)
     # Cancellation cannot depend on controlsd continuing to publish carControl.
-    return self.validation.take_can_sends(now_nanos, cancel_only=True)
+    return self.validation.take_can_sends(now_nanos, cancel_only=True) + self.ambient.take_can_sends(now_nanos)
 
   def control_sends(self, car_state, car_control, now_nanos: int) -> list:
     if self.validation is None:
@@ -213,6 +217,8 @@ class TeslaCardAdapter:
     self.speed_limit_assist_configured = params.get("SpeedLimitMode", return_default=True) == Mode.assist
     if self.validation is not None:
       self.validation.service_params(params)
+    if self.ambient is not None:
+      self.ambient.service_params(params)
 
   def update_state(self, state_sp, now_ns: int | None = None) -> None:
     if self.road_context_parser is None:
