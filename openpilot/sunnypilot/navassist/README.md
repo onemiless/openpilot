@@ -144,9 +144,11 @@ generic track sources remain diagnostic-only.
 an admitted maneuver below 60 km/h. It never requests a stop or acceleration,
 and it leaves `controlsd`, lateral curvature, CarState, CarController, and Panda
 unchanged. On Tesla it additionally requires fresh `carStateSP` proof that SP,
-not stock longitudinal control, owns the vehicle. Active P0 deceleration is
-allowed only with the official longitudinal planner, whose cruise contribution
-is limited to -1.2 m/s²; the experimental and TN-NoDEC backends fail closed.
+not stock longitudinal control, owns the vehicle. Official, Experimental and
+TN-NoDEC consume the same navigation ceiling at the existing common speed-target
+seam. Their solvers, acceleration limits, following and stopping policies remain
+unchanged; the navigation module does not write acceleration commands. The
+1.2 m/s² comfort value sizes the approach window, not a new actuator limit.
 Lead, FCW, or other existing safety sources may independently request stronger
 deceleration. An experimental typed `navLaneIntentSP` path can also request one
 Tesla physical turn signal. A linked left/right route maneuver may request a
@@ -191,9 +193,13 @@ stale/ambiguous topology, SP road
 edge, BSM, pedals, lateral authority, and physical-lamp gates remain mandatory.
 Lane positioning itself never creates a speed target. A supported turn/exit
 maneuver may still activate its comfort-distance speed ceiling while a final
-lane change is in progress. At distance zero the admitted ceiling remains; once
-SP SCC-V confirms the curve, it takes sole speed ownership. The deceleration is
-attributed to the approaching maneuver, not to the lateral request.
+lane change is in progress. Once the admitted ceiling activates, it remains as
+distance is consumed, including zero; initial braking admission is not repeated
+while the planner ramps deceleration. Source/authority loss and driver overrides
+still cancel the event. SCC-V and navigation compete through the existing minimum
+speed-target selection every cycle, so a lower SCC-V target wins and a transient
+SCC-V release cannot discard the navigation ceiling for the rest of the turn.
+The deceleration is attributed to the approaching maneuver, not to the lateral request.
 Within one continuous route revision, maneuver-event advancement retains the
 lamp until model-derived turn geometry has stayed clear for 0.5 seconds.
 

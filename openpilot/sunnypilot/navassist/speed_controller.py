@@ -52,7 +52,7 @@ class NavigationSpeedController:
     self.event_key: tuple[str, int, int] | None = None
     self.target_speed = 0.0
     self.required_distance = 0.0
-    self.event_handed_off_to_vision = False
+    self.event_activated = False
 
   @staticmethod
   def _healthy(sm) -> bool:
@@ -87,7 +87,9 @@ class NavigationSpeedController:
 
   @staticmethod
   def _target_for(nav) -> float | None:
-    default = TARGET_SPEEDS.get(nav.maneuver)
+    # Cap'n Proto enum readers compare with integers but hash differently.
+    # Use the numeric wire value when looking up the integer-keyed speed table.
+    default = TARGET_SPEEDS.get(nav.maneuver.raw)
     if default is None:
       return None
     if nav.advisorySpeedValid:
@@ -106,7 +108,7 @@ class NavigationSpeedController:
       self.output_v_target = V_CRUISE_UNSET
 
   def update(self, sm, *, long_enabled: bool, long_override: bool, v_ego: float, a_ego: float, v_cruise: float,
-             planner_verified: bool = True, vision_turn_active: bool = False) -> None:
+             planner_verified: bool = True) -> None:
     if not self.enabled:
       self.output_v_target = V_CRUISE_UNSET
       self.output_a_target = a_ego
@@ -123,7 +125,7 @@ class NavigationSpeedController:
                                or not self._sp_owns_longitudinal(sm))
     if temporarily_unavailable:
       # Allow the documented workflow: plan the phone route first, then engage
-      # SP/select the official backend. Once an event was admitted, however,
+      # SP/select a supported backend. Once an event was admitted, however,
       # losing authority latches it out so it cannot resume mid-maneuver.
       if self.event_key is not None:
         self.event_rejected = True
@@ -152,46 +154,29 @@ class NavigationSpeedController:
       self.required_distance = required_distance
       self.event_admitted = distance >= required_distance + ADMISSION_MARGIN_M
       self.event_rejected = not self.event_admitted
-      self.event_handed_off_to_vision = False
+      self.event_activated = False
 
     if self.event_rejected or not self.event_admitted:
       self._release(v_cruise, a_ego)
       return
 
-    if self.event_handed_off_to_vision:
-      self.output_v_target = V_CRUISE_UNSET
-      self.output_a_target = a_ego
-      self.is_active = self.is_releasing = False
-      return
-    if vision_turn_active:
-      # Navigation extends the lookahead. Once SP's existing vision curve
-      # controller sees the turn, it becomes the sole turn-speed owner.
-      self.event_handed_off_to_vision = True
-      self.output_v_target = V_CRUISE_UNSET
-      self.output_a_target = a_ego
-      self.is_active = self.is_releasing = False
-      return
-    if distance == 0.0:
-      # AMap may report zero while the vehicle is still traversing the turn.
-      # Retain the admitted ceiling until the maneuver event changes or SCC-V
-      # takes ownership; do not release merely at the geometric turn point.
-      self.is_active = True
-      self.is_releasing = False
-      self.output_v_target = min(v_cruise, self.target_speed)
-      self.output_a_target = a_ego
-      return
+    if not self.event_activated:
+      self.required_distance = max(self.required_distance, required_distance)
+      if distance < required_distance:
+        # Reject an approach that became infeasible before braking began.
+        self.event_rejected = True
+        self._release(v_cruise, a_ego)
+        return
+      if distance > self.required_distance + ACTIVATION_MARGIN_M:
+        self._release(v_cruise, a_ego)
+        return
+      self.event_activated = True
 
-    self.required_distance = max(self.required_distance, required_distance)
-    if distance < required_distance:
-      # Do not turn a late/accelerated approach into progressively harsher
-      # braking. Miss the maneuver and let the driver or route replan handle it.
-      self.event_rejected = True
-      self._release(v_cruise, a_ego)
-      return
-    if distance > self.required_distance + ACTIVATION_MARGIN_M:
-      self._release(v_cruise, a_ego)
-      return
-
+    # Once braking begins, consuming the remaining distance (including zero)
+    # must not revoke the same event's ceiling. Health/authority/driver gates
+    # above still cancel it. The common target selector compares this ceiling
+    # with SCC-V every cycle, so a lower vision target wins without permanently
+    # dropping navigation when vision later releases.
     self.is_active = True
     self.is_releasing = False
     self.output_v_target = min(v_cruise, self.target_speed)

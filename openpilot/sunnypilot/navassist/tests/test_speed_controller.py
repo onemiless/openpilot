@@ -22,7 +22,7 @@ class FakeSM(dict):
 
 def nav(*, distance=100.0, event_id=1, valid=True, stale=False, advisory=None,
         maneuver=custom.NavAssistStateSP.Maneuver.turnRight):
-  return SimpleNamespace(
+  return custom.NavAssistStateSP.new_message(
     valid=valid,
     stale=stale,
     maneuver=maneuver,
@@ -35,11 +35,9 @@ def nav(*, distance=100.0, event_id=1, valid=True, stale=False, advisory=None,
   )
 
 
-def update(controller, sm, *, v_ego=10.0, v_cruise=20.0, override=False, long_enabled=True, planner_verified=True,
-           vision_turn_active=False):
+def update(controller, sm, *, v_ego=10.0, v_cruise=20.0, override=False, long_enabled=True, planner_verified=True):
   controller.update(sm, long_enabled=long_enabled, long_override=override,
-                    v_ego=v_ego, a_ego=0.0, v_cruise=v_cruise, planner_verified=planner_verified,
-                    vision_turn_active=vision_turn_active)
+                    v_ego=v_ego, a_ego=0.0, v_cruise=v_cruise, planner_verified=planner_verified)
 
 
 def test_disabled_controller_is_exactly_transparent_without_nav_service_state():
@@ -91,7 +89,7 @@ def test_imminent_turn_deceleration_is_independent_of_lane_alignment_state():
   assert controller.output_v_target == pytest.approx(5.0)
 
 
-def test_admitted_turn_holds_navigation_ceiling_at_zero_distance_until_handoff():
+def test_admitted_turn_holds_navigation_ceiling_at_zero_distance_until_event_changes():
   controller = NavigationSpeedController(enabled=True)
   update(controller, FakeSM(nav(distance=100.0)))
   update(controller, FakeSM(nav(distance=60.0)))
@@ -103,16 +101,17 @@ def test_admitted_turn_holds_navigation_ceiling_at_zero_distance_until_handoff()
   assert controller.output_v_target == pytest.approx(5.0)
 
 
-def test_existing_sp_vision_turn_controller_takes_ownership_from_navigation_ceiling():
+def test_next_route_event_does_not_inherit_previous_turn_activation():
   controller = NavigationSpeedController(enabled=True)
   update(controller, FakeSM(nav(distance=100.0)))
   update(controller, FakeSM(nav(distance=60.0)))
   assert controller.is_active
 
-  update(controller, FakeSM(nav(distance=40.0)), vision_turn_active=True)
-
+  update(controller, FakeSM(nav(distance=500.0, event_id=2)))
+  assert controller.event_admitted and not controller.event_activated
   assert not controller.is_active
-  assert controller.output_v_target == V_CRUISE_UNSET
+  assert controller.is_releasing
+  assert controller.output_v_target > 5.0
 
 
 def test_late_event_is_rejected_for_its_full_lifetime():
@@ -176,6 +175,19 @@ def test_speed_increase_that_makes_comfort_deceleration_late_rejects_event():
   assert controller.event_rejected and not controller.is_active
 
 
+def test_started_deceleration_keeps_its_ceiling_as_distance_is_consumed():
+  controller = NavigationSpeedController()
+  update(controller, FakeSM(nav(distance=120.0)), v_ego=13.0)
+  update(controller, FakeSM(nav(distance=90.0)), v_ego=13.0)
+  assert controller.is_active
+  # Real route distance advances in steps while the planner is still ramping
+  # braking. Reapplying initial admission here used to revoke the active cap.
+  for distance in (65.0, 40.0, 15.0, 0.0):
+    update(controller, FakeSM(nav(distance=distance)), v_ego=12.5)
+    assert controller.is_active and not controller.event_rejected
+    assert controller.output_v_target == pytest.approx(5.0)
+
+
 def test_disappearing_maneuver_cannot_reactivate_same_event():
   controller = NavigationSpeedController(enabled=True)
   update(controller, FakeSM(nav(distance=100.0)))
@@ -218,7 +230,7 @@ def test_tesla_ap_hybrid_sp_owner_is_allowed():
   assert controller.event_admitted
 
 
-def test_route_can_be_started_before_official_longitudinal_backend_is_selected():
+def test_route_can_be_started_before_supported_longitudinal_backend_is_selected():
   controller = NavigationSpeedController(enabled=True)
   update(controller, FakeSM(nav(distance=100.0)), planner_verified=False)
   assert not controller.event_rejected and controller.output_v_target == V_CRUISE_UNSET

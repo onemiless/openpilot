@@ -99,8 +99,10 @@ _Avoid_: phone control command, mobile planner, navigation CAN
 A closed-course-only common longitudinal target that can lower the base cruise
 speed ceiling for an admitted maneuver. It cannot request a stop, acceleration,
 or a less conservative target. A fresh matched realtime route becomes eligible
-only while SP has active longitudinal authority; once SP vision confirms the
-curve, the existing SCC-V controller becomes the sole turn-speed owner.
+only while SP has active longitudinal authority. Official, Experimental and
+TN-NoDEC consume its ceiling through their existing common speed-target seam;
+each retains its own planner and actuator contract. SCC-V and navigation remain
+independent candidates, with the lower speed target winning each cycle.
 _Avoid_: navigation planner backend, phone acceleration command, route MPC
 
 **Model Platform**:

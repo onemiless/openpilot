@@ -81,7 +81,6 @@ def test_planner_uses_common_target_seam_and_controlsd_is_untouched():
   common_planner = (ROOT / "sunnypilot/selfdrive/controls/lib/longitudinal_planner.py").read_text()
   controlsd = (ROOT / "selfdrive/controls/controlsd.py").read_text()
   assert "LongitudinalPlanSource.navAssist" in common_planner
-  assert 'planner_verified=getattr(self, "active_backend_id", None) == BackendId.OFFICIAL' in common_planner
   assert "navAssistStateSP" not in controlsd
 
 

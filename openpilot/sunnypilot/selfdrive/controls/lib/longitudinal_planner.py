@@ -69,8 +69,9 @@ class LongitudinalPlannerSP:
     # Disabled/unhealthy input is V_CRUISE_UNSET and is therefore transparent.
     self.nav.update(sm, long_enabled=sm['carControl'].longActive, long_override=long_override,
                     v_ego=v_ego, a_ego=a_ego, v_cruise=v_cruise,
-                    planner_verified=getattr(self, "active_backend_id", None) == BackendId.OFFICIAL,
-                    vision_turn_active=self.scc.vision.is_active)
+                    planner_verified=getattr(self, "active_backend_id", None) in (
+                      BackendId.OFFICIAL, BackendId.EXPERIMENTAL, BackendId.TN_NO_DEC,
+                    ))
 
     targets = {
       LongitudinalPlanSource.cruise: (v_cruise, a_ego),
