@@ -7,6 +7,7 @@ from opendbc.sunnypilot.car.tesla.values import TeslaFlagsSP
 from openpilot.common.realtime import DT_MDL
 from openpilot.selfdrive.car.cruise import V_CRUISE_UNSET
 from openpilot.sunnypilot.selfdrive.car.tesla.control_runtime import TeslaControlState, TeslaLongitudinalOwner
+from openpilot.sunnypilot.navassist.settings import NavAssistSettings, SettingsCache
 
 
 NavManeuver = custom.NavAssistStateSP.Maneuver
@@ -40,7 +41,7 @@ TARGET_SPEEDS = {
 class NavigationSpeedController:
   """Closed-course navigation speed ceiling; never requests acceleration or a stop."""
 
-  def __init__(self, *, enabled: bool | None = None, require_sp_longitudinal_owner: bool = False):
+  def __init__(self, *, enabled: bool | None = None, require_sp_longitudinal_owner: bool = False, settings_provider=None):
     self.enabled = True if enabled is None else enabled
     self.require_sp_longitudinal_owner = require_sp_longitudinal_owner
     self.output_v_target = V_CRUISE_UNSET
@@ -53,6 +54,7 @@ class NavigationSpeedController:
     self.target_speed = 0.0
     self.required_distance = 0.0
     self.event_activated = False
+    self._settings_provider = settings_provider if settings_provider is not None else SettingsCache().read
 
   @staticmethod
   def _healthy(sm) -> bool:
@@ -86,10 +88,12 @@ class NavigationSpeedController:
     return braking + v_ego * ACTUATION_DELAY_S
 
   @staticmethod
-  def _target_for(nav) -> float | None:
+  def _target_for(nav, settings: NavAssistSettings | None = None) -> float | None:
     # Cap'n Proto enum readers compare with integers but hash differently.
     # Use the numeric wire value when looking up the integer-keyed speed table.
     default = TARGET_SPEEDS.get(nav.maneuver.raw)
+    if settings is not None and nav.maneuver.raw in (NavManeuver.turnLeft, NavManeuver.turnRight):
+      default = settings.turn_speed_kph / 3.6
     if default is None:
       return None
     if nav.advisorySpeedValid:
@@ -109,7 +113,8 @@ class NavigationSpeedController:
 
   def update(self, sm, *, long_enabled: bool, long_override: bool, v_ego: float, a_ego: float, v_cruise: float,
              planner_verified: bool = True) -> None:
-    if not self.enabled:
+    settings = self._settings_provider()
+    if not self.enabled or not settings.enabled or not settings.turn_slowdown_enabled:
       self.output_v_target = V_CRUISE_UNSET
       self.output_a_target = a_ego
       self.is_active = self.is_releasing = False
@@ -138,7 +143,7 @@ class NavigationSpeedController:
       return
 
     nav = sm["navAssistStateSP"]
-    target_speed = self._target_for(nav)
+    target_speed = self._target_for(nav, settings)
     distance = float(nav.maneuverDistanceM)
     event_key = (str(nav.sessionId), int(nav.routeRevision), int(nav.maneuverEventId))
     if target_speed is None or event_key[2] == 0 or not math.isfinite(distance) or not 0.0 <= distance <= MAX_MANEUVER_DISTANCE_M:

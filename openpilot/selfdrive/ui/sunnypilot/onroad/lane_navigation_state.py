@@ -198,8 +198,12 @@ def navigation_display_from_service(
     subtitle = next_road or current_road or "路线已接收"
 
   details: list[str] = []
+  navigation_disabled = bool(lane_intent_healthy and lane_intent is not None and
+                             str(getattr(lane_intent, 'reason', '')) == 'navigationDisabled')
   recommended = [str(int(lane.index) + 1) for lane in nav.lanes if lane.recommended]
-  if signal_configured is False:
+  if navigation_disabled:
+    details.append('导航联动已关闭')
+  elif signal_configured is False:
     details.append("自动打灯未启用")
   elif lane_intent_healthy and lane_intent is not None and lane_intent.signalRequested:
     direction = "左" if str(lane_intent.direction) == "left" else "右"
@@ -225,13 +229,14 @@ def navigation_display_from_service(
       "waitingBlindspot": "等待盲区清除",
       "heuristicWaitingBlindspot": "等待盲区清除",
       "turnApproachHandoff": "路口转向准备",
+      "turnSignalsDisabled": "转弯灯请求已关闭",
     }.get(str(lane_intent.reason))
     if consistency is not None:
       details.append(consistency)
   if decel_active:
     details.append("转弯减速中")
 
-  ready = bool(nav.valid)
+  ready = bool(nav.valid and not navigation_disabled)
   linked = bool(
     getattr(nav, "routeActive", False)
     and getattr(nav, "routeMatched", False)

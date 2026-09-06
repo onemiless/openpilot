@@ -4,6 +4,7 @@ import hashlib
 import json
 import socket
 import threading
+import time
 
 from openpilot.sunnypilot.navassist.protocol import NavAssistProtocolError, NavAssistStore
 from openpilot.sunnypilot.navassist.server import ClientRateLimiter
@@ -36,6 +37,17 @@ class NavAssistUDPServer:
     self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     self._socket.bind(address)
     self._socket.settimeout(0.2)
+    self._stats_lock = threading.Lock()
+    self._stats = {'received': 0, 'accepted': 0, 'rejected': {}, 'last_sender_ip': None, 'last_packet_mono_ns': 0}
+
+  def diagnostics(self) -> dict:
+    with self._stats_lock:
+      return {**self._stats, 'rejected': dict(self._stats['rejected'])}
+
+  def _reject_record(self, reason: str) -> None:
+    with self._stats_lock:
+      rejected = self._stats['rejected']
+      rejected[reason] = rejected.get(reason, 0) + 1
 
   @property
   def server_address(self) -> tuple[str, int]:
@@ -53,12 +65,23 @@ class NavAssistUDPServer:
           break
         raise
       source_host = str(address[0])
-      if not body or len(body) > MAX_UDP_SNAPSHOT_BYTES or not self.rate_limiter.allow(source_host):
+      with self._stats_lock:
+        self._stats['received'] += 1
+        self._stats['last_sender_ip'] = source_host
+        self._stats['last_packet_mono_ns'] = time.monotonic_ns()
+      if not body or len(body) > MAX_UDP_SNAPSHOT_BYTES:
+        self._reject_record('invalidLength')
+        continue
+      if not self.rate_limiter.allow(source_host):
+        self._reject_record('rateLimited')
         continue
       try:
         accepted = self.store.accept(body, source_key_id(source_host))
-      except NavAssistProtocolError:
+      except NavAssistProtocolError as error:
+        self._reject_record(error.reason)
         continue
+      with self._stats_lock:
+        self._stats['accepted'] += 1
       acknowledgement = json.dumps({
         "messageType": UDP_ACK_TYPE,
         "schemaVersion": 3,

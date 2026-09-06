@@ -179,6 +179,7 @@ procs = [
   PythonProcess("plannerd", "openpilot.selfdrive.controls.plannerd", not_long_maneuver),
   PythonProcess("trafficcontrold", "openpilot.sunnypilot.selfdrive.traffic_control.trafficcontrold", only_onroad),
   PythonProcess("navassistd", "openpilot.sunnypilot.navassist.navassistd", navassist_receiver_ready),
+  PythonProcess("nav_diagnosticsd", "openpilot.sunnypilot.navassist.diagnosticsd", navassist_receiver_ready),
   PythonProcess("lane_topologyd", "openpilot.sunnypilot.navassist.lane_topologyd", navassist_lane_observer_ready),
   PythonProcess("nav_lane_intentd", "openpilot.sunnypilot.navassist.nav_lane_intentd", navassist_lane_observer_ready),
   PythonProcess("maneuversd", "openpilot.tools.longitudinal_maneuvers.maneuversd", long_maneuver),

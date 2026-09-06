@@ -13,10 +13,18 @@ NAVASSIST = ROOT / "sunnypilot/navassist"
 
 
 def test_network_ingress_never_imports_or_publishes_vehicle_control_interfaces():
-  sources = "\n".join(path.read_text() for path in NAVASSIST.glob("*.py"))
+  # The independent recorder reads vehicle fields but is not network ingress.
+  sources = "\n".join(path.read_text() for path in NAVASSIST.glob("*.py") if path.name != 'diagnosticsd.py')
   for forbidden in ("sendcan", "carControl.actuators", "desiredCurvature", "steeringAngleDeg"):
     assert forbidden not in sources
   assert 'PubMaster(["navAssistStateSP"])' in (NAVASSIST / "navassistd.py").read_text()
+
+
+def test_navigation_recorder_is_read_only():
+  source = (NAVASSIST / 'diagnosticsd.py').read_text()
+  assert 'messaging.SubMaster' in source
+  for forbidden in ('PubMaster(', 'sendcan', 'CarController', 'Params().put'):
+    assert forbidden not in source
 
 
 def test_receiver_is_always_available_and_lane_observer_stays_onroad():

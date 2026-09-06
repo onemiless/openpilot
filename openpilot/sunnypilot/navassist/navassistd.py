@@ -15,6 +15,8 @@ from openpilot.sunnypilot.navassist.protocol import NavAssistStore
 from openpilot.sunnypilot.navassist.publisher import build_nav_assist_message
 from openpilot.sunnypilot.navassist.server import NavAssistHTTPServer
 from openpilot.sunnypilot.navassist.udp_receiver import NavAssistUDPServer, UDP_SNAPSHOT_PORT
+from openpilot.sunnypilot.navassist.diagnostics import ingress_status_path
+from openpilot.sunnypilot.navassist.settings import atomic_json
 
 
 LISTEN_HOST = "0.0.0.0"
@@ -99,6 +101,10 @@ def main() -> None:
           store.reset()
           params.put_bool("NavAssistPairingReset", False, block=True)
         next_maintenance_ns = now_ns + MAINTENANCE_REFRESH_NS
+        try:
+          atomic_json(ingress_status_path(), {'updated_mono_ns': now_ns, **udp_server.diagnostics()})
+        except OSError:
+          pass
       localization_valid = local_localization_valid(sm, now_ns)
       message = build_nav_assist_message(
         store.current(), now_ns, local_localization_valid=localization_valid,

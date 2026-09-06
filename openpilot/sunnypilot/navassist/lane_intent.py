@@ -125,7 +125,7 @@ class NavTurnSignalCoordinator:
     return NavLaneIntent(reason=reason)
 
   def update(self, plan: NavTurnPlan, *, speed_mps: float, now_ns: int,
-             turn_geometry_active: bool = False) -> NavLaneIntent:
+             turn_geometry_active: bool = False, lookahead_time_s: float | None = None) -> NavLaneIntent:
     direction = self.MANEUVER_DIRECTIONS.get(plan.maneuver, LaneIntentDirection.none)
     event_key = (plan.session_id, plan.route_revision, plan.maneuver_event_id)
 
@@ -181,7 +181,7 @@ class NavTurnSignalCoordinator:
       return self._reset("turnUnavailable")
 
     lookahead_m = max(self.MIN_LOOKAHEAD_M, min(
-      self.MAX_LOOKAHEAD_M, max(0.0, speed_mps) * self.LOOKAHEAD_TIME_S + self.LOOKAHEAD_MARGIN_M,
+      self.MAX_LOOKAHEAD_M, max(0.0, speed_mps) * (self.LOOKAHEAD_TIME_S if lookahead_time_s is None else lookahead_time_s) + self.LOOKAHEAD_MARGIN_M,
     ))
     if not 0.0 < plan.distance_m <= lookahead_m:
       return self._reset("turnOutsideWindow")
@@ -210,7 +210,7 @@ class NavLaneIntentCoordinator:
   MIN_SPEED_MPS = 20 * 0.44704
   MAX_SPEED_MPS = 33.33
 
-  def __init__(self) -> None:
+  def __init__(self, *, max_changes: int = 5) -> None:
     self._phase = "idle"
     self._candidate = None
     self._candidate_since_ns = 0
@@ -222,7 +222,7 @@ class NavLaneIntentCoordinator:
     self._expected_lane_index = -1
     self._completion_since_ns = 0
     self._topology_invalid_since_ns = 0
-    self._relative_consistency = RelativeLaneConsistencyFilter()
+    self._relative_consistency = RelativeLaneConsistencyFilter(max_changes=max_changes)
 
   def _idle(self, reason: str = "idle") -> NavLaneIntent:
     return NavLaneIntent(reason=reason)
@@ -402,6 +402,10 @@ class NavLaneIntentCoordinator:
         target_lane_index=self._expected_lane_index,
         reason=self._plan_reason(plan, self._phase),
       )
+
+    if relative_status is not None and relative_status.completed_changes >= self._relative_consistency.max_changes:
+      self._reset()
+      return self._idle(self._plan_reason(plan, "changeLimit"))
 
     if not allow_new_lane_change:
       self._reset()

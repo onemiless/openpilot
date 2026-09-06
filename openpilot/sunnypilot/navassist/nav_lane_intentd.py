@@ -19,6 +19,7 @@ from openpilot.sunnypilot.navassist.lane_intent import (
 )
 from openpilot.sunnypilot.selfdrive.controls.lib.nav_turn_completion import sp_turn_geometry_active
 from openpilot.sunnypilot.selfdrive.controls.lib.lane_change_blocker import lane_topology_nav_crossing_allowed
+from openpilot.sunnypilot.navassist.settings import NavAssistSettings, SettingsCache
 
 
 PUBLISH_HZ = 20
@@ -45,8 +46,9 @@ def navigation_linked(nav, *, base_healthy: bool) -> bool:
   )
 
 
-def build_lane_plan(nav, topology, *, healthy: bool) -> NavLanePlan:
-  nav_valid = bool(healthy and nav.valid and not nav.stale)
+def build_lane_plan(nav, topology, *, healthy: bool, settings: NavAssistSettings | None = None) -> NavLanePlan:
+  settings = settings if settings is not None else NavAssistSettings()
+  nav_valid = bool(healthy and nav.valid and not nav.stale and settings.enabled and settings.lane_change_enabled)
   lanes = tuple(nav.lanes)
   recommended = tuple(int(lane.index) for lane in lanes if lane.recommended)
   maneuver = str(nav.maneuver)
@@ -55,13 +57,13 @@ def build_lane_plan(nav, topology, *, healthy: bool) -> NavLanePlan:
   fallback_side = None
   lookahead_m = 0.0
   if maneuver in LEFT_TURN_LANE_MANEUVERS:
-    fallback_side, lookahead_m = "left", TURN_LANE_LOOKAHEAD_M
+    fallback_side, lookahead_m = "left", settings.turn_lane_lookahead_m
   elif maneuver in RIGHT_TURN_LANE_MANEUVERS:
-    fallback_side, lookahead_m = "right", TURN_LANE_LOOKAHEAD_M
+    fallback_side, lookahead_m = "right", settings.turn_lane_lookahead_m
   elif maneuver in LEFT_EXIT_LANE_MANEUVERS:
-    fallback_side, lookahead_m = "left", EXIT_LANE_LOOKAHEAD_M
+    fallback_side, lookahead_m = "left", settings.exit_lane_lookahead_m
   elif maneuver in RIGHT_EXIT_LANE_MANEUVERS:
-    fallback_side, lookahead_m = "right", EXIT_LANE_LOOKAHEAD_M
+    fallback_side, lookahead_m = "right", settings.exit_lane_lookahead_m
   fork_now = bool(
     maneuver in LEFT_EXIT_LANE_MANEUVERS | RIGHT_EXIT_LANE_MANEUVERS
     and math.isfinite(distance_m) and 0.0 < distance_m <= FORK_NOW_DISTANCE_M
@@ -73,7 +75,7 @@ def build_lane_plan(nav, topology, *, healthy: bool) -> NavLanePlan:
       (fallback_side == "left" and 0 in recommended)
       or (fallback_side == "right" and amap_lane_count - 1 in recommended)
     )
-    if nav_valid and edge_recommended:
+    if nav_valid and edge_recommended and math.isfinite(distance_m) and 0.0 <= distance_m <= lookahead_m:
       target = 0 if fallback_side == "left" else max(0, lane_count - 1)
       return NavLanePlan(
         True, str(nav.sessionId), int(nav.routeRevision), int(nav.maneuverEventId),
@@ -114,7 +116,8 @@ def lane_alignment_may_start(nav, turn_intent: NavLaneIntent) -> bool:
 
 
 def main() -> None:
-  coordinator = NavLaneIntentCoordinator()
+  settings_cache = SettingsCache()
+  coordinator = NavLaneIntentCoordinator(max_changes=settings_cache.read().max_lane_changes)
   turn_signal_coordinator = NavTurnSignalCoordinator()
   sm = messaging.SubMaster(list(SERVICES), poll="navAssistStateSP")
   pm = messaging.PubMaster(["navLaneIntentSP"])
@@ -125,13 +128,14 @@ def main() -> None:
     lane_services_healthy = selected_services_healthy(sm, LANE_SERVICES)
     healthy = base_healthy and lane_services_healthy
     nav = sm["navAssistStateSP"]
+    settings = settings_cache.read()
     topology = sm["laneTopologyStateSP"]
     car_state = sm["carState"]
     car_control = sm["carControl"]
     model_meta = sm["modelV2"].meta
     # A brief lane-observation gap is not a navigation outage or a loss of
     # actual lateral control. The coordinator bounds it with its existing grace.
-    plan = build_lane_plan(nav, topology, healthy=base_healthy)
+    plan = build_lane_plan(nav, topology, healthy=base_healthy, settings=settings)
     topology_input = LaneTopologyInput(
       valid_for_control=bool(healthy and topology.validForControl),
       visible_lane_count=int(topology.visibleLaneCount),
@@ -174,6 +178,7 @@ def main() -> None:
     turn_intent = turn_signal_coordinator.update(
       turn_plan, speed_mps=float(car_state.vEgo), now_ns=now_ns,
       turn_geometry_active=sp_turn_geometry_active(sm["controlsState"], float(car_state.vEgo)),
+      lookahead_time_s=settings.signal_lead_time_s,
     )
     # Reuse the existing pre-turn window. An SP change already in progress
     # finishes before handoff; a further approach-lane change must not suppress
@@ -181,7 +186,11 @@ def main() -> None:
     lane_intent = coordinator.update(
       plan, topology_input, vehicle, now_ns=now_ns, allow_new_lane_change=lane_alignment_may_start(nav, turn_intent),
     )
-    intent = lane_intent if lane_intent.signal_requested else turn_intent
+    intent = lane_intent if lane_intent.signal_requested else (
+      turn_intent if settings.turn_signal_enabled else NavLaneIntent(reason="turnSignalsDisabled")
+    )
+    if not settings.enabled:
+      intent = NavLaneIntent(reason="navigationDisabled")
 
     message = messaging.new_message("navLaneIntentSP")
     message.valid = base_healthy

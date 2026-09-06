@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from openpilot.cereal import custom
 
 from openpilot.selfdrive.ui.sunnypilot.onroad.lane_navigation_state import (
   lane_display_from_service,
@@ -7,6 +8,16 @@ from openpilot.selfdrive.ui.sunnypilot.onroad.lane_navigation_state import (
   overlay_layout,
 )
 from openpilot.sunnypilot.lane_topology.types import LaneMarkingType
+
+
+def test_disabled_navigation_still_displays_route_without_claiming_ready():
+  nav = custom.NavAssistStateSP.new_message(valid=True, routeActive=True, routeMatched=True, stale=False,
+                                            maneuver='turnLeft', maneuverDistanceM=80, currentRoad='主路', nextRoad='支路')
+  intent = custom.NavLaneIntentSP.new_message(valid=True, signalRequested=False, reason='navigationDisabled')
+  display = navigation_display_from_service(nav, seen=True, alive=True, valid=True, lane_intent=intent, lane_intent_healthy=True)
+  assert display.linked and display.receiving and not display.ready
+  assert display.detail == '导航联动已关闭'
+  assert '80 m' in display.title
 
 
 def test_lane_overlay_shows_markings_and_lane_position_when_control_is_observation_only():

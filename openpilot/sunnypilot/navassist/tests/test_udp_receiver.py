@@ -48,6 +48,8 @@ def test_udp_accepts_canonical_v3_snapshot_without_credentials():
       "sequence": 1,
     }
     assert store.current().snapshot.session_id == "session-a"
+    assert server.diagnostics()['accepted'] == 1
+    assert server.diagnostics()['received'] == 1
   finally:
     stop_server(server, thread)
 
@@ -60,5 +62,10 @@ def test_udp_silently_drops_replay_malformed_oversize_and_rate_limited_data():
     assert send(server.server_address[1], body) is None
     assert send(server.server_address[1], b'{"echo_cmd":"id"}') is None
     assert send(server.server_address[1], b"x" * (MAX_UDP_SNAPSHOT_BYTES + 1)) is None
+    stats = server.diagnostics()
+    assert stats['received'] == 4 and stats['accepted'] == 1
+    assert stats['rejected']['replay'] == 1
+    assert stats['rejected']['invalidLength'] == 1
+    assert 'session-a' not in json.dumps(stats)
   finally:
     stop_server(server, thread)
