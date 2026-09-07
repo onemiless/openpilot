@@ -156,7 +156,9 @@ class DesireHelper:
         nav_crossing_allowed = bool(
           (nav_left and left_crossing_allowed) or (nav_right and right_crossing_allowed)
         )
-        nav_not_ready = nav_signal and not (physical_nav_signal_on and nav_crossing_allowed)
+        nav_not_ready = nav_signal and not (
+          physical_nav_signal_on and nav_crossing_allowed and bool(getattr(nav_lane_intent, "spLaneChangeReady", False))
+        )
         lane_change_blocked = blindspot_detected or nav_not_ready
 
         self.alc.update_lane_change(lane_change_blocked, carstate.brakePressed)

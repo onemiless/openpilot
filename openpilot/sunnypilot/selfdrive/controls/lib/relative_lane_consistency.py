@@ -46,7 +46,7 @@ class RelativeLaneConsistencyFilter:
     self._cooldown_until_ns = 0
 
   def update(self, event_key: tuple[str, int, int], *, direction: str,
-             neighbor_exists: bool, observation_valid: bool,
+             neighbor_exists: bool | None, observation_valid: bool,
              lane_change_active: bool, steering_pressed: bool,
              now_ns: int) -> RelativeLaneStatus:
     if direction not in ("left", "right"):
@@ -68,6 +68,13 @@ class RelativeLaneConsistencyFilter:
       self._presence_since_ns = None
       self._absence_since_ns = None
       return self._status(False, "driverSteering")
+
+    # Missing outer paint is not evidence that the road ends. Keep confirmed
+    # history, but never accumulate presence/absence time from unknown frames.
+    if neighbor_exists is None:
+      self._presence_since_ns = None
+      self._absence_since_ns = None
+      return self._status(False, "neighborUnknown")
 
     if not neighbor_exists:
       self._presence_since_ns = None

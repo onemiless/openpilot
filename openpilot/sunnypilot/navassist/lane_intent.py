@@ -39,8 +39,8 @@ class LaneTopologyInput:
   valid_for_control: bool
   visible_lane_count: int
   ego_lane_index: int
-  left_neighbor_exists: bool
-  right_neighbor_exists: bool
+  left_neighbor_exists: bool | None
+  right_neighbor_exists: bool | None
   left_crossing_allowed: bool
   right_crossing_allowed: bool
 
@@ -204,6 +204,7 @@ class NavLaneIntentCoordinator:
   CROSSING_STABLE_NS = 300_000_000
   LANE_INDEX_STABLE_NS = 500_000_000
   TOPOLOGY_TRANSITION_GRACE_NS = 1_000_000_000
+  OBSERVATION_RECOVERY_NS = 3_000_000_000
   SIGNAL_WAIT_TIMEOUT_NS = 60_000_000_000
   LANE_CHANGE_TIMEOUT_NS = 10_000_000_000
   COOLDOWN_NS = 750_000_000
@@ -222,6 +223,9 @@ class NavLaneIntentCoordinator:
     self._expected_lane_index = -1
     self._completion_since_ns = 0
     self._topology_invalid_since_ns = 0
+    self._observation_since_ns: int | None = None
+    self._observation_recovery_ns: int | None = None
+    self._observation_lamp_released = False
     self._relative_consistency = RelativeLaneConsistencyFilter(max_changes=max_changes)
 
   def _idle(self, reason: str = "idle") -> NavLaneIntent:
@@ -276,6 +280,39 @@ class NavLaneIntentCoordinator:
     self._expected_lane_index = -1
     self._completion_since_ns = 0
     self._topology_invalid_since_ns = 0
+    self._observation_since_ns = None
+    self._observation_recovery_ns = None
+    self._observation_lamp_released = False
+
+  def _observe_before_start(self, now_ns: int, *, recovering: bool) -> NavLaneIntent | None:
+    """Keep one request through a bounded gap, never its permission to start."""
+    assert self._candidate is not None
+    self._phase = "observing"
+    self._crossing_since_ns = 0
+    if self._observation_since_ns is None:
+      self._observation_since_ns = now_ns
+    if not recovering:
+      self._observation_recovery_ns = None
+    elif self._observation_recovery_ns is None:
+      self._observation_recovery_ns = now_ns
+    stable_ns = self.OBSERVATION_RECOVERY_NS if self._observation_lamp_released else self.MISMATCH_STABLE_NS
+    if recovering and now_ns - self._observation_recovery_ns >= stable_ns:
+      self._phase = "signaling"
+      self._phase_since_ns = now_ns
+      if self._observation_lamp_released:
+        self._signal_since_ns = now_ns
+      self._observation_since_ns = self._observation_recovery_ns = None
+      self._observation_lamp_released = False
+      return None
+    if not self._observation_lamp_released and now_ns - self._observation_since_ns > self.TOPOLOGY_TRANSITION_GRACE_NS:
+      self._observation_lamp_released = True
+      self._observation_recovery_ns = now_ns if recovering else None
+    _event, _ego, direction, target, _relative = self._candidate
+    return NavLaneIntent(
+      signal_requested=not self._observation_lamp_released, direction=direction,
+      request_id=self._request_id, target_lane_index=target,
+      reason="neighborObservationPaused" if self._observation_lamp_released else "neighborObservationHold",
+    )
 
   def _abort(self, event_key, reason: str) -> NavLaneIntent:
     self._blocked_key = event_key
@@ -284,7 +321,7 @@ class NavLaneIntentCoordinator:
 
   def update(self, plan: NavLanePlan, topology: LaneTopologyInput, vehicle: LaneVehicleInput,
              *, now_ns: int, allow_new_lane_change: bool = True) -> NavLaneIntent:
-    if self._phase in ("signaling", "ready") and self._candidate is not None:
+    if self._phase in ("signaling", "ready", "observing") and self._candidate is not None:
       _event_key, start_ego, direction, _target_index, _relative_edge = self._candidate
       if vehicle.lane_change_state == ObservedLaneChangeState.starting and vehicle.lane_change_direction == direction:
         # Observe the SP transition before deciding whether a new action may
@@ -316,11 +353,19 @@ class NavLaneIntentCoordinator:
       self._reset()
       return self._idle("health")
 
+    if self._phase in ("signaling", "ready", "observing") and not allow_new_lane_change:
+      self._reset()
+      return self._idle("turnApproachHandoff")
+
     if self._phase == "changing" and self._candidate is not None:
       if now_ns - self._phase_since_ns > self.LANE_CHANGE_TIMEOUT_NS:
         return self._abort(self._candidate[0], "laneChangeTimeout")
 
     if not topology_healthy:
+      if self._phase in ("signaling", "ready", "observing") and self._candidate is not None:
+        if self._event_key(plan) != self._candidate[0]:
+          return self._abort(self._candidate[0], "routeChanged")
+        return self._observe_before_start(now_ns, recovering=False)
       if self._phase == "changing" and self._candidate is not None:
         self._completion_since_ns = 0
         event_key, _start_ego, direction, target_index, _relative_edge = self._candidate
@@ -357,6 +402,20 @@ class NavLaneIntentCoordinator:
         steering_pressed=vehicle.steering_pressed,
         now_ns=now_ns,
       )
+
+    if self._phase in ("signaling", "ready", "observing") and self._candidate is not None:
+      event_key, _ego, direction, _target, _relative = self._candidate
+      if self._event_key(plan) != event_key:
+        return self._abort(event_key, "routeChanged")
+      neighbor = topology.left_neighbor_exists if direction == LaneIntentDirection.left else topology.right_neighbor_exists
+      if neighbor is False and not plan.force_fork:
+        return self._abort(event_key, "noNeighbor")
+      if (neighbor is None and not plan.force_fork) or self._phase == "observing":
+        waiting = self._observe_before_start(
+          now_ns, recovering=(neighbor is True or plan.force_fork) and not vehicle.steering_pressed,
+        )
+        if waiting is not None:
+          return waiting
 
     if self._phase == "cooldown":
       if now_ns - self._phase_since_ns < self.COOLDOWN_NS:
@@ -432,6 +491,9 @@ class NavLaneIntentCoordinator:
       return self._idle("blockedEvent")
 
     neighbor_exists = topology.left_neighbor_exists if direction == LaneIntentDirection.left else topology.right_neighbor_exists
+    if neighbor_exists is None and not plan.force_fork:
+      self._reset()
+      return self._idle("neighborUnknown")
     if not neighbor_exists and not plan.force_fork:
       return self._abort(event_key, "noNeighbor")
 

@@ -46,6 +46,19 @@ def navigation_linked(nav, *, base_healthy: bool) -> bool:
   )
 
 
+def neighbor_observation(topology, *, side: str, healthy: bool) -> bool | None:
+  """Visible lane / confirmed road boundary / unknown, without a schema change."""
+  if side not in ("left", "right"):
+    raise ValueError("side must be left or right")
+  if not healthy or not topology.validForControl:
+    return None
+  road_edge = (bool(getattr(topology, f"{side}EvidenceValid")) and
+               str(getattr(topology, f"{side}EgoSideMarking")) == "roadEdge")
+  if road_edge:
+    return False
+  return True if getattr(topology, f"{side}NeighborExists") else None
+
+
 def build_lane_plan(nav, topology, *, healthy: bool, settings: NavAssistSettings | None = None) -> NavLanePlan:
   settings = settings if settings is not None else NavAssistSettings()
   nav_valid = bool(healthy and nav.valid and not nav.stale and settings.enabled and settings.lane_change_enabled)
@@ -140,8 +153,8 @@ def main() -> None:
       valid_for_control=bool(healthy and topology.validForControl),
       visible_lane_count=int(topology.visibleLaneCount),
       ego_lane_index=int(topology.egoLaneIndexFromLeft),
-      left_neighbor_exists=bool(topology.leftNeighborExists),
-      right_neighbor_exists=bool(topology.rightNeighborExists),
+      left_neighbor_exists=neighbor_observation(topology, side="left", healthy=lane_services_healthy),
+      right_neighbor_exists=neighbor_observation(topology, side="right", healthy=lane_services_healthy),
       left_crossing_allowed=lane_topology_nav_crossing_allowed(
         topology, side="left", healthy=lane_services_healthy,
         allow_unknown=plan.edge_direction == LaneIntentDirection.left and plan.allow_unknown_crossing,

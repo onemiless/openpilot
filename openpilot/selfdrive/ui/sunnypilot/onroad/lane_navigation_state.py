@@ -209,6 +209,8 @@ def navigation_display_from_service(
     direction = "左" if str(lane_intent.direction) == "left" else "右"
     if int(lane_intent.targetLaneIndex) < 0:
       details.append(f"请求{direction}转灯")
+    elif str(getattr(lane_intent, "reason", "")) == "neighborObservationHold":
+      details.append("确认邻车道 · 暂停变道")
     elif getattr(lane_intent, "forkNow", False):
       details.append(f"{direction}分叉请求 · 实线放行")
     elif getattr(lane_intent, "spLaneChangeReady", False):
@@ -218,6 +220,9 @@ def navigation_display_from_service(
   elif lane_intent_healthy and lane_intent is not None:
     consistency = {
       "heuristicStabilizingNeighbor": "确认邻车道",
+      "heuristicNeighborUnknown": "邻车道未知",
+      "neighborUnknown": "邻车道未知",
+      "neighborObservationPaused": "等待邻车道稳定",
       "heuristicStabilizingEdge": "确认已靠边",
       "heuristicEdgeConfirmed": "已靠近目标侧",
       "heuristicStabilizingNewNeighbor": "确认新增车道",

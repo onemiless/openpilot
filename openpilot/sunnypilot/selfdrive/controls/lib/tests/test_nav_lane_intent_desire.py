@@ -22,8 +22,18 @@ def car_state(**updates):
   return SimpleNamespace(**values)
 
 
-def intent(*, direction="left", signal=True, target=0):
-  return SimpleNamespace(valid=True, signalRequested=signal, direction=direction, targetLaneIndex=target)
+def intent(*, direction="left", signal=True, target=0, ready=True):
+  return SimpleNamespace(valid=True, signalRequested=signal, direction=direction, targetLaneIndex=target,
+                         spLaneChangeReady=ready)
+
+
+def test_held_navigation_lamp_cannot_start_lane_change_before_ready():
+  desire = helper()
+  waiting = intent(ready=False)
+  desire.update(car_state(), True, 1.0, nav_lane_intent=waiting, left_crossing_allowed=True)
+  for _ in range(100):
+    desire.update(car_state(leftBlinker=True), True, 1.0, nav_lane_intent=waiting, left_crossing_allowed=True)
+    assert desire.lane_change_state == LaneChangeState.preLaneChange
 
 
 def helper():
