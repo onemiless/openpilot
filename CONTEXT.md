@@ -68,6 +68,43 @@ publish Seam, after the selected Planner Backend produces its normal plan.
 No Traffic target is injected into a planner or MPC.
 _Avoid_: traffic planner, duplicated traffic controller
 
+**Lane Topology**:
+A read-only interpretation of independently observed visible lane markings.
+It distinguishes physical markings from topology boundaries, derives visible
+lane spaces and the ego lane, and carries explicit ambiguous/stale state through
+merge, split, occlusion, and low-confidence scenes. It never replaces modelV2,
+becomes a Planner Backend or Plan Constraint, or supplies a trajectory. A
+neutral observer may publish a fail-closed Control Lane Observation; UI fallback
+adapters remain display-only and never become a second control producer.
+_Avoid_: total road lanes, lane control model, modelV2 lane replacement
+
+**Control Lane Observation**:
+The closed-course, typed, freshness-bounded derivative of Lane Topology. It
+publishes synchronized source ages and raw marking evidence, keeps unknown
+distinct from stale/ambiguous geometry, and may only veto or qualify a
+high-level maneuver. Ordinary navigation alignment treats unknown paint as
+open but still blocks confirmed solid paint. A bounded final-fork policy may
+also accept solid paint, but never stale/ambiguous
+geometry or a reported road edge. It never writes curvature, actuators,
+CarState, or CAN.
+_Avoid_: lane permission command, UI lane state, steering input
+
+**Mobile Navigation Observation**:
+An authenticated, replay-protected, freshness-bounded high-level route snapshot
+received from a phone. It is untrusted context until normalized by navassistd
+and never carries curvature, acceleration, actuator, or CAN commands.
+_Avoid_: phone control command, mobile planner, navigation CAN
+
+**Track Navigation Speed Controller**:
+A closed-course-only common longitudinal target that can lower the base cruise
+speed ceiling for an admitted maneuver. It cannot request a stop, acceleration,
+or a less conservative target. A fresh matched realtime route becomes eligible
+only while SP has active longitudinal authority. Official, Experimental and
+TN-NoDEC consume its ceiling through their existing common speed-target seam;
+each retains its own planner and actuator contract. SCC-V and navigation remain
+independent candidates, with the lower speed target winning each cycle.
+_Avoid_: navigation planner backend, phone acceleration command, route MPC
+
 **Model Platform**:
 The official hardware-driven QCOM/Chestnut selection. Each platform keeps an
 independent selected bundle; a healthy connected Chestnut activates Big Model,

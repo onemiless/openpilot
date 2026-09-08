@@ -175,6 +175,7 @@ enum class LongitudinalPlanSource_ad47440556d96ec4: uint16_t {
   SCC_VISION,
   SCC_MAP,
   SPEED_LIMIT_ASSIST,
+  NAV_ASSIST,
 };
 CAPNP_DECLARE_ENUM(LongitudinalPlanSource, ad47440556d96ec4);
 CAPNP_DECLARE_SCHEMA(a567bce822ae28fe);
@@ -271,8 +272,105 @@ enum class TurnDirection_b73df234a23b0cc2: uint16_t {
 CAPNP_DECLARE_ENUM(TurnDirection, b73df234a23b0cc2);
 CAPNP_DECLARE_SCHEMA(cb9fd56c7057593a);
 CAPNP_DECLARE_SCHEMA(c2243c65e0340384);
+CAPNP_DECLARE_SCHEMA(8f1545ec5e0be232);
+CAPNP_DECLARE_SCHEMA(f32e2bab4c4da053);
+enum class Source_f32e2bab4c4da053: uint16_t {
+  UNKNOWN,
+  ANDROID,
+  IOS,
+  TRACK,
+};
+CAPNP_DECLARE_ENUM(Source, f32e2bab4c4da053);
+CAPNP_DECLARE_SCHEMA(887822c0c672ef66);
+enum class Mode_887822c0c672ef66: uint16_t {
+  IDLE,
+  ROUTE_PLANNED,
+  REALTIME,
+  SIMULATION,
+  ARRIVED,
+  RECALCULATING,
+};
+CAPNP_DECLARE_ENUM(Mode, 887822c0c672ef66);
+CAPNP_DECLARE_SCHEMA(e61527a16becf859);
+enum class CoordinateSystem_e61527a16becf859: uint16_t {
+  UNKNOWN,
+  GCJ02,
+  WGS84,
+};
+CAPNP_DECLARE_ENUM(CoordinateSystem, e61527a16becf859);
+CAPNP_DECLARE_SCHEMA(a331f1f81c55ce27);
+enum class Maneuver_a331f1f81c55ce27: uint16_t {
+  NONE,
+  STRAIGHT,
+  SLIGHT_LEFT,
+  SLIGHT_RIGHT,
+  TURN_LEFT,
+  TURN_RIGHT,
+  SHARP_LEFT,
+  SHARP_RIGHT,
+  U_TURN_LEFT,
+  U_TURN_RIGHT,
+  KEEP_LEFT,
+  KEEP_RIGHT,
+  MERGE_LEFT,
+  MERGE_RIGHT,
+  EXIT_LEFT,
+  EXIT_RIGHT,
+  RAMP_LEFT,
+  RAMP_RIGHT,
+  ROUNDABOUT,
+  DESTINATION,
+  UNKNOWN,
+};
+CAPNP_DECLARE_ENUM(Maneuver, a331f1f81c55ce27);
+CAPNP_DECLARE_SCHEMA(93801f101c64a333);
+enum class RejectReason_93801f101c64a333: uint16_t {
+  NONE,
+  DISABLED,
+  NO_DATA,
+  AUTHENTICATION,
+  MALFORMED,
+  REPLAY,
+  STALE,
+  ROUTE_UNMATCHED,
+  GPS_WEAK,
+  OUTSIDE_TRACK_D_E_P_R_E_C_A_T_E_D,
+  LOCAL_LOCALIZATION,
+  PHONE_LOCALIZATION,
+  GUIDANCE_STALE,
+};
+CAPNP_DECLARE_ENUM(RejectReason, 93801f101c64a333);
 CAPNP_DECLARE_SCHEMA(9ccdc8676701b412);
+CAPNP_DECLARE_SCHEMA(874af477e13db974);
+enum class Marking_874af477e13db974: uint16_t {
+  UNKNOWN,
+  SOLID,
+  DASHED,
+  DOUBLE_SOLID,
+  DOUBLE_DASHED,
+  SOLID_DASHED,
+  ROAD_EDGE,
+};
+CAPNP_DECLARE_ENUM(Marking, 874af477e13db974);
+CAPNP_DECLARE_SCHEMA(f9011430072aaeee);
+enum class TopologyState_f9011430072aaeee: uint16_t {
+  NORMAL,
+  MERGING_LEFT,
+  MERGING_RIGHT,
+  SPLITTING_LEFT,
+  SPLITTING_RIGHT,
+  AMBIGUOUS,
+  STALE,
+};
+CAPNP_DECLARE_ENUM(TopologyState, f9011430072aaeee);
 CAPNP_DECLARE_SCHEMA(cd96dafb67a082d0);
+CAPNP_DECLARE_SCHEMA(90df562040a2738b);
+enum class Direction_90df562040a2738b: uint16_t {
+  NONE,
+  LEFT,
+  RIGHT,
+};
+CAPNP_DECLARE_ENUM(Direction, 90df562040a2738b);
 CAPNP_DECLARE_SCHEMA(b057204d7deadf3f);
 CAPNP_DECLARE_SCHEMA(bd443b539493bc68);
 CAPNP_DECLARE_SCHEMA(fc6241ed8877b611);
@@ -877,7 +975,7 @@ struct TeslaTrafficControl {
   class Pipeline;
 
   struct _capnpPrivate {
-    CAPNP_DECLARE_STRUCT_HEADER(8a7b52354f67737e, 4, 0)
+    CAPNP_DECLARE_STRUCT_HEADER(8a7b52354f67737e, 4, 1)
     #if !CAPNP_LITE
     static constexpr ::capnp::_::RawBrandedSchema const* brand() { return &schema->defaultBrand; }
     #endif  // !CAPNP_LITE
@@ -946,45 +1044,77 @@ struct TrafficRadarState {
   };
 };
 
-struct CustomReserved11 {
-  CustomReserved11() = delete;
+struct NavAssistStateSP {
+  NavAssistStateSP() = delete;
 
   class Reader;
   class Builder;
   class Pipeline;
+  struct LaneGuidance;
+  typedef ::capnp::schemas::Source_f32e2bab4c4da053 Source;
+
+  typedef ::capnp::schemas::Mode_887822c0c672ef66 Mode;
+
+  typedef ::capnp::schemas::CoordinateSystem_e61527a16becf859 CoordinateSystem;
+
+  typedef ::capnp::schemas::Maneuver_a331f1f81c55ce27 Maneuver;
+
+  typedef ::capnp::schemas::RejectReason_93801f101c64a333 RejectReason;
+
 
   struct _capnpPrivate {
-    CAPNP_DECLARE_STRUCT_HEADER(c2243c65e0340384, 0, 0)
+    CAPNP_DECLARE_STRUCT_HEADER(c2243c65e0340384, 19, 4)
     #if !CAPNP_LITE
     static constexpr ::capnp::_::RawBrandedSchema const* brand() { return &schema->defaultBrand; }
     #endif  // !CAPNP_LITE
   };
 };
 
-struct CustomReserved12 {
-  CustomReserved12() = delete;
+struct NavAssistStateSP::LaneGuidance {
+  LaneGuidance() = delete;
 
   class Reader;
   class Builder;
   class Pipeline;
 
   struct _capnpPrivate {
-    CAPNP_DECLARE_STRUCT_HEADER(9ccdc8676701b412, 0, 0)
+    CAPNP_DECLARE_STRUCT_HEADER(8f1545ec5e0be232, 1, 0)
     #if !CAPNP_LITE
     static constexpr ::capnp::_::RawBrandedSchema const* brand() { return &schema->defaultBrand; }
     #endif  // !CAPNP_LITE
   };
 };
 
-struct CustomReserved13 {
-  CustomReserved13() = delete;
+struct LaneTopologyStateSP {
+  LaneTopologyStateSP() = delete;
 
   class Reader;
   class Builder;
   class Pipeline;
+  typedef ::capnp::schemas::Marking_874af477e13db974 Marking;
+
+  typedef ::capnp::schemas::TopologyState_f9011430072aaeee TopologyState;
+
 
   struct _capnpPrivate {
-    CAPNP_DECLARE_STRUCT_HEADER(cd96dafb67a082d0, 0, 0)
+    CAPNP_DECLARE_STRUCT_HEADER(9ccdc8676701b412, 11, 0)
+    #if !CAPNP_LITE
+    static constexpr ::capnp::_::RawBrandedSchema const* brand() { return &schema->defaultBrand; }
+    #endif  // !CAPNP_LITE
+  };
+};
+
+struct NavLaneIntentSP {
+  NavLaneIntentSP() = delete;
+
+  class Reader;
+  class Builder;
+  class Pipeline;
+  typedef ::capnp::schemas::Direction_90df562040a2738b Direction;
+
+
+  struct _capnpPrivate {
+    CAPNP_DECLARE_STRUCT_HEADER(cd96dafb67a082d0, 5, 2)
     #if !CAPNP_LITE
     static constexpr ::capnp::_::RawBrandedSchema const* brand() { return &schema->defaultBrand; }
     #endif  // !CAPNP_LITE
@@ -4809,6 +4939,11 @@ public:
 
   inline  ::uint8_t getQuality() const;
 
+  inline  ::uint32_t getRawAddress() const;
+
+  inline bool hasRawPayload() const;
+  inline  ::capnp::Data::Reader getRawPayload() const;
+
 private:
   ::capnp::_::StructReader _reader;
   template <typename, ::capnp::Kind>
@@ -4896,6 +5031,16 @@ public:
 
   inline  ::uint8_t getQuality();
   inline void setQuality( ::uint8_t value);
+
+  inline  ::uint32_t getRawAddress();
+  inline void setRawAddress( ::uint32_t value);
+
+  inline bool hasRawPayload();
+  inline  ::capnp::Data::Builder getRawPayload();
+  inline void setRawPayload( ::capnp::Data::Reader value);
+  inline  ::capnp::Data::Builder initRawPayload(unsigned int size);
+  inline void adoptRawPayload(::capnp::Orphan< ::capnp::Data>&& value);
+  inline ::capnp::Orphan< ::capnp::Data> disownRawPayload();
 
 private:
   ::capnp::_::StructBuilder _builder;
@@ -5577,9 +5722,9 @@ private:
 };
 #endif  // !CAPNP_LITE
 
-class CustomReserved11::Reader {
+class NavAssistStateSP::Reader {
 public:
-  typedef CustomReserved11 Reads;
+  typedef NavAssistStateSP Reads;
 
   Reader() = default;
   inline explicit Reader(::capnp::_::StructReader base): _reader(base) {}
@@ -5594,6 +5739,90 @@ public:
   }
 #endif  // !CAPNP_LITE
 
+  inline  ::uint64_t getPublishMonoTime() const;
+
+  inline  ::uint64_t getReceiveMonoTime() const;
+
+  inline  ::uint64_t getSourceWallTimeMs() const;
+
+  inline  ::uint64_t getSequence() const;
+
+  inline  ::uint64_t getRouteRevision() const;
+
+  inline  ::uint64_t getManeuverEventId() const;
+
+  inline bool hasSessionId() const;
+  inline  ::capnp::Text::Reader getSessionId() const;
+
+  inline  ::cereal::NavAssistStateSP::Source getSource() const;
+
+  inline  ::cereal::NavAssistStateSP::Mode getMode() const;
+
+  inline  ::cereal::NavAssistStateSP::CoordinateSystem getCoordinateSystem() const;
+
+  inline bool getValid() const;
+
+  inline bool getStale() const;
+
+  inline bool getRouteActive() const;
+
+  inline bool getRouteMatched() const;
+
+  inline bool getGpsWeak() const;
+
+  inline double getLatitude() const;
+
+  inline double getLongitude() const;
+
+  inline float getLocationAccuracyM() const;
+
+  inline float getBearingDeg() const;
+
+  inline float getSpeedKph() const;
+
+  inline  ::uint64_t getLocationObservedAtMs() const;
+
+  inline  ::int32_t getCurrentStepIndex() const;
+
+  inline  ::int32_t getCurrentLinkIndex() const;
+
+  inline  ::int32_t getCurrentPointIndex() const;
+
+  inline  ::cereal::NavAssistStateSP::Maneuver getManeuver() const;
+
+  inline float getManeuverDistanceM() const;
+
+  inline  ::cereal::NavAssistStateSP::Maneuver getNextManeuver() const;
+
+  inline float getNextManeuverDistanceM() const;
+
+  inline bool getAdvisorySpeedValid() const;
+
+  inline float getAdvisorySpeedMps() const;
+
+  inline  ::int16_t getRoadClass() const;
+
+  inline  ::int16_t getRoadType() const;
+
+  inline bool hasCurrentRoad() const;
+  inline  ::capnp::Text::Reader getCurrentRoad() const;
+
+  inline bool hasNextRoad() const;
+  inline  ::capnp::Text::Reader getNextRoad() const;
+
+  inline  ::uint64_t getLaneGuidanceObservedAtMs() const;
+
+  inline bool hasLanes() const;
+  inline  ::capnp::List< ::cereal::NavAssistStateSP::LaneGuidance,  ::capnp::Kind::STRUCT>::Reader getLanes() const;
+
+  inline float getSourceAgeMs() const;
+
+  inline  ::cereal::NavAssistStateSP::RejectReason getRejectReason() const;
+
+  inline  ::uint64_t getGuidanceObservedAtMs() const;
+
+  inline bool getTrackGeofenceValidDEPRECATED() const;
+
 private:
   ::capnp::_::StructReader _reader;
   template <typename, ::capnp::Kind>
@@ -5606,9 +5835,9 @@ private:
   friend class ::capnp::Orphanage;
 };
 
-class CustomReserved11::Builder {
+class NavAssistStateSP::Builder {
 public:
-  typedef CustomReserved11 Builds;
+  typedef NavAssistStateSP Builds;
 
   Builder() = delete;  // Deleted to discourage incorrect usage.
                        // You can explicitly initialize to nullptr instead.
@@ -5622,6 +5851,142 @@ public:
   inline ::kj::StringTree toString() const { return asReader().toString(); }
 #endif  // !CAPNP_LITE
 
+  inline  ::uint64_t getPublishMonoTime();
+  inline void setPublishMonoTime( ::uint64_t value);
+
+  inline  ::uint64_t getReceiveMonoTime();
+  inline void setReceiveMonoTime( ::uint64_t value);
+
+  inline  ::uint64_t getSourceWallTimeMs();
+  inline void setSourceWallTimeMs( ::uint64_t value);
+
+  inline  ::uint64_t getSequence();
+  inline void setSequence( ::uint64_t value);
+
+  inline  ::uint64_t getRouteRevision();
+  inline void setRouteRevision( ::uint64_t value);
+
+  inline  ::uint64_t getManeuverEventId();
+  inline void setManeuverEventId( ::uint64_t value);
+
+  inline bool hasSessionId();
+  inline  ::capnp::Text::Builder getSessionId();
+  inline void setSessionId( ::capnp::Text::Reader value);
+  inline  ::capnp::Text::Builder initSessionId(unsigned int size);
+  inline void adoptSessionId(::capnp::Orphan< ::capnp::Text>&& value);
+  inline ::capnp::Orphan< ::capnp::Text> disownSessionId();
+
+  inline  ::cereal::NavAssistStateSP::Source getSource();
+  inline void setSource( ::cereal::NavAssistStateSP::Source value);
+
+  inline  ::cereal::NavAssistStateSP::Mode getMode();
+  inline void setMode( ::cereal::NavAssistStateSP::Mode value);
+
+  inline  ::cereal::NavAssistStateSP::CoordinateSystem getCoordinateSystem();
+  inline void setCoordinateSystem( ::cereal::NavAssistStateSP::CoordinateSystem value);
+
+  inline bool getValid();
+  inline void setValid(bool value);
+
+  inline bool getStale();
+  inline void setStale(bool value);
+
+  inline bool getRouteActive();
+  inline void setRouteActive(bool value);
+
+  inline bool getRouteMatched();
+  inline void setRouteMatched(bool value);
+
+  inline bool getGpsWeak();
+  inline void setGpsWeak(bool value);
+
+  inline double getLatitude();
+  inline void setLatitude(double value);
+
+  inline double getLongitude();
+  inline void setLongitude(double value);
+
+  inline float getLocationAccuracyM();
+  inline void setLocationAccuracyM(float value);
+
+  inline float getBearingDeg();
+  inline void setBearingDeg(float value);
+
+  inline float getSpeedKph();
+  inline void setSpeedKph(float value);
+
+  inline  ::uint64_t getLocationObservedAtMs();
+  inline void setLocationObservedAtMs( ::uint64_t value);
+
+  inline  ::int32_t getCurrentStepIndex();
+  inline void setCurrentStepIndex( ::int32_t value);
+
+  inline  ::int32_t getCurrentLinkIndex();
+  inline void setCurrentLinkIndex( ::int32_t value);
+
+  inline  ::int32_t getCurrentPointIndex();
+  inline void setCurrentPointIndex( ::int32_t value);
+
+  inline  ::cereal::NavAssistStateSP::Maneuver getManeuver();
+  inline void setManeuver( ::cereal::NavAssistStateSP::Maneuver value);
+
+  inline float getManeuverDistanceM();
+  inline void setManeuverDistanceM(float value);
+
+  inline  ::cereal::NavAssistStateSP::Maneuver getNextManeuver();
+  inline void setNextManeuver( ::cereal::NavAssistStateSP::Maneuver value);
+
+  inline float getNextManeuverDistanceM();
+  inline void setNextManeuverDistanceM(float value);
+
+  inline bool getAdvisorySpeedValid();
+  inline void setAdvisorySpeedValid(bool value);
+
+  inline float getAdvisorySpeedMps();
+  inline void setAdvisorySpeedMps(float value);
+
+  inline  ::int16_t getRoadClass();
+  inline void setRoadClass( ::int16_t value);
+
+  inline  ::int16_t getRoadType();
+  inline void setRoadType( ::int16_t value);
+
+  inline bool hasCurrentRoad();
+  inline  ::capnp::Text::Builder getCurrentRoad();
+  inline void setCurrentRoad( ::capnp::Text::Reader value);
+  inline  ::capnp::Text::Builder initCurrentRoad(unsigned int size);
+  inline void adoptCurrentRoad(::capnp::Orphan< ::capnp::Text>&& value);
+  inline ::capnp::Orphan< ::capnp::Text> disownCurrentRoad();
+
+  inline bool hasNextRoad();
+  inline  ::capnp::Text::Builder getNextRoad();
+  inline void setNextRoad( ::capnp::Text::Reader value);
+  inline  ::capnp::Text::Builder initNextRoad(unsigned int size);
+  inline void adoptNextRoad(::capnp::Orphan< ::capnp::Text>&& value);
+  inline ::capnp::Orphan< ::capnp::Text> disownNextRoad();
+
+  inline  ::uint64_t getLaneGuidanceObservedAtMs();
+  inline void setLaneGuidanceObservedAtMs( ::uint64_t value);
+
+  inline bool hasLanes();
+  inline  ::capnp::List< ::cereal::NavAssistStateSP::LaneGuidance,  ::capnp::Kind::STRUCT>::Builder getLanes();
+  inline void setLanes( ::capnp::List< ::cereal::NavAssistStateSP::LaneGuidance,  ::capnp::Kind::STRUCT>::Reader value);
+  inline  ::capnp::List< ::cereal::NavAssistStateSP::LaneGuidance,  ::capnp::Kind::STRUCT>::Builder initLanes(unsigned int size);
+  inline void adoptLanes(::capnp::Orphan< ::capnp::List< ::cereal::NavAssistStateSP::LaneGuidance,  ::capnp::Kind::STRUCT>>&& value);
+  inline ::capnp::Orphan< ::capnp::List< ::cereal::NavAssistStateSP::LaneGuidance,  ::capnp::Kind::STRUCT>> disownLanes();
+
+  inline float getSourceAgeMs();
+  inline void setSourceAgeMs(float value);
+
+  inline  ::cereal::NavAssistStateSP::RejectReason getRejectReason();
+  inline void setRejectReason( ::cereal::NavAssistStateSP::RejectReason value);
+
+  inline  ::uint64_t getGuidanceObservedAtMs();
+  inline void setGuidanceObservedAtMs( ::uint64_t value);
+
+  inline bool getTrackGeofenceValidDEPRECATED();
+  inline void setTrackGeofenceValidDEPRECATED(bool value);
+
 private:
   ::capnp::_::StructBuilder _builder;
   template <typename, ::capnp::Kind>
@@ -5632,9 +5997,9 @@ private:
 };
 
 #if !CAPNP_LITE
-class CustomReserved11::Pipeline {
+class NavAssistStateSP::Pipeline {
 public:
-  typedef CustomReserved11 Pipelines;
+  typedef NavAssistStateSP Pipelines;
 
   inline Pipeline(decltype(nullptr)): _typeless(nullptr) {}
   inline explicit Pipeline(::capnp::AnyPointer::Pipeline&& typeless)
@@ -5648,9 +6013,9 @@ private:
 };
 #endif  // !CAPNP_LITE
 
-class CustomReserved12::Reader {
+class NavAssistStateSP::LaneGuidance::Reader {
 public:
-  typedef CustomReserved12 Reads;
+  typedef LaneGuidance Reads;
 
   Reader() = default;
   inline explicit Reader(::capnp::_::StructReader base): _reader(base) {}
@@ -5665,6 +6030,14 @@ public:
   }
 #endif  // !CAPNP_LITE
 
+  inline  ::uint8_t getIndex() const;
+
+  inline  ::uint16_t getAllowedActions() const;
+
+  inline  ::uint16_t getRecommendedActions() const;
+
+  inline bool getRecommended() const;
+
 private:
   ::capnp::_::StructReader _reader;
   template <typename, ::capnp::Kind>
@@ -5677,9 +6050,9 @@ private:
   friend class ::capnp::Orphanage;
 };
 
-class CustomReserved12::Builder {
+class NavAssistStateSP::LaneGuidance::Builder {
 public:
-  typedef CustomReserved12 Builds;
+  typedef LaneGuidance Builds;
 
   Builder() = delete;  // Deleted to discourage incorrect usage.
                        // You can explicitly initialize to nullptr instead.
@@ -5693,6 +6066,18 @@ public:
   inline ::kj::StringTree toString() const { return asReader().toString(); }
 #endif  // !CAPNP_LITE
 
+  inline  ::uint8_t getIndex();
+  inline void setIndex( ::uint8_t value);
+
+  inline  ::uint16_t getAllowedActions();
+  inline void setAllowedActions( ::uint16_t value);
+
+  inline  ::uint16_t getRecommendedActions();
+  inline void setRecommendedActions( ::uint16_t value);
+
+  inline bool getRecommended();
+  inline void setRecommended(bool value);
+
 private:
   ::capnp::_::StructBuilder _builder;
   template <typename, ::capnp::Kind>
@@ -5703,9 +6088,9 @@ private:
 };
 
 #if !CAPNP_LITE
-class CustomReserved12::Pipeline {
+class NavAssistStateSP::LaneGuidance::Pipeline {
 public:
-  typedef CustomReserved12 Pipelines;
+  typedef LaneGuidance Pipelines;
 
   inline Pipeline(decltype(nullptr)): _typeless(nullptr) {}
   inline explicit Pipeline(::capnp::AnyPointer::Pipeline&& typeless)
@@ -5719,9 +6104,9 @@ private:
 };
 #endif  // !CAPNP_LITE
 
-class CustomReserved13::Reader {
+class LaneTopologyStateSP::Reader {
 public:
-  typedef CustomReserved13 Reads;
+  typedef LaneTopologyStateSP Reads;
 
   Reader() = default;
   inline explicit Reader(::capnp::_::StructReader base): _reader(base) {}
@@ -5736,6 +6121,78 @@ public:
   }
 #endif  // !CAPNP_LITE
 
+  inline  ::uint64_t getPublishMonoTime() const;
+
+  inline  ::uint64_t getModelMonoTime() const;
+
+  inline  ::uint64_t getImageMonoTime() const;
+
+  inline  ::uint32_t getFrameId() const;
+
+  inline  ::uint32_t getImageFrameId() const;
+
+  inline bool getValid() const;
+
+  inline bool getStale() const;
+
+  inline bool getAmbiguous() const;
+
+  inline bool getCalibrationValid() const;
+
+  inline  ::cereal::LaneTopologyStateSP::TopologyState getTopologyState() const;
+
+  inline  ::uint8_t getVisibleLaneCount() const;
+
+  inline  ::int8_t getEgoLaneIndexFromLeft() const;
+
+  inline  ::int8_t getEgoLaneIndexFromRight() const;
+
+  inline bool getLeftNeighborExists() const;
+
+  inline bool getRightNeighborExists() const;
+
+  inline  ::cereal::LaneTopologyStateSP::Marking getLeftMarking() const;
+
+  inline  ::cereal::LaneTopologyStateSP::Marking getRightMarking() const;
+
+  inline float getLeftBoundaryConfidence() const;
+
+  inline float getRightBoundaryConfidence() const;
+
+  inline float getLeftMarkingConfidence() const;
+
+  inline float getRightMarkingConfidence() const;
+
+  inline float getLeftEvidenceAgeMs() const;
+
+  inline float getRightEvidenceAgeMs() const;
+
+  inline bool getSourcePairChanged() const;
+
+  inline bool getValidForControl() const;
+
+  inline  ::cereal::LaneTopologyStateSP::Marking getLeftEgoSideMarking() const;
+
+  inline  ::cereal::LaneTopologyStateSP::Marking getLeftFarSideMarking() const;
+
+  inline  ::cereal::LaneTopologyStateSP::Marking getRightEgoSideMarking() const;
+
+  inline  ::cereal::LaneTopologyStateSP::Marking getRightFarSideMarking() const;
+
+  inline bool getLeftCrossingAllowed() const;
+
+  inline bool getRightCrossingAllowed() const;
+
+  inline  ::cereal::LaneTopologyStateSP::Marking getLeftRawMarking() const;
+
+  inline  ::cereal::LaneTopologyStateSP::Marking getRightRawMarking() const;
+
+  inline float getImageModelSkewMs() const;
+
+  inline bool getLeftEvidenceValid() const;
+
+  inline bool getRightEvidenceValid() const;
+
 private:
   ::capnp::_::StructReader _reader;
   template <typename, ::capnp::Kind>
@@ -5748,9 +6205,9 @@ private:
   friend class ::capnp::Orphanage;
 };
 
-class CustomReserved13::Builder {
+class LaneTopologyStateSP::Builder {
 public:
-  typedef CustomReserved13 Builds;
+  typedef LaneTopologyStateSP Builds;
 
   Builder() = delete;  // Deleted to discourage incorrect usage.
                        // You can explicitly initialize to nullptr instead.
@@ -5764,6 +6221,114 @@ public:
   inline ::kj::StringTree toString() const { return asReader().toString(); }
 #endif  // !CAPNP_LITE
 
+  inline  ::uint64_t getPublishMonoTime();
+  inline void setPublishMonoTime( ::uint64_t value);
+
+  inline  ::uint64_t getModelMonoTime();
+  inline void setModelMonoTime( ::uint64_t value);
+
+  inline  ::uint64_t getImageMonoTime();
+  inline void setImageMonoTime( ::uint64_t value);
+
+  inline  ::uint32_t getFrameId();
+  inline void setFrameId( ::uint32_t value);
+
+  inline  ::uint32_t getImageFrameId();
+  inline void setImageFrameId( ::uint32_t value);
+
+  inline bool getValid();
+  inline void setValid(bool value);
+
+  inline bool getStale();
+  inline void setStale(bool value);
+
+  inline bool getAmbiguous();
+  inline void setAmbiguous(bool value);
+
+  inline bool getCalibrationValid();
+  inline void setCalibrationValid(bool value);
+
+  inline  ::cereal::LaneTopologyStateSP::TopologyState getTopologyState();
+  inline void setTopologyState( ::cereal::LaneTopologyStateSP::TopologyState value);
+
+  inline  ::uint8_t getVisibleLaneCount();
+  inline void setVisibleLaneCount( ::uint8_t value);
+
+  inline  ::int8_t getEgoLaneIndexFromLeft();
+  inline void setEgoLaneIndexFromLeft( ::int8_t value);
+
+  inline  ::int8_t getEgoLaneIndexFromRight();
+  inline void setEgoLaneIndexFromRight( ::int8_t value);
+
+  inline bool getLeftNeighborExists();
+  inline void setLeftNeighborExists(bool value);
+
+  inline bool getRightNeighborExists();
+  inline void setRightNeighborExists(bool value);
+
+  inline  ::cereal::LaneTopologyStateSP::Marking getLeftMarking();
+  inline void setLeftMarking( ::cereal::LaneTopologyStateSP::Marking value);
+
+  inline  ::cereal::LaneTopologyStateSP::Marking getRightMarking();
+  inline void setRightMarking( ::cereal::LaneTopologyStateSP::Marking value);
+
+  inline float getLeftBoundaryConfidence();
+  inline void setLeftBoundaryConfidence(float value);
+
+  inline float getRightBoundaryConfidence();
+  inline void setRightBoundaryConfidence(float value);
+
+  inline float getLeftMarkingConfidence();
+  inline void setLeftMarkingConfidence(float value);
+
+  inline float getRightMarkingConfidence();
+  inline void setRightMarkingConfidence(float value);
+
+  inline float getLeftEvidenceAgeMs();
+  inline void setLeftEvidenceAgeMs(float value);
+
+  inline float getRightEvidenceAgeMs();
+  inline void setRightEvidenceAgeMs(float value);
+
+  inline bool getSourcePairChanged();
+  inline void setSourcePairChanged(bool value);
+
+  inline bool getValidForControl();
+  inline void setValidForControl(bool value);
+
+  inline  ::cereal::LaneTopologyStateSP::Marking getLeftEgoSideMarking();
+  inline void setLeftEgoSideMarking( ::cereal::LaneTopologyStateSP::Marking value);
+
+  inline  ::cereal::LaneTopologyStateSP::Marking getLeftFarSideMarking();
+  inline void setLeftFarSideMarking( ::cereal::LaneTopologyStateSP::Marking value);
+
+  inline  ::cereal::LaneTopologyStateSP::Marking getRightEgoSideMarking();
+  inline void setRightEgoSideMarking( ::cereal::LaneTopologyStateSP::Marking value);
+
+  inline  ::cereal::LaneTopologyStateSP::Marking getRightFarSideMarking();
+  inline void setRightFarSideMarking( ::cereal::LaneTopologyStateSP::Marking value);
+
+  inline bool getLeftCrossingAllowed();
+  inline void setLeftCrossingAllowed(bool value);
+
+  inline bool getRightCrossingAllowed();
+  inline void setRightCrossingAllowed(bool value);
+
+  inline  ::cereal::LaneTopologyStateSP::Marking getLeftRawMarking();
+  inline void setLeftRawMarking( ::cereal::LaneTopologyStateSP::Marking value);
+
+  inline  ::cereal::LaneTopologyStateSP::Marking getRightRawMarking();
+  inline void setRightRawMarking( ::cereal::LaneTopologyStateSP::Marking value);
+
+  inline float getImageModelSkewMs();
+  inline void setImageModelSkewMs(float value);
+
+  inline bool getLeftEvidenceValid();
+  inline void setLeftEvidenceValid(bool value);
+
+  inline bool getRightEvidenceValid();
+  inline void setRightEvidenceValid(bool value);
+
 private:
   ::capnp::_::StructBuilder _builder;
   template <typename, ::capnp::Kind>
@@ -5774,9 +6339,165 @@ private:
 };
 
 #if !CAPNP_LITE
-class CustomReserved13::Pipeline {
+class LaneTopologyStateSP::Pipeline {
 public:
-  typedef CustomReserved13 Pipelines;
+  typedef LaneTopologyStateSP Pipelines;
+
+  inline Pipeline(decltype(nullptr)): _typeless(nullptr) {}
+  inline explicit Pipeline(::capnp::AnyPointer::Pipeline&& typeless)
+      : _typeless(kj::mv(typeless)) {}
+
+private:
+  ::capnp::AnyPointer::Pipeline _typeless;
+  friend class ::capnp::PipelineHook;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::ToDynamic_;
+};
+#endif  // !CAPNP_LITE
+
+class NavLaneIntentSP::Reader {
+public:
+  typedef NavLaneIntentSP Reads;
+
+  Reader() = default;
+  inline explicit Reader(::capnp::_::StructReader base): _reader(base) {}
+
+  inline ::capnp::MessageSize totalSize() const {
+    return _reader.totalSize().asPublic();
+  }
+
+#if !CAPNP_LITE
+  inline ::kj::StringTree toString() const {
+    return ::capnp::_::structString(_reader, *_capnpPrivate::brand());
+  }
+#endif  // !CAPNP_LITE
+
+  inline  ::uint64_t getPublishMonoTime() const;
+
+  inline bool getValid() const;
+
+  inline bool getSignalRequested() const;
+
+  inline bool getLaneChangeAuthorized() const;
+
+  inline  ::cereal::NavLaneIntentSP::Direction getDirection() const;
+
+  inline  ::uint64_t getRequestId() const;
+
+  inline  ::int8_t getTargetLaneIndex() const;
+
+  inline  ::uint64_t getRouteRevision() const;
+
+  inline  ::uint64_t getManeuverEventId() const;
+
+  inline bool hasReason() const;
+  inline  ::capnp::Text::Reader getReason() const;
+
+  inline bool hasSessionId() const;
+  inline  ::capnp::Text::Reader getSessionId() const;
+
+  inline bool getSpLaneChangeReady() const;
+
+  inline bool getForkNow() const;
+
+  inline bool getAllowUnknownCrossing() const;
+
+  inline bool getIgnoreSolidBoundary() const;
+
+private:
+  ::capnp::_::StructReader _reader;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::ToDynamic_;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::_::PointerHelpers;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::List;
+  friend class ::capnp::MessageBuilder;
+  friend class ::capnp::Orphanage;
+};
+
+class NavLaneIntentSP::Builder {
+public:
+  typedef NavLaneIntentSP Builds;
+
+  Builder() = delete;  // Deleted to discourage incorrect usage.
+                       // You can explicitly initialize to nullptr instead.
+  inline Builder(decltype(nullptr)) {}
+  inline explicit Builder(::capnp::_::StructBuilder base): _builder(base) {}
+  inline operator Reader() const { return Reader(_builder.asReader()); }
+  inline Reader asReader() const { return *this; }
+
+  inline ::capnp::MessageSize totalSize() const { return asReader().totalSize(); }
+#if !CAPNP_LITE
+  inline ::kj::StringTree toString() const { return asReader().toString(); }
+#endif  // !CAPNP_LITE
+
+  inline  ::uint64_t getPublishMonoTime();
+  inline void setPublishMonoTime( ::uint64_t value);
+
+  inline bool getValid();
+  inline void setValid(bool value);
+
+  inline bool getSignalRequested();
+  inline void setSignalRequested(bool value);
+
+  inline bool getLaneChangeAuthorized();
+  inline void setLaneChangeAuthorized(bool value);
+
+  inline  ::cereal::NavLaneIntentSP::Direction getDirection();
+  inline void setDirection( ::cereal::NavLaneIntentSP::Direction value);
+
+  inline  ::uint64_t getRequestId();
+  inline void setRequestId( ::uint64_t value);
+
+  inline  ::int8_t getTargetLaneIndex();
+  inline void setTargetLaneIndex( ::int8_t value);
+
+  inline  ::uint64_t getRouteRevision();
+  inline void setRouteRevision( ::uint64_t value);
+
+  inline  ::uint64_t getManeuverEventId();
+  inline void setManeuverEventId( ::uint64_t value);
+
+  inline bool hasReason();
+  inline  ::capnp::Text::Builder getReason();
+  inline void setReason( ::capnp::Text::Reader value);
+  inline  ::capnp::Text::Builder initReason(unsigned int size);
+  inline void adoptReason(::capnp::Orphan< ::capnp::Text>&& value);
+  inline ::capnp::Orphan< ::capnp::Text> disownReason();
+
+  inline bool hasSessionId();
+  inline  ::capnp::Text::Builder getSessionId();
+  inline void setSessionId( ::capnp::Text::Reader value);
+  inline  ::capnp::Text::Builder initSessionId(unsigned int size);
+  inline void adoptSessionId(::capnp::Orphan< ::capnp::Text>&& value);
+  inline ::capnp::Orphan< ::capnp::Text> disownSessionId();
+
+  inline bool getSpLaneChangeReady();
+  inline void setSpLaneChangeReady(bool value);
+
+  inline bool getForkNow();
+  inline void setForkNow(bool value);
+
+  inline bool getAllowUnknownCrossing();
+  inline void setAllowUnknownCrossing(bool value);
+
+  inline bool getIgnoreSolidBoundary();
+  inline void setIgnoreSolidBoundary(bool value);
+
+private:
+  ::capnp::_::StructBuilder _builder;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::ToDynamic_;
+  friend class ::capnp::Orphanage;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::_::PointerHelpers;
+};
+
+#if !CAPNP_LITE
+class NavLaneIntentSP::Pipeline {
+public:
+  typedef NavLaneIntentSP Pipelines;
 
   inline Pipeline(decltype(nullptr)): _typeless(nullptr) {}
   inline explicit Pipeline(::capnp::AnyPointer::Pipeline&& typeless)
@@ -10248,6 +10969,54 @@ inline void TeslaTrafficControl::Builder::setQuality( ::uint8_t value) {
       ::capnp::bounded<24>() * ::capnp::ELEMENTS, value);
 }
 
+inline  ::uint32_t TeslaTrafficControl::Reader::getRawAddress() const {
+  return _reader.getDataField< ::uint32_t>(
+      ::capnp::bounded<7>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint32_t TeslaTrafficControl::Builder::getRawAddress() {
+  return _builder.getDataField< ::uint32_t>(
+      ::capnp::bounded<7>() * ::capnp::ELEMENTS);
+}
+inline void TeslaTrafficControl::Builder::setRawAddress( ::uint32_t value) {
+  _builder.setDataField< ::uint32_t>(
+      ::capnp::bounded<7>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool TeslaTrafficControl::Reader::hasRawPayload() const {
+  return !_reader.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
+}
+inline bool TeslaTrafficControl::Builder::hasRawPayload() {
+  return !_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
+}
+inline  ::capnp::Data::Reader TeslaTrafficControl::Reader::getRawPayload() const {
+  return ::capnp::_::PointerHelpers< ::capnp::Data>::get(_reader.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+inline  ::capnp::Data::Builder TeslaTrafficControl::Builder::getRawPayload() {
+  return ::capnp::_::PointerHelpers< ::capnp::Data>::get(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+inline void TeslaTrafficControl::Builder::setRawPayload( ::capnp::Data::Reader value) {
+  ::capnp::_::PointerHelpers< ::capnp::Data>::set(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), value);
+}
+inline  ::capnp::Data::Builder TeslaTrafficControl::Builder::initRawPayload(unsigned int size) {
+  return ::capnp::_::PointerHelpers< ::capnp::Data>::init(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), size);
+}
+inline void TeslaTrafficControl::Builder::adoptRawPayload(
+    ::capnp::Orphan< ::capnp::Data>&& value) {
+  ::capnp::_::PointerHelpers< ::capnp::Data>::adopt(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), kj::mv(value));
+}
+inline ::capnp::Orphan< ::capnp::Data> TeslaTrafficControl::Builder::disownRawPayload() {
+  return ::capnp::_::PointerHelpers< ::capnp::Data>::disown(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+
 inline  ::uint8_t TeslaTrafficControlPlan::Reader::getMode() const {
   return _reader.getDataField< ::uint8_t>(
       ::capnp::bounded<0>() * ::capnp::ELEMENTS);
@@ -11288,6 +12057,1456 @@ inline bool TrafficRadarState::Builder::getStopSafetyAllowed() {
 inline void TrafficRadarState::Builder::setStopSafetyAllowed(bool value) {
   _builder.setDataField<bool>(
       ::capnp::bounded<189>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint64_t NavAssistStateSP::Reader::getPublishMonoTime() const {
+  return _reader.getDataField< ::uint64_t>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint64_t NavAssistStateSP::Builder::getPublishMonoTime() {
+  return _builder.getDataField< ::uint64_t>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setPublishMonoTime( ::uint64_t value) {
+  _builder.setDataField< ::uint64_t>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint64_t NavAssistStateSP::Reader::getReceiveMonoTime() const {
+  return _reader.getDataField< ::uint64_t>(
+      ::capnp::bounded<1>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint64_t NavAssistStateSP::Builder::getReceiveMonoTime() {
+  return _builder.getDataField< ::uint64_t>(
+      ::capnp::bounded<1>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setReceiveMonoTime( ::uint64_t value) {
+  _builder.setDataField< ::uint64_t>(
+      ::capnp::bounded<1>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint64_t NavAssistStateSP::Reader::getSourceWallTimeMs() const {
+  return _reader.getDataField< ::uint64_t>(
+      ::capnp::bounded<2>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint64_t NavAssistStateSP::Builder::getSourceWallTimeMs() {
+  return _builder.getDataField< ::uint64_t>(
+      ::capnp::bounded<2>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setSourceWallTimeMs( ::uint64_t value) {
+  _builder.setDataField< ::uint64_t>(
+      ::capnp::bounded<2>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint64_t NavAssistStateSP::Reader::getSequence() const {
+  return _reader.getDataField< ::uint64_t>(
+      ::capnp::bounded<3>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint64_t NavAssistStateSP::Builder::getSequence() {
+  return _builder.getDataField< ::uint64_t>(
+      ::capnp::bounded<3>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setSequence( ::uint64_t value) {
+  _builder.setDataField< ::uint64_t>(
+      ::capnp::bounded<3>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint64_t NavAssistStateSP::Reader::getRouteRevision() const {
+  return _reader.getDataField< ::uint64_t>(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint64_t NavAssistStateSP::Builder::getRouteRevision() {
+  return _builder.getDataField< ::uint64_t>(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setRouteRevision( ::uint64_t value) {
+  _builder.setDataField< ::uint64_t>(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint64_t NavAssistStateSP::Reader::getManeuverEventId() const {
+  return _reader.getDataField< ::uint64_t>(
+      ::capnp::bounded<5>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint64_t NavAssistStateSP::Builder::getManeuverEventId() {
+  return _builder.getDataField< ::uint64_t>(
+      ::capnp::bounded<5>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setManeuverEventId( ::uint64_t value) {
+  _builder.setDataField< ::uint64_t>(
+      ::capnp::bounded<5>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool NavAssistStateSP::Reader::hasSessionId() const {
+  return !_reader.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
+}
+inline bool NavAssistStateSP::Builder::hasSessionId() {
+  return !_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
+}
+inline  ::capnp::Text::Reader NavAssistStateSP::Reader::getSessionId() const {
+  return ::capnp::_::PointerHelpers< ::capnp::Text>::get(_reader.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+inline  ::capnp::Text::Builder NavAssistStateSP::Builder::getSessionId() {
+  return ::capnp::_::PointerHelpers< ::capnp::Text>::get(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+inline void NavAssistStateSP::Builder::setSessionId( ::capnp::Text::Reader value) {
+  ::capnp::_::PointerHelpers< ::capnp::Text>::set(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), value);
+}
+inline  ::capnp::Text::Builder NavAssistStateSP::Builder::initSessionId(unsigned int size) {
+  return ::capnp::_::PointerHelpers< ::capnp::Text>::init(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), size);
+}
+inline void NavAssistStateSP::Builder::adoptSessionId(
+    ::capnp::Orphan< ::capnp::Text>&& value) {
+  ::capnp::_::PointerHelpers< ::capnp::Text>::adopt(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), kj::mv(value));
+}
+inline ::capnp::Orphan< ::capnp::Text> NavAssistStateSP::Builder::disownSessionId() {
+  return ::capnp::_::PointerHelpers< ::capnp::Text>::disown(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+
+inline  ::cereal::NavAssistStateSP::Source NavAssistStateSP::Reader::getSource() const {
+  return _reader.getDataField< ::cereal::NavAssistStateSP::Source>(
+      ::capnp::bounded<24>() * ::capnp::ELEMENTS);
+}
+
+inline  ::cereal::NavAssistStateSP::Source NavAssistStateSP::Builder::getSource() {
+  return _builder.getDataField< ::cereal::NavAssistStateSP::Source>(
+      ::capnp::bounded<24>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setSource( ::cereal::NavAssistStateSP::Source value) {
+  _builder.setDataField< ::cereal::NavAssistStateSP::Source>(
+      ::capnp::bounded<24>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::cereal::NavAssistStateSP::Mode NavAssistStateSP::Reader::getMode() const {
+  return _reader.getDataField< ::cereal::NavAssistStateSP::Mode>(
+      ::capnp::bounded<25>() * ::capnp::ELEMENTS);
+}
+
+inline  ::cereal::NavAssistStateSP::Mode NavAssistStateSP::Builder::getMode() {
+  return _builder.getDataField< ::cereal::NavAssistStateSP::Mode>(
+      ::capnp::bounded<25>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setMode( ::cereal::NavAssistStateSP::Mode value) {
+  _builder.setDataField< ::cereal::NavAssistStateSP::Mode>(
+      ::capnp::bounded<25>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::cereal::NavAssistStateSP::CoordinateSystem NavAssistStateSP::Reader::getCoordinateSystem() const {
+  return _reader.getDataField< ::cereal::NavAssistStateSP::CoordinateSystem>(
+      ::capnp::bounded<26>() * ::capnp::ELEMENTS);
+}
+
+inline  ::cereal::NavAssistStateSP::CoordinateSystem NavAssistStateSP::Builder::getCoordinateSystem() {
+  return _builder.getDataField< ::cereal::NavAssistStateSP::CoordinateSystem>(
+      ::capnp::bounded<26>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setCoordinateSystem( ::cereal::NavAssistStateSP::CoordinateSystem value) {
+  _builder.setDataField< ::cereal::NavAssistStateSP::CoordinateSystem>(
+      ::capnp::bounded<26>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool NavAssistStateSP::Reader::getValid() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<432>() * ::capnp::ELEMENTS);
+}
+
+inline bool NavAssistStateSP::Builder::getValid() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<432>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setValid(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<432>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool NavAssistStateSP::Reader::getStale() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<433>() * ::capnp::ELEMENTS);
+}
+
+inline bool NavAssistStateSP::Builder::getStale() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<433>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setStale(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<433>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool NavAssistStateSP::Reader::getRouteActive() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<434>() * ::capnp::ELEMENTS);
+}
+
+inline bool NavAssistStateSP::Builder::getRouteActive() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<434>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setRouteActive(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<434>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool NavAssistStateSP::Reader::getRouteMatched() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<435>() * ::capnp::ELEMENTS);
+}
+
+inline bool NavAssistStateSP::Builder::getRouteMatched() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<435>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setRouteMatched(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<435>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool NavAssistStateSP::Reader::getGpsWeak() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<436>() * ::capnp::ELEMENTS);
+}
+
+inline bool NavAssistStateSP::Builder::getGpsWeak() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<436>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setGpsWeak(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<436>() * ::capnp::ELEMENTS, value);
+}
+
+inline double NavAssistStateSP::Reader::getLatitude() const {
+  return _reader.getDataField<double>(
+      ::capnp::bounded<7>() * ::capnp::ELEMENTS);
+}
+
+inline double NavAssistStateSP::Builder::getLatitude() {
+  return _builder.getDataField<double>(
+      ::capnp::bounded<7>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setLatitude(double value) {
+  _builder.setDataField<double>(
+      ::capnp::bounded<7>() * ::capnp::ELEMENTS, value);
+}
+
+inline double NavAssistStateSP::Reader::getLongitude() const {
+  return _reader.getDataField<double>(
+      ::capnp::bounded<8>() * ::capnp::ELEMENTS);
+}
+
+inline double NavAssistStateSP::Builder::getLongitude() {
+  return _builder.getDataField<double>(
+      ::capnp::bounded<8>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setLongitude(double value) {
+  _builder.setDataField<double>(
+      ::capnp::bounded<8>() * ::capnp::ELEMENTS, value);
+}
+
+inline float NavAssistStateSP::Reader::getLocationAccuracyM() const {
+  return _reader.getDataField<float>(
+      ::capnp::bounded<18>() * ::capnp::ELEMENTS);
+}
+
+inline float NavAssistStateSP::Builder::getLocationAccuracyM() {
+  return _builder.getDataField<float>(
+      ::capnp::bounded<18>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setLocationAccuracyM(float value) {
+  _builder.setDataField<float>(
+      ::capnp::bounded<18>() * ::capnp::ELEMENTS, value);
+}
+
+inline float NavAssistStateSP::Reader::getBearingDeg() const {
+  return _reader.getDataField<float>(
+      ::capnp::bounded<19>() * ::capnp::ELEMENTS);
+}
+
+inline float NavAssistStateSP::Builder::getBearingDeg() {
+  return _builder.getDataField<float>(
+      ::capnp::bounded<19>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setBearingDeg(float value) {
+  _builder.setDataField<float>(
+      ::capnp::bounded<19>() * ::capnp::ELEMENTS, value);
+}
+
+inline float NavAssistStateSP::Reader::getSpeedKph() const {
+  return _reader.getDataField<float>(
+      ::capnp::bounded<20>() * ::capnp::ELEMENTS);
+}
+
+inline float NavAssistStateSP::Builder::getSpeedKph() {
+  return _builder.getDataField<float>(
+      ::capnp::bounded<20>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setSpeedKph(float value) {
+  _builder.setDataField<float>(
+      ::capnp::bounded<20>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint64_t NavAssistStateSP::Reader::getLocationObservedAtMs() const {
+  return _reader.getDataField< ::uint64_t>(
+      ::capnp::bounded<11>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint64_t NavAssistStateSP::Builder::getLocationObservedAtMs() {
+  return _builder.getDataField< ::uint64_t>(
+      ::capnp::bounded<11>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setLocationObservedAtMs( ::uint64_t value) {
+  _builder.setDataField< ::uint64_t>(
+      ::capnp::bounded<11>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::int32_t NavAssistStateSP::Reader::getCurrentStepIndex() const {
+  return _reader.getDataField< ::int32_t>(
+      ::capnp::bounded<21>() * ::capnp::ELEMENTS, -1);
+}
+
+inline  ::int32_t NavAssistStateSP::Builder::getCurrentStepIndex() {
+  return _builder.getDataField< ::int32_t>(
+      ::capnp::bounded<21>() * ::capnp::ELEMENTS, -1);
+}
+inline void NavAssistStateSP::Builder::setCurrentStepIndex( ::int32_t value) {
+  _builder.setDataField< ::int32_t>(
+      ::capnp::bounded<21>() * ::capnp::ELEMENTS, value, -1);
+}
+
+inline  ::int32_t NavAssistStateSP::Reader::getCurrentLinkIndex() const {
+  return _reader.getDataField< ::int32_t>(
+      ::capnp::bounded<24>() * ::capnp::ELEMENTS, -1);
+}
+
+inline  ::int32_t NavAssistStateSP::Builder::getCurrentLinkIndex() {
+  return _builder.getDataField< ::int32_t>(
+      ::capnp::bounded<24>() * ::capnp::ELEMENTS, -1);
+}
+inline void NavAssistStateSP::Builder::setCurrentLinkIndex( ::int32_t value) {
+  _builder.setDataField< ::int32_t>(
+      ::capnp::bounded<24>() * ::capnp::ELEMENTS, value, -1);
+}
+
+inline  ::int32_t NavAssistStateSP::Reader::getCurrentPointIndex() const {
+  return _reader.getDataField< ::int32_t>(
+      ::capnp::bounded<25>() * ::capnp::ELEMENTS, -1);
+}
+
+inline  ::int32_t NavAssistStateSP::Builder::getCurrentPointIndex() {
+  return _builder.getDataField< ::int32_t>(
+      ::capnp::bounded<25>() * ::capnp::ELEMENTS, -1);
+}
+inline void NavAssistStateSP::Builder::setCurrentPointIndex( ::int32_t value) {
+  _builder.setDataField< ::int32_t>(
+      ::capnp::bounded<25>() * ::capnp::ELEMENTS, value, -1);
+}
+
+inline  ::cereal::NavAssistStateSP::Maneuver NavAssistStateSP::Reader::getManeuver() const {
+  return _reader.getDataField< ::cereal::NavAssistStateSP::Maneuver>(
+      ::capnp::bounded<52>() * ::capnp::ELEMENTS);
+}
+
+inline  ::cereal::NavAssistStateSP::Maneuver NavAssistStateSP::Builder::getManeuver() {
+  return _builder.getDataField< ::cereal::NavAssistStateSP::Maneuver>(
+      ::capnp::bounded<52>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setManeuver( ::cereal::NavAssistStateSP::Maneuver value) {
+  _builder.setDataField< ::cereal::NavAssistStateSP::Maneuver>(
+      ::capnp::bounded<52>() * ::capnp::ELEMENTS, value);
+}
+
+inline float NavAssistStateSP::Reader::getManeuverDistanceM() const {
+  return _reader.getDataField<float>(
+      ::capnp::bounded<27>() * ::capnp::ELEMENTS);
+}
+
+inline float NavAssistStateSP::Builder::getManeuverDistanceM() {
+  return _builder.getDataField<float>(
+      ::capnp::bounded<27>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setManeuverDistanceM(float value) {
+  _builder.setDataField<float>(
+      ::capnp::bounded<27>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::cereal::NavAssistStateSP::Maneuver NavAssistStateSP::Reader::getNextManeuver() const {
+  return _reader.getDataField< ::cereal::NavAssistStateSP::Maneuver>(
+      ::capnp::bounded<53>() * ::capnp::ELEMENTS);
+}
+
+inline  ::cereal::NavAssistStateSP::Maneuver NavAssistStateSP::Builder::getNextManeuver() {
+  return _builder.getDataField< ::cereal::NavAssistStateSP::Maneuver>(
+      ::capnp::bounded<53>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setNextManeuver( ::cereal::NavAssistStateSP::Maneuver value) {
+  _builder.setDataField< ::cereal::NavAssistStateSP::Maneuver>(
+      ::capnp::bounded<53>() * ::capnp::ELEMENTS, value);
+}
+
+inline float NavAssistStateSP::Reader::getNextManeuverDistanceM() const {
+  return _reader.getDataField<float>(
+      ::capnp::bounded<28>() * ::capnp::ELEMENTS);
+}
+
+inline float NavAssistStateSP::Builder::getNextManeuverDistanceM() {
+  return _builder.getDataField<float>(
+      ::capnp::bounded<28>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setNextManeuverDistanceM(float value) {
+  _builder.setDataField<float>(
+      ::capnp::bounded<28>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool NavAssistStateSP::Reader::getAdvisorySpeedValid() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<437>() * ::capnp::ELEMENTS);
+}
+
+inline bool NavAssistStateSP::Builder::getAdvisorySpeedValid() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<437>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setAdvisorySpeedValid(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<437>() * ::capnp::ELEMENTS, value);
+}
+
+inline float NavAssistStateSP::Reader::getAdvisorySpeedMps() const {
+  return _reader.getDataField<float>(
+      ::capnp::bounded<29>() * ::capnp::ELEMENTS);
+}
+
+inline float NavAssistStateSP::Builder::getAdvisorySpeedMps() {
+  return _builder.getDataField<float>(
+      ::capnp::bounded<29>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setAdvisorySpeedMps(float value) {
+  _builder.setDataField<float>(
+      ::capnp::bounded<29>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::int16_t NavAssistStateSP::Reader::getRoadClass() const {
+  return _reader.getDataField< ::int16_t>(
+      ::capnp::bounded<60>() * ::capnp::ELEMENTS, -1);
+}
+
+inline  ::int16_t NavAssistStateSP::Builder::getRoadClass() {
+  return _builder.getDataField< ::int16_t>(
+      ::capnp::bounded<60>() * ::capnp::ELEMENTS, -1);
+}
+inline void NavAssistStateSP::Builder::setRoadClass( ::int16_t value) {
+  _builder.setDataField< ::int16_t>(
+      ::capnp::bounded<60>() * ::capnp::ELEMENTS, value, -1);
+}
+
+inline  ::int16_t NavAssistStateSP::Reader::getRoadType() const {
+  return _reader.getDataField< ::int16_t>(
+      ::capnp::bounded<61>() * ::capnp::ELEMENTS, -1);
+}
+
+inline  ::int16_t NavAssistStateSP::Builder::getRoadType() {
+  return _builder.getDataField< ::int16_t>(
+      ::capnp::bounded<61>() * ::capnp::ELEMENTS, -1);
+}
+inline void NavAssistStateSP::Builder::setRoadType( ::int16_t value) {
+  _builder.setDataField< ::int16_t>(
+      ::capnp::bounded<61>() * ::capnp::ELEMENTS, value, -1);
+}
+
+inline bool NavAssistStateSP::Reader::hasCurrentRoad() const {
+  return !_reader.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS).isNull();
+}
+inline bool NavAssistStateSP::Builder::hasCurrentRoad() {
+  return !_builder.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS).isNull();
+}
+inline  ::capnp::Text::Reader NavAssistStateSP::Reader::getCurrentRoad() const {
+  return ::capnp::_::PointerHelpers< ::capnp::Text>::get(_reader.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS));
+}
+inline  ::capnp::Text::Builder NavAssistStateSP::Builder::getCurrentRoad() {
+  return ::capnp::_::PointerHelpers< ::capnp::Text>::get(_builder.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS));
+}
+inline void NavAssistStateSP::Builder::setCurrentRoad( ::capnp::Text::Reader value) {
+  ::capnp::_::PointerHelpers< ::capnp::Text>::set(_builder.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS), value);
+}
+inline  ::capnp::Text::Builder NavAssistStateSP::Builder::initCurrentRoad(unsigned int size) {
+  return ::capnp::_::PointerHelpers< ::capnp::Text>::init(_builder.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS), size);
+}
+inline void NavAssistStateSP::Builder::adoptCurrentRoad(
+    ::capnp::Orphan< ::capnp::Text>&& value) {
+  ::capnp::_::PointerHelpers< ::capnp::Text>::adopt(_builder.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS), kj::mv(value));
+}
+inline ::capnp::Orphan< ::capnp::Text> NavAssistStateSP::Builder::disownCurrentRoad() {
+  return ::capnp::_::PointerHelpers< ::capnp::Text>::disown(_builder.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS));
+}
+
+inline bool NavAssistStateSP::Reader::hasNextRoad() const {
+  return !_reader.getPointerField(
+      ::capnp::bounded<2>() * ::capnp::POINTERS).isNull();
+}
+inline bool NavAssistStateSP::Builder::hasNextRoad() {
+  return !_builder.getPointerField(
+      ::capnp::bounded<2>() * ::capnp::POINTERS).isNull();
+}
+inline  ::capnp::Text::Reader NavAssistStateSP::Reader::getNextRoad() const {
+  return ::capnp::_::PointerHelpers< ::capnp::Text>::get(_reader.getPointerField(
+      ::capnp::bounded<2>() * ::capnp::POINTERS));
+}
+inline  ::capnp::Text::Builder NavAssistStateSP::Builder::getNextRoad() {
+  return ::capnp::_::PointerHelpers< ::capnp::Text>::get(_builder.getPointerField(
+      ::capnp::bounded<2>() * ::capnp::POINTERS));
+}
+inline void NavAssistStateSP::Builder::setNextRoad( ::capnp::Text::Reader value) {
+  ::capnp::_::PointerHelpers< ::capnp::Text>::set(_builder.getPointerField(
+      ::capnp::bounded<2>() * ::capnp::POINTERS), value);
+}
+inline  ::capnp::Text::Builder NavAssistStateSP::Builder::initNextRoad(unsigned int size) {
+  return ::capnp::_::PointerHelpers< ::capnp::Text>::init(_builder.getPointerField(
+      ::capnp::bounded<2>() * ::capnp::POINTERS), size);
+}
+inline void NavAssistStateSP::Builder::adoptNextRoad(
+    ::capnp::Orphan< ::capnp::Text>&& value) {
+  ::capnp::_::PointerHelpers< ::capnp::Text>::adopt(_builder.getPointerField(
+      ::capnp::bounded<2>() * ::capnp::POINTERS), kj::mv(value));
+}
+inline ::capnp::Orphan< ::capnp::Text> NavAssistStateSP::Builder::disownNextRoad() {
+  return ::capnp::_::PointerHelpers< ::capnp::Text>::disown(_builder.getPointerField(
+      ::capnp::bounded<2>() * ::capnp::POINTERS));
+}
+
+inline  ::uint64_t NavAssistStateSP::Reader::getLaneGuidanceObservedAtMs() const {
+  return _reader.getDataField< ::uint64_t>(
+      ::capnp::bounded<16>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint64_t NavAssistStateSP::Builder::getLaneGuidanceObservedAtMs() {
+  return _builder.getDataField< ::uint64_t>(
+      ::capnp::bounded<16>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setLaneGuidanceObservedAtMs( ::uint64_t value) {
+  _builder.setDataField< ::uint64_t>(
+      ::capnp::bounded<16>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool NavAssistStateSP::Reader::hasLanes() const {
+  return !_reader.getPointerField(
+      ::capnp::bounded<3>() * ::capnp::POINTERS).isNull();
+}
+inline bool NavAssistStateSP::Builder::hasLanes() {
+  return !_builder.getPointerField(
+      ::capnp::bounded<3>() * ::capnp::POINTERS).isNull();
+}
+inline  ::capnp::List< ::cereal::NavAssistStateSP::LaneGuidance,  ::capnp::Kind::STRUCT>::Reader NavAssistStateSP::Reader::getLanes() const {
+  return ::capnp::_::PointerHelpers< ::capnp::List< ::cereal::NavAssistStateSP::LaneGuidance,  ::capnp::Kind::STRUCT>>::get(_reader.getPointerField(
+      ::capnp::bounded<3>() * ::capnp::POINTERS));
+}
+inline  ::capnp::List< ::cereal::NavAssistStateSP::LaneGuidance,  ::capnp::Kind::STRUCT>::Builder NavAssistStateSP::Builder::getLanes() {
+  return ::capnp::_::PointerHelpers< ::capnp::List< ::cereal::NavAssistStateSP::LaneGuidance,  ::capnp::Kind::STRUCT>>::get(_builder.getPointerField(
+      ::capnp::bounded<3>() * ::capnp::POINTERS));
+}
+inline void NavAssistStateSP::Builder::setLanes( ::capnp::List< ::cereal::NavAssistStateSP::LaneGuidance,  ::capnp::Kind::STRUCT>::Reader value) {
+  ::capnp::_::PointerHelpers< ::capnp::List< ::cereal::NavAssistStateSP::LaneGuidance,  ::capnp::Kind::STRUCT>>::set(_builder.getPointerField(
+      ::capnp::bounded<3>() * ::capnp::POINTERS), value);
+}
+inline  ::capnp::List< ::cereal::NavAssistStateSP::LaneGuidance,  ::capnp::Kind::STRUCT>::Builder NavAssistStateSP::Builder::initLanes(unsigned int size) {
+  return ::capnp::_::PointerHelpers< ::capnp::List< ::cereal::NavAssistStateSP::LaneGuidance,  ::capnp::Kind::STRUCT>>::init(_builder.getPointerField(
+      ::capnp::bounded<3>() * ::capnp::POINTERS), size);
+}
+inline void NavAssistStateSP::Builder::adoptLanes(
+    ::capnp::Orphan< ::capnp::List< ::cereal::NavAssistStateSP::LaneGuidance,  ::capnp::Kind::STRUCT>>&& value) {
+  ::capnp::_::PointerHelpers< ::capnp::List< ::cereal::NavAssistStateSP::LaneGuidance,  ::capnp::Kind::STRUCT>>::adopt(_builder.getPointerField(
+      ::capnp::bounded<3>() * ::capnp::POINTERS), kj::mv(value));
+}
+inline ::capnp::Orphan< ::capnp::List< ::cereal::NavAssistStateSP::LaneGuidance,  ::capnp::Kind::STRUCT>> NavAssistStateSP::Builder::disownLanes() {
+  return ::capnp::_::PointerHelpers< ::capnp::List< ::cereal::NavAssistStateSP::LaneGuidance,  ::capnp::Kind::STRUCT>>::disown(_builder.getPointerField(
+      ::capnp::bounded<3>() * ::capnp::POINTERS));
+}
+
+inline float NavAssistStateSP::Reader::getSourceAgeMs() const {
+  return _reader.getDataField<float>(
+      ::capnp::bounded<31>() * ::capnp::ELEMENTS);
+}
+
+inline float NavAssistStateSP::Builder::getSourceAgeMs() {
+  return _builder.getDataField<float>(
+      ::capnp::bounded<31>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setSourceAgeMs(float value) {
+  _builder.setDataField<float>(
+      ::capnp::bounded<31>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::cereal::NavAssistStateSP::RejectReason NavAssistStateSP::Reader::getRejectReason() const {
+  return _reader.getDataField< ::cereal::NavAssistStateSP::RejectReason>(
+      ::capnp::bounded<68>() * ::capnp::ELEMENTS);
+}
+
+inline  ::cereal::NavAssistStateSP::RejectReason NavAssistStateSP::Builder::getRejectReason() {
+  return _builder.getDataField< ::cereal::NavAssistStateSP::RejectReason>(
+      ::capnp::bounded<68>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setRejectReason( ::cereal::NavAssistStateSP::RejectReason value) {
+  _builder.setDataField< ::cereal::NavAssistStateSP::RejectReason>(
+      ::capnp::bounded<68>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint64_t NavAssistStateSP::Reader::getGuidanceObservedAtMs() const {
+  return _reader.getDataField< ::uint64_t>(
+      ::capnp::bounded<18>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint64_t NavAssistStateSP::Builder::getGuidanceObservedAtMs() {
+  return _builder.getDataField< ::uint64_t>(
+      ::capnp::bounded<18>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setGuidanceObservedAtMs( ::uint64_t value) {
+  _builder.setDataField< ::uint64_t>(
+      ::capnp::bounded<18>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool NavAssistStateSP::Reader::getTrackGeofenceValidDEPRECATED() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<438>() * ::capnp::ELEMENTS);
+}
+
+inline bool NavAssistStateSP::Builder::getTrackGeofenceValidDEPRECATED() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<438>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::Builder::setTrackGeofenceValidDEPRECATED(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<438>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint8_t NavAssistStateSP::LaneGuidance::Reader::getIndex() const {
+  return _reader.getDataField< ::uint8_t>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint8_t NavAssistStateSP::LaneGuidance::Builder::getIndex() {
+  return _builder.getDataField< ::uint8_t>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::LaneGuidance::Builder::setIndex( ::uint8_t value) {
+  _builder.setDataField< ::uint8_t>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint16_t NavAssistStateSP::LaneGuidance::Reader::getAllowedActions() const {
+  return _reader.getDataField< ::uint16_t>(
+      ::capnp::bounded<1>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint16_t NavAssistStateSP::LaneGuidance::Builder::getAllowedActions() {
+  return _builder.getDataField< ::uint16_t>(
+      ::capnp::bounded<1>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::LaneGuidance::Builder::setAllowedActions( ::uint16_t value) {
+  _builder.setDataField< ::uint16_t>(
+      ::capnp::bounded<1>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint16_t NavAssistStateSP::LaneGuidance::Reader::getRecommendedActions() const {
+  return _reader.getDataField< ::uint16_t>(
+      ::capnp::bounded<2>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint16_t NavAssistStateSP::LaneGuidance::Builder::getRecommendedActions() {
+  return _builder.getDataField< ::uint16_t>(
+      ::capnp::bounded<2>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::LaneGuidance::Builder::setRecommendedActions( ::uint16_t value) {
+  _builder.setDataField< ::uint16_t>(
+      ::capnp::bounded<2>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool NavAssistStateSP::LaneGuidance::Reader::getRecommended() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<8>() * ::capnp::ELEMENTS);
+}
+
+inline bool NavAssistStateSP::LaneGuidance::Builder::getRecommended() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<8>() * ::capnp::ELEMENTS);
+}
+inline void NavAssistStateSP::LaneGuidance::Builder::setRecommended(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<8>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint64_t LaneTopologyStateSP::Reader::getPublishMonoTime() const {
+  return _reader.getDataField< ::uint64_t>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint64_t LaneTopologyStateSP::Builder::getPublishMonoTime() {
+  return _builder.getDataField< ::uint64_t>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setPublishMonoTime( ::uint64_t value) {
+  _builder.setDataField< ::uint64_t>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint64_t LaneTopologyStateSP::Reader::getModelMonoTime() const {
+  return _reader.getDataField< ::uint64_t>(
+      ::capnp::bounded<1>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint64_t LaneTopologyStateSP::Builder::getModelMonoTime() {
+  return _builder.getDataField< ::uint64_t>(
+      ::capnp::bounded<1>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setModelMonoTime( ::uint64_t value) {
+  _builder.setDataField< ::uint64_t>(
+      ::capnp::bounded<1>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint64_t LaneTopologyStateSP::Reader::getImageMonoTime() const {
+  return _reader.getDataField< ::uint64_t>(
+      ::capnp::bounded<2>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint64_t LaneTopologyStateSP::Builder::getImageMonoTime() {
+  return _builder.getDataField< ::uint64_t>(
+      ::capnp::bounded<2>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setImageMonoTime( ::uint64_t value) {
+  _builder.setDataField< ::uint64_t>(
+      ::capnp::bounded<2>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint32_t LaneTopologyStateSP::Reader::getFrameId() const {
+  return _reader.getDataField< ::uint32_t>(
+      ::capnp::bounded<6>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint32_t LaneTopologyStateSP::Builder::getFrameId() {
+  return _builder.getDataField< ::uint32_t>(
+      ::capnp::bounded<6>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setFrameId( ::uint32_t value) {
+  _builder.setDataField< ::uint32_t>(
+      ::capnp::bounded<6>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint32_t LaneTopologyStateSP::Reader::getImageFrameId() const {
+  return _reader.getDataField< ::uint32_t>(
+      ::capnp::bounded<7>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint32_t LaneTopologyStateSP::Builder::getImageFrameId() {
+  return _builder.getDataField< ::uint32_t>(
+      ::capnp::bounded<7>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setImageFrameId( ::uint32_t value) {
+  _builder.setDataField< ::uint32_t>(
+      ::capnp::bounded<7>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool LaneTopologyStateSP::Reader::getValid() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<256>() * ::capnp::ELEMENTS);
+}
+
+inline bool LaneTopologyStateSP::Builder::getValid() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<256>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setValid(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<256>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool LaneTopologyStateSP::Reader::getStale() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<257>() * ::capnp::ELEMENTS);
+}
+
+inline bool LaneTopologyStateSP::Builder::getStale() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<257>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setStale(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<257>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool LaneTopologyStateSP::Reader::getAmbiguous() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<258>() * ::capnp::ELEMENTS);
+}
+
+inline bool LaneTopologyStateSP::Builder::getAmbiguous() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<258>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setAmbiguous(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<258>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool LaneTopologyStateSP::Reader::getCalibrationValid() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<259>() * ::capnp::ELEMENTS);
+}
+
+inline bool LaneTopologyStateSP::Builder::getCalibrationValid() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<259>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setCalibrationValid(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<259>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::cereal::LaneTopologyStateSP::TopologyState LaneTopologyStateSP::Reader::getTopologyState() const {
+  return _reader.getDataField< ::cereal::LaneTopologyStateSP::TopologyState>(
+      ::capnp::bounded<17>() * ::capnp::ELEMENTS);
+}
+
+inline  ::cereal::LaneTopologyStateSP::TopologyState LaneTopologyStateSP::Builder::getTopologyState() {
+  return _builder.getDataField< ::cereal::LaneTopologyStateSP::TopologyState>(
+      ::capnp::bounded<17>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setTopologyState( ::cereal::LaneTopologyStateSP::TopologyState value) {
+  _builder.setDataField< ::cereal::LaneTopologyStateSP::TopologyState>(
+      ::capnp::bounded<17>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint8_t LaneTopologyStateSP::Reader::getVisibleLaneCount() const {
+  return _reader.getDataField< ::uint8_t>(
+      ::capnp::bounded<33>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint8_t LaneTopologyStateSP::Builder::getVisibleLaneCount() {
+  return _builder.getDataField< ::uint8_t>(
+      ::capnp::bounded<33>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setVisibleLaneCount( ::uint8_t value) {
+  _builder.setDataField< ::uint8_t>(
+      ::capnp::bounded<33>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::int8_t LaneTopologyStateSP::Reader::getEgoLaneIndexFromLeft() const {
+  return _reader.getDataField< ::int8_t>(
+      ::capnp::bounded<36>() * ::capnp::ELEMENTS, -1);
+}
+
+inline  ::int8_t LaneTopologyStateSP::Builder::getEgoLaneIndexFromLeft() {
+  return _builder.getDataField< ::int8_t>(
+      ::capnp::bounded<36>() * ::capnp::ELEMENTS, -1);
+}
+inline void LaneTopologyStateSP::Builder::setEgoLaneIndexFromLeft( ::int8_t value) {
+  _builder.setDataField< ::int8_t>(
+      ::capnp::bounded<36>() * ::capnp::ELEMENTS, value, -1);
+}
+
+inline  ::int8_t LaneTopologyStateSP::Reader::getEgoLaneIndexFromRight() const {
+  return _reader.getDataField< ::int8_t>(
+      ::capnp::bounded<37>() * ::capnp::ELEMENTS, -1);
+}
+
+inline  ::int8_t LaneTopologyStateSP::Builder::getEgoLaneIndexFromRight() {
+  return _builder.getDataField< ::int8_t>(
+      ::capnp::bounded<37>() * ::capnp::ELEMENTS, -1);
+}
+inline void LaneTopologyStateSP::Builder::setEgoLaneIndexFromRight( ::int8_t value) {
+  _builder.setDataField< ::int8_t>(
+      ::capnp::bounded<37>() * ::capnp::ELEMENTS, value, -1);
+}
+
+inline bool LaneTopologyStateSP::Reader::getLeftNeighborExists() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<260>() * ::capnp::ELEMENTS);
+}
+
+inline bool LaneTopologyStateSP::Builder::getLeftNeighborExists() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<260>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setLeftNeighborExists(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<260>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool LaneTopologyStateSP::Reader::getRightNeighborExists() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<261>() * ::capnp::ELEMENTS);
+}
+
+inline bool LaneTopologyStateSP::Builder::getRightNeighborExists() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<261>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setRightNeighborExists(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<261>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::cereal::LaneTopologyStateSP::Marking LaneTopologyStateSP::Reader::getLeftMarking() const {
+  return _reader.getDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<19>() * ::capnp::ELEMENTS);
+}
+
+inline  ::cereal::LaneTopologyStateSP::Marking LaneTopologyStateSP::Builder::getLeftMarking() {
+  return _builder.getDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<19>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setLeftMarking( ::cereal::LaneTopologyStateSP::Marking value) {
+  _builder.setDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<19>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::cereal::LaneTopologyStateSP::Marking LaneTopologyStateSP::Reader::getRightMarking() const {
+  return _reader.getDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<20>() * ::capnp::ELEMENTS);
+}
+
+inline  ::cereal::LaneTopologyStateSP::Marking LaneTopologyStateSP::Builder::getRightMarking() {
+  return _builder.getDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<20>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setRightMarking( ::cereal::LaneTopologyStateSP::Marking value) {
+  _builder.setDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<20>() * ::capnp::ELEMENTS, value);
+}
+
+inline float LaneTopologyStateSP::Reader::getLeftBoundaryConfidence() const {
+  return _reader.getDataField<float>(
+      ::capnp::bounded<11>() * ::capnp::ELEMENTS);
+}
+
+inline float LaneTopologyStateSP::Builder::getLeftBoundaryConfidence() {
+  return _builder.getDataField<float>(
+      ::capnp::bounded<11>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setLeftBoundaryConfidence(float value) {
+  _builder.setDataField<float>(
+      ::capnp::bounded<11>() * ::capnp::ELEMENTS, value);
+}
+
+inline float LaneTopologyStateSP::Reader::getRightBoundaryConfidence() const {
+  return _reader.getDataField<float>(
+      ::capnp::bounded<12>() * ::capnp::ELEMENTS);
+}
+
+inline float LaneTopologyStateSP::Builder::getRightBoundaryConfidence() {
+  return _builder.getDataField<float>(
+      ::capnp::bounded<12>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setRightBoundaryConfidence(float value) {
+  _builder.setDataField<float>(
+      ::capnp::bounded<12>() * ::capnp::ELEMENTS, value);
+}
+
+inline float LaneTopologyStateSP::Reader::getLeftMarkingConfidence() const {
+  return _reader.getDataField<float>(
+      ::capnp::bounded<13>() * ::capnp::ELEMENTS);
+}
+
+inline float LaneTopologyStateSP::Builder::getLeftMarkingConfidence() {
+  return _builder.getDataField<float>(
+      ::capnp::bounded<13>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setLeftMarkingConfidence(float value) {
+  _builder.setDataField<float>(
+      ::capnp::bounded<13>() * ::capnp::ELEMENTS, value);
+}
+
+inline float LaneTopologyStateSP::Reader::getRightMarkingConfidence() const {
+  return _reader.getDataField<float>(
+      ::capnp::bounded<14>() * ::capnp::ELEMENTS);
+}
+
+inline float LaneTopologyStateSP::Builder::getRightMarkingConfidence() {
+  return _builder.getDataField<float>(
+      ::capnp::bounded<14>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setRightMarkingConfidence(float value) {
+  _builder.setDataField<float>(
+      ::capnp::bounded<14>() * ::capnp::ELEMENTS, value);
+}
+
+inline float LaneTopologyStateSP::Reader::getLeftEvidenceAgeMs() const {
+  return _reader.getDataField<float>(
+      ::capnp::bounded<15>() * ::capnp::ELEMENTS);
+}
+
+inline float LaneTopologyStateSP::Builder::getLeftEvidenceAgeMs() {
+  return _builder.getDataField<float>(
+      ::capnp::bounded<15>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setLeftEvidenceAgeMs(float value) {
+  _builder.setDataField<float>(
+      ::capnp::bounded<15>() * ::capnp::ELEMENTS, value);
+}
+
+inline float LaneTopologyStateSP::Reader::getRightEvidenceAgeMs() const {
+  return _reader.getDataField<float>(
+      ::capnp::bounded<16>() * ::capnp::ELEMENTS);
+}
+
+inline float LaneTopologyStateSP::Builder::getRightEvidenceAgeMs() {
+  return _builder.getDataField<float>(
+      ::capnp::bounded<16>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setRightEvidenceAgeMs(float value) {
+  _builder.setDataField<float>(
+      ::capnp::bounded<16>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool LaneTopologyStateSP::Reader::getSourcePairChanged() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<262>() * ::capnp::ELEMENTS);
+}
+
+inline bool LaneTopologyStateSP::Builder::getSourcePairChanged() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<262>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setSourcePairChanged(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<262>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool LaneTopologyStateSP::Reader::getValidForControl() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<263>() * ::capnp::ELEMENTS);
+}
+
+inline bool LaneTopologyStateSP::Builder::getValidForControl() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<263>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setValidForControl(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<263>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::cereal::LaneTopologyStateSP::Marking LaneTopologyStateSP::Reader::getLeftEgoSideMarking() const {
+  return _reader.getDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<21>() * ::capnp::ELEMENTS);
+}
+
+inline  ::cereal::LaneTopologyStateSP::Marking LaneTopologyStateSP::Builder::getLeftEgoSideMarking() {
+  return _builder.getDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<21>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setLeftEgoSideMarking( ::cereal::LaneTopologyStateSP::Marking value) {
+  _builder.setDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<21>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::cereal::LaneTopologyStateSP::Marking LaneTopologyStateSP::Reader::getLeftFarSideMarking() const {
+  return _reader.getDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<34>() * ::capnp::ELEMENTS);
+}
+
+inline  ::cereal::LaneTopologyStateSP::Marking LaneTopologyStateSP::Builder::getLeftFarSideMarking() {
+  return _builder.getDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<34>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setLeftFarSideMarking( ::cereal::LaneTopologyStateSP::Marking value) {
+  _builder.setDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<34>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::cereal::LaneTopologyStateSP::Marking LaneTopologyStateSP::Reader::getRightEgoSideMarking() const {
+  return _reader.getDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<35>() * ::capnp::ELEMENTS);
+}
+
+inline  ::cereal::LaneTopologyStateSP::Marking LaneTopologyStateSP::Builder::getRightEgoSideMarking() {
+  return _builder.getDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<35>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setRightEgoSideMarking( ::cereal::LaneTopologyStateSP::Marking value) {
+  _builder.setDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<35>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::cereal::LaneTopologyStateSP::Marking LaneTopologyStateSP::Reader::getRightFarSideMarking() const {
+  return _reader.getDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<36>() * ::capnp::ELEMENTS);
+}
+
+inline  ::cereal::LaneTopologyStateSP::Marking LaneTopologyStateSP::Builder::getRightFarSideMarking() {
+  return _builder.getDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<36>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setRightFarSideMarking( ::cereal::LaneTopologyStateSP::Marking value) {
+  _builder.setDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<36>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool LaneTopologyStateSP::Reader::getLeftCrossingAllowed() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<592>() * ::capnp::ELEMENTS);
+}
+
+inline bool LaneTopologyStateSP::Builder::getLeftCrossingAllowed() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<592>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setLeftCrossingAllowed(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<592>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool LaneTopologyStateSP::Reader::getRightCrossingAllowed() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<593>() * ::capnp::ELEMENTS);
+}
+
+inline bool LaneTopologyStateSP::Builder::getRightCrossingAllowed() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<593>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setRightCrossingAllowed(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<593>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::cereal::LaneTopologyStateSP::Marking LaneTopologyStateSP::Reader::getLeftRawMarking() const {
+  return _reader.getDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<38>() * ::capnp::ELEMENTS);
+}
+
+inline  ::cereal::LaneTopologyStateSP::Marking LaneTopologyStateSP::Builder::getLeftRawMarking() {
+  return _builder.getDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<38>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setLeftRawMarking( ::cereal::LaneTopologyStateSP::Marking value) {
+  _builder.setDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<38>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::cereal::LaneTopologyStateSP::Marking LaneTopologyStateSP::Reader::getRightRawMarking() const {
+  return _reader.getDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<39>() * ::capnp::ELEMENTS);
+}
+
+inline  ::cereal::LaneTopologyStateSP::Marking LaneTopologyStateSP::Builder::getRightRawMarking() {
+  return _builder.getDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<39>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setRightRawMarking( ::cereal::LaneTopologyStateSP::Marking value) {
+  _builder.setDataField< ::cereal::LaneTopologyStateSP::Marking>(
+      ::capnp::bounded<39>() * ::capnp::ELEMENTS, value);
+}
+
+inline float LaneTopologyStateSP::Reader::getImageModelSkewMs() const {
+  return _reader.getDataField<float>(
+      ::capnp::bounded<20>() * ::capnp::ELEMENTS);
+}
+
+inline float LaneTopologyStateSP::Builder::getImageModelSkewMs() {
+  return _builder.getDataField<float>(
+      ::capnp::bounded<20>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setImageModelSkewMs(float value) {
+  _builder.setDataField<float>(
+      ::capnp::bounded<20>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool LaneTopologyStateSP::Reader::getLeftEvidenceValid() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<594>() * ::capnp::ELEMENTS);
+}
+
+inline bool LaneTopologyStateSP::Builder::getLeftEvidenceValid() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<594>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setLeftEvidenceValid(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<594>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool LaneTopologyStateSP::Reader::getRightEvidenceValid() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<595>() * ::capnp::ELEMENTS);
+}
+
+inline bool LaneTopologyStateSP::Builder::getRightEvidenceValid() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<595>() * ::capnp::ELEMENTS);
+}
+inline void LaneTopologyStateSP::Builder::setRightEvidenceValid(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<595>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint64_t NavLaneIntentSP::Reader::getPublishMonoTime() const {
+  return _reader.getDataField< ::uint64_t>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint64_t NavLaneIntentSP::Builder::getPublishMonoTime() {
+  return _builder.getDataField< ::uint64_t>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS);
+}
+inline void NavLaneIntentSP::Builder::setPublishMonoTime( ::uint64_t value) {
+  _builder.setDataField< ::uint64_t>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool NavLaneIntentSP::Reader::getValid() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<64>() * ::capnp::ELEMENTS);
+}
+
+inline bool NavLaneIntentSP::Builder::getValid() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<64>() * ::capnp::ELEMENTS);
+}
+inline void NavLaneIntentSP::Builder::setValid(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<64>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool NavLaneIntentSP::Reader::getSignalRequested() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<65>() * ::capnp::ELEMENTS);
+}
+
+inline bool NavLaneIntentSP::Builder::getSignalRequested() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<65>() * ::capnp::ELEMENTS);
+}
+inline void NavLaneIntentSP::Builder::setSignalRequested(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<65>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool NavLaneIntentSP::Reader::getLaneChangeAuthorized() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<66>() * ::capnp::ELEMENTS);
+}
+
+inline bool NavLaneIntentSP::Builder::getLaneChangeAuthorized() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<66>() * ::capnp::ELEMENTS);
+}
+inline void NavLaneIntentSP::Builder::setLaneChangeAuthorized(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<66>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::cereal::NavLaneIntentSP::Direction NavLaneIntentSP::Reader::getDirection() const {
+  return _reader.getDataField< ::cereal::NavLaneIntentSP::Direction>(
+      ::capnp::bounded<5>() * ::capnp::ELEMENTS);
+}
+
+inline  ::cereal::NavLaneIntentSP::Direction NavLaneIntentSP::Builder::getDirection() {
+  return _builder.getDataField< ::cereal::NavLaneIntentSP::Direction>(
+      ::capnp::bounded<5>() * ::capnp::ELEMENTS);
+}
+inline void NavLaneIntentSP::Builder::setDirection( ::cereal::NavLaneIntentSP::Direction value) {
+  _builder.setDataField< ::cereal::NavLaneIntentSP::Direction>(
+      ::capnp::bounded<5>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint64_t NavLaneIntentSP::Reader::getRequestId() const {
+  return _reader.getDataField< ::uint64_t>(
+      ::capnp::bounded<2>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint64_t NavLaneIntentSP::Builder::getRequestId() {
+  return _builder.getDataField< ::uint64_t>(
+      ::capnp::bounded<2>() * ::capnp::ELEMENTS);
+}
+inline void NavLaneIntentSP::Builder::setRequestId( ::uint64_t value) {
+  _builder.setDataField< ::uint64_t>(
+      ::capnp::bounded<2>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::int8_t NavLaneIntentSP::Reader::getTargetLaneIndex() const {
+  return _reader.getDataField< ::int8_t>(
+      ::capnp::bounded<9>() * ::capnp::ELEMENTS, -1);
+}
+
+inline  ::int8_t NavLaneIntentSP::Builder::getTargetLaneIndex() {
+  return _builder.getDataField< ::int8_t>(
+      ::capnp::bounded<9>() * ::capnp::ELEMENTS, -1);
+}
+inline void NavLaneIntentSP::Builder::setTargetLaneIndex( ::int8_t value) {
+  _builder.setDataField< ::int8_t>(
+      ::capnp::bounded<9>() * ::capnp::ELEMENTS, value, -1);
+}
+
+inline  ::uint64_t NavLaneIntentSP::Reader::getRouteRevision() const {
+  return _reader.getDataField< ::uint64_t>(
+      ::capnp::bounded<3>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint64_t NavLaneIntentSP::Builder::getRouteRevision() {
+  return _builder.getDataField< ::uint64_t>(
+      ::capnp::bounded<3>() * ::capnp::ELEMENTS);
+}
+inline void NavLaneIntentSP::Builder::setRouteRevision( ::uint64_t value) {
+  _builder.setDataField< ::uint64_t>(
+      ::capnp::bounded<3>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint64_t NavLaneIntentSP::Reader::getManeuverEventId() const {
+  return _reader.getDataField< ::uint64_t>(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint64_t NavLaneIntentSP::Builder::getManeuverEventId() {
+  return _builder.getDataField< ::uint64_t>(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS);
+}
+inline void NavLaneIntentSP::Builder::setManeuverEventId( ::uint64_t value) {
+  _builder.setDataField< ::uint64_t>(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool NavLaneIntentSP::Reader::hasReason() const {
+  return !_reader.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
+}
+inline bool NavLaneIntentSP::Builder::hasReason() {
+  return !_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
+}
+inline  ::capnp::Text::Reader NavLaneIntentSP::Reader::getReason() const {
+  return ::capnp::_::PointerHelpers< ::capnp::Text>::get(_reader.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+inline  ::capnp::Text::Builder NavLaneIntentSP::Builder::getReason() {
+  return ::capnp::_::PointerHelpers< ::capnp::Text>::get(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+inline void NavLaneIntentSP::Builder::setReason( ::capnp::Text::Reader value) {
+  ::capnp::_::PointerHelpers< ::capnp::Text>::set(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), value);
+}
+inline  ::capnp::Text::Builder NavLaneIntentSP::Builder::initReason(unsigned int size) {
+  return ::capnp::_::PointerHelpers< ::capnp::Text>::init(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), size);
+}
+inline void NavLaneIntentSP::Builder::adoptReason(
+    ::capnp::Orphan< ::capnp::Text>&& value) {
+  ::capnp::_::PointerHelpers< ::capnp::Text>::adopt(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), kj::mv(value));
+}
+inline ::capnp::Orphan< ::capnp::Text> NavLaneIntentSP::Builder::disownReason() {
+  return ::capnp::_::PointerHelpers< ::capnp::Text>::disown(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+
+inline bool NavLaneIntentSP::Reader::hasSessionId() const {
+  return !_reader.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS).isNull();
+}
+inline bool NavLaneIntentSP::Builder::hasSessionId() {
+  return !_builder.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS).isNull();
+}
+inline  ::capnp::Text::Reader NavLaneIntentSP::Reader::getSessionId() const {
+  return ::capnp::_::PointerHelpers< ::capnp::Text>::get(_reader.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS));
+}
+inline  ::capnp::Text::Builder NavLaneIntentSP::Builder::getSessionId() {
+  return ::capnp::_::PointerHelpers< ::capnp::Text>::get(_builder.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS));
+}
+inline void NavLaneIntentSP::Builder::setSessionId( ::capnp::Text::Reader value) {
+  ::capnp::_::PointerHelpers< ::capnp::Text>::set(_builder.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS), value);
+}
+inline  ::capnp::Text::Builder NavLaneIntentSP::Builder::initSessionId(unsigned int size) {
+  return ::capnp::_::PointerHelpers< ::capnp::Text>::init(_builder.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS), size);
+}
+inline void NavLaneIntentSP::Builder::adoptSessionId(
+    ::capnp::Orphan< ::capnp::Text>&& value) {
+  ::capnp::_::PointerHelpers< ::capnp::Text>::adopt(_builder.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS), kj::mv(value));
+}
+inline ::capnp::Orphan< ::capnp::Text> NavLaneIntentSP::Builder::disownSessionId() {
+  return ::capnp::_::PointerHelpers< ::capnp::Text>::disown(_builder.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS));
+}
+
+inline bool NavLaneIntentSP::Reader::getSpLaneChangeReady() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<67>() * ::capnp::ELEMENTS);
+}
+
+inline bool NavLaneIntentSP::Builder::getSpLaneChangeReady() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<67>() * ::capnp::ELEMENTS);
+}
+inline void NavLaneIntentSP::Builder::setSpLaneChangeReady(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<67>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool NavLaneIntentSP::Reader::getForkNow() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<68>() * ::capnp::ELEMENTS);
+}
+
+inline bool NavLaneIntentSP::Builder::getForkNow() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<68>() * ::capnp::ELEMENTS);
+}
+inline void NavLaneIntentSP::Builder::setForkNow(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<68>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool NavLaneIntentSP::Reader::getAllowUnknownCrossing() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<69>() * ::capnp::ELEMENTS);
+}
+
+inline bool NavLaneIntentSP::Builder::getAllowUnknownCrossing() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<69>() * ::capnp::ELEMENTS);
+}
+inline void NavLaneIntentSP::Builder::setAllowUnknownCrossing(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<69>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool NavLaneIntentSP::Reader::getIgnoreSolidBoundary() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<70>() * ::capnp::ELEMENTS);
+}
+
+inline bool NavLaneIntentSP::Builder::getIgnoreSolidBoundary() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<70>() * ::capnp::ELEMENTS);
+}
+inline void NavLaneIntentSP::Builder::setIgnoreSolidBoundary(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<70>() * ::capnp::ELEMENTS, value);
 }
 
 }  // namespace

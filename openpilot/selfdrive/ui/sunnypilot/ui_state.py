@@ -11,6 +11,7 @@ from opendbc.car.structs import car
 from openpilot.common.params import Params
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.display import OnroadBrightness
 from openpilot.sunnypilot.models.helpers import ACTIVE_BUNDLE_KEYS, get_active_source
+from openpilot.sunnypilot.lane_topology.ui_bridge import LaneTopologyUIBridge
 from openpilot.sunnypilot.sunnylink.sunnylink_state import SunnylinkState
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.sunnypilot.widgets.screen_saver import ScreenSaverSP
@@ -19,6 +20,18 @@ OpenpilotState = log.SelfdriveState.OpenpilotState
 MADSState = custom.ModularAssistiveDrivingSystem.ModularAssistiveDrivingSystemState
 
 ONROAD_BRIGHTNESS_TIMER_PAUSED = -1
+
+
+def nav_assist_paired(pairing) -> bool:
+  if not isinstance(pairing, dict):
+    return False
+  # Accept the original single-app record and the current bounded v2 app set.
+  if isinstance(pairing.get("keyId"), str):
+    return True
+  apps = pairing.get("apps")
+  return isinstance(apps, list) and any(
+    isinstance(app, dict) and isinstance(app.get("keyId"), str) for app in apps
+  )
 
 
 class OnroadTimerStatus(Enum):
@@ -35,8 +48,13 @@ class UIStateSP:
     self.is_sp_release: bool = self.params.get_bool("IsReleaseSpBranch")
     self.sm_services_ext = [
       "modelManagerSP", "selfdriveStateSP", "longitudinalPlanSP", "backupManagerSP",
-      "gpsLocation", "lateralTorqueParameters", "carStateSP", "liveMapDataSP", "carParamsSP", "lateralDelay"
+      "gpsLocation", "lateralTorqueParameters", "carStateSP", "liveMapDataSP", "carParamsSP", "lateralDelay",
+      "navAssistStateSP", "laneTopologyStateSP", "navLaneIntentSP"
     ]
+    self.lane_topology_bridge = LaneTopologyUIBridge(frame_divisor=5)
+    self.lane_topology = None
+    self.nav_assist_track_mode = False
+    self.tesla_turn_signal_configured: bool | None = None
 
     self.sunnylink_state = SunnylinkState()
 
@@ -70,6 +88,18 @@ class UIStateSP:
       self.sunnylink_state.start()
     else:
       self.sunnylink_state.stop()
+    if self.is_offroad():
+      if self.lane_topology is not None:
+        self.lane_topology_bridge.reset()
+        self.lane_topology = None
+    elif self.sm.seen["laneTopologyStateSP"]:
+      # C3XL has an isolated lane_topologyd producer whether or not an App is
+      # paired. Do not run the same image classifier a second time in UI.
+      if self.lane_topology_bridge.current is not None:
+        self.lane_topology_bridge.reset()
+      self.lane_topology = None
+    elif self.sm.updated["modelV2"]:
+      self.lane_topology = self.lane_topology_bridge.update(self.sm["modelV2"])
 
   def onroad_brightness_handle_alerts(self, _ui_state, alert):
     if _ui_state.sm.recv_frame["carState"] < _ui_state.started_frame:
@@ -164,6 +194,9 @@ class UIStateSP:
     self.custom_interactive_timeout = self.params.get("InteractivityTimeout", return_default=True)
     self.developer_ui = self.params.get("DevUIInfo")
     self.hide_v_ego_ui = self.params.get_bool("HideVEgoUI")
+    self.nav_assist_track_mode = nav_assist_paired(self.params.get("NavAssistPairedApp"))
+    self.tesla_turn_signal_configured = (self.params.get_bool("TeslaTurnSignalValidation")
+                                         if getattr(getattr(self, "CP", None), "brand", None) == "tesla" else None)
     self.onroad_brightness = int(float(self.params.get("OnroadScreenOffBrightness", return_default=True)))
     self.onroad_brightness_timer_param = self.params.get("OnroadScreenOffTimer", return_default=True)
     self.rainbow_path = self.params.get_bool("RainbowMode")

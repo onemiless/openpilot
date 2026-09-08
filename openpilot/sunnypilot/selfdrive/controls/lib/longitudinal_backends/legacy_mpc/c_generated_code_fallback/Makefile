@@ -143,7 +143,7 @@ ocp_cython_c: ocp_shared_lib
 	-o acados_ocp_solver_pyx.c \
 	-I $(INCLUDE_PATH)/../interfaces/acados_template/acados_template \
 	$(INCLUDE_PATH)/../interfaces/acados_template/acados_template/acados_ocp_solver_pyx.pyx \
-	-I /data/prebuild-20260906/tree/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/legacy_mpc/c_generated_code_fallback \
+	-I /data/nav-prebuild-20260908/tree/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/legacy_mpc/c_generated_code_fallback \
 
 ocp_cython_o: ocp_cython_c
 	$(CC) $(ACADOS_FLAGS) -c -O2 \
@@ -170,7 +170,7 @@ sim_cython_c: sim_shared_lib
 	-o acados_sim_solver_pyx.c \
 	-I $(INCLUDE_PATH)/../interfaces/acados_template/acados_template \
 	$(INCLUDE_PATH)/../interfaces/acados_template/acados_template/acados_sim_solver_pyx.pyx \
-	-I /data/prebuild-20260906/tree/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/legacy_mpc/c_generated_code_fallback \
+	-I /data/nav-prebuild-20260908/tree/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/legacy_mpc/c_generated_code_fallback \
 
 sim_cython_o: sim_cython_c
 	$(CC) $(ACADOS_FLAGS) -c -O2 \

@@ -2922,7 +2922,7 @@ struct UIDebug {
   class Pipeline;
 
   struct _capnpPrivate {
-    CAPNP_DECLARE_STRUCT_HEADER(fe35ad896ffaeacf, 1, 0)
+    CAPNP_DECLARE_STRUCT_HEADER(fe35ad896ffaeacf, 4, 0)
     #if !CAPNP_LITE
     static constexpr ::capnp::_::RawBrandedSchema const* brand() { return &schema->defaultBrand; }
     #endif  // !CAPNP_LITE
@@ -3320,9 +3320,9 @@ struct Event {
     ONROAD_EVENTS,
     TOUCH,
     TRAFFIC_RADAR_STATE,
-    CUSTOM_RESERVED11,
-    CUSTOM_RESERVED12,
-    CUSTOM_RESERVED13,
+    NAV_ASSIST_STATE_S_P,
+    LANE_TOPOLOGY_STATE_S_P,
+    NAV_LANE_INTENT_S_P,
     CUSTOM_RESERVED14,
     CUSTOM_RESERVED15,
     CUSTOM_RESERVED16,
@@ -21163,6 +21163,26 @@ public:
 
   inline float getFrameTimeMillis() const;
 
+  inline bool getTrafficPlanAvailable() const;
+
+  inline  ::uint64_t getTrafficPlanMonoTime() const;
+
+  inline  ::uint8_t getTrafficPlanLightState() const;
+
+  inline  ::uint8_t getTrafficPlanPhase() const;
+
+  inline  ::uint64_t getTrafficDisplayFrame() const;
+
+  inline bool getTrafficDisplayedVisible() const;
+
+  inline bool getTrafficDisplayedHasSignal() const;
+
+  inline  ::uint8_t getTrafficDisplayedLightState() const;
+
+  inline  ::uint8_t getTrafficDisplayedPhase() const;
+
+  inline bool getTrafficDisplayedControlActive() const;
+
 private:
   ::capnp::_::StructReader _reader;
   template <typename, ::capnp::Kind>
@@ -21196,6 +21216,36 @@ public:
 
   inline float getFrameTimeMillis();
   inline void setFrameTimeMillis(float value);
+
+  inline bool getTrafficPlanAvailable();
+  inline void setTrafficPlanAvailable(bool value);
+
+  inline  ::uint64_t getTrafficPlanMonoTime();
+  inline void setTrafficPlanMonoTime( ::uint64_t value);
+
+  inline  ::uint8_t getTrafficPlanLightState();
+  inline void setTrafficPlanLightState( ::uint8_t value);
+
+  inline  ::uint8_t getTrafficPlanPhase();
+  inline void setTrafficPlanPhase( ::uint8_t value);
+
+  inline  ::uint64_t getTrafficDisplayFrame();
+  inline void setTrafficDisplayFrame( ::uint64_t value);
+
+  inline bool getTrafficDisplayedVisible();
+  inline void setTrafficDisplayedVisible(bool value);
+
+  inline bool getTrafficDisplayedHasSignal();
+  inline void setTrafficDisplayedHasSignal(bool value);
+
+  inline  ::uint8_t getTrafficDisplayedLightState();
+  inline void setTrafficDisplayedLightState( ::uint8_t value);
+
+  inline  ::uint8_t getTrafficDisplayedPhase();
+  inline void setTrafficDisplayedPhase( ::uint8_t value);
+
+  inline bool getTrafficDisplayedControlActive();
+  inline void setTrafficDisplayedControlActive(bool value);
 
 private:
   ::capnp::_::StructBuilder _builder;
@@ -23309,17 +23359,17 @@ public:
   inline bool hasTrafficRadarState() const;
   inline  ::cereal::TrafficRadarState::Reader getTrafficRadarState() const;
 
-  inline bool isCustomReserved11() const;
-  inline bool hasCustomReserved11() const;
-  inline  ::cereal::CustomReserved11::Reader getCustomReserved11() const;
+  inline bool isNavAssistStateSP() const;
+  inline bool hasNavAssistStateSP() const;
+  inline  ::cereal::NavAssistStateSP::Reader getNavAssistStateSP() const;
 
-  inline bool isCustomReserved12() const;
-  inline bool hasCustomReserved12() const;
-  inline  ::cereal::CustomReserved12::Reader getCustomReserved12() const;
+  inline bool isLaneTopologyStateSP() const;
+  inline bool hasLaneTopologyStateSP() const;
+  inline  ::cereal::LaneTopologyStateSP::Reader getLaneTopologyStateSP() const;
 
-  inline bool isCustomReserved13() const;
-  inline bool hasCustomReserved13() const;
-  inline  ::cereal::CustomReserved13::Reader getCustomReserved13() const;
+  inline bool isNavLaneIntentSP() const;
+  inline bool hasNavLaneIntentSP() const;
+  inline  ::cereal::NavLaneIntentSP::Reader getNavLaneIntentSP() const;
 
   inline bool isCustomReserved14() const;
   inline bool hasCustomReserved14() const;
@@ -24488,29 +24538,29 @@ public:
   inline void adoptTrafficRadarState(::capnp::Orphan< ::cereal::TrafficRadarState>&& value);
   inline ::capnp::Orphan< ::cereal::TrafficRadarState> disownTrafficRadarState();
 
-  inline bool isCustomReserved11();
-  inline bool hasCustomReserved11();
-  inline  ::cereal::CustomReserved11::Builder getCustomReserved11();
-  inline void setCustomReserved11( ::cereal::CustomReserved11::Reader value);
-  inline  ::cereal::CustomReserved11::Builder initCustomReserved11();
-  inline void adoptCustomReserved11(::capnp::Orphan< ::cereal::CustomReserved11>&& value);
-  inline ::capnp::Orphan< ::cereal::CustomReserved11> disownCustomReserved11();
+  inline bool isNavAssistStateSP();
+  inline bool hasNavAssistStateSP();
+  inline  ::cereal::NavAssistStateSP::Builder getNavAssistStateSP();
+  inline void setNavAssistStateSP( ::cereal::NavAssistStateSP::Reader value);
+  inline  ::cereal::NavAssistStateSP::Builder initNavAssistStateSP();
+  inline void adoptNavAssistStateSP(::capnp::Orphan< ::cereal::NavAssistStateSP>&& value);
+  inline ::capnp::Orphan< ::cereal::NavAssistStateSP> disownNavAssistStateSP();
 
-  inline bool isCustomReserved12();
-  inline bool hasCustomReserved12();
-  inline  ::cereal::CustomReserved12::Builder getCustomReserved12();
-  inline void setCustomReserved12( ::cereal::CustomReserved12::Reader value);
-  inline  ::cereal::CustomReserved12::Builder initCustomReserved12();
-  inline void adoptCustomReserved12(::capnp::Orphan< ::cereal::CustomReserved12>&& value);
-  inline ::capnp::Orphan< ::cereal::CustomReserved12> disownCustomReserved12();
+  inline bool isLaneTopologyStateSP();
+  inline bool hasLaneTopologyStateSP();
+  inline  ::cereal::LaneTopologyStateSP::Builder getLaneTopologyStateSP();
+  inline void setLaneTopologyStateSP( ::cereal::LaneTopologyStateSP::Reader value);
+  inline  ::cereal::LaneTopologyStateSP::Builder initLaneTopologyStateSP();
+  inline void adoptLaneTopologyStateSP(::capnp::Orphan< ::cereal::LaneTopologyStateSP>&& value);
+  inline ::capnp::Orphan< ::cereal::LaneTopologyStateSP> disownLaneTopologyStateSP();
 
-  inline bool isCustomReserved13();
-  inline bool hasCustomReserved13();
-  inline  ::cereal::CustomReserved13::Builder getCustomReserved13();
-  inline void setCustomReserved13( ::cereal::CustomReserved13::Reader value);
-  inline  ::cereal::CustomReserved13::Builder initCustomReserved13();
-  inline void adoptCustomReserved13(::capnp::Orphan< ::cereal::CustomReserved13>&& value);
-  inline ::capnp::Orphan< ::cereal::CustomReserved13> disownCustomReserved13();
+  inline bool isNavLaneIntentSP();
+  inline bool hasNavLaneIntentSP();
+  inline  ::cereal::NavLaneIntentSP::Builder getNavLaneIntentSP();
+  inline void setNavLaneIntentSP( ::cereal::NavLaneIntentSP::Reader value);
+  inline  ::cereal::NavLaneIntentSP::Builder initNavLaneIntentSP();
+  inline void adoptNavLaneIntentSP(::capnp::Orphan< ::cereal::NavLaneIntentSP>&& value);
+  inline ::capnp::Orphan< ::cereal::NavLaneIntentSP> disownNavLaneIntentSP();
 
   inline bool isCustomReserved14();
   inline bool hasCustomReserved14();
@@ -50493,6 +50543,146 @@ inline void UIDebug::Builder::setFrameTimeMillis(float value) {
       ::capnp::bounded<1>() * ::capnp::ELEMENTS, value);
 }
 
+inline bool UIDebug::Reader::getTrafficPlanAvailable() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<64>() * ::capnp::ELEMENTS);
+}
+
+inline bool UIDebug::Builder::getTrafficPlanAvailable() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<64>() * ::capnp::ELEMENTS);
+}
+inline void UIDebug::Builder::setTrafficPlanAvailable(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<64>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint64_t UIDebug::Reader::getTrafficPlanMonoTime() const {
+  return _reader.getDataField< ::uint64_t>(
+      ::capnp::bounded<2>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint64_t UIDebug::Builder::getTrafficPlanMonoTime() {
+  return _builder.getDataField< ::uint64_t>(
+      ::capnp::bounded<2>() * ::capnp::ELEMENTS);
+}
+inline void UIDebug::Builder::setTrafficPlanMonoTime( ::uint64_t value) {
+  _builder.setDataField< ::uint64_t>(
+      ::capnp::bounded<2>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint8_t UIDebug::Reader::getTrafficPlanLightState() const {
+  return _reader.getDataField< ::uint8_t>(
+      ::capnp::bounded<9>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint8_t UIDebug::Builder::getTrafficPlanLightState() {
+  return _builder.getDataField< ::uint8_t>(
+      ::capnp::bounded<9>() * ::capnp::ELEMENTS);
+}
+inline void UIDebug::Builder::setTrafficPlanLightState( ::uint8_t value) {
+  _builder.setDataField< ::uint8_t>(
+      ::capnp::bounded<9>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint8_t UIDebug::Reader::getTrafficPlanPhase() const {
+  return _reader.getDataField< ::uint8_t>(
+      ::capnp::bounded<10>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint8_t UIDebug::Builder::getTrafficPlanPhase() {
+  return _builder.getDataField< ::uint8_t>(
+      ::capnp::bounded<10>() * ::capnp::ELEMENTS);
+}
+inline void UIDebug::Builder::setTrafficPlanPhase( ::uint8_t value) {
+  _builder.setDataField< ::uint8_t>(
+      ::capnp::bounded<10>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint64_t UIDebug::Reader::getTrafficDisplayFrame() const {
+  return _reader.getDataField< ::uint64_t>(
+      ::capnp::bounded<3>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint64_t UIDebug::Builder::getTrafficDisplayFrame() {
+  return _builder.getDataField< ::uint64_t>(
+      ::capnp::bounded<3>() * ::capnp::ELEMENTS);
+}
+inline void UIDebug::Builder::setTrafficDisplayFrame( ::uint64_t value) {
+  _builder.setDataField< ::uint64_t>(
+      ::capnp::bounded<3>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool UIDebug::Reader::getTrafficDisplayedVisible() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<65>() * ::capnp::ELEMENTS);
+}
+
+inline bool UIDebug::Builder::getTrafficDisplayedVisible() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<65>() * ::capnp::ELEMENTS);
+}
+inline void UIDebug::Builder::setTrafficDisplayedVisible(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<65>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool UIDebug::Reader::getTrafficDisplayedHasSignal() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<66>() * ::capnp::ELEMENTS);
+}
+
+inline bool UIDebug::Builder::getTrafficDisplayedHasSignal() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<66>() * ::capnp::ELEMENTS);
+}
+inline void UIDebug::Builder::setTrafficDisplayedHasSignal(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<66>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint8_t UIDebug::Reader::getTrafficDisplayedLightState() const {
+  return _reader.getDataField< ::uint8_t>(
+      ::capnp::bounded<11>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint8_t UIDebug::Builder::getTrafficDisplayedLightState() {
+  return _builder.getDataField< ::uint8_t>(
+      ::capnp::bounded<11>() * ::capnp::ELEMENTS);
+}
+inline void UIDebug::Builder::setTrafficDisplayedLightState( ::uint8_t value) {
+  _builder.setDataField< ::uint8_t>(
+      ::capnp::bounded<11>() * ::capnp::ELEMENTS, value);
+}
+
+inline  ::uint8_t UIDebug::Reader::getTrafficDisplayedPhase() const {
+  return _reader.getDataField< ::uint8_t>(
+      ::capnp::bounded<12>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint8_t UIDebug::Builder::getTrafficDisplayedPhase() {
+  return _builder.getDataField< ::uint8_t>(
+      ::capnp::bounded<12>() * ::capnp::ELEMENTS);
+}
+inline void UIDebug::Builder::setTrafficDisplayedPhase( ::uint8_t value) {
+  _builder.setDataField< ::uint8_t>(
+      ::capnp::bounded<12>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool UIDebug::Reader::getTrafficDisplayedControlActive() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<67>() * ::capnp::ELEMENTS);
+}
+
+inline bool UIDebug::Builder::getTrafficDisplayedControlActive() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<67>() * ::capnp::ELEMENTS);
+}
+inline void UIDebug::Builder::setTrafficDisplayedControlActive(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<67>() * ::capnp::ELEMENTS, value);
+}
+
 inline bool ManagerState::Reader::hasProcesses() const {
   return !_reader.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
@@ -59022,165 +59212,165 @@ inline ::capnp::Orphan< ::cereal::TrafficRadarState> Event::Builder::disownTraff
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
 
-inline bool Event::Reader::isCustomReserved11() const {
-  return which() == Event::CUSTOM_RESERVED11;
+inline bool Event::Reader::isNavAssistStateSP() const {
+  return which() == Event::NAV_ASSIST_STATE_S_P;
 }
-inline bool Event::Builder::isCustomReserved11() {
-  return which() == Event::CUSTOM_RESERVED11;
+inline bool Event::Builder::isNavAssistStateSP() {
+  return which() == Event::NAV_ASSIST_STATE_S_P;
 }
-inline bool Event::Reader::hasCustomReserved11() const {
-  if (which() != Event::CUSTOM_RESERVED11) return false;
+inline bool Event::Reader::hasNavAssistStateSP() const {
+  if (which() != Event::NAV_ASSIST_STATE_S_P) return false;
   return !_reader.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
 }
-inline bool Event::Builder::hasCustomReserved11() {
-  if (which() != Event::CUSTOM_RESERVED11) return false;
+inline bool Event::Builder::hasNavAssistStateSP() {
+  if (which() != Event::NAV_ASSIST_STATE_S_P) return false;
   return !_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
 }
-inline  ::cereal::CustomReserved11::Reader Event::Reader::getCustomReserved11() const {
-  KJ_IREQUIRE((which() == Event::CUSTOM_RESERVED11),
+inline  ::cereal::NavAssistStateSP::Reader Event::Reader::getNavAssistStateSP() const {
+  KJ_IREQUIRE((which() == Event::NAV_ASSIST_STATE_S_P),
               "Must check which() before get()ing a union member.");
-  return ::capnp::_::PointerHelpers< ::cereal::CustomReserved11>::get(_reader.getPointerField(
+  return ::capnp::_::PointerHelpers< ::cereal::NavAssistStateSP>::get(_reader.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
-inline  ::cereal::CustomReserved11::Builder Event::Builder::getCustomReserved11() {
-  KJ_IREQUIRE((which() == Event::CUSTOM_RESERVED11),
+inline  ::cereal::NavAssistStateSP::Builder Event::Builder::getNavAssistStateSP() {
+  KJ_IREQUIRE((which() == Event::NAV_ASSIST_STATE_S_P),
               "Must check which() before get()ing a union member.");
-  return ::capnp::_::PointerHelpers< ::cereal::CustomReserved11>::get(_builder.getPointerField(
+  return ::capnp::_::PointerHelpers< ::cereal::NavAssistStateSP>::get(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
-inline void Event::Builder::setCustomReserved11( ::cereal::CustomReserved11::Reader value) {
+inline void Event::Builder::setNavAssistStateSP( ::cereal::NavAssistStateSP::Reader value) {
   _builder.setDataField<Event::Which>(
-      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::CUSTOM_RESERVED11);
-  ::capnp::_::PointerHelpers< ::cereal::CustomReserved11>::set(_builder.getPointerField(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::NAV_ASSIST_STATE_S_P);
+  ::capnp::_::PointerHelpers< ::cereal::NavAssistStateSP>::set(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS), value);
 }
-inline  ::cereal::CustomReserved11::Builder Event::Builder::initCustomReserved11() {
+inline  ::cereal::NavAssistStateSP::Builder Event::Builder::initNavAssistStateSP() {
   _builder.setDataField<Event::Which>(
-      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::CUSTOM_RESERVED11);
-  return ::capnp::_::PointerHelpers< ::cereal::CustomReserved11>::init(_builder.getPointerField(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::NAV_ASSIST_STATE_S_P);
+  return ::capnp::_::PointerHelpers< ::cereal::NavAssistStateSP>::init(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
-inline void Event::Builder::adoptCustomReserved11(
-    ::capnp::Orphan< ::cereal::CustomReserved11>&& value) {
+inline void Event::Builder::adoptNavAssistStateSP(
+    ::capnp::Orphan< ::cereal::NavAssistStateSP>&& value) {
   _builder.setDataField<Event::Which>(
-      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::CUSTOM_RESERVED11);
-  ::capnp::_::PointerHelpers< ::cereal::CustomReserved11>::adopt(_builder.getPointerField(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::NAV_ASSIST_STATE_S_P);
+  ::capnp::_::PointerHelpers< ::cereal::NavAssistStateSP>::adopt(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS), kj::mv(value));
 }
-inline ::capnp::Orphan< ::cereal::CustomReserved11> Event::Builder::disownCustomReserved11() {
-  KJ_IREQUIRE((which() == Event::CUSTOM_RESERVED11),
+inline ::capnp::Orphan< ::cereal::NavAssistStateSP> Event::Builder::disownNavAssistStateSP() {
+  KJ_IREQUIRE((which() == Event::NAV_ASSIST_STATE_S_P),
               "Must check which() before get()ing a union member.");
-  return ::capnp::_::PointerHelpers< ::cereal::CustomReserved11>::disown(_builder.getPointerField(
+  return ::capnp::_::PointerHelpers< ::cereal::NavAssistStateSP>::disown(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
 
-inline bool Event::Reader::isCustomReserved12() const {
-  return which() == Event::CUSTOM_RESERVED12;
+inline bool Event::Reader::isLaneTopologyStateSP() const {
+  return which() == Event::LANE_TOPOLOGY_STATE_S_P;
 }
-inline bool Event::Builder::isCustomReserved12() {
-  return which() == Event::CUSTOM_RESERVED12;
+inline bool Event::Builder::isLaneTopologyStateSP() {
+  return which() == Event::LANE_TOPOLOGY_STATE_S_P;
 }
-inline bool Event::Reader::hasCustomReserved12() const {
-  if (which() != Event::CUSTOM_RESERVED12) return false;
+inline bool Event::Reader::hasLaneTopologyStateSP() const {
+  if (which() != Event::LANE_TOPOLOGY_STATE_S_P) return false;
   return !_reader.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
 }
-inline bool Event::Builder::hasCustomReserved12() {
-  if (which() != Event::CUSTOM_RESERVED12) return false;
+inline bool Event::Builder::hasLaneTopologyStateSP() {
+  if (which() != Event::LANE_TOPOLOGY_STATE_S_P) return false;
   return !_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
 }
-inline  ::cereal::CustomReserved12::Reader Event::Reader::getCustomReserved12() const {
-  KJ_IREQUIRE((which() == Event::CUSTOM_RESERVED12),
+inline  ::cereal::LaneTopologyStateSP::Reader Event::Reader::getLaneTopologyStateSP() const {
+  KJ_IREQUIRE((which() == Event::LANE_TOPOLOGY_STATE_S_P),
               "Must check which() before get()ing a union member.");
-  return ::capnp::_::PointerHelpers< ::cereal::CustomReserved12>::get(_reader.getPointerField(
+  return ::capnp::_::PointerHelpers< ::cereal::LaneTopologyStateSP>::get(_reader.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
-inline  ::cereal::CustomReserved12::Builder Event::Builder::getCustomReserved12() {
-  KJ_IREQUIRE((which() == Event::CUSTOM_RESERVED12),
+inline  ::cereal::LaneTopologyStateSP::Builder Event::Builder::getLaneTopologyStateSP() {
+  KJ_IREQUIRE((which() == Event::LANE_TOPOLOGY_STATE_S_P),
               "Must check which() before get()ing a union member.");
-  return ::capnp::_::PointerHelpers< ::cereal::CustomReserved12>::get(_builder.getPointerField(
+  return ::capnp::_::PointerHelpers< ::cereal::LaneTopologyStateSP>::get(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
-inline void Event::Builder::setCustomReserved12( ::cereal::CustomReserved12::Reader value) {
+inline void Event::Builder::setLaneTopologyStateSP( ::cereal::LaneTopologyStateSP::Reader value) {
   _builder.setDataField<Event::Which>(
-      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::CUSTOM_RESERVED12);
-  ::capnp::_::PointerHelpers< ::cereal::CustomReserved12>::set(_builder.getPointerField(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::LANE_TOPOLOGY_STATE_S_P);
+  ::capnp::_::PointerHelpers< ::cereal::LaneTopologyStateSP>::set(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS), value);
 }
-inline  ::cereal::CustomReserved12::Builder Event::Builder::initCustomReserved12() {
+inline  ::cereal::LaneTopologyStateSP::Builder Event::Builder::initLaneTopologyStateSP() {
   _builder.setDataField<Event::Which>(
-      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::CUSTOM_RESERVED12);
-  return ::capnp::_::PointerHelpers< ::cereal::CustomReserved12>::init(_builder.getPointerField(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::LANE_TOPOLOGY_STATE_S_P);
+  return ::capnp::_::PointerHelpers< ::cereal::LaneTopologyStateSP>::init(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
-inline void Event::Builder::adoptCustomReserved12(
-    ::capnp::Orphan< ::cereal::CustomReserved12>&& value) {
+inline void Event::Builder::adoptLaneTopologyStateSP(
+    ::capnp::Orphan< ::cereal::LaneTopologyStateSP>&& value) {
   _builder.setDataField<Event::Which>(
-      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::CUSTOM_RESERVED12);
-  ::capnp::_::PointerHelpers< ::cereal::CustomReserved12>::adopt(_builder.getPointerField(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::LANE_TOPOLOGY_STATE_S_P);
+  ::capnp::_::PointerHelpers< ::cereal::LaneTopologyStateSP>::adopt(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS), kj::mv(value));
 }
-inline ::capnp::Orphan< ::cereal::CustomReserved12> Event::Builder::disownCustomReserved12() {
-  KJ_IREQUIRE((which() == Event::CUSTOM_RESERVED12),
+inline ::capnp::Orphan< ::cereal::LaneTopologyStateSP> Event::Builder::disownLaneTopologyStateSP() {
+  KJ_IREQUIRE((which() == Event::LANE_TOPOLOGY_STATE_S_P),
               "Must check which() before get()ing a union member.");
-  return ::capnp::_::PointerHelpers< ::cereal::CustomReserved12>::disown(_builder.getPointerField(
+  return ::capnp::_::PointerHelpers< ::cereal::LaneTopologyStateSP>::disown(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
 
-inline bool Event::Reader::isCustomReserved13() const {
-  return which() == Event::CUSTOM_RESERVED13;
+inline bool Event::Reader::isNavLaneIntentSP() const {
+  return which() == Event::NAV_LANE_INTENT_S_P;
 }
-inline bool Event::Builder::isCustomReserved13() {
-  return which() == Event::CUSTOM_RESERVED13;
+inline bool Event::Builder::isNavLaneIntentSP() {
+  return which() == Event::NAV_LANE_INTENT_S_P;
 }
-inline bool Event::Reader::hasCustomReserved13() const {
-  if (which() != Event::CUSTOM_RESERVED13) return false;
+inline bool Event::Reader::hasNavLaneIntentSP() const {
+  if (which() != Event::NAV_LANE_INTENT_S_P) return false;
   return !_reader.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
 }
-inline bool Event::Builder::hasCustomReserved13() {
-  if (which() != Event::CUSTOM_RESERVED13) return false;
+inline bool Event::Builder::hasNavLaneIntentSP() {
+  if (which() != Event::NAV_LANE_INTENT_S_P) return false;
   return !_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
 }
-inline  ::cereal::CustomReserved13::Reader Event::Reader::getCustomReserved13() const {
-  KJ_IREQUIRE((which() == Event::CUSTOM_RESERVED13),
+inline  ::cereal::NavLaneIntentSP::Reader Event::Reader::getNavLaneIntentSP() const {
+  KJ_IREQUIRE((which() == Event::NAV_LANE_INTENT_S_P),
               "Must check which() before get()ing a union member.");
-  return ::capnp::_::PointerHelpers< ::cereal::CustomReserved13>::get(_reader.getPointerField(
+  return ::capnp::_::PointerHelpers< ::cereal::NavLaneIntentSP>::get(_reader.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
-inline  ::cereal::CustomReserved13::Builder Event::Builder::getCustomReserved13() {
-  KJ_IREQUIRE((which() == Event::CUSTOM_RESERVED13),
+inline  ::cereal::NavLaneIntentSP::Builder Event::Builder::getNavLaneIntentSP() {
+  KJ_IREQUIRE((which() == Event::NAV_LANE_INTENT_S_P),
               "Must check which() before get()ing a union member.");
-  return ::capnp::_::PointerHelpers< ::cereal::CustomReserved13>::get(_builder.getPointerField(
+  return ::capnp::_::PointerHelpers< ::cereal::NavLaneIntentSP>::get(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
-inline void Event::Builder::setCustomReserved13( ::cereal::CustomReserved13::Reader value) {
+inline void Event::Builder::setNavLaneIntentSP( ::cereal::NavLaneIntentSP::Reader value) {
   _builder.setDataField<Event::Which>(
-      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::CUSTOM_RESERVED13);
-  ::capnp::_::PointerHelpers< ::cereal::CustomReserved13>::set(_builder.getPointerField(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::NAV_LANE_INTENT_S_P);
+  ::capnp::_::PointerHelpers< ::cereal::NavLaneIntentSP>::set(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS), value);
 }
-inline  ::cereal::CustomReserved13::Builder Event::Builder::initCustomReserved13() {
+inline  ::cereal::NavLaneIntentSP::Builder Event::Builder::initNavLaneIntentSP() {
   _builder.setDataField<Event::Which>(
-      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::CUSTOM_RESERVED13);
-  return ::capnp::_::PointerHelpers< ::cereal::CustomReserved13>::init(_builder.getPointerField(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::NAV_LANE_INTENT_S_P);
+  return ::capnp::_::PointerHelpers< ::cereal::NavLaneIntentSP>::init(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
-inline void Event::Builder::adoptCustomReserved13(
-    ::capnp::Orphan< ::cereal::CustomReserved13>&& value) {
+inline void Event::Builder::adoptNavLaneIntentSP(
+    ::capnp::Orphan< ::cereal::NavLaneIntentSP>&& value) {
   _builder.setDataField<Event::Which>(
-      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::CUSTOM_RESERVED13);
-  ::capnp::_::PointerHelpers< ::cereal::CustomReserved13>::adopt(_builder.getPointerField(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::NAV_LANE_INTENT_S_P);
+  ::capnp::_::PointerHelpers< ::cereal::NavLaneIntentSP>::adopt(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS), kj::mv(value));
 }
-inline ::capnp::Orphan< ::cereal::CustomReserved13> Event::Builder::disownCustomReserved13() {
-  KJ_IREQUIRE((which() == Event::CUSTOM_RESERVED13),
+inline ::capnp::Orphan< ::cereal::NavLaneIntentSP> Event::Builder::disownNavLaneIntentSP() {
+  KJ_IREQUIRE((which() == Event::NAV_LANE_INTENT_S_P),
               "Must check which() before get()ing a union member.");
-  return ::capnp::_::PointerHelpers< ::cereal::CustomReserved13>::disown(_builder.getPointerField(
+  return ::capnp::_::PointerHelpers< ::cereal::NavLaneIntentSP>::disown(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
 

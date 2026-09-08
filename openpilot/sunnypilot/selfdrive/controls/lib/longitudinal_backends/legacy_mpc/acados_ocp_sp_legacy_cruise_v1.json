@@ -1,7 +1,7 @@
 {
     "acados_include_path": "/usr/local/venv/lib/python3.12/site-packages/acados/install/include",
     "acados_lib_path": "/usr/local/venv/lib/python3.12/site-packages/acados/install/lib",
-    "code_export_directory": "/data/prebuild-20260906/tree/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/legacy_mpc/c_generated_code",
+    "code_export_directory": "/data/nav-prebuild-20260908/tree/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/legacy_mpc/c_generated_code",
     "constraints": {
         "C": [],
         "C_e": [],
@@ -343,7 +343,7 @@
         "ny_e": 5,
         "nz": 0
     },
-    "json_file": "/data/prebuild-20260906/tree/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/legacy_mpc/acados_ocp_sp_legacy_cruise_v1.json",
+    "json_file": "/data/nav-prebuild-20260908/tree/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/legacy_mpc/acados_ocp_sp_legacy_cruise_v1.json",
     "model": {
         "con_h_expr": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaegiaaaaaaaaaaaaaaaeaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaeaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaacaaaaaaaaaaaaaaadaaaaaaaaaaaaaaaeaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaafaaaaaaaghpffghgpgegcaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaafaaaaaaabgpffghgpgegpcaaaaaaaaaaaaaafaaaaaaabgpfngjgogegcaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaafaaaaaaabgpfngbgihchcaaaaaaaaaaaaaaaegeaaaaaaaaaaaaaaaegcaaaaaaaaaaaaaaaegcaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaakaaaaaaaihpfpgcgdhehbgdgmgfgegpcaaaaaaaaaaaaaafaaaaaaaihpffghgpgegdaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaacbaaaaaamgfgbgegpfegbgoghgfgchpfggbgdgehpgchegbaaaaaaaaaaaaaaaegbaaaaaaaaaaaaaaaegeaaaaaaaaaaaaaaaeglaaaaaaaaaaaaaaachbaaaaaaaaaaaaaaaegdaaaaaaaaaaaaaaaegmcaaaaaaaaaaaaaajgcaaaaaaaegpcaaaaaaaaaaaaaanaaaaaaadgpgngggpgchehpfcgchbglgfgegdaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaanaaaaaaamgfgbgegpfehpfggpgmgmgpghhchbaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaanaaaaaaadhehpgahpfegjgdhehbgogdgfgegbaaaaaaaaaaaaaaachbaaaaaaaaaaaaaaaegmcaaaaaaaaaaaaaajgkaaaaaaa",
         "con_h_expr_e": null,

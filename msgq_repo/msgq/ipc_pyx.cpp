@@ -7,7 +7,7 @@
         "language": "c++",
         "name": "msgq.ipc_pyx",
         "sources": [
-            "/data/prebuild-20260906/tree/msgq_repo/msgq/ipc_pyx.pyx"
+            "/data/dev-sp-egpu-prebuild-build/msgq_repo/msgq/ipc_pyx.pyx"
         ]
     },
     "module_name": "msgq.ipc_pyx"

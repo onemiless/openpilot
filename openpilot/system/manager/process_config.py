@@ -69,6 +69,13 @@ def only_onroad(started: bool, params: Params, CP: car.CarParams) -> bool:
 def c3xl_local_diagnostics(started: bool, params: Params, CP: car.CarParams) -> bool:
   return started and get_hardware_profile() == HardwareProfile.C3XL
 
+def navassist_receiver_ready(_started: bool, _params: Params, _CP: car.CarParams) -> bool:
+  return get_hardware_profile() == HardwareProfile.C3XL
+
+
+def navassist_lane_observer_ready(started: bool, params: Params, CP: car.CarParams) -> bool:
+  return started and CP.brand == "tesla" and navassist_receiver_ready(started, params, CP)
+
 def record_route_video(started: bool, params: Params, CP: car.CarParams) -> bool:
   return (get_hardware_profile() != HardwareProfile.C3XL and
           started and params.get_bool("RecordRoadVideo"))
@@ -84,6 +91,9 @@ def use_copyparty(started, params, CP: car.CarParams) -> bool:
 
 def use_device_console(started: bool, params: Params, CP: car.CarParams) -> bool:
   return not PC
+
+def use_c3xl_tesla_hotspot(started: bool, params: Params, CP: car.CarParams) -> bool:
+  return not PC and get_hardware_profile() == HardwareProfile.C3XL
 
 def use_external_buzzer(started: bool, params: Params, CP: car.CarParams) -> bool:
   return not PC and get_hardware_profile() == HardwareProfile.C3XL
@@ -168,6 +178,10 @@ procs = [
   PythonProcess("pigeond", "openpilot.system.ubloxd.pigeond", ublox, enabled=COMMA_HARDWARE),
   PythonProcess("plannerd", "openpilot.selfdrive.controls.plannerd", not_long_maneuver),
   PythonProcess("trafficcontrold", "openpilot.sunnypilot.selfdrive.traffic_control.trafficcontrold", only_onroad),
+  PythonProcess("navassistd", "openpilot.sunnypilot.navassist.navassistd", navassist_receiver_ready),
+  PythonProcess("nav_diagnosticsd", "openpilot.sunnypilot.navassist.diagnosticsd", navassist_receiver_ready),
+  PythonProcess("lane_topologyd", "openpilot.sunnypilot.navassist.lane_topologyd", navassist_lane_observer_ready),
+  PythonProcess("nav_lane_intentd", "openpilot.sunnypilot.navassist.nav_lane_intentd", navassist_lane_observer_ready),
   PythonProcess("maneuversd", "openpilot.tools.longitudinal_maneuvers.maneuversd", long_maneuver),
   PythonProcess("lateral_maneuversd", "openpilot.tools.lateral_maneuvers.lateral_maneuversd", lat_maneuver),
   PythonProcess("radard", "openpilot.selfdrive.controls.radard", only_onroad),
@@ -194,6 +208,7 @@ procs += [
   # Optional C3XL integrations are isolated processes; disabling them restores
   # the upstream process graph and control behavior.
   PythonProcess("device_console", "openpilot.selfdrive.debug.device_console", use_device_console),
+  PythonProcess("tesla_hotspotd", "openpilot.selfdrive.debug.tesla_hotspotd", use_c3xl_tesla_hotspot),
   PythonProcess("alert_output", "openpilot.sunnypilot.system.alert_output", use_external_buzzer),
   PythonProcess("chestnut_statusd", "openpilot.system.hardware.chestnut.statusd", only_offroad),
 

@@ -100,10 +100,16 @@ class UnknownCanObserver:
   def _run(self) -> None:
     sock = messaging.sub_sock("can", conflate=False, timeout=250)
     while True:
-      event = messaging.recv_one_or_none(sock)
+      event = messaging.recv_one(sock)
       if event is None:
         continue
-      self.update([(event.logMonoTime, [(frame.address, bytes(frame.dat), frame.src) for frame in event.can])])
+      frames = [
+        (frame.address, bytes(frame.dat), frame.src)
+        for frame in event.can
+        if frame.address in TARGET_ADDRESSES
+      ]
+      if frames:
+        self.update([(event.logMonoTime, frames)])
 
 
 _OBSERVER = UnknownCanObserver()
