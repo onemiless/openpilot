@@ -19,6 +19,8 @@ from openpilot.sunnypilot.selfdrive.traffic_control.tesla_observer import (
 
 
 CONTEXT_STALE_S = 0.2
+LIGHTING_STALE_NS = 2_000_000_000
+LIGHTING_MESSAGE = "ID3F5VCFRONT_lighting"
 CONTEXT_SERVICES = ("selfdriveStateSP", "modelV2")
 
 
@@ -68,6 +70,7 @@ class TeslaCardAdapter:
     self.sm = submaster
     self.traffic_control_observer = TeslaTrafficControlObserver() if self.enabled else None
     self.road_context_parser = self._create_road_context_parser() if self.enabled else None
+    self.lighting_parser = self._create_lighting_parser() if self.enabled else None
     self.speed_limit_assist_configured: bool | None = None
     configured = bool(getattr(car_interface, "CP_SP", None) and
                       car_interface.CP_SP.safetyParam & TeslaSafetyFlagsSP.TURN_SIGNAL_VALIDATION)
@@ -85,6 +88,29 @@ class TeslaCardAdapter:
     except (AttributeError, KeyError):
       return None
 
+  def _create_lighting_parser(self):
+    try:
+      from opendbc.can import CANParser
+      from opendbc.car import Bus
+      from opendbc.car.tesla.values import CANBUS, DBC
+
+      fingerprint = self.car_interface.CP.carFingerprint
+      return CANParser(DBC[fingerprint][Bus.adas], [(LIGHTING_MESSAGE, float("nan"))], CANBUS.vehicle)
+    except (AttributeError, KeyError):
+      return None
+
+  def _night_mode(self, now_ns: int) -> bool:
+    if self.lighting_parser is None:
+      return True
+    timestamps = self.lighting_parser.ts_nanos.get(LIGHTING_MESSAGE, {})
+    timestamp = max(timestamps.values(), default=0)
+    if timestamp <= 0 or not 0 <= now_ns - timestamp <= LIGHTING_STALE_NS:
+      return True
+    values = self.lighting_parser.vl[LIGHTING_MESSAGE]
+    low_beam_on = (int(values["VCFRONT_lowBeamLeftStatus"]) == 1 or
+                   int(values["VCFRONT_lowBeamRightStatus"]) == 1)
+    return low_beam_on and not bool(values["VCFRONT_lowBeamsOnForDRL"])
+
   def observe_can(self, can_list) -> list:
     if not self.enabled:
       return []
@@ -93,6 +119,8 @@ class TeslaCardAdapter:
       self.traffic_control_observer.update(can_list, time.monotonic_ns())
     if self.road_context_parser is not None:
       self.road_context_parser.update(can_list)
+    if self.lighting_parser is not None:
+      self.lighting_parser.update(can_list)
 
     state = getattr(self.car_interface, "CS", None)
     update_template = getattr(state, "update_speed_button_template", None)
@@ -128,8 +156,10 @@ class TeslaCardAdapter:
       lateral_active=bool(car_control.latActive),
       brake_pressed=bool(car_state.brakePressed),
     )
-    self.ambient.update_blindspot(bool(getattr(car_state, "leftBlindspot", False)),
-                                  bool(getattr(car_state, "rightBlindspot", False)), now_nanos)
+    state = getattr(self.car_interface, "CS", None)
+    left_level = int(getattr(state, "tesla_blindspot_left_level", 2 if getattr(car_state, "leftBlindspot", False) else 0))
+    right_level = int(getattr(state, "tesla_blindspot_right_level", 2 if getattr(car_state, "rightBlindspot", False) else 0))
+    self.ambient.update_blindspot(left_level, right_level, self._night_mode(now_nanos), now_nanos)
     return self.validation.take_can_sends(now_nanos) + self.ambient.take_can_sends(now_nanos)
 
   def service_params(self, params) -> None:

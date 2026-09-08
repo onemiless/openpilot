@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from openpilot.sunnypilot.selfdrive.car.tesla.card_adapter import CONTEXT_STALE_S, TeslaCardAdapter, speed_limit_context
+from openpilot.sunnypilot.selfdrive.car.tesla.card_adapter import CONTEXT_STALE_S, LIGHTING_MESSAGE, TeslaCardAdapter, speed_limit_context
 
 
 class FakeState:
@@ -103,13 +103,48 @@ def test_assist_setting_is_forwarded_independently_of_stale_limit():
 
 
 def test_blindspot_state_is_forwarded_to_ambient_controller():
-  adapter = TeslaCardAdapter("tesla", SimpleNamespace(CS=FakeState()), FakeSubMaster())
+  state = FakeState()
+  state.tesla_blindspot_left_level = 1
+  state.tesla_blindspot_right_level = 2
+  adapter = TeslaCardAdapter("tesla", SimpleNamespace(CS=state), FakeSubMaster())
+  adapter._night_mode = lambda _now_ns: True
   car_state = SimpleNamespace(brakePressed=False, leftBlindspot=True, rightBlindspot=False)
   car_control = SimpleNamespace(latActive=False)
 
   adapter.control_sends(car_state, car_control, 1_000_000_000)
 
-  assert adapter.ambient.blindspot_side == "left"
+  assert adapter.ambient.blindspot_side == "right"
+  assert adapter.ambient.blindspot_level == 2
+  assert adapter.ambient.blindspot_night is True
+
+
+def lighting_parser(timestamp, left, right, drl):
+  return SimpleNamespace(
+    ts_nanos={LIGHTING_MESSAGE: {"VCFRONT_lowBeamLeftStatus": timestamp}},
+    vl={LIGHTING_MESSAGE: {
+      "VCFRONT_lowBeamLeftStatus": left,
+      "VCFRONT_lowBeamRightStatus": right,
+      "VCFRONT_lowBeamsOnForDRL": drl,
+    }},
+  )
+
+
+def test_night_mode_uses_fresh_non_drl_low_beams():
+  adapter = TeslaCardAdapter("tesla", SimpleNamespace(CS=FakeState()), FakeSubMaster())
+  adapter.lighting_parser = lighting_parser(2_000_000_000, 1, 0, 0)
+  assert adapter._night_mode(3_000_000_000)
+  adapter.lighting_parser = lighting_parser(2_000_000_000, 1, 0, 1)
+  assert not adapter._night_mode(3_000_000_000)
+  adapter.lighting_parser = lighting_parser(2_000_000_000, 0, 0, 0)
+  assert not adapter._night_mode(3_000_000_000)
+
+
+def test_unknown_or_stale_lighting_uses_lower_brightness_mode():
+  adapter = TeslaCardAdapter("tesla", SimpleNamespace(CS=FakeState()), FakeSubMaster())
+  adapter.lighting_parser = None
+  assert adapter._night_mode(3_000_000_000)
+  adapter.lighting_parser = lighting_parser(1, 0, 0, 0)
+  assert adapter._night_mode(3_000_000_001)
 
 
 def test_non_tesla_adapter_is_inert():
