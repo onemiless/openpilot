@@ -2,7 +2,9 @@ import json
 import pytest
 from opendbc.can import CANPacker, CANParser
 
-from openpilot.sunnypilot.selfdrive.car.tesla.ambient_lighting import AmbientLightingController, red_frame, REQUEST_PARAM
+from openpilot.sunnypilot.selfdrive.car.tesla.ambient_lighting import (
+  AmbientLightingController, REQUEST_PARAM, TARGETS, alert_frame, red_frame,
+)
 
 TEMPLATE = bytes.fromhex("0cffd5aa00f801")  # Captured from the vehicle at 0x679@VEH.
 
@@ -29,6 +31,21 @@ def test_blindspot_frame_supports_flash_off_and_both_sides(side, targets):
   values = parser.vl["UI_ambientLightingCtrls"]
   assert values["UI_rgbBrightnessLevel"] == 0
   assert [values["UI_rgbTarget" + suffix] for suffix in ("DOORFL", "DOORFR", "DOORRL", "DOORRR", "IPFL", "IPFR")] == targets
+
+
+@pytest.mark.parametrize("level,night,rgb,brightness", [
+  (1, False, [255, 190, 0], 90),
+  (1, True, [255, 190, 0], 50),
+  (2, False, [255, 0, 0], 90),
+  (2, True, [255, 0, 0], 50),
+])
+def test_blindspot_alert_color_and_day_night_brightness(level, night, rgb, brightness):
+  data = alert_frame(TEMPLATE, "left", level=level, brightness=50 if night else 90)
+  parser = CANParser("tesla_modely_hw4_perception", [("UI_ambientLightingCtrls", 0)], 1)
+  parser.update([(1_000_000_000, [(0x679, data, 1)])])
+  values = parser.vl["UI_ambientLightingCtrls"]
+  assert [values["UI_rgbLightingColorHex" + channel] for channel in ("Red", "Green", "Blue")] == rgb
+  assert values["UI_rgbBrightnessLevel"] == brightness
 
 
 @pytest.mark.parametrize("data,side", [(TEMPLATE, "invalid"), (b"", "left"), (b"\0" * 8, "left")])
@@ -83,33 +100,60 @@ def test_delayed_loop_does_not_burst_to_catch_up():
 @pytest.mark.parametrize("left,right,side,target_bytes", [
   (True, False, "left", (0xA8, 0)), (False, True, "right", (0x50, 1)), (True, True, "both", (0xF8, 1)),
 ])
-def test_blindspot_flashes_requested_side_at_five_hz(left, right, side, target_bytes):
+def test_level_one_blindspot_is_yellow_and_constant(left, right, side, target_bytes):
   c = AmbientLightingController()
   c.observe_frame(1_000_000_000, 0x679, TEMPLATE, 1)
-  c.update_blindspot(left, right, 1_100_000_000)
+  c.update_blindspot(1 if left else 0, 1 if right else 0, False, 1_100_000_000)
   frames = []
   for index in range(4):
     now = 1_100_000_000 + index * 100_000_000
     refresh(c, now)
     frames.extend(c.take_can_sends(now))
   assert c.blindspot_side == side
-  assert [frame[1][4] & 0x7F for frame in frames] == [100, 0, 100, 0]
+  assert [frame[1][1:4] for frame in frames] == [bytes((255, 190, 0))] * 4
+  assert [frame[1][4] & 0x7F for frame in frames] == [90] * 4
   assert all((frame[1][5] & 0xF8, frame[1][6] & 1) == target_bytes for frame in frames)
-  c.update_blindspot(False, False, 1_500_000_000)
+  c.update_blindspot(0, 0, False, 1_500_000_000)
   assert c.take_can_sends(1_500_000_000) == []
+
+
+def test_level_two_blindspot_flashes_red_at_night_brightness():
+  c = AmbientLightingController()
+  c.observe_frame(1_000_000_000, 0x679, TEMPLATE, 1)
+  c.update_blindspot(2, 0, True, 1_100_000_000)
+  frames = []
+  for index in range(4):
+    now = 1_100_000_000 + index * 100_000_000
+    refresh(c, now)
+    frames.extend(c.take_can_sends(now))
+  assert [frame[1][1:4] for frame in frames] == [bytes((255, 0, 0))] * 4
+  assert [frame[1][4] & 0x7F for frame in frames] == [50, 0, 50, 0]
+
+
+def test_level_two_takes_priority_and_level_change_restarts_alert():
+  c = AmbientLightingController()
+  c.observe_frame(1_000_000_000, 0x679, TEMPLATE, 1)
+  c.update_blindspot(1, 0, False, 1_100_000_000)
+  first = c.take_can_sends(1_100_000_000)[0].dat
+  assert first[1:4] == bytes((255, 190, 0))
+  c.update_blindspot(1, 2, False, 1_200_000_000)
+  c.observe_frame(1_200_000_000, 0x679, TEMPLATE, 1)
+  second = c.take_can_sends(1_200_000_000)[0].dat
+  assert second[1:4] == bytes((255, 0, 0))
+  assert (second[5] & 0xF8, second[6] & 1) == TARGETS["right"]
 
 
 def test_blindspot_alert_is_bounded_to_fifteen_seconds_and_rearms_after_clear():
   c = AmbientLightingController()
-  c.update_blindspot(True, False, 1_000_000_000)
+  c.update_blindspot(2, 0, False, 1_000_000_000)
   sent = []
   for index in range(151):
     now = 1_000_000_000 + index * 100_000_000
     c.observe_frame(now, 0x679, TEMPLATE, 1)
     sent.extend(c.take_can_sends(now))
   assert len(sent) == 150
-  c.update_blindspot(False, False, 16_100_000_000)
-  c.update_blindspot(False, True, 17_100_000_000)
+  c.update_blindspot(0, 0, False, 16_100_000_000)
+  c.update_blindspot(0, 2, False, 17_100_000_000)
   c.observe_frame(17_100_000_000, 0x679, TEMPLATE, 1)
   assert len(c.take_can_sends(17_100_000_000)) == 1
 
