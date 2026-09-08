@@ -129,6 +129,7 @@ def test_fetch_switches_between_flattened_prebuild_and_source_submodules(tmp_pat
   (origin / "module/code.py").write_text("value = 1\n")
   git(origin, "add", ".")
   git(origin, "commit", "-m", "flattened")
+  git(origin, "branch", "dev-sp-nav-prebuild")
   git(origin, "checkout", "-b", "dev-sp-egpu")
   git(origin, "rm", "-r", "prebuilt", "module")
   git(origin, "submodule", "add", str(sub), "module")
@@ -146,5 +147,6 @@ def test_fetch_switches_between_flattened_prebuild_and_source_submodules(tmp_pat
   updater.fetch_update()
   assert git(staging, "branch", "--show-current").strip() == target
   assert (staging / "module/code.py").read_text() == "value = 1\n"
-  assert (staging / "prebuilt").exists() == (target == "dev-sp-egpu-prebuild")
-  assert (staging / ".gitmodules").exists() == (target != "dev-sp-egpu-prebuild")
+  flattened = target in ("dev-sp-egpu-prebuild", "dev-sp-nav-prebuild")
+  assert (staging / "prebuilt").exists() == flattened
+  assert (staging / ".gitmodules").exists() != flattened
