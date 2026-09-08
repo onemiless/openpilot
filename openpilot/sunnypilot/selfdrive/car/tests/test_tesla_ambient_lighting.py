@@ -48,6 +48,27 @@ def test_blindspot_alert_color_and_day_night_brightness(level, night, rgb, brigh
   assert values["UI_rgbBrightnessLevel"] == brightness
 
 
+@pytest.mark.parametrize("side", ["left", "right", "both"])
+@pytest.mark.parametrize("level,brightness", [(1, 50), (1, 90), (2, 50), (2, 90), (2, 0)])
+def test_generated_alert_passes_real_panda_safety(side, level, brightness):
+  from opendbc.car.structs import CarParams
+  from opendbc.safety.tests.libsafety import libsafety_py
+  from opendbc.sunnypilot.car.tesla.values import TeslaSafetyFlagsSP
+  safety = libsafety_py.libsafety
+  safety.set_current_safety_param_sp(TeslaSafetyFlagsSP.HAS_VEHICLE_BUS)
+  try:
+    safety.set_safety_hooks(CarParams.SafetyModel.tesla, 0)
+    safety.init_tests()
+    safety.set_timer(100)
+    safety.safety_rx_hook(libsafety_py.make_CANPacket(0x679, 1, TEMPLATE))
+    payload = alert_frame(TEMPLATE, side, level=level, brightness=brightness)
+    packet = libsafety_py.make_CANPacket(0x679, 1, payload)
+    assert safety.safety_tx_hook(packet)
+    assert not safety.safety_tx_hook(packet)
+  finally:
+    safety.set_current_safety_param_sp(0)
+
+
 @pytest.mark.parametrize("data,side", [(TEMPLATE, "invalid"), (b"", "left"), (b"\0" * 8, "left")])
 def test_invalid_request_or_length(data, side):
   with pytest.raises(ValueError):
