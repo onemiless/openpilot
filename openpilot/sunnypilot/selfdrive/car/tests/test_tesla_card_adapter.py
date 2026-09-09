@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 import time
+import pytest
 
 from openpilot.sunnypilot.selfdrive.car.tesla.card_adapter import CONTEXT_STALE_S, LIGHTING_MESSAGE, TeslaCardAdapter, speed_limit_context
 
@@ -121,6 +122,68 @@ def test_blindspot_state_is_forwarded_to_ambient_controller():
   assert adapter.ambient.blindspot_side == "right"
   assert adapter.ambient.blindspot_level == 2
   assert adapter.ambient.blindspot_night is True
+
+
+@pytest.mark.parametrize("side", ["left", "right"])
+def test_same_side_turn_signal_promotes_captured_level_one_to_flashing_red(side):
+  from opendbc.can import CANParser
+
+  # Real 0x39B@bus2 warning frame, mirrored for the left-side case.
+  data = bytearray.fromhex("4218dfa0b0c89180")
+  if side == "left":
+    data[0] = 0x12
+    data[-1] = (sum(data[:-1]) + 0x9B + 0x03) & 0xFF
+  parser = CANParser("tesla_model3_party", [("DAS_status", 0)], 2)
+  parser.update([(1_000_000_000, [(0x39B, bytes(data), 2)])])
+  values = parser.vl["DAS_status"]
+  state = FakeState()
+  state.tesla_blindspot_left_level = int(values["DAS_blindSpotRearLeft"])
+  state.tesla_blindspot_right_level = int(values["DAS_blindSpotRearRight"])
+  adapter = TeslaCardAdapter("tesla", SimpleNamespace(CS=state), FakeSubMaster())
+  adapter._night_mode = lambda _now_ns: True
+  cs = SimpleNamespace(brakePressed=False, leftBlinker=side == "left", rightBlinker=side == "right")
+  cc = SimpleNamespace(latActive=False)
+  frames = []
+  for index in range(4):
+    now = 1_000_000_000 + index * 100_000_000
+    adapter.ambient.observe_frame(now, 0x679, bytes.fromhex("0cffffff00f801"), 1)
+    frames.extend(adapter.control_sends(cs, cc, now))
+  assert [frame.dat[1:4] for frame in frames] == [bytes((255, 0, 0))] * 4
+  assert [frame.dat[4] & 127 for frame in frames] == [50, 0, 50, 0]
+  assert adapter.ambient.blindspot_side == side
+  # This is an accessory display decision, not a change to vehicle blindspot state.
+  assert getattr(state, f"tesla_blindspot_{side}_level") == 1
+
+
+@pytest.mark.parametrize("level,left_signal,right_signal,expected", [
+  (1, False, False, 1), (1, False, True, 1), (1, True, False, 2), (1, True, True, 1),
+  (2, False, False, 2), (0, True, False, 0), (3, True, False, 0),
+])
+def test_ambient_turn_intent_preserves_clear_invalid_opposite_side_and_raw_severity(level, left_signal, right_signal, expected):
+  state = FakeState()
+  state.tesla_blindspot_left_level = level
+  state.tesla_blindspot_right_level = 0
+  adapter = TeslaCardAdapter("tesla", SimpleNamespace(CS=state), FakeSubMaster())
+  cs = SimpleNamespace(brakePressed=False, leftBlinker=left_signal, rightBlinker=right_signal)
+  adapter.control_sends(cs, SimpleNamespace(latActive=False), 1_000_000_000)
+  assert adapter.ambient.blindspot_level == expected
+
+
+def test_canceling_turn_signal_returns_to_yellow_then_clear_stops_alert():
+  state = FakeState()
+  state.tesla_blindspot_left_level = 1
+  state.tesla_blindspot_right_level = 0
+  adapter = TeslaCardAdapter("tesla", SimpleNamespace(CS=state), FakeSubMaster())
+  cs = SimpleNamespace(brakePressed=False, leftBlinker=True, rightBlinker=False)
+  cc = SimpleNamespace(latActive=False)
+  adapter.control_sends(cs, cc, 1_000_000_000)
+  assert adapter.ambient.blindspot_level == 2
+  cs.leftBlinker = False
+  adapter.control_sends(cs, cc, 1_100_000_000)
+  assert adapter.ambient.blindspot_level == 1
+  state.tesla_blindspot_left_level = 0
+  adapter.control_sends(cs, cc, 1_200_000_000)
+  assert adapter.ambient.blindspot_side is None
 
 
 def lighting_parser(timestamp, left, right, drl):

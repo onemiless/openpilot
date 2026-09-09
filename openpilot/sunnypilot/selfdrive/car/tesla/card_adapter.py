@@ -166,6 +166,13 @@ class TeslaCardAdapter:
     state = getattr(self.car_interface, "CS", None)
     left_level = int(getattr(state, "tesla_blindspot_left_level", 2 if getattr(car_state, "leftBlindspot", False) else 0))
     right_level = int(getattr(state, "tesla_blindspot_right_level", 2 if getattr(car_state, "rightBlindspot", False) else 0))
+    # Accessory warning only: same-side turn intent escalates amber to red.
+    # Keep the original vehicle blindspot levels intact; hazards are not turn intent.
+    left_signal = bool(getattr(car_state, "leftBlinker", False))
+    right_signal = bool(getattr(car_state, "rightBlinker", False))
+    if left_signal != right_signal:
+      left_level = 2 if left_level == 1 and left_signal else left_level
+      right_level = 2 if right_level == 1 and right_signal else right_level
     self.ambient.update_blindspot(left_level, right_level, self._night_mode(now_nanos), now_nanos)
     return self.validation.take_can_sends(now_nanos) + self.ambient.take_can_sends(now_nanos)
 
