@@ -119,13 +119,13 @@ def test_blindspot_state_is_forwarded_to_ambient_controller():
 
   adapter.control_sends(car_state, car_control, 1_000_000_000)
 
-  assert adapter.ambient.blindspot_side == "right"
+  assert adapter.ambient.blindspot_side == "both"
   assert adapter.ambient.blindspot_level == 2
   assert adapter.ambient.blindspot_night is True
 
 
 @pytest.mark.parametrize("side", ["left", "right"])
-def test_same_side_turn_signal_promotes_captured_level_one_to_flashing_red(side):
+def test_captured_level_one_flashes_red_without_turn_signal(side):
   from opendbc.can import CANParser
 
   # Real 0x39B@bus2 warning frame, mirrored for the left-side case.
@@ -141,7 +141,7 @@ def test_same_side_turn_signal_promotes_captured_level_one_to_flashing_red(side)
   state.tesla_blindspot_right_level = int(values["DAS_blindSpotRearRight"])
   adapter = TeslaCardAdapter("tesla", SimpleNamespace(CS=state), FakeSubMaster())
   adapter._night_mode = lambda _now_ns: True
-  cs = SimpleNamespace(brakePressed=False, leftBlinker=side == "left", rightBlinker=side == "right")
+  cs = SimpleNamespace(brakePressed=False, leftBlinker=False, rightBlinker=False)
   cc = SimpleNamespace(latActive=False)
   frames = []
   for index in range(4):
@@ -156,10 +156,10 @@ def test_same_side_turn_signal_promotes_captured_level_one_to_flashing_red(side)
 
 
 @pytest.mark.parametrize("level,left_signal,right_signal,expected", [
-  (1, False, False, 1), (1, False, True, 1), (1, True, False, 2), (1, True, True, 1),
+  (1, False, False, 2), (1, False, True, 2), (1, True, False, 2), (1, True, True, 2),
   (2, False, False, 2), (0, True, False, 0), (3, True, False, 0),
 ])
-def test_ambient_turn_intent_preserves_clear_invalid_opposite_side_and_raw_severity(level, left_signal, right_signal, expected):
+def test_ambient_red_requires_valid_warning_but_not_turn_signal(level, left_signal, right_signal, expected):
   state = FakeState()
   state.tesla_blindspot_left_level = level
   state.tesla_blindspot_right_level = 0
@@ -169,7 +169,7 @@ def test_ambient_turn_intent_preserves_clear_invalid_opposite_side_and_raw_sever
   assert adapter.ambient.blindspot_level == expected
 
 
-def test_canceling_turn_signal_returns_to_yellow_then_clear_stops_alert():
+def test_signal_changes_do_not_restart_flashing_and_clear_stops_alert():
   state = FakeState()
   state.tesla_blindspot_left_level = 1
   state.tesla_blindspot_right_level = 0
@@ -180,7 +180,8 @@ def test_canceling_turn_signal_returns_to_yellow_then_clear_stops_alert():
   assert adapter.ambient.blindspot_level == 2
   cs.leftBlinker = False
   adapter.control_sends(cs, cc, 1_100_000_000)
-  assert adapter.ambient.blindspot_level == 1
+  assert adapter.ambient.blindspot_level == 2
+  assert adapter.ambient.blindspot_started_ns == 1_000_000_000
   state.tesla_blindspot_left_level = 0
   adapter.control_sends(cs, cc, 1_200_000_000)
   assert adapter.ambient.blindspot_side is None
