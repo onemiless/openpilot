@@ -5,7 +5,7 @@ import math
 from openpilot.cereal import custom
 from opendbc.sunnypilot.car.tesla.values import TeslaFlagsSP
 from openpilot.common.realtime import DT_MDL
-from openpilot.selfdrive.car.cruise import V_CRUISE_UNSET
+from openpilot.selfdrive.car.cruise import V_CRUISE_MAX, V_CRUISE_UNSET
 from openpilot.sunnypilot.selfdrive.car.tesla.control_runtime import TeslaControlState, TeslaLongitudinalOwner
 from openpilot.sunnypilot.navassist.settings import NavAssistSettings, SettingsCache
 
@@ -17,7 +17,7 @@ ACTUATION_DELAY_S = 1.0
 ADMISSION_MARGIN_M = 5.0
 ACTIVATION_MARGIN_M = 25.0
 MAX_MANEUVER_DISTANCE_M = 2_000.0
-MAX_TRACK_SPEED_MPS = 60.0 / 3.6
+MAX_NAV_SPEED_MPS = V_CRUISE_MAX / 3.6
 MIN_TARGET_SPEED_MPS = 2.0
 RELEASE_ACCEL_MPS2 = 1.0
 
@@ -70,17 +70,13 @@ class NavigationSpeedController:
     owner = TeslaControlState(TeslaFlagsSP(int(sm[service].flags))).longitudinal_owner
     return owner in (TeslaLongitudinalOwner.sp, TeslaLongitudinalOwner.ap_hybrid_sp)
 
-  def _reject_visible_event(self, sm) -> None:
-    if not self._healthy(sm):
-      if self.event_key is not None:
-        self.event_rejected = True
-      return
-    nav = sm["navAssistStateSP"]
-    event_key = (str(nav.sessionId), int(nav.routeRevision), int(nav.maneuverEventId))
-    if event_key[2] != 0:
-      self.event_key = event_key
-      self.event_admitted = False
+  def _pause_event(self) -> None:
+    # Only a maneuver whose braking already started is latched out. The phone
+    # may already show the next turn while the driver finishes the current one:
+    # never bind that future event to an unrelated pedal/ownership interruption.
+    if self.event_activated:
       self.event_rejected = True
+    self.event_admitted = False
 
   @staticmethod
   def _required_distance(v_ego: float, target_speed: float) -> float:
@@ -122,23 +118,22 @@ class NavigationSpeedController:
 
     driver_override = bool(long_override or sm["carState"].gasPressed or sm["carState"].brakePressed)
     if driver_override:
-      self._reject_visible_event(sm)
+      self._pause_event()
       self._release(v_cruise, a_ego)
       return
 
-    temporarily_unavailable = (not long_enabled or not planner_verified or v_ego > MAX_TRACK_SPEED_MPS
+    temporarily_unavailable = (not long_enabled or not planner_verified
+                               or not math.isfinite(v_ego) or not 0.0 <= v_ego <= MAX_NAV_SPEED_MPS
                                or not self._sp_owns_longitudinal(sm))
     if temporarily_unavailable:
-      # Allow the documented workflow: plan the phone route first, then engage
-      # SP/select a supported backend. Once an event was admitted, however,
-      # losing authority latches it out so it cannot resume mid-maneuver.
-      if self.event_key is not None:
-        self.event_rejected = True
+      # Preparing a route is not executing its braking maneuver. Recheck entry
+      # distance after recovery; keep the cancellation latch once braking began.
+      self._pause_event()
       self._release(v_cruise, a_ego)
       return
 
     if not self._healthy(sm):
-      self._reject_visible_event(sm)
+      self._pause_event()
       self._release(v_cruise, a_ego)
       return
 
@@ -147,13 +142,12 @@ class NavigationSpeedController:
     distance = float(nav.maneuverDistanceM)
     event_key = (str(nav.sessionId), int(nav.routeRevision), int(nav.maneuverEventId))
     if target_speed is None or event_key[2] == 0 or not math.isfinite(distance) or not 0.0 <= distance <= MAX_MANEUVER_DISTANCE_M:
-      if self.event_key is not None:
-        self.event_rejected = True
+      self._pause_event()
       self._release(v_cruise, a_ego)
       return
 
     required_distance = self._required_distance(v_ego, target_speed)
-    if event_key != self.event_key:
+    if event_key != self.event_key or (not self.event_admitted and not self.event_rejected):
       self.event_key = event_key
       self.target_speed = target_speed
       self.required_distance = required_distance

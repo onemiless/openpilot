@@ -29,11 +29,11 @@ def planner(backend, *, enabled=True):
   return result
 
 
-def targets(planner, *, distance=100.0, healthy=True, cruise=15.0, accel=0.1):
+def targets(planner, *, distance=100.0, healthy=True, cruise=15.0, accel=0.1, speed=10.0):
   sm = FakeSM(nav(distance=distance), healthy=healthy)
   sm['carState'].vCruiseCluster = cruise * 3.6
   sm['carControl'] = SimpleNamespace(enabled=True, longActive=True, cruiseControl=SimpleNamespace(override=False))
-  return planner.update_targets(sm, 10.0, accel, cruise)
+  return planner.update_targets(sm, speed, accel, cruise)
 
 
 @pytest.mark.parametrize('backend', list(BackendId))
@@ -41,6 +41,15 @@ def test_all_three_backends_receive_navigation_speed_ceiling_without_changing_ac
   p = planner(backend)
   assert targets(p) == (15.0, 0.1)
   assert targets(p, distance=60.0) == (5.0, 0.1)
+  assert p.source == LongitudinalPlanSource.navAssist
+
+
+@pytest.mark.parametrize('backend', list(BackendId))
+def test_all_three_backends_receive_early_turn_ceiling_above_60_kph(backend):
+  p = planner(backend)
+  speed = 80.0 / 3.6
+  assert targets(p, distance=500, speed=speed, cruise=speed) == (speed, 0.1)
+  assert targets(p, distance=230, speed=speed, cruise=speed) == (5.0, 0.1)
   assert p.source == LongitudinalPlanSource.navAssist
 
 

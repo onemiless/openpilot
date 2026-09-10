@@ -238,12 +238,66 @@ def test_route_can_be_started_before_supported_longitudinal_backend_is_selected(
   assert controller.event_admitted and not controller.event_rejected
 
 
-def test_disengaging_after_event_admission_still_latches_that_event():
+def test_disengaging_before_braking_pauses_then_reassesses_same_event():
   controller = NavigationSpeedController(enabled=True)
   sm = FakeSM(nav(distance=100.0))
   update(controller, sm)
   assert controller.event_admitted
   update(controller, FakeSM(nav(distance=90.0)), long_enabled=False)
-  assert controller.event_rejected
+  assert not controller.event_rejected and not controller.event_admitted
   update(controller, FakeSM(nav(distance=80.0)), long_enabled=True)
+  assert controller.event_admitted and not controller.event_rejected
+
+
+@pytest.mark.parametrize("speed_kph", [65.3, 80.0, 100.0, 145.0])
+def test_navigation_brakes_from_normal_cruise_speeds_when_distance_is_sufficient(speed_kph):
+  controller = NavigationSpeedController()
+  speed = speed_kph / 3.6
+  required = controller._required_distance(speed, 5.0)
+  update(controller, FakeSM(nav(distance=required + 60)), v_ego=speed, v_cruise=speed)
+  assert controller.event_admitted
+  update(controller, FakeSM(nav(distance=required + 15)), v_ego=speed, v_cruise=speed)
+  assert controller.is_active and controller.output_v_target == pytest.approx(5.0)
+
+
+@pytest.mark.parametrize("speed", [float("nan"), float("inf"), -1.0, 150 / 3.6])
+def test_invalid_or_out_of_cruise_range_speed_does_not_admit_navigation(speed):
+  controller = NavigationSpeedController()
+  update(controller, FakeSM(nav(distance=1_000)), v_ego=speed)
+  assert not controller.is_active and not controller.event_admitted
+
+
+def test_previous_turn_driver_override_does_not_poison_next_turn_8970m_away():
+  controller = NavigationSpeedController()
+  update(controller, FakeSM(nav(distance=100, event_id=1)))
+  update(controller, FakeSM(nav(distance=60, event_id=1)))
+  assert controller.is_active
+  # Recorded pattern: navigation advances before the driver finishes the turn.
+  update(controller, FakeSM(nav(distance=8970, event_id=2), brake=True), long_enabled=False)
+  assert not controller.is_active
+  assert controller.event_key[-1] == 1
+  update(controller, FakeSM(nav(distance=1_000, event_id=2)), v_ego=80 / 3.6)
+  assert controller.event_admitted and not controller.event_rejected
+  update(controller, FakeSM(nav(distance=240, event_id=2)), v_ego=80 / 3.6)
+  assert controller.is_active
+
+
+@pytest.mark.parametrize("unavailable", ["nav", "gas", "owner", "backend"])
+def test_pre_braking_interruptions_recheck_distance_without_latching_future_event(unavailable):
+  controller = NavigationSpeedController(require_sp_longitudinal_owner=True)
+  update(controller, FakeSM(nav(distance=500)))
+  interrupted = FakeSM(nav(distance=400), healthy=unavailable != "nav", gas=unavailable == "gas",
+                       tesla_flags=int(TeslaFlagsSP.STOCK_LONGITUDINAL_ACTIVE) if unavailable == "owner" else 0)
+  update(controller, interrupted, planner_verified=unavailable != "backend")
+  assert not controller.is_active and not controller.event_rejected
+  update(controller, FakeSM(nav(distance=100)))
+  update(controller, FakeSM(nav(distance=60)))
+  assert controller.is_active
+
+
+def test_recovery_that_is_already_too_late_does_not_force_hard_braking():
+  controller = NavigationSpeedController()
+  update(controller, FakeSM(nav(distance=500)), v_ego=15)
+  update(controller, FakeSM(nav(distance=200), healthy=False), v_ego=15)
+  update(controller, FakeSM(nav(distance=10)), v_ego=15)
   assert not controller.is_active and controller.event_rejected
