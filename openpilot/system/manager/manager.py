@@ -32,6 +32,8 @@ def apply_local_recording_policy(params: Params) -> None:
 
 
 def manager_init() -> None:
+  # Also cover launching manager directly without launch_env.sh.
+  os.environ["DISABLE_DRIVER"] = "1"
   save_bootlog()
 
   build_metadata = get_build_metadata()
@@ -60,6 +62,11 @@ def manager_init() -> None:
     default_value = params.get_default_value(k)
     if default_value is not None and params.get(k) is None:
       params.put(k, default_value, block=True)
+
+  # This prebuilt channel never starts cabin preview, monitoring, or recording.
+  for key in ("IsDriverViewEnabled", "AlwaysOnDM", "RecordFront", "DriverTooDistracted"):
+    params.put_bool(key, False, block=True)
+  params.remove("Offroad_DriverMonitoringUncertain")
 
   # Create folders needed for msgq
   try:

@@ -40,7 +40,8 @@ def get_hardware_profile(value: str | None = None) -> HardwareProfile:
 
 
 def has_driver_camera(profile: HardwareProfile | None = None) -> bool:
-  return (profile or get_hardware_profile()) != HardwareProfile.C3XL
+  # dev-sp-egpu-prebuild has no cabin camera, regardless of device profile.
+  return False
 
 
 def has_amplifier(profile: HardwareProfile | None = None) -> bool:

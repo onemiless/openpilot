@@ -96,6 +96,9 @@ class TogglesLayout(Widget):
       ),
     }
 
+    for key in ("AlwaysOnDM", "RecordFront"):
+      self._toggle_defs.pop(key)
+
     self._long_personality_setting = multiple_button_item(
       lambda: tr("Driving Personality"),
       lambda: tr(DESCRIPTIONS["LongitudinalPersonality"]),

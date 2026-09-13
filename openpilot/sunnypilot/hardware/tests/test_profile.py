@@ -73,8 +73,8 @@ def test_explicit_standard_profile() -> None:
   assert get_hardware_profile("standard") == HardwareProfile.STANDARD
 
 
-def test_driver_camera_capability_is_profile_scoped() -> None:
-  assert has_driver_camera(HardwareProfile.STANDARD)
+def test_prebuilt_disables_driver_camera_for_every_profile() -> None:
+  assert not has_driver_camera(HardwareProfile.STANDARD)
   assert not has_driver_camera(HardwareProfile.C3XL)
 
 
