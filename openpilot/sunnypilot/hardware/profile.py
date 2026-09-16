@@ -47,6 +47,14 @@ def has_amplifier(profile: HardwareProfile | None = None) -> bool:
   return (profile or get_hardware_profile()) != HardwareProfile.C3XL
 
 
+def has_microphone(profile: HardwareProfile | None = None) -> bool:
+  return (profile or get_hardware_profile()) != HardwareProfile.C3XL
+
+
+def has_audio_output(profile: HardwareProfile | None = None) -> bool:
+  return (profile or get_hardware_profile()) != HardwareProfile.C3XL
+
+
 def allows_automatic_power_down(profile: HardwareProfile | None = None) -> bool:
   return (profile or get_hardware_profile()) != HardwareProfile.C3XL
 
