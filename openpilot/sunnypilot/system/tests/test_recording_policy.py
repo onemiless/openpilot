@@ -28,3 +28,26 @@ def test_local_diagnostics_runs_onroad_only_for_c3xl(monkeypatch):
 
   monkeypatch.setattr(process_config, "get_hardware_profile", lambda: HardwareProfile.STANDARD)
   assert not process_config.c3xl_local_diagnostics(True, Mock(), Mock())
+
+
+def test_c3xl_uses_gpio_alerts_without_portaudio_processes(monkeypatch):
+  params = Mock()
+  CP = Mock(notCar=False)
+  monkeypatch.setattr(process_config, "PC", False)
+  monkeypatch.setattr(process_config, "get_hardware_profile", lambda: HardwareProfile.C3XL)
+
+  assert not process_config.managed_processes["micd"].should_run(True, params, CP)
+  assert not process_config.managed_processes["soundd"].should_run(True, params, CP)
+  assert process_config.managed_processes["alert_output"].should_run(True, params, CP)
+
+
+def test_standard_hardware_retains_microphone_and_sound_processes(monkeypatch):
+  params = Mock()
+  params.get_bool.return_value = False
+  CP = Mock(notCar=False)
+  monkeypatch.setattr(process_config, "get_hardware_profile", lambda: HardwareProfile.STANDARD)
+
+  assert process_config.managed_processes["micd"].should_run(True, params, CP)
+  assert process_config.managed_processes["soundd"].should_run(True, params, CP)
+  assert not process_config.managed_processes["micd"].should_run(False, params, CP)
+  assert not process_config.managed_processes["soundd"].should_run(False, params, CP)

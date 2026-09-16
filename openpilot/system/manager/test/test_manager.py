@@ -58,10 +58,12 @@ class TestManager(OpenpilotTestCase):
     monkeypatch.setattr(manager, "get_hardware_profile", lambda: HardwareProfile.C3XL)
     params = Params()
     params.put_bool("RecordRoadVideo", True, block=True)
+    params.put_bool("RecordAudio", True, block=True)
 
     manager.apply_local_recording_policy(params)
 
     assert not params.get_bool("RecordRoadVideo")
+    assert not params.get_bool("RecordAudio")
 
   def test_quick_boot_never_fabricates_prebuilt_marker(self):
     source = inspect.getsource(manager.manager_init)

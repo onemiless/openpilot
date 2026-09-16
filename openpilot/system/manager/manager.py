@@ -22,13 +22,16 @@ from openpilot.common.version import get_build_metadata
 from openpilot.common.hardware.hw import Paths
 
 from openpilot.sunnypilot.system.params_migration import run_migration
-from openpilot.sunnypilot.hardware.profile import HardwareProfile, get_hardware_profile
+from openpilot.sunnypilot.hardware.profile import HardwareProfile, get_hardware_profile, has_microphone
 
 
 def apply_local_recording_policy(params: Params) -> None:
-  """C3XL records structured route logs but never continuous road video."""
-  if get_hardware_profile() == HardwareProfile.C3XL:
+  """Disable recording modes unsupported by the selected hardware profile."""
+  profile = get_hardware_profile()
+  if profile == HardwareProfile.C3XL:
     params.put_bool("RecordRoadVideo", False, block=True)
+  if not has_microphone(profile):
+    params.put_bool("RecordAudio", False, block=True)
 
 
 def manager_init() -> None:
