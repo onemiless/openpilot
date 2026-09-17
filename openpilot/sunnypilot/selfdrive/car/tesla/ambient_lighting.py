@@ -46,8 +46,9 @@ def alert_frame(template: bytes, side: str, *, level: int, brightness: int) -> b
 
 
 class AmbientLightingController:
-  def __init__(self):
+  def __init__(self, *, blindspot_ambient_enabled: bool = False):
     self.lock = threading.Lock()
+    self.blindspot_ambient_enabled = bool(blindspot_ambient_enabled)
     self.frames = {}
     self.pending = None
     self.active = None
@@ -70,7 +71,7 @@ class AmbientLightingController:
     right = right_level == level and level > 0
     side = "both" if left and right else "left" if left else "right" if right else None
     with self.lock:
-      if side is None:
+      if not self.blindspot_ambient_enabled or side is None:
         self.blindspot_side = None
         self.blindspot_level = 0
         self.blindspot_night = bool(night)
