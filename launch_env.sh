@@ -33,7 +33,7 @@ if [ -z "$SP_PROFILE_VALUE" ]; then
 fi
 
 if [ "$SP_PROFILE_VALUE" = "c3xl" ]; then
-  [ -z "$AGNOS_VERSION" ] && export AGNOS_VERSION="19.6"
+  [ -z "$AGNOS_VERSION" ] && export AGNOS_VERSION="19.7"
   [ -z "$AGNOS_MANIFEST_FILE" ] && export AGNOS_MANIFEST_FILE="openpilot/system/hardware/comma/agnos-c3xl.json"
 else
   [ -z "$AGNOS_VERSION" ] && export AGNOS_VERSION="19.7"
