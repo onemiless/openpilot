@@ -107,7 +107,7 @@ def test_assist_setting_is_forwarded_independently_of_stale_limit():
   assert state.speed_limit[-1] == (0.0, False)
 
 
-def test_blindspot_state_is_forwarded_to_ambient_controller():
+def test_blindspot_state_does_not_enable_ambient_link_by_default():
   state = FakeState()
   state.tesla_blindspot_left_level = 1
   state.tesla_blindspot_right_level = 2
@@ -118,8 +118,8 @@ def test_blindspot_state_is_forwarded_to_ambient_controller():
 
   adapter.control_sends(car_state, car_control, 1_000_000_000)
 
-  assert adapter.ambient.blindspot_side == "right"
-  assert adapter.ambient.blindspot_level == 2
+  assert adapter.ambient.blindspot_side is None
+  assert adapter.ambient.blindspot_level == 0
   assert adapter.ambient.blindspot_night is True
 
 

@@ -122,7 +122,7 @@ def test_delayed_loop_does_not_burst_to_catch_up():
   (True, False, "left", (0xA8, 0)), (False, True, "right", (0x50, 1)), (True, True, "both", (0xF8, 1)),
 ])
 def test_level_one_blindspot_is_yellow_and_constant(left, right, side, target_bytes):
-  c = AmbientLightingController()
+  c = AmbientLightingController(blindspot_ambient_enabled=True)
   c.observe_frame(1_000_000_000, 0x679, TEMPLATE, 1)
   c.update_blindspot(1 if left else 0, 1 if right else 0, False, 1_100_000_000)
   frames = []
@@ -139,7 +139,7 @@ def test_level_one_blindspot_is_yellow_and_constant(left, right, side, target_by
 
 
 def test_level_two_blindspot_flashes_red_at_night_brightness():
-  c = AmbientLightingController()
+  c = AmbientLightingController(blindspot_ambient_enabled=True)
   c.observe_frame(1_000_000_000, 0x679, TEMPLATE, 1)
   c.update_blindspot(2, 0, True, 1_100_000_000)
   frames = []
@@ -152,7 +152,7 @@ def test_level_two_blindspot_flashes_red_at_night_brightness():
 
 
 def test_level_two_takes_priority_and_level_change_restarts_alert():
-  c = AmbientLightingController()
+  c = AmbientLightingController(blindspot_ambient_enabled=True)
   c.observe_frame(1_000_000_000, 0x679, TEMPLATE, 1)
   c.update_blindspot(1, 0, False, 1_100_000_000)
   first = c.take_can_sends(1_100_000_000)[0].dat
@@ -165,7 +165,7 @@ def test_level_two_takes_priority_and_level_change_restarts_alert():
 
 
 def test_blindspot_alert_is_bounded_to_fifteen_seconds_and_rearms_after_clear():
-  c = AmbientLightingController()
+  c = AmbientLightingController(blindspot_ambient_enabled=True)
   c.update_blindspot(2, 0, False, 1_000_000_000)
   sent = []
   for index in range(151):
@@ -177,6 +177,17 @@ def test_blindspot_alert_is_bounded_to_fifteen_seconds_and_rearms_after_clear():
   c.update_blindspot(0, 2, False, 17_100_000_000)
   c.observe_frame(17_100_000_000, 0x679, TEMPLATE, 1)
   assert len(c.take_can_sends(17_100_000_000)) == 1
+
+
+def test_blindspot_ambient_link_is_disabled_by_default():
+  c = AmbientLightingController()
+  c.observe_frame(1_000_000_000, 0x679, TEMPLATE, 1)
+
+  c.update_blindspot(2, 1, False, 1_100_000_000)
+
+  assert c.blindspot_side is None
+  assert c.blindspot_level == 0
+  assert c.take_can_sends(1_100_000_000) == []
 
 
 @pytest.mark.parametrize("gear,speed", [(4, 0), (1, 1)])
