@@ -108,7 +108,7 @@ def test_assist_setting_is_forwarded_independently_of_stale_limit():
   assert state.speed_limit[-1] == (0.0, False)
 
 
-def test_blindspot_state_is_forwarded_to_ambient_controller():
+def test_blindspot_state_does_not_enable_ambient_link_by_default():
   state = FakeState()
   state.tesla_blindspot_left_level = 1
   state.tesla_blindspot_right_level = 2
@@ -119,13 +119,13 @@ def test_blindspot_state_is_forwarded_to_ambient_controller():
 
   adapter.control_sends(car_state, car_control, 1_000_000_000)
 
-  assert adapter.ambient.blindspot_side == "both"
-  assert adapter.ambient.blindspot_level == 2
+  assert adapter.ambient.blindspot_side is None
+  assert adapter.ambient.blindspot_level == 0
   assert adapter.ambient.blindspot_night is True
 
 
 @pytest.mark.parametrize("side", ["left", "right"])
-def test_captured_level_one_flashes_red_without_turn_signal(side):
+def test_captured_level_one_does_not_drive_ambient_lighting(side):
   from opendbc.can import CANParser
 
   # Real 0x39B@bus2 warning frame, mirrored for the left-side case.
@@ -148,28 +148,28 @@ def test_captured_level_one_flashes_red_without_turn_signal(side):
     now = 1_000_000_000 + index * 100_000_000
     adapter.ambient.observe_frame(now, 0x679, bytes.fromhex("0cffffff00f801"), 1)
     frames.extend(adapter.control_sends(cs, cc, now))
-  assert [frame.dat[1:4] for frame in frames] == [bytes((255, 0, 0))] * 4
-  assert [frame.dat[4] & 127 for frame in frames] == [50, 0, 50, 0]
-  assert adapter.ambient.blindspot_side == side
-  # This is an accessory display decision, not a change to vehicle blindspot state.
+  assert frames == []
+  assert adapter.ambient.blindspot_side is None
+  # Disabling the accessory lighting link must not alter vehicle blindspot state.
   assert getattr(state, f"tesla_blindspot_{side}_level") == 1
 
 
-@pytest.mark.parametrize("level,left_signal,right_signal,expected", [
-  (1, False, False, 2), (1, False, True, 2), (1, True, False, 2), (1, True, True, 2),
-  (2, False, False, 2), (0, True, False, 0), (3, True, False, 0),
+@pytest.mark.parametrize("level,left_signal,right_signal", [
+  (1, False, False), (1, False, True), (1, True, False), (1, True, True),
+  (2, False, False), (0, True, False), (3, True, False),
 ])
-def test_ambient_red_requires_valid_warning_but_not_turn_signal(level, left_signal, right_signal, expected):
+def test_ambient_link_stays_off_for_all_warning_and_signal_states(level, left_signal, right_signal):
   state = FakeState()
   state.tesla_blindspot_left_level = level
   state.tesla_blindspot_right_level = 0
   adapter = TeslaCardAdapter("tesla", SimpleNamespace(CS=state), FakeSubMaster())
   cs = SimpleNamespace(brakePressed=False, leftBlinker=left_signal, rightBlinker=right_signal)
   adapter.control_sends(cs, SimpleNamespace(latActive=False), 1_000_000_000)
-  assert adapter.ambient.blindspot_level == expected
+  assert adapter.ambient.blindspot_level == 0
+  assert adapter.ambient.blindspot_side is None
 
 
-def test_signal_changes_do_not_restart_flashing_and_clear_stops_alert():
+def test_signal_changes_do_not_arm_disabled_ambient_link():
   state = FakeState()
   state.tesla_blindspot_left_level = 1
   state.tesla_blindspot_right_level = 0
@@ -177,11 +177,11 @@ def test_signal_changes_do_not_restart_flashing_and_clear_stops_alert():
   cs = SimpleNamespace(brakePressed=False, leftBlinker=True, rightBlinker=False)
   cc = SimpleNamespace(latActive=False)
   adapter.control_sends(cs, cc, 1_000_000_000)
-  assert adapter.ambient.blindspot_level == 2
+  assert adapter.ambient.blindspot_level == 0
   cs.leftBlinker = False
   adapter.control_sends(cs, cc, 1_100_000_000)
-  assert adapter.ambient.blindspot_level == 2
-  assert adapter.ambient.blindspot_started_ns == 1_000_000_000
+  assert adapter.ambient.blindspot_level == 0
+  assert adapter.ambient.blindspot_started_ns is None
   state.tesla_blindspot_left_level = 0
   adapter.control_sends(cs, cc, 1_200_000_000)
   assert adapter.ambient.blindspot_side is None
