@@ -46,9 +46,15 @@ def test_standard_manifest_is_official_agnos_19_7() -> None:
   assert partitions["system"]["hash_raw"] == "3c271e2b3d20d2f0a8bf6555a1319f3efb12845490967d6151195174a01e912f"
 
 
+def test_c3xl_manifest_uses_official_19_7_system_with_validated_boot_chain() -> None:
+  partitions = {partition["name"]: partition for partition in read_manifest(C3XL_MANIFEST)}
+  assert partitions["boot"]["hash"] == "0191529aa97d90d1fa04b472d80230b777606459e1e1e9e2323c9519839827b4"
+  assert partitions["system"]["hash_raw"] == "3c271e2b3d20d2f0a8bf6555a1319f3efb12845490967d6151195174a01e912f"
+
+
 @pytest.mark.parametrize("profile,version,manifest", [
   ("standard", "19.7", "openpilot/system/hardware/comma/agnos.json"),
-  ("c3xl", "19.6", "openpilot/system/hardware/comma/agnos-c3xl.json"),
+  ("c3xl", "19.7", "openpilot/system/hardware/comma/agnos-c3xl.json"),
 ])
 def test_launch_environment_selects_profile_specific_agnos(profile: str, version: str, manifest: str) -> None:
   env = os.environ.copy()
