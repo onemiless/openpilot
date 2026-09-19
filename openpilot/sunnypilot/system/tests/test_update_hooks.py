@@ -31,6 +31,21 @@ def test_hydrate_lfs_checkout_rejects_pointer_files():
     hydrate_lfs_checkout("/checkout", run)
 
 
+def test_hydrate_lfs_downloads_missing_objects_after_skip_smudge():
+  calls = []
+  hydrated = False
+  def run(command, cwd):
+    nonlocal hydrated
+    calls.append(command)
+    if command[:3] == ['git', 'lfs', 'pull']:
+      hydrated = True
+    if command[-1] == 'ls-files':
+      return 'abc123 * model.onnx' if hydrated else 'abc123 - model.onnx'
+    return ''
+  hydrate_lfs_checkout('/checkout', run)
+  assert ['git', 'lfs', 'pull', '--include=model.onnx', '--exclude=', 'origin'] in calls
+
+
 @pytest.mark.parametrize("current", LOCAL_UPDATE_BRANCHES)
 @pytest.mark.parametrize("cached", ("", "dev-sp-egpu", "master,dev-sp-egpu,master"))
 def test_local_branch_choices_survive_empty_or_stale_cache(current, cached):
