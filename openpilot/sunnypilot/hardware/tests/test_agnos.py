@@ -95,3 +95,20 @@ def test_fresh_install_upgrade_passes_existing_validated_manifest(monkeypatch):
   monkeypatch.setattr(agnos, 'flash_agnos_update', validate_only)
   updated.handle_agnos_update()
   assert flashed == [(C3XL_MANIFEST, 1)]
+
+
+@pytest.mark.parametrize('model_name,manifest', [
+  ('comma tici', C3XL_MANIFEST), ('comma tizi', STANDARD_MANIFEST),
+])
+def test_factory_reset_without_profile_file_uses_device_model(tmp_path, model_name, manifest):
+  model = tmp_path / 'model'
+  model.write_bytes(model_name.encode() + b'\x00')
+  env = os.environ.copy()
+  env.pop('SUNNYPILOT_HARDWARE_PROFILE', None)
+  env['SUNNYPILOT_HARDWARE_PROFILE_FILE'] = str(tmp_path / 'absent-profile')
+  env['SUNNYPILOT_HARDWARE_MODEL_FILE'] = str(model)
+  selected = subprocess.check_output(['bash', '-c',
+    'unset AGNOS_VERSION AGNOS_MANIFEST_FILE; source launch_env.sh; printf "%s" "$AGNOS_MANIFEST_FILE"'],
+    cwd=REPO_ROOT, env=env, text=True)
+  assert REPO_ROOT / selected == manifest
+  assert (REPO_ROOT / selected).is_file()
