@@ -34,10 +34,10 @@ fi
 
 if [ "$SP_PROFILE_VALUE" = "c3xl" ]; then
   [ -z "$AGNOS_VERSION" ] && export AGNOS_VERSION="19.7"
-  [ -z "$AGNOS_MANIFEST_FILE" ] && export AGNOS_MANIFEST_FILE="openpilot/system/hardware/comma/agnos-c3xl.json"
+  [ -z "$AGNOS_MANIFEST_FILE" ] && export AGNOS_MANIFEST_FILE="openpilot/common/hardware/comma/agnos-c3xl.json"
 else
   [ -z "$AGNOS_VERSION" ] && export AGNOS_VERSION="19.7"
-  [ -z "$AGNOS_MANIFEST_FILE" ] && export AGNOS_MANIFEST_FILE="openpilot/system/hardware/comma/agnos.json"
+  [ -z "$AGNOS_MANIFEST_FILE" ] && export AGNOS_MANIFEST_FILE="openpilot/common/hardware/comma/agnos.json"
 fi
 unset SP_PROFILE_VALUE SP_PROFILE_FILE SP_MODEL_FILE SP_MODEL_VALUE
 
