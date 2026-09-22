@@ -51,6 +51,13 @@ def test_blockers_identify_the_stage_that_prevents_control():
   })
   assert "unexpected_bus" in wrong_bus
 
+  mirrored_bus = diagnose_blockers({
+    "config_enabled": True, "raw_total": 5, "raw_bus": 128, "raw_dlc": 6,
+    "raw_available": True, "raw_valid": True, "enabled": True, "long_active": True,
+    "target_present": False, "plan_applied": False,
+  })
+  assert "unexpected_bus" not in mirrored_bus
+
   gated = diagnose_blockers({
     "config_enabled": True, "raw_total": 5, "raw_bus": 2, "raw_dlc": 8,
     "raw_available": True, "raw_valid": True, "enabled": True, "long_active": True,

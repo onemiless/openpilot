@@ -1026,6 +1026,26 @@ def test_driver_gas_bypasses_the_current_event_until_it_is_passed():
   assert not still_bypassed.apply_constraint
 
 
+def test_pre_event_gas_does_not_poison_a_later_red_event():
+  c = controller()
+
+  # Route log regression: gas was pressed while 0x25D reported no in-range
+  # signal. The old code latched the whole future event into driver_bypass, so
+  # a red appearing later at 106 m was ignored all the way to standstill.
+  no_signal = update(c, 1.0, observation(254.0, 0, 1.0), gas=True, v_ego=11.0)
+  assert no_signal.phase == TrafficControlPhase.off
+  assert no_signal.driver_override_active
+
+  update(c, 2.0, observation(220.0, 0, 2.0), gas=False, v_ego=11.0)
+  first_red = update(c, 3.0, observation(106.0, 1, 3.0), gas=False, v_ego=11.0)
+  confirmed_red = update(c, 3.5, observation(100.5, 1, 3.5), gas=False, v_ego=11.0)
+
+  assert first_red.phase == TrafficControlPhase.redCandidate
+  assert confirmed_red.phase in c.ACTIVE_PHASES
+  assert confirmed_red.apply_constraint
+  assert confirmed_red.stop_control_allowed
+
+
 def test_speed_limit_bypasses_the_whole_event_instead_of_rearming_late():
   c = controller(max_control_speed=10.0)
   first = update(c, 1.0, observation(80.0, 1, 1.0), v_ego=12.0)

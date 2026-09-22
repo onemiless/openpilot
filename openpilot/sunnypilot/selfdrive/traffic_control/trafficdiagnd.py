@@ -135,11 +135,14 @@ def diagnose_blockers(values: dict[str, Any]) -> list[str]:
   blockers: list[str] = []
   raw_bus = int(values.get("raw_bus", -1))
   raw_dlc = int(values.get("raw_dlc", 0))
-  if raw_bus not in TRAFFIC_CONTROL_BUSES:
-    blockers.append("unexpected_bus")
-  if not TRAFFIC_CONTROL_MIN_DLC <= raw_dlc <= 8:
-    blockers.append("invalid_dlc")
   if not values.get("raw_available", False):
+    # The raw tracker intentionally records every same-address frame, including
+    # bus-128 echoes and unrelated bus-1 payloads. They are only blockers when
+    # the production observer has no fresh accepted bus-2 observation.
+    if raw_bus not in TRAFFIC_CONTROL_BUSES:
+      blockers.append("unexpected_bus")
+    if not TRAFFIC_CONTROL_MIN_DLC <= raw_dlc <= 8:
+      blockers.append("invalid_dlc")
     blockers.append("raw_observation_stale")
   elif not values.get("raw_valid", False):
     blockers.append("raw_not_control_eligible")

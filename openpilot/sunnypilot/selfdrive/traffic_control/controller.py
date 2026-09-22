@@ -544,7 +544,15 @@ class TeslaTrafficControlController:
     del turn_signal_active, stop_direction_unknown
     self.direction_unknown = False
     self.stop_direction_unknown = False
-    if gas_pressed:
+    current_stop_event = bool(
+      self.phase in (*self.ACTIVE_PHASES, TrafficControlPhase.redCandidate,
+                     TrafficControlPhase.greenFlashCandidate, TrafficControlPhase.release)
+      or (self.first_off_ns > 0 and self.flash_color == 2)
+      or (observation.available and observation.valid_for_control
+          and observation.light_state in (1, 3)
+          and observation.distance <= self.config.max_control_distance)
+    )
+    if gas_pressed and self.phase != TrafficControlPhase.bypass and current_stop_event:
       self.phase = TrafficControlPhase.bypass
       self.stop_session_id = 0
       self._mark_transition("driver_bypass")
