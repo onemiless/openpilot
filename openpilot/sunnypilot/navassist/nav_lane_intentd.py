@@ -42,6 +42,7 @@ RIGHT_EXIT_LANE_MANEUVERS = frozenset(("exitRight", "rampRight", "mergeRight"))
 # AMap raw road classes; amapnavi's internal roadcate uses a different mapping.
 # Elevated/parallel-road layer flags alone do not establish a controlled-access road.
 HIGHWAY_ROAD_CLASSES = frozenset((0, 6))
+EXIT_RAMP_ROAD_TYPES = frozenset((6, 8, 9, 10, 56, 58))
 LEFT_HIGHWAY_LANE_MANEUVERS = frozenset(("keepLeft", "slightLeft"))
 RIGHT_HIGHWAY_LANE_MANEUVERS = frozenset(("keepRight", "slightRight"))
 
@@ -49,6 +50,7 @@ RIGHT_HIGHWAY_LANE_MANEUVERS = frozenset(("keepRight", "slightRight"))
 def controlled_access_observed(nav) -> bool:
   return bool(
     getattr(nav, "roadClass", -1) in HIGHWAY_ROAD_CLASSES
+    or getattr(nav, "roadType", -1) in EXIT_RAMP_ROAD_TYPES
     or str(getattr(nav, "elevatedRoadStatus", "unknown")) in ("main", "side")
   )
 

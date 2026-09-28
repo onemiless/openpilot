@@ -51,6 +51,20 @@ def test_final_fork_scope_accepts_confirmed_elevated_route_but_not_ordinary_road
   assert not scope.update(ordinary, linked=True)
 
 
+def test_final_fork_scope_retains_explicit_exit_road_type_after_link_changes():
+  scope = FinalForkScope()
+  exit_link = nav(sessionId="route", routeRevision=3, maneuver="exitRight", roadClass=1,
+                  roadType=9, elevatedRoadStatus="unknown", maneuverDistanceM=371.0,
+                  valid=True, lanes=[])
+  assert scope.update(exit_link, linked=True)
+  side_link = SimpleNamespace(**{**vars(exit_link), "roadType": 7, "maneuverDistanceM": 69.0})
+  assert scope.update(side_link, linked=True)
+  assert scope.entry_reached
+  plan = build_lane_plan(side_link, topology(count=1), healthy=True,
+                         final_fork_allowed=True, final_fork_entry_reached=scope.entry_reached)
+  assert plan.valid and plan.force_fork and plan.edge_direction == LaneIntentDirection.right
+
+
 def test_final_fork_scope_does_not_miss_reference_entry_between_amap_distance_samples():
   scope = FinalForkScope()
   guidance = nav(sessionId="route", routeRevision=3, maneuver="mergeLeft", roadClass=6,
