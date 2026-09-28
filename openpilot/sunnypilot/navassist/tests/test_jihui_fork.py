@@ -85,7 +85,7 @@ def test_final_fork_waits_for_oem_permission_when_visual_topology_is_unavailable
 
 
 @pytest.mark.parametrize('side', ['left', 'right'])
-@pytest.mark.parametrize('block', ['permission', 'blindspot', 'edge', 'solid', 'driver', 'standstill'])
+@pytest.mark.parametrize('block', ['permission', 'blindspot', 'edge', 'driver', 'standstill'])
 def test_fork_does_not_bypass_control_and_crossing_gates(side, block):
   plan = build_lane_plan(guidance(side), SimpleNamespace(visibleLaneCount=1), healthy=True)
   coordinator = NavLaneIntentCoordinator()

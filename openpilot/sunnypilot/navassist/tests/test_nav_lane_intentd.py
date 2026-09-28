@@ -418,16 +418,41 @@ def test_turn_fallback_is_bounded_while_exit_fallback_starts_farther_out():
   assert far_exit.heuristic and far_exit.recommended_indices == (2,)
 
 
-def test_imminent_exit_selects_fork_but_never_bypasses_crossing_permission():
+@pytest.mark.parametrize("maneuver,direction", [
+  ("exitLeft", LaneIntentDirection.left), ("exitRight", LaneIntentDirection.right),
+  ("rampLeft", LaneIntentDirection.left), ("rampRight", LaneIntentDirection.right),
+  ("mergeLeft", LaneIntentDirection.left), ("mergeRight", LaneIntentDirection.right),
+])
+def test_imminent_ramp_selects_fork_and_ignores_only_solid_boundary(maneuver, direction):
   plan = build_lane_plan(
-    lane_guidance_nav(maneuver="exitRight", maneuverDistanceM=50.0, roadClass=6), topology(count=1), healthy=True,
+    lane_guidance_nav(maneuver=maneuver, maneuverDistanceM=50.0, roadClass=6), topology(count=1), healthy=True,
   )
 
   assert plan.valid and plan.heuristic
-  assert plan.edge_direction == LaneIntentDirection.right
+  assert plan.edge_direction == direction
   assert plan.force_fork
   assert not plan.allow_unknown_crossing
-  assert not plan.ignore_solid_boundary
+  assert plan.ignore_solid_boundary
+
+
+@pytest.mark.parametrize("side", ["left", "right"])
+@pytest.mark.parametrize("marking", ["solid", "doubleSolid", "solidDashed"])
+def test_final_fork_ignores_target_solid_but_keeps_safety_veto(side, marking):
+  nav = lane_guidance_nav(maneuver="exit" + side.title(), maneuverDistanceM=50.0, roadClass=6)
+  plan = build_lane_plan(nav, topology(count=1), healthy=True)
+  observed = oem_topology(count=1, index=0, **{side + "_marking": marking})
+  assert plan.force_fork and plan.ignore_solid_boundary
+  assert oem_crossing_allowed(observed, {"permissionValid": False}, side=side,
+                              visual_healthy=True, now_ns=1_000_000_000, ignore_solid=True)
+  assert not oem_crossing_allowed(observed, {"permissionValid": True, side + "SafetyBlocked": True}, side=side,
+                                  visual_healthy=True, now_ns=1_000_000_000, ignore_solid=True)
+
+
+@pytest.mark.parametrize("side", ["left", "right"])
+def test_final_fork_never_ignores_road_edge(side):
+  observed = oem_topology(count=1, index=0, **{side + "_marking": "roadEdge"})
+  assert not oem_crossing_allowed(observed, {"permissionValid": False}, side=side,
+                                  visual_healthy=True, now_ns=1_000_000_000, ignore_solid=True)
 
 
 @pytest.mark.parametrize("maneuver,direction", [

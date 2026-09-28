@@ -27,16 +27,18 @@ def confirmed_crossable_lanes(topology, *, healthy: bool, now_ns: int) -> tuple[
 
 def lane_change_start_permissions(topology, *, healthy: bool, now_ns: int,
                                   oem_permissions: tuple[bool, bool],
-                                  safety_blocks: tuple[bool, bool] = (False, False)) -> tuple[bool, bool]:
-  """Either source may authorize crossing; a road edge or known hazard vetoes."""
+                                  safety_blocks: tuple[bool, bool] = (False, False),
+                                  ignore_solid: tuple[bool, bool] = (False, False)) -> tuple[bool, bool]:
+  """Either source may authorize crossing; a scoped solid exception may too."""
   visual = confirmed_crossable_lanes(topology, healthy=healthy, now_ns=now_ns)
   blocked = lane_topology_change_blocks(topology, healthy=healthy)
   def side_allowed(side: str, index: int) -> bool:
     marking = str(getattr(topology, side + 'EgoSideMarking'))
     visual_solid = (healthy and topology.validForControl and
                     getattr(topology, side + 'EvidenceValid') and marking in SOLID_EGO_MARKINGS)
-    return bool((visual[index] or oem_permissions[index]) and
-                (not blocked[index] or (oem_permissions[index] and visual_solid)) and
+    solid_allowed = ignore_solid[index] and visual_solid
+    return bool((visual[index] or oem_permissions[index] or solid_allowed) and
+                (not blocked[index] or ((oem_permissions[index] or solid_allowed) and visual_solid)) and
                 not safety_blocks[index])
 
   return side_allowed('left', 0), side_allowed('right', 1)

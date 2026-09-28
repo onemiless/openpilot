@@ -33,7 +33,7 @@ SERVICES = BASE_SERVICES + LANE_SERVICES + ("radarTracks", "carParamsSP")
 TURN_LANE_LOOKAHEAD_M = 1_000.0
 EXIT_LANE_LOOKAHEAD_M = 2_000.0
 # jihui Amap 141ebea0 MainActivitySettings.kt: fork_dist_h defaults to 80 m.
-# This selects the final fork action; it never supplies crossing permission.
+# This selects the final fork action and its target-side solid-line exception.
 FORK_ENTRY_DISTANCE_M = 80.0
 LEFT_TURN_LANE_MANEUVERS = frozenset(("turnLeft", "sharpLeft", "uTurnLeft"))
 RIGHT_TURN_LANE_MANEUVERS = frozenset(("turnRight", "sharpRight", "uTurnRight"))
@@ -171,13 +171,13 @@ def build_lane_plan(nav, topology, *, healthy: bool, settings: NavAssistSettings
     # current-link class to the ramp itself before entering this window.
     # Keep ordinary-road approach alignment below; only final fork is scoped.
     # A split need not already be classified as a complete adjacent lane.
-    # Retain C3's visual/OEM crossing, road-edge, blindspot and radar gates.
+    # Retain C3's road-edge, OEM safety, blindspot and radar gates.
     fork_lane_count = max(1, lane_count)
     return NavLanePlan(
       True, str(nav.sessionId), int(nav.routeRevision), int(nav.maneuverEventId), fork_lane_count,
       (0 if fallback_side == "left" else fork_lane_count - 1,), heuristic=True,
       edge_direction=LaneIntentDirection.left if fallback_side == "left" else LaneIntentDirection.right,
-      force_fork=True, allow_unknown_crossing=False, ignore_solid_boundary=False,
+      force_fork=True, allow_unknown_crossing=False, ignore_solid_boundary=True,
       navigation_valid=nav_valid,
     )
   if lanes:
@@ -278,7 +278,8 @@ def anchored_amap_ego_index(topology, oem: dict, amap_lane_count: int) -> int | 
   return None
 
 
-def oem_crossing_allowed(topology, oem: dict, *, side: str, visual_healthy: bool, now_ns: int | None = None) -> bool:
+def oem_crossing_allowed(topology, oem: dict, *, side: str, visual_healthy: bool,
+                         now_ns: int | None = None, ignore_solid: bool = False) -> bool:
   """Either 0x399 permission or visual evidence may allow crossing; known hazards veto."""
   if side not in ("left", "right"):
     raise ValueError("side must be left or right")
@@ -288,6 +289,7 @@ def oem_crossing_allowed(topology, oem: dict, *, side: str, visual_healthy: bool
                      bool(oem.get("permissionValid") and oem.get("rightAllowed"))),
     safety_blocks=(bool(oem.get("permissionValid") and oem.get("leftSafetyBlocked")),
                    bool(oem.get("permissionValid") and oem.get("rightSafetyBlocked"))),
+    ignore_solid=(ignore_solid and side == "left", ignore_solid and side == "right"),
   )
   return permissions[0 if side == "left" else 1]
 
@@ -425,6 +427,11 @@ def main() -> None:
     )
     # Use the same held purpose for priority, gates and final lamp arbitration.
     plan = coordinator.hold_active_fork(plan, topology_input)
+    if plan.force_fork and plan.ignore_solid_boundary:
+      side = "left" if plan.edge_direction == LaneIntentDirection.left else "right"
+      topology_input = replace(topology_input, **{f"{side}_crossing_allowed": oem_crossing_allowed(
+        topology, oem, side=side, visual_healthy=visual_lane_healthy, now_ns=now_ns, ignore_solid=True,
+      )})
     vehicle = LaneVehicleInput(
       lateral_active=bool(base_healthy and car_control.latActive),
       speed_mps=float(car_state.vEgo),

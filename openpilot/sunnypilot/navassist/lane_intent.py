@@ -388,6 +388,7 @@ class NavLaneIntentCoordinator:
       fork_lane_count = max(1, topology.visible_lane_count)
       return replace(plan, valid=plan.valid or plan.navigation_valid, force_fork=True,
                      heuristic=self._candidate[4], edge_direction=self._candidate[2],
+                     ignore_solid_boundary=True,
                      lane_count=fork_lane_count,
                      recommended_indices=(0 if self._candidate[2] == LaneIntentDirection.left
                                           else fork_lane_count - 1,))
