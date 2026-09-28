@@ -91,6 +91,22 @@ def test_239_does_not_supply_lane_change_neighbor_position():
   assert gate.neighbors == (None, None)
 
 
+@pytest.mark.parametrize('first_byte,expected', [
+  (0x00, (False, False)), (0x02, (False, True)),
+  (0x01, (True, False)), (0x03, (True, True)),
+])
+def test_239_supplies_confirmed_turn_neighbor_position(first_byte, expected):
+  gate = OemLaneChangeGate()
+  for stamp in (1, 2, 3):
+    packet = event(8, stamp)
+    packet.can.append(state_239(first_byte, stamp))
+    gate.update([packet], stamp)
+  assert gate.neighbors == (None, None)
+  assert gate.turn_neighbors == expected
+  gate.update([], 400_000_004)
+  assert gate.turn_neighbors == (None, None)
+
+
 def test_permission_loss_does_not_abruptly_reset_an_active_manoeuvre():
   dh = helper()
   cs = car_state(leftBlinker=True)

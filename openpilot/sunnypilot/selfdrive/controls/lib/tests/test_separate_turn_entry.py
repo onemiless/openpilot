@@ -110,13 +110,13 @@ def test_duplicate_gap_and_dropout_restart_confirmation():
 @pytest.mark.parametrize('bits,expected', [(0, (False, False)), (1, (True, False)), (2, (False, True)), (3, (True, True))])
 def test_oem_absence_requires_confirmed_239_and_expires(bits, expected):
   gate = OemLaneChangeGate()
-  assert gate.neighbors == (None, None)
+  assert gate.turn_neighbors == (None, None)
   for i in range(1, 4):
     stamp = NOW_NS+i*50_000_000
     gate.update([NS(valid=True, logMonoTime=stamp, can=[topology(bits, i)])], stamp)
-    assert gate.neighbors == (expected if i == 3 else (None, None))
+    assert gate.turn_neighbors == (expected if i == 3 else (None, None))
   gate.update([], stamp+400_000_001)
-  assert gate.neighbors == (None, None)
+  assert gate.turn_neighbors == (None, None)
 
 
 def turn_helper():
@@ -523,7 +523,7 @@ def test_both_modeld_adapters_with_cereal_messages(modeld_path):
   class TestSubMaster(dict):
     def all_checks(self, services):
       return 'navAssistStateSP' not in services
-  env = dict(turn_entry=TurnEntryGate(), oem_gate=NS(neighbors=(False, False), safety_blocks=(False, False)),
+  env = dict(turn_entry=TurnEntryGate(), oem_gate=NS(turn_neighbors=(False, False), safety_blocks=(False, False)),
              mdv2sp_send=NS(modelDataV2SP=NS()), live_calib_seen=True, extrinsics_calibration_seen=True,
              turn_completion=TurnCompletionTracker(.1), modelv2_send=md_msg, topology=topo_msg.laneTopologyStateSP,
              lane_topology_healthy=True, DH=turn_helper(), lane_change_prob=1., left_edge=False, right_edge=False,

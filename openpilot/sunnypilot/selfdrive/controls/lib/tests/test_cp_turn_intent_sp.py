@@ -184,6 +184,68 @@ def test_navigation_score_requires_live_matching_source():
   assert classify(c, 27, md, nav_intent=n, nav_state=nav)[0] == (False, False)
 
 
+def test_linked_navigation_turn_does_not_require_wide_intersection_opening():
+  c = TurnIntentClassifier()
+  n = intent(target=-1)
+  n.sessionId = 's'
+  n.routeRevision = 1
+  n.maneuverEventId = 2
+  nav = NS(
+    valid=True, stale=False, gpsWeak=False, routeActive=True, routeMatched=True,
+    publishMonoTime=NOW_NS, sessionId='s', routeRevision=1,
+    maneuverEventId=2, maneuver='turnLeft',
+  )
+  curved_ramp = cp_model(prob=0.9, near=2.0, far=3.0)
+  for i in range(25):
+    classify(c, i, curved_ramp)
+  nav.publishMonoTime = NOW_NS + 25 * 50_000_000
+  assert classify(c, 25, curved_ramp, nav_intent=n, nav_state=nav)[0] == (True, False)
+  nav.routeMatched = False
+  assert classify(c, 26, curved_ramp, nav_intent=n, nav_state=nav)[0] == (False, False)
+
+
+def test_linked_navigation_turn_can_confirm_without_negative_neighbor_packet():
+  gate = TurnEntryGate()
+  n = intent(target=-1)
+  n.sessionId = 's'
+  n.routeRevision = 1
+  n.maneuverEventId = 2
+  nav = NS(
+    valid=True, stale=False, gpsWeak=False, routeActive=True, routeMatched=True,
+    publishMonoTime=NOW_NS, sessionId='s', routeRevision=1,
+    maneuverEventId=2, maneuver='turnLeft',
+  )
+  for i in range(13):
+    nav.publishMonoTime = NOW_NS + i * 50_000_000
+    allowed = cp_tick(gate, i, md=cp_model(prob=0.9, near=2.0, far=3.0),
+                      neighbors=(None, None), nav_intent=n, nav_state=nav)
+  assert allowed == (True, False)
+  nav.publishMonoTime = NOW_NS + 13 * 50_000_000
+  assert cp_tick(gate, 13, neighbors=(True, None), nav_intent=n, nav_state=nav) == (False, False)
+
+
+@pytest.mark.parametrize('block', ['solid', 'roadEdge', 'oemSafety'])
+def test_linked_navigation_turn_retains_boundary_and_safety_vetoes(block):
+  gate = TurnEntryGate()
+  n = intent(target=-1)
+  n.sessionId = 's'
+  n.routeRevision = 1
+  n.maneuverEventId = 2
+  nav = NS(
+    valid=True, stale=False, gpsWeak=False, routeActive=True, routeMatched=True,
+    publishMonoTime=NOW_NS, sessionId='s', routeRevision=1,
+    maneuverEventId=2, maneuver='turnLeft',
+  )
+  for i in range(13):
+    nav.publishMonoTime = NOW_NS + i * 50_000_000
+    options = {'safety_blocks': (True, False)} if block == 'oemSafety' else {
+      'topology_options': {'leftEgoSideMarking': block, 'leftEvidenceValid': True},
+    }
+    allowed = cp_tick(gate, i, md=cp_model(prob=0.9, near=2.0, far=3.0),
+                      neighbors=(None, None), nav_intent=n, nav_state=nav, **options)
+  assert allowed == (False, False)
+
+
 def test_soft_loss_waits_for_reconfirmed_entry_but_hard_exit_cannot_retry():
   dh = turn_helper()
   update(dh, turn_soft_reentry=True)

@@ -680,7 +680,7 @@ def main(demo=False):
         left_turn, right_turn = turn_entry.update(
           modelv2_send.modelV2, topology, healthy=lane_topology_healthy,
           now_ns=gate_now_ns, model_stamp_ns=meta_main.timestamp_eof,
-          neighbors=oem_gate.neighbors, safety_blocks=oem_gate.safety_blocks,
+          neighbors=oem_gate.turn_neighbors, safety_blocks=oem_gate.safety_blocks,
           carstate=sm['carState'], model_healthy=live_calib_seen and sm.all_checks(['carState', 'carControl']),
           nav_intent=nav_lane_intent,
           nav_state=sm['navAssistStateSP'] if sm.all_checks(['navAssistStateSP']) else None,

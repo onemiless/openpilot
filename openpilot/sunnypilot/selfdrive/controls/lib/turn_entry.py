@@ -29,6 +29,21 @@ class _ExistCounter:
       self.counter = min(self.counter - 1, -1)
 
 
+def linked_navigation_turn(nav_intent, nav_state, side: str, now_ns: int) -> bool:
+  return bool(
+    nav_intent is not None and nav_intent.valid and nav_intent.signalRequested
+    and nav_intent.targetLaneIndex < 0 and str(nav_intent.direction) == side
+    and nav_state is not None and nav_state.valid and not nav_state.stale and not nav_state.gpsWeak
+    and nav_state.routeActive and nav_state.routeMatched
+    and 0 < nav_state.publishMonoTime <= now_ns
+    and now_ns-nav_state.publishMonoTime <= MARKING_MAX_AGE_NS
+    and nav_state.maneuverEventId != 0
+    and (nav_state.sessionId, nav_state.routeRevision, nav_state.maneuverEventId)
+        == (nav_intent.sessionId, nav_intent.routeRevision, nav_intent.maneuverEventId)
+    and str(nav_state.maneuver) == 'turn' + side.title()
+  )
+
+
 class TurnIntentClassifier:
   """CP's maneuver score/side history; this class grants no control permission."""
   def __init__(self):
@@ -83,22 +98,20 @@ class TurnIntentClassifier:
       if len(desires) >= 3 and all(math.isfinite(v) for v in desires[1:3]):
         score += int(sum(desires[1:3]) > .1)
       direction = ('left', 'right')[i]
+      navigation_turn = False
       if (nav_intent is not None and nav_intent.valid and nav_intent.signalRequested
           and str(nav_intent.direction) == direction):
         if nav_intent.targetLaneIndex >= 0:
           score -= 2  # A navigation lane request must not become a turn by slowing.
-        elif (nav_state is not None and nav_state.valid and not nav_state.stale and not nav_state.gpsWeak
-              and nav_state.routeActive and nav_state.routeMatched
-              and 0 < nav_state.publishMonoTime <= now_ns
-              and now_ns-nav_state.publishMonoTime <= MARKING_MAX_AGE_NS
-              and nav_state.maneuverEventId != 0
-              and (nav_state.sessionId, nav_state.routeRevision, nav_state.maneuverEventId)
-                  == (nav_intent.sessionId, nav_intent.routeRevision, nav_intent.maneuverEventId)
-              and str(nav_state.maneuver) == ('turnLeft', 'turnRight')[i]):
+        elif linked_navigation_turn(nav_intent, nav_state, direction, now_ns):
           score += 2
+          navigation_turn = True
       # Allow CP's four-frame hysteresis plus ten positive counts to settle.
       # Otherwise a stable lane is initially mis-scored as missing (counter < 10).
-      turns.append(len(self.widths[i]) >= 13 and score >= 2 and far > 4.)
+      # A linked navigation turn can follow a continuous curved ramp without
+      # inventing a wide road-edge opening. TurnEntryGate still requires an
+      # no known neighbor and retains boundary/safety vetoes.
+      turns.append(len(self.widths[i]) >= 13 and score >= 2 and (far > 4. or navigation_turn))
       # Existing turn may continue as the edge moves alongside; caller applies hazards/age.
       observed.append(True)
     return tuple(turns), tuple(observed)
@@ -294,6 +307,7 @@ class TurnEntryGate:
       self.input_reason = 'cpModelObserved' if fresh else 'modelUnavailable'
     allowed, continuing, reasons, details = [], [], [], []
     for i, side in enumerate(('left', 'right')):
+      navigation_turn = linked_navigation_turn(nav_intent, nav_state, side, now_ns)
       continuity_lost = self._last_good[i] > 0 and not 0 <= now_ns-self._last_good[i] <= MODEL_MAX_AGE_NS
       clearances, geometry_reason = _side_geometry(model, side) if fresh and not cp_mode else (None, 'notEvaluated')
       if cp_mode:
@@ -315,7 +329,7 @@ class TurnEntryGate:
         reason = 'neighborPresent'
       elif not fresh:
         reason = 'evidenceUnavailable'
-      elif neighbors[i] is not False:
+      elif neighbors[i] is not False and not navigation_turn:
         reason = 'neighborUnknown'
       elif not advancing:
         reason = 'modelNotAdvancing'

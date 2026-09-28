@@ -1,4 +1,4 @@
-from openpilot.sunnypilot.navassist.oem_lane_feedback import OemLaneFeedback, LANE_CHANGE_ADDRESS
+from openpilot.sunnypilot.navassist.oem_lane_feedback import OemLaneFeedback, LANE_CHANGE_ADDRESS, LANE_TOPOLOGY_ADDRESS
 from openpilot.sunnypilot.navassist.lane_publisher import MODEL_MAX_AGE_NS, MARKING_MAX_AGE_NS
 from openpilot.sunnypilot.selfdrive.controls.lib.lane_change_blocker import CROSSABLE_EGO_MARKINGS, SOLID_EGO_MARKINGS, lane_topology_change_blocks
 
@@ -50,13 +50,14 @@ class OemLaneChangeGate:
     self.safety_blocks = (True, True)
     self.lane_change_safety_blocks = (False, False)
     self.neighbors = (None, None)
+    self.turn_neighbors = (None, None)
 
   def update(self, events, now_ns: int) -> tuple[bool, bool]:
     for event in events:
       if not event.valid:
         self.feedback = OemLaneFeedback()
         continue
-      self.feedback.ingest((f for f in event.can if f.address == LANE_CHANGE_ADDRESS),
+      self.feedback.ingest((f for f in event.can if f.address in (LANE_TOPOLOGY_ADDRESS, LANE_CHANGE_ADDRESS)),
                            event.logMonoTime, received_ns=now_ns)
     state = self.feedback.snapshot(now_ns, include_topology_details=True)
     self.safety_blocks = (state['leftSafetyBlocked'], state['rightSafetyBlocked'])
@@ -65,4 +66,10 @@ class OemLaneChangeGate:
     self.lane_change_safety_blocks = (state['permissionValid'] and self.safety_blocks[0],
                                       state['permissionValid'] and self.safety_blocks[1])
     self.neighbors = (None, None)
+    self.turn_neighbors = ({
+      'single': (False, False),
+      'leftmost': (False, True),
+      'rightmost': (True, False),
+      'middle': (True, True),
+    }.get(state['position'], (None, None)) if state['positionValid'] else (None, None))
     return state['leftAllowed'], state['rightAllowed']
