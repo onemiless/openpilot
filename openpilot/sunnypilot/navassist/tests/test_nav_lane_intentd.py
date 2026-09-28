@@ -374,6 +374,47 @@ def test_recommended_current_edge_does_not_request_a_lane_change_with_local_visu
   assert not result.signal_requested and result.reason == "alreadyInRecommendedLane"
 
 
+@pytest.mark.parametrize("position,ego_index,target,direction", [
+  ("leftmost", 0, 1, LaneIntentDirection.right),
+  ("rightmost", 2, 1, LaneIntentDirection.left),
+])
+def test_oem_edge_maps_one_inward_change_when_complete_road_count_is_wider(position, ego_index, target, direction):
+  edge = 0 if position == "leftmost" else 3
+  inward = 1 if position == "leftmost" else 2
+  lanes = [SimpleNamespace(index=index, recommended=index == inward, routeAvoid=index == edge)
+           for index in range(4)]
+  observed = oem_topology(count=3, index=ego_index)
+
+  plan = build_lane_plan(lane_guidance_nav(maneuver="none", maneuverEventId=0, roadClass=6, lanes=lanes),
+                         observed, healthy=True, lane_count_override=3, oem_edge_position=position)
+
+  assert plan.valid and plan.heuristic
+  assert plan.recommended_indices == (target,)
+  assert plan.edge_direction == direction
+
+
+def test_oem_middle_position_never_guesses_an_absolute_lane_in_a_wider_road():
+  lanes = [SimpleNamespace(index=index, recommended=index < 3, routeAvoid=index == 3) for index in range(4)]
+  observed = oem_topology(count=3, index=1)
+
+  plan = build_lane_plan(lane_guidance_nav(maneuver="none", maneuverEventId=0, roadClass=6, lanes=lanes),
+                         observed, healthy=True, lane_count_override=3, oem_edge_position="middle")
+
+  assert not plan.valid and not plan.recommended_indices
+
+
+def test_1210_elevated_recommendation_maps_right_edge_into_local_visual_window():
+  lanes = [SimpleNamespace(index=index, recommended=index < 3, routeAvoid=index == 3) for index in range(4)]
+  observed = oem_topology(count=2, index=1)
+
+  plan = build_lane_plan(lane_guidance_nav(maneuver="none", maneuverEventId=0, roadClass=6, lanes=lanes),
+                         observed, healthy=True, lane_count_override=2, oem_edge_position="rightmost")
+
+  assert plan.valid and plan.heuristic
+  assert plan.recommended_indices == (0,)
+  assert plan.edge_direction == LaneIntentDirection.left
+
+
 def test_unknown_middle_position_uses_route_edge_change_then_stops_at_confirmed_edge():
   lanes = [SimpleNamespace(index=i, recommended=i == 3, routeAvoid=False) for i in range(4)]
   guidance = lane_guidance_nav(maneuver="exitRight", lanes=lanes)

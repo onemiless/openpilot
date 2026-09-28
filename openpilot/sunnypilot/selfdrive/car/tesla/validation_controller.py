@@ -34,9 +34,9 @@ CANCEL_PARAM = "TeslaTurnSignalTestCancel"
 VALIDATION_LOG_PATH = "/data/tesla_turn_signal_validation.log"
 VALIDATION_LOG_PREFIX = "[TESLA-TURN-SIGNAL-VALIDATION-v3]"
 MAX_LOG_BYTES = 2 * 1024 * 1024
-# Validation results still return through Params, while raw evidence logging is
-# disabled on the normal dev branch except for Panda-rejected sessions.
-TURN_SIGNAL_VALIDATION_LOGGING_ENABLED = False
+# Keep bounded raw session evidence so an unexpected cancellation can be tied
+# to its controller reason even when the CAN frame itself was accepted.
+TURN_SIGNAL_VALIDATION_LOGGING_ENABLED = True
 
 _UI_WARNING_MESSAGE = DBC("tesla_model3_party").name_to_msg["UI_warning"]
 _FRONT_LIGHTING_MESSAGE = DBC("tesla_model3_vehicle").name_to_msg["ID3F5VCFRONT_lighting"]
@@ -399,8 +399,13 @@ class TeslaTurnSignalRealtimeController:
           self._active["awaiting_phase"] = None
           if phase == "cancel":
             self._active["cancel_rejections"] += 1
-          if phase == "action" and self._active["action_frames_echoed"] > 0:
-            self._request_cancel_locked("action_panda_rejected", monotonic_nanos)
+          if phase == "action":
+            # A rejection applies to this counter/template pair. Keep the
+            # existing request active and try the next fresh OEM template;
+            # the existing vehicle-feedback/session timeouts still bound it.
+            self._active["phase"] = "waiting_vehicle_feedback" if not self._active["feedback"] else "waiting_sp_start"
+            self._record_locked("action_rejected_retry_pending", monotonic_nanos,
+                                action_frames_echoed=self._active["action_frames_echoed"])
           elif phase == "cancel" and self._active["cancel_rejections"] == self._active["cancel_attempts"]:
             # Explicit rejection is not a lost acknowledgement. Retry only the
             # pending cancel on a new OEM template, within the existing budget.

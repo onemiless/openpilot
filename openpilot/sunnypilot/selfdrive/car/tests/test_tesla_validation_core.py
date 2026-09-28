@@ -1,6 +1,7 @@
 from openpilot.sunnypilot.selfdrive.car.tesla.validation_controller import (
   DAS_BODY_CONTROLS_ADDRESS,
   TeslaTurnSignalRealtimeController,
+  VEHICLE_FEEDBACK_TIMEOUT_NS,
   create_body_control_frame,
   decode_body_controls,
   is_original_body_controls_frame,
@@ -54,6 +55,58 @@ def test_enabled_controller_requires_fresh_original_template():
   assert sends[0].src == 1
   assert decode_body_controls(sends[0].dat)["turn_request"] == 2
   assert decode_body_controls(sends[0].dat)["counter"] == 10
+
+
+def test_rejected_action_retries_on_next_original_template():
+  controller = TeslaTurnSignalRealtimeController(configured=True)
+  started = 1_000_000_000
+  assert controller.submit_request("test", "right", started, hold_until_cancel=True)
+
+  controller.observe_frame(started, DAS_BODY_CONTROLS_ADDRESS, idle_body_controls(4), 1)
+  first = controller.take_can_sends(started)[0]
+  controller.observe_frame(started + 1, DAS_BODY_CONTROLS_ADDRESS, first.dat, 0xC1)
+
+  assert controller.status()["cancel_requested"] is False
+  assert controller.take_can_sends(started + 2) == []
+  controller.observe_frame(started + 3, DAS_BODY_CONTROLS_ADDRESS, idle_body_controls(5), 1)
+  retry = controller.take_can_sends(started + 3)[0]
+  assert decode_body_controls(retry.dat)["turn_request"] == 2
+  assert decode_body_controls(retry.dat)["counter"] == 6
+
+
+def test_rejected_action_after_echo_does_not_cancel_active_request():
+  controller = TeslaTurnSignalRealtimeController(configured=True)
+  started = 1_000_000_000
+  assert controller.submit_request("test", "left", started, hold_until_cancel=True)
+
+  controller.observe_frame(started, DAS_BODY_CONTROLS_ADDRESS, idle_body_controls(4), 1)
+  first = controller.take_can_sends(started)[0]
+  controller.observe_frame(started + 1, DAS_BODY_CONTROLS_ADDRESS, first.dat, 0x81)
+  controller.observe_frame(started + 2, DAS_BODY_CONTROLS_ADDRESS, idle_body_controls(5), 1)
+  second = controller.take_can_sends(started + 2)[0]
+  controller.observe_frame(started + 3, DAS_BODY_CONTROLS_ADDRESS, second.dat, 0xC1)
+
+  assert controller.status()["cancel_requested"] is False
+  controller.observe_frame(started + 4, DAS_BODY_CONTROLS_ADDRESS, idle_body_controls(6), 1)
+  retry = controller.take_can_sends(started + 4)[0]
+  assert decode_body_controls(retry.dat)["turn_request"] == 1
+
+
+def test_repeated_action_rejections_keep_existing_feedback_timeout():
+  controller = TeslaTurnSignalRealtimeController(configured=True)
+  started = 1_000_000_000
+  assert controller.submit_request("test", "right", started, hold_until_cancel=True)
+
+  for index, counter in enumerate((4, 5, 6)):
+    stamp = started + index * 10
+    controller.observe_frame(stamp, DAS_BODY_CONTROLS_ADDRESS, idle_body_controls(counter), 1)
+    sent = controller.take_can_sends(stamp)[0]
+    controller.observe_frame(stamp + 1, DAS_BODY_CONTROLS_ADDRESS, sent.dat, 0xC1)
+    assert controller.status()["cancel_requested"] is False
+
+  controller.advance_time(started + VEHICLE_FEEDBACK_TIMEOUT_NS)
+  assert controller.status()["cancel_requested"] is True
+  assert controller.status()["cancel_reason"] == "vehicle_feedback_timeout"
 
 
 def test_navigation_signal_session_waits_for_explicit_cancel_after_lane_change_cycle():

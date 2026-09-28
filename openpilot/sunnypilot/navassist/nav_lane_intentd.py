@@ -197,6 +197,21 @@ def build_lane_plan(nav, topology, *, healthy: bool, settings: NavAssistSettings
       visual_current = 0 if oem_edge_position == "leftmost" else lane_count - 1
       return NavLanePlan(True, str(nav.sessionId), int(nav.routeRevision), int(nav.maneuverEventId),
                          lane_count, (visual_current,), navigation_valid=nav_valid)
+    # AMap can describe the complete road while vision exposes only a local
+    # window. A confirmed common edge still identifies one inward change when
+    # that edge is explicitly avoided and its immediate AMap neighbor is
+    # recommended. Do not infer an absolute middle-lane index from this.
+    visual_current = 0 if oem_edge_position == "leftmost" else lane_count - 1
+    inward_amap = 1 if oem_edge_position == "leftmost" else amap_lane_count - 2
+    inward_visual = 1 if oem_edge_position == "leftmost" else lane_count - 2
+    edge_avoided = any(int(lane.index) == edge_current and getattr(lane, "routeAvoid", False) for lane in lanes)
+    if (nav_valid and edge_current is not None and edge_avoided and inward_amap in recommended
+        and lane_count >= 2 and int(getattr(topology, "egoLaneIndexFromLeft", -1)) == visual_current):
+      direction = LaneIntentDirection.right if oem_edge_position == "leftmost" else LaneIntentDirection.left
+      return NavLanePlan(
+        True, str(nav.sessionId), int(nav.routeRevision), int(nav.maneuverEventId), lane_count, (inward_visual,),
+        heuristic=True, edge_direction=direction, navigation_valid=nav_valid,
+      )
     if (nav_valid and amap_ego_index is not None and amap_lane_count == lane_count
         and fallback_side is not None and math.isfinite(distance_m) and 0.0 <= distance_m <= lookahead_m):
       aligned = tuple(index for index in recommended if
@@ -409,6 +424,8 @@ def main() -> None:
     plan = build_lane_plan(
       nav, topology, healthy=base_healthy, settings=settings,
       lane_count_override=lane_count if geometry_valid else None,
+      amap_ego_index=anchored_amap_ego_index(topology, oem, len(nav.lanes)) if geometry_valid else None,
+      oem_edge_position=str(oem["position"]) if geometry_valid and oem.get("positionValid", False) else None,
       final_fork_allowed=final_fork_allowed,
       final_fork_entry_reached=final_fork_scope.entry_reached,
     )
