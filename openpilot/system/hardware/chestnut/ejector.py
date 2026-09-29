@@ -30,15 +30,19 @@ def parse_safe_poweroff_report(output: str) -> dict:
 
 
 class ChestnutEjector:
-  """Owns the asynchronous, offroad-only Chestnut detach request."""
+  """Own asynchronous offroad link shutdown and manual detach requests."""
   def __init__(self, params: Params):
     self.params = params
     self.thread: threading.Thread | None = None
     self.detached_seen = False
+    self.auto_power_down_attempted = False
 
-  def eject(self) -> None:
-    ret = subprocess.run(["sudo", "env", f"PYTHONPATH={BASEDIR}/tinygrad_repo", "/usr/local/venv/bin/python", "-u",
-                          f"{BASEDIR}/tools/ut3g_safe_f3_poweroff.py"], cwd=BASEDIR,
+  def eject(self, *, automatic: bool = False) -> None:
+    command = ["sudo", "env", f"PYTHONPATH={BASEDIR}/tinygrad_repo", "/usr/local/venv/bin/python", "-u",
+               f"{BASEDIR}/tools/ut3g_safe_f3_poweroff.py"]
+    if automatic:
+      command.extend(("--wait-for-users", "--fast-release-after-f3"))
+    ret = subprocess.run(command, cwd=BASEDIR,
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, check=False)
     output = ret.stdout.strip()
     report_error = None
@@ -48,19 +52,29 @@ class ChestnutEjector:
       except ValueError as exc:
         report_error = str(exc)
 
-    if ret.returncode == 0 and report_error is None:
-      self.params.put("UsbGpuEjectStatus", "safe")
-      self.params.remove("UsbGpuEjectError")
-    else:
-      self.params.put("UsbGpuEjectStatus", "error")
-      self.params.put("UsbGpuEjectError", report_error or output[-300:] or f"exit {ret.returncode}")
+    if not automatic:
+      if ret.returncode == 0 and report_error is None:
+        self.params.put("UsbGpuEjectStatus", "safe")
+        self.params.remove("UsbGpuEjectError")
+      else:
+        self.params.put("UsbGpuEjectStatus", "error")
+        self.params.put("UsbGpuEjectError", report_error or output[-300:] or f"exit {ret.returncode}")
     cloudlog.event("chestnut eject done", returncode=ret.returncode, output=output[-1000:],
-                   error=ret.returncode != 0 or report_error is not None)
+                   automatic=automatic, error=ret.returncode != 0 or report_error is not None)
 
-  def update(self, offroad: bool, usb_state: list[dict]) -> None:
+  def _start(self, *, automatic: bool) -> None:
+    self.thread = threading.Thread(target=self.eject, kwargs={"automatic": automatic}, daemon=True,
+                                   name="chestnut-auto-power-down" if automatic else "chestnut-eject")
+    self.thread.start()
+
+  def update(self, offroad: bool, usb_state: list[dict], *, auto_power_down: bool = False) -> None:
     detected = any((d["vendorId"], d["productId"]) in CHESTNUT_USB_IDS + CHESTNUT_ROM_USB_IDS for d in usb_state)
+    runtime_detected = any(is_chestnut_runtime_device(d) for d in usb_state)
     ready = any(is_chestnut_runtime_device(d) and d.get("speedMbps", 0) == 5000 for d in usb_state)
     status = self.params.get("UsbGpuEjectStatus")
+
+    if not offroad or not runtime_detected:
+      self.auto_power_down_attempted = False
 
     if status == "safe" and not detected:
       self.detached_seen = True
@@ -68,18 +82,26 @@ class ChestnutEjector:
       self.params.remove("UsbGpuEjectStatus")
       self.detached_seen = False
 
-    if not self.params.get_bool("UsbGpuEjectRequest"):
-      return
-    self.params.remove("UsbGpuEjectRequest")
+    if self.params.get_bool("UsbGpuEjectRequest"):
+      if not offroad:
+        self.params.remove("UsbGpuEjectRequest")
+        self.params.put("UsbGpuEjectStatus", "error")
+        self.params.put("UsbGpuEjectError", "eGPU can only be ejected while offroad")
+        return
+      if self.thread is not None and self.thread.is_alive():
+        return
 
-    if not offroad:
-      self.params.put("UsbGpuEjectStatus", "error")
-      self.params.put("UsbGpuEjectError", "eGPU can only be ejected while offroad")
-      return
-    if self.thread is not None and self.thread.is_alive():
+      self.params.remove("UsbGpuEjectRequest")
+      self.params.put("UsbGpuEjectStatus", "ejecting")
+      self.params.remove("UsbGpuEjectError")
+      self.auto_power_down_attempted = True
+      self._start(automatic=False)
       return
 
-    self.params.put("UsbGpuEjectStatus", "ejecting")
-    self.params.remove("UsbGpuEjectError")
-    self.thread = threading.Thread(target=self.eject, daemon=True)
-    self.thread.start()
+    if not (auto_power_down and offroad and self.params.get_bool("IsOffroad") and runtime_detected):
+      return
+    if self.auto_power_down_attempted or (self.thread is not None and self.thread.is_alive()):
+      return
+
+    self.auto_power_down_attempted = True
+    self._start(automatic=True)

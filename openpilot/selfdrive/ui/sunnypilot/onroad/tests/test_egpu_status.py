@@ -170,6 +170,46 @@ def test_sidebar_uses_full_model_failure_instead_of_stale_active_flag():
   assert status.severity == "danger"
 
 
+def test_sidebar_reports_model_failure_when_fallback_stops_usb_telemetry():
+  link_state = classify_egpu_link_state(
+    present=True, usb_speed_mbps=5000, telemetry_alive=True, telemetry_valid=False, pcie_ltssm=0,
+  )
+  assert link_state == "check_error"
+  for active, model_failed in ((False, False), (True, True)):
+    status = build_egpu_sidebar_status(
+      present=True, compiled=True, link_state=link_state, usb_speed_mbps=5000,
+      pcie_ltssm=0, eject_status=None, loading=False, active=active, model_failed=model_failed,
+    )
+
+    assert status.value == "MODEL ERR"
+    assert status.severity == "danger"
+    assert status.detail == "默认大模型加载或运行失败，PCIe 链路状态未核验"
+
+
+def test_sidebar_keeps_link_read_error_without_model_failure():
+  for active in (True, None):
+    status = build_egpu_sidebar_status(
+      present=True, compiled=True, link_state="check_error", usb_speed_mbps=5000,
+      pcie_ltssm=None, eject_status=None, loading=False, active=active,
+    )
+
+    assert status.value == "LINK ERR"
+    assert status.severity == "danger"
+    assert status.detail == "无法被动读取 PCIe 链路状态"
+
+
+def test_sidebar_keeps_confirmed_usb_and_pcie_faults_above_model_failure():
+  for link_state, speed, ltssm, expected in (("usb_degraded", 480, None, "USB 480"),
+                                             ("pcie_down", 5000, 0, "PCIE ERR")):
+    status = build_egpu_sidebar_status(
+      present=True, compiled=True, link_state=link_state, usb_speed_mbps=speed,
+      pcie_ltssm=ltssm, eject_status=None, loading=False, active=False, model_failed=True,
+    )
+
+    assert status.value == expected
+    assert status.severity == "danger"
+
+
 def test_sidebar_link_classification_uses_existing_chestnut_telemetry():
   assert classify_egpu_link_state(
     present=True, usb_speed_mbps=480, telemetry_alive=True, telemetry_valid=True, pcie_ltssm=0x78,

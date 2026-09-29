@@ -134,7 +134,7 @@ class ChestnutState:
       state.modelFps = self.model_fps
 
     asm_valid = False
-    if "AMD" in Device._opened_devices:
+    if self.big and "AMD" in Device._opened_devices:
       asm_telemetry = read_runtime_asm_telemetry(Device["AMD"].iface.pci_dev.usb)
       state.pcieLtssm = asm_telemetry.pcie_ltssm
       state.supplyValid = asm_telemetry.supply_valid
@@ -220,7 +220,7 @@ class ModelState(ModelStateBase):
     self.prev_desire[:] = 0
 
 
-def _main(demo=False):
+def main(demo=False):
   cloudlog.warning("modeld init")
 
   chestnut_available = chestnut_present() and chestnut_compiled()
@@ -294,9 +294,17 @@ def _main(demo=False):
     if model is not None:
       params.remove("ChestnutModelError")
 
-  small_model = ModelState(vipc_client_main.width, vipc_client_main.height, False) if model is None or CHESTNUT else None
+  small_model = None
   if model is None:
+    small_model = ModelState(vipc_client_main.width, vipc_client_main.height, False)
     model = small_model
+  elif CHESTNUT:
+    try:
+      preloaded_small_model = ModelState(vipc_client_main.width, vipc_client_main.height, False)
+      preloaded_small_model.warmup()
+      small_model = preloaded_small_model
+    except Exception:
+      cloudlog.exception("small fallback preload failed; continuing with chestnut")
   params.put_bool("ChestnutLoading", False)
   assert model is not None
   cloudlog.warning(f"models loaded in {time.monotonic() - st:.1f}s, modeld starting")
@@ -429,14 +437,16 @@ def _main(demo=False):
       send_chestnut = (chestnut_state is not None and
                        run_count % round(ModelConstants.MODEL_RUN_FREQ / SERVICE_LIST['chestnutState'].frequency) == 0)
       model_output = model.run(bufs, transforms, inputs, chestnut_state.send if send_chestnut else None)
-    except Exception:
+    except Exception as error:
       if not params.get_bool("ChestnutActive"):
         raise
       # fallback to small model
-      cloudlog.exception("big model failed, fall back to small")
       params.put_bool("ChestnutModelError", True)
       params.put_bool("ChestnutActive", False)
-      assert small_model is not None
+      if small_model is None:
+        cloudlog.exception("chestnut failed and small fallback unavailable")
+        raise RuntimeError("chestnut failed and small fallback unavailable") from error
+      cloudlog.exception("big model failed, fall back to small")
       model = small_model
       if chestnut_state is not None:
         chestnut_state.big = False
@@ -451,7 +461,6 @@ def _main(demo=False):
       posenet_send = messaging.new_message('cameraOdometry')
 
       action = get_action_from_model(model_output, prev_action, lat_action_t, long_action_t, v_ego)
-      prev_action = action
       fill_model_msg(modelv2_send, model_output, action,
                      publish_state, meta_main.frame_id, meta_extra.frame_id, frame_id,
                      frame_drop_ratio, meta_main.timestamp_eof, model_execution_time, extrinsics_calibration_seen)
@@ -485,6 +494,7 @@ def _main(demo=False):
         left_start_allowed, right_start_allowed = lane_change_start_permissions(
           topology, healthy=lane_topology_healthy, now_ns=gate_now_ns,
           oem_permissions=oem_permissions, safety_blocks=oem_gate.lane_change_safety_blocks,
+          ignore_solid=(left_ignore_solid, right_ignore_solid),
         )
         oem_solid_override = tuple(oem_permissions[i] and not oem_gate.safety_blocks[i]
                                    and lane_change_entry for i in range(2))
@@ -538,6 +548,21 @@ def _main(demo=False):
         left_safety_blocked=entry_safety_blocks[0], right_safety_blocked=entry_safety_blocks[1],
         **turn_permissions,
       )
+      if DH.turn_maneuver.state == 'active':
+        # Keep turn control on the same model plan published for the displayed path.
+        plan = model_output['plan'][0]
+        turn_curvature = get_curvature_from_plan(
+          plan[:, Plan.T_FROM_CURRENT_EULER][:, 2], plan[:, Plan.ORIENTATION_RATE][:, 2],
+          ModelConstants.T_IDXS, v_ego, lat_action_t,
+        )
+        if v_ego > MIN_LAT_CONTROL_SPEED:
+          turn_curvature = smooth_value(turn_curvature, prev_action.desiredCurvature, LAT_SMOOTH_SECONDS)
+        else:
+          turn_curvature = prev_action.desiredCurvature
+        action.desiredCurvature = float(turn_curvature)
+        modelv2_send.modelV2.action.desiredCurvature = action.desiredCurvature
+        drivingdata_send.drivingModelData.action.desiredCurvature = action.desiredCurvature
+      prev_action = action
       modelv2_send.modelV2.meta.laneChangeState = DH.lane_change_state
       modelv2_send.modelV2.meta.laneChangeDirection = DH.lane_change_direction
 
@@ -556,16 +581,6 @@ def _main(demo=False):
       pm.send('cameraOdometry', posenet_send)
       pm.send('modelDataV2SP', mdv2sp_send)
     last_vipc_frame_id = meta_main.frame_id
-
-
-def main(demo=False):
-  try:
-    _main(demo)
-  finally:
-    if chestnut_present():
-      from openpilot.system.hardware.chestnut.flash import link_down
-      if not link_down():
-        cloudlog.error("failed to power down chestnut")
 
 if __name__ == "__main__":
   try:

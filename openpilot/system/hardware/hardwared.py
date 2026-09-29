@@ -329,7 +329,7 @@ def hardware_thread(end_event, hw_queue) -> None:
     msg.deviceState.screenBrightnessPercent = HARDWARE.get_screen_brightness()
 
     set_usb_state(msg.deviceState, last_hw_state.usb_state)
-    chestnut_ejector.update(started_ts is None, last_hw_state.usb_state)
+    chestnut_ejector.update(started_ts is None, last_hw_state.usb_state, auto_power_down=started_seen)
     chestnut.update(started_ts is None, last_hw_state.usb_state)
     set_offroad_alert_if_changed("Offroad_ChestnutBranch", msg.deviceState.chestnutPresent and not big_model_available)
 

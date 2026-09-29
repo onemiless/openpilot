@@ -58,6 +58,8 @@ def build_egpu_sidebar_status(*, present: bool, compiled: bool, link_state: str 
     ltssm = f"0x{pcie_ltssm:02X}" if pcie_ltssm is not None else "未知"
     return EgpuSidebarStatus("PCIE ERR", "danger", f"USB 正常，但 PCIe 未进入 L0（LTSSM {ltssm}）")
   if link_state == "check_error":
+    if model_failed or active is False:
+      return EgpuSidebarStatus("MODEL ERR", "danger", "默认大模型加载或运行失败，PCIe 链路状态未核验")
     return EgpuSidebarStatus("LINK ERR", "danger", "无法被动读取 PCIe 链路状态")
   if link_state != "ready":
     return EgpuSidebarStatus("CHECKING", "warning", f"USB {usb_speed_mbps or '?'} Mbps，正在确认 PCIe 状态")

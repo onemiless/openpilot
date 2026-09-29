@@ -1,6 +1,8 @@
 import os
 import json
+import threading
 from types import SimpleNamespace
+from unittest.mock import Mock, call
 
 import pytest
 
@@ -110,6 +112,128 @@ def test_ejector_runs_project_f3_poweroff_script(monkeypatch):
   ]
   assert params.get("UsbGpuEjectStatus") == "safe"
   assert params.get("UsbGpuEjectError") is None
+
+
+def test_automatic_power_down_waits_for_users_without_changing_manual_status(monkeypatch):
+  params = FakeParams()
+  captured = {}
+  report = {
+    "schema": "ut3g-safe-f3-poweroff-v1",
+    "state": "f3-powered-off",
+    "f3_writes": 1,
+    "persistent_writes": 0,
+    "safe_to_cut_external_power": True,
+  }
+
+  def run(command, **kwargs):
+    captured["command"] = command
+    return SimpleNamespace(returncode=0, stdout=json.dumps(report))
+
+  monkeypatch.setattr("openpilot.system.hardware.chestnut.ejector.subprocess.run", run)
+  ChestnutEjector(params).eject(automatic=True)
+
+  assert captured["command"][-3:] == [
+    f"{BASEDIR}/tools/ut3g_safe_f3_poweroff.py", "--wait-for-users", "--fast-release-after-f3",
+  ]
+  assert params.get("UsbGpuEjectStatus") is None
+  assert params.get("UsbGpuEjectError") is None
+
+
+def test_offroad_runtime_device_starts_one_automatic_power_down(monkeypatch):
+  params = FakeParams({"IsOffroad": True})
+  ejector = ChestnutEjector(params)
+  start = Mock()
+  monkeypatch.setattr(ejector, "_start", start)
+  present = [{"vendorId": 0x3801, "productId": 0x0001, "manufacturer": "tiny",
+              "product": "custom ed4e39b7-CLEAN", "speedMbps": 5000}]
+
+  ejector.update(True, present, auto_power_down=True)
+  ejector.update(True, present, auto_power_down=True)
+
+  start.assert_called_once_with(automatic=True)
+  assert ejector.auto_power_down_attempted
+  assert params.get("UsbGpuEjectStatus") is None
+
+
+def test_initial_offroad_does_not_automatically_power_down(monkeypatch):
+  params = FakeParams({"IsOffroad": True})
+  ejector = ChestnutEjector(params)
+  start = Mock()
+  monkeypatch.setattr(ejector, "_start", start)
+  present = [{"vendorId": 0x3801, "productId": 0x0001, "manufacturer": "tiny",
+              "product": "custom ed4e39b7-CLEAN", "speedMbps": 5000}]
+
+  ejector.update(True, present, auto_power_down=False)
+
+  start.assert_not_called()
+
+
+def test_manual_eject_remains_available_before_first_onroad(monkeypatch):
+  params = FakeParams({"IsOffroad": True, "UsbGpuEjectRequest": True})
+  ejector = ChestnutEjector(params)
+  start = Mock()
+  monkeypatch.setattr(ejector, "_start", start)
+  present = [{"vendorId": 0x3801, "productId": 0x0001, "manufacturer": "tiny",
+              "product": "custom ed4e39b7-CLEAN", "speedMbps": 5000}]
+
+  ejector.update(True, present, auto_power_down=False)
+
+  start.assert_called_once_with(automatic=False)
+  assert not params.get_bool("UsbGpuEjectRequest")
+  assert params.get("UsbGpuEjectStatus") == "ejecting"
+
+
+def test_automatic_power_down_does_not_block_hardwared_update(monkeypatch):
+  params = FakeParams({"IsOffroad": True})
+  ejector = ChestnutEjector(params)
+  entered = threading.Event()
+  release = threading.Event()
+  present = [{"vendorId": 0x3801, "productId": 0x0001, "manufacturer": "tiny",
+              "product": "custom ed4e39b7-CLEAN", "speedMbps": 5000}]
+
+  def block_in_worker(*, automatic):
+    assert automatic
+    entered.set()
+    release.wait(1)
+
+  monkeypatch.setattr(ejector, "eject", block_in_worker)
+  ejector.update(True, present, auto_power_down=True)
+
+  assert entered.wait(0.5)
+  assert ejector.thread is not None and ejector.thread.is_alive()
+  release.set()
+  ejector.thread.join(1)
+
+
+def test_automatic_power_down_rearms_after_disconnect(monkeypatch):
+  params = FakeParams({"IsOffroad": True})
+  ejector = ChestnutEjector(params)
+  start = Mock()
+  monkeypatch.setattr(ejector, "_start", start)
+  present = [{"vendorId": 0x3801, "productId": 0x0001, "manufacturer": "tiny",
+              "product": "custom ed4e39b7-CLEAN", "speedMbps": 5000}]
+
+  ejector.update(True, present, auto_power_down=True)
+  ejector.update(True, [], auto_power_down=True)
+  ejector.update(True, present, auto_power_down=True)
+
+  assert start.call_args_list == [call(automatic=True), call(automatic=True)]
+
+
+def test_automatic_power_down_requires_manager_offroad_confirmation(monkeypatch):
+  params = FakeParams()
+  ejector = ChestnutEjector(params)
+  start = Mock()
+  monkeypatch.setattr(ejector, "_start", start)
+  present = [{"vendorId": 0x3801, "productId": 0x0001, "manufacturer": "tiny",
+              "product": "custom ed4e39b7-CLEAN", "speedMbps": 5000}]
+
+  ejector.update(True, present, auto_power_down=True)
+  start.assert_not_called()
+
+  params.values["IsOffroad"] = True
+  ejector.update(True, present, auto_power_down=True)
+  start.assert_called_once_with(automatic=True)
 
 
 def test_ejector_rejects_success_exit_without_safe_f3_report(monkeypatch):

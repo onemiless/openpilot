@@ -1,3 +1,4 @@
+import gc
 import numpy as np
 import pytest
 
@@ -53,7 +54,14 @@ def test_initial_big_model_failure_falls_back_to_small():
 def test_successful_big_model_keeps_preloaded_small_for_runtime_fallback(monkeypatch):
   params = FakeParams()
   big_model = object()
-  small_model = object()
+  class SmallModel:
+    def __init__(self):
+      self.warmup_calls = 0
+
+    def warmup(self):
+      self.warmup_calls += 1
+
+  small_model = SmallModel()
   calls = {"big": 0, "small": 0}
   monkeypatch.setattr(modeld_module, "load_with_timeout", lambda load, timeout: load())
 
@@ -76,8 +84,41 @@ def test_successful_big_model_keeps_preloaded_small_for_runtime_fallback(monkeyp
   assert model is big_model
   assert fallback is small_model
   assert calls == {"big": 1, "small": 1}
+  assert small_model.warmup_calls == 1
   assert params.values["ChestnutActive"] is True
   assert params.values["ChestnutLoading"] is False
+
+
+def test_small_fallback_warmup_clears_recurrent_state():
+  state = modeld_module.ModelState.__new__(modeld_module.ModelState)
+  state.is_run_model = False
+  state.frame_buf_params = {"img": (1, 1, 1, 4), "big_img": (1, 1, 1, 4)}
+  state._road_key = "img"
+  state._wide_key = "big_img"
+  state._vision_input_names = ["img", "big_img"]
+  state.numpy_inputs = {
+    "desire": np.ones(2, dtype=np.float32),
+    "tfm": np.ones((3, 3), dtype=np.float32),
+    "big_tfm": np.ones((3, 3), dtype=np.float32),
+    "prev_feat": np.ones(2, dtype=np.float32),
+  }
+  state.full_frames = {"img": object()}
+  state._blob_cache = {("img", 1): object()}
+  state.prev_desire = np.ones(2, dtype=np.float32)
+
+  def fake_run(_bufs, _transforms, _inputs):
+    for value in state.numpy_inputs.values():
+      value[:] = 7
+    state.full_frames["big_img"] = object()
+    state._blob_cache[("big_img", 2)] = object()
+
+  state.run = fake_run
+  state.warmup()
+
+  assert all(not np.any(value) for value in state.numpy_inputs.values())
+  assert not np.any(state.prev_desire)
+  assert state.full_frames == {}
+  assert state._blob_cache == {}
 
 
 def test_successful_big_model_survives_missing_small_fallback(monkeypatch):
@@ -102,18 +143,27 @@ def test_successful_big_model_survives_missing_small_fallback(monkeypatch):
   assert params.values["ChestnutLoading"] is False
 
 
-def test_runtime_big_model_failure_switches_to_preloaded_small():
+def test_runtime_big_model_failure_switches_to_preloaded_small(monkeypatch):
   params = FakeParams()
   params.values["ChestnutActive"] = True
   small_model = object()
   chestnut_state = type("ChestnutState", (), {"big": True})()
+  logs = []
+  retained = []
+  destroyed = []
+  monkeypatch.setattr(modeld_module, "_failed_chestnut_models", retained)
+  monkeypatch.setattr(modeld_module.cloudlog, "exception", lambda *args: logs.append(args))
 
   class FailingBigModel:
     def run(self, *_args, **_kwargs):
       raise RuntimeError("non-finite model output")
 
+    def __del__(self):
+      destroyed.append(True)
+
+  active = FailingBigModel()
   active, output, fell_back = modeld_module.run_model_with_fallback(
-    FailingBigModel(), small_model, params, chestnut_state, (), {}, {},
+    active, small_model, params, chestnut_state, (), {}, {},
   )
 
   assert active is small_model
@@ -122,6 +172,34 @@ def test_runtime_big_model_failure_switches_to_preloaded_small():
   assert params.values["ChestnutActive"] is False
   assert chestnut_state.big is False
   assert ("ChestnutActive", False) in params.blocking_bool_writes
+  assert logs == [("chestnut failed, falling back to small",)]
+  assert len(retained) == 1
+  assert destroyed == []
+
+  retained.clear()
+  gc.collect()
+  assert destroyed == [True]
+
+
+def test_failed_small_warmup_does_not_leave_broken_runtime_fallback(monkeypatch):
+  params = FakeParams()
+  big_model = object()
+
+  class SmallModel:
+    def warmup(self):
+      raise RuntimeError("QCOM warmup failed")
+
+  monkeypatch.setattr(modeld_module, "load_with_timeout", lambda load, timeout: load())
+  model, fallback = modeld_module.load_models_with_fallback(
+    chestnut=True,
+    load_big=lambda: big_model,
+    load_small=SmallModel,
+    params=params,
+    update_loading_progress=lambda _progress: None,
+  )
+
+  assert model is big_model
+  assert fallback is None
 
 
 def test_runtime_big_model_failure_without_small_fallback_is_explicit():

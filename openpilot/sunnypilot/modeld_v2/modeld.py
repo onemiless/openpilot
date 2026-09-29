@@ -41,7 +41,7 @@ from openpilot.system.camerad.cameras.nv12_info import get_nv12_info
 from openpilot.selfdrive.controls.lib.desire_helper import DesireHelper, LANE_CHANGE_SPEED_MIN
 from openpilot.sunnypilot.selfdrive.controls.lib.oem_lane_change_gate import OemLaneChangeGate, lane_change_start_permissions
 from openpilot.sunnypilot.selfdrive.controls.lib.turn_entry import TurnEntryGate, TurnCompletionTracker
-from openpilot.selfdrive.controls.lib.drive_helpers import get_accel_from_plan, smooth_value
+from openpilot.selfdrive.controls.lib.drive_helpers import get_accel_from_plan, get_curvature_from_plan, smooth_value
 from openpilot.selfdrive.modeld.modeld import ChestnutState
 
 from openpilot.selfdrive.modeld.compile_modeld import (
@@ -68,6 +68,7 @@ from openpilot.sunnypilot.selfdrive.controls.lib.relc import RoadEdgeLaneChangeC
 
 PROCESS_NAME = "openpilot.selfdrive.modeld.modeld_tinygrad"
 BIG_MODEL_TIMEOUT = C3XL_MODEL_LOAD_TIMEOUT
+_failed_chestnut_models: list[object] = []
 
 
 def _pkl_exists(path):
@@ -112,7 +113,9 @@ def load_models_with_fallback(*, chestnut, load_big, load_small, params, update_
     model = small_model
   elif chestnut:
     try:
-      small_model = load_small()
+      preloaded_small_model = load_small()
+      preloaded_small_model.warmup()
+      small_model = preloaded_small_model
     except Exception:
       cloudlog.exception("small fallback preload failed; continuing with chestnut")
   assert model is not None
@@ -130,6 +133,9 @@ def run_model_with_fallback(model, small_model, params, chestnut_state, bufs, tr
     if small_model is None:
       cloudlog.exception("chestnut failed and small fallback unavailable")
       raise RuntimeError("chestnut failed and small fallback unavailable") from error
+    if not _failed_chestnut_models:
+      # Releasing the USB-backed AMD model can synchronize the failed device; defer it out of the realtime fallback path.
+      _failed_chestnut_models.append(model)
     cloudlog.exception("chestnut failed, falling back to small")
     if chestnut_state is not None:
       chestnut_state.big = False
@@ -622,7 +628,6 @@ def main(demo=False):
       mdv2sp_send = messaging.new_message('modelDataV2SP')
 
       action = model.get_action_from_model(model_output, prev_action, lat_action_t, long_action_t, v_ego)
-      prev_action = action
       fill_model_msg(drivingdata_send, modelv2_send, model_output, action,
                      publish_state, meta_main.frame_id, meta_extra.frame_id, frame_id,
                      frame_drop_ratio, meta_main.timestamp_eof, model_execution_time, live_calib_seen, meta_constants)
@@ -655,6 +660,7 @@ def main(demo=False):
         left_start_allowed, right_start_allowed = lane_change_start_permissions(
           topology, healthy=lane_topology_healthy, now_ns=gate_now_ns,
           oem_permissions=oem_permissions, safety_blocks=oem_gate.lane_change_safety_blocks,
+          ignore_solid=(left_ignore_solid, right_ignore_solid),
         )
         oem_solid_override = tuple(oem_permissions[i] and not oem_gate.safety_blocks[i]
                                    and lane_change_entry for i in range(2))
@@ -708,6 +714,21 @@ def main(demo=False):
         left_safety_blocked=entry_safety_blocks[0], right_safety_blocked=entry_safety_blocks[1],
         **turn_permissions,
       )
+      if DH.turn_maneuver.state == 'active':
+        # Keep turn control on the same model plan published for the displayed path.
+        plan = model_output['plan'][0]
+        turn_curvature = get_curvature_from_plan(
+          plan[:, Plan.T_FROM_CURRENT_EULER][:, 2], plan[:, Plan.ORIENTATION_RATE][:, 2],
+          model.constants.T_IDXS, v_ego, lat_action_t,
+        )
+        if v_ego > model.MIN_LAT_CONTROL_SPEED:
+          turn_curvature = smooth_value(turn_curvature, prev_action.desiredCurvature, model.LAT_SMOOTH_SECONDS)
+        else:
+          turn_curvature = prev_action.desiredCurvature
+        action.desiredCurvature = float(turn_curvature)
+        modelv2_send.modelV2.action.desiredCurvature = action.desiredCurvature
+        drivingdata_send.drivingModelData.action.desiredCurvature = action.desiredCurvature
+      prev_action = action
       modelv2_send.modelV2.meta.laneChangeState = DH.lane_change_state
       modelv2_send.modelV2.meta.laneChangeDirection = DH.lane_change_direction
       mdv2sp_send.modelDataV2SP.laneTurnDirection = DH.lane_turn_direction
