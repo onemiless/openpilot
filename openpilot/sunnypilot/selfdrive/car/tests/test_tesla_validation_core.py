@@ -92,7 +92,7 @@ def test_rejected_action_after_echo_does_not_cancel_active_request():
   assert decode_body_controls(retry.dat)["turn_request"] == 1
 
 
-def test_repeated_action_rejections_keep_existing_feedback_timeout():
+def test_repeated_action_rejections_finish_without_unneeded_cancel_at_feedback_timeout():
   controller = TeslaTurnSignalRealtimeController(configured=True)
   started = 1_000_000_000
   assert controller.submit_request("test", "right", started, hold_until_cancel=True)
@@ -105,8 +105,39 @@ def test_repeated_action_rejections_keep_existing_feedback_timeout():
     assert controller.status()["cancel_requested"] is False
 
   controller.advance_time(started + VEHICLE_FEEDBACK_TIMEOUT_NS)
-  assert controller.status()["cancel_requested"] is True
-  assert controller.status()["cancel_reason"] == "vehicle_feedback_timeout"
+  assert controller.status() is None
+  assert controller.drain_completed()[-1][0]["result"] == "CANCELLED_BEFORE_SEND"
+  assert controller.submit_request("next", "left", started + VEHICLE_FEEDBACK_TIMEOUT_NS + 1)
+
+
+def test_explicit_cancel_after_rejected_action_does_not_latch_cancel_failure():
+  controller = TeslaTurnSignalRealtimeController(configured=True)
+  started = 1_000_000_000
+  assert controller.submit_request("test", "left", started, hold_until_cancel=True)
+  controller.observe_frame(started, DAS_BODY_CONTROLS_ADDRESS, idle_body_controls(4), 1)
+  action = controller.take_can_sends(started)[0]
+  controller.observe_frame(started + 1, DAS_BODY_CONTROLS_ADDRESS, action.dat, 0xC1)
+
+  assert controller.request_cancel("test", started + 2)
+  assert controller.status() is None
+  result = controller.drain_completed()[-1][0]
+  assert result["result"] == "CANCELLED_BEFORE_SEND"
+  assert result["action_rejections"] == result["action_frames_sent"] == 1
+  assert controller.submit_request("next", "right", started + 3)
+
+
+def test_pending_cancel_finishes_when_its_only_action_is_rejected():
+  controller = TeslaTurnSignalRealtimeController(configured=True)
+  started = 1_000_000_000
+  assert controller.submit_request("test", "right", started, hold_until_cancel=True)
+  controller.observe_frame(started, DAS_BODY_CONTROLS_ADDRESS, idle_body_controls(4), 1)
+  action = controller.take_can_sends(started)[0]
+  assert controller.request_cancel("test", started + 1)
+  controller.observe_frame(started + 2, DAS_BODY_CONTROLS_ADDRESS, action.dat, 0xC1)
+
+  assert controller.status() is None
+  assert controller.drain_completed()[-1][0]["result"] == "CANCELLED_BEFORE_SEND"
+  assert controller.submit_request("next", "left", started + 3)
 
 
 def test_navigation_signal_session_waits_for_explicit_cancel_after_lane_change_cycle():
@@ -131,6 +162,26 @@ def test_navigation_signal_session_waits_for_explicit_cancel_after_lane_change_c
   assert controller.request_cancel("nav", 500)
   assert controller.status() is None
   assert controller.drain_completed()[0][0]["result"] == "CANCELLED_BEFORE_SEND"
+
+
+def test_app_red_light_keepalive_refreshes_only_the_matching_active_session_timeout():
+  controller = TeslaTurnSignalRealtimeController(configured=True)
+  started = 1_000_000_000
+  assert controller.submit_request("nav", "left", started, hold_until_cancel=True)
+  controller.observe_frame(started, DAS_BODY_CONTROLS_ADDRESS, idle_body_controls(4), 1)
+  action = controller.take_can_sends(started)[0]
+  controller.observe_frame(started + 1, DAS_BODY_CONTROLS_ADDRESS, action.dat, 0x81)
+  controller.observe_frame(started + 2, 0x3F5, (1 << 50).to_bytes(8, "little"), 1)
+  ui = bytearray(7)
+  ui[3] = 2
+  controller.observe_frame(started + 3, 0x311, bytes(ui), 0)
+  assert not controller.refresh_session("other", started + 30_000_000_000)
+  assert controller.refresh_session("nav", started + 30_000_000_000)
+
+  controller.advance_time(started + 60_000_000_001)
+  assert controller.status() is not None
+  controller.advance_time(started + 90_000_000_001)
+  assert controller.status()["cancel_requested"]
 
 
 def test_navigation_lamp_follows_real_sp_starting_to_pre_cycle_until_coordinator_completes():

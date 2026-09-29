@@ -174,6 +174,7 @@ class TeslaTurnSignalRealtimeController:
       "tx_echo": session["tx_echo"],
       "rejected": session["rejected"],
       "action_frames_sent": session["action_frames_sent"],
+      "action_rejections": session["action_rejections"],
       "cancel_sent": session["cancel_sent"],
       "cancel_attempts": session["cancel_attempts"],
       "cancel_reason": session["cancel_reason"],
@@ -222,6 +223,7 @@ class TeslaTurnSignalRealtimeController:
         "test_id": test_id,
         "direction": direction,
         "started_nanos": int(now_nanos),
+        "last_keepalive_nanos": int(now_nanos),
         "session_timeout_ns": int(session_timeout_ns),
         "hold_until_cancel": bool(hold_until_cancel),
         "used_template_generation": -1,
@@ -230,6 +232,7 @@ class TeslaTurnSignalRealtimeController:
         "awaiting_since_nanos": 0,
         "action_frames_sent": 0,
         "action_frames_echoed": 0,
+        "action_rejections": 0,
         "cancel_sent": False,
         "cancel_frames": [],
         "cancel_attempts": 0,
@@ -253,10 +256,23 @@ class TeslaTurnSignalRealtimeController:
       self._record_locked("test_started", now_nanos, address=hex(DAS_BODY_CONTROLS_ADDRESS), execution="card_realtime")
       return True
 
+  def refresh_session(self, test_id: str, now_nanos: int) -> bool:
+    """Refresh timeout activity for the current qualified navigation turn."""
+    with self._lock:
+      if self._active is None or self._active["test_id"] != test_id or self._active["cancel_requested"]:
+        return False
+      self._active["last_keepalive_nanos"] = max(self._active["last_keepalive_nanos"], int(now_nanos))
+      return True
+
   def _request_cancel_locked(self, reason: str, now_nanos: int) -> None:
     if self._active is None or self._active["cancel_requested"]:
       return
-    if self._active["action_frames_sent"] == 0:
+    action_never_accepted = (
+      self._active["action_frames_sent"] > 0 and
+      self._active["action_rejections"] == self._active["action_frames_sent"] and
+      self._active["action_frames_echoed"] == 0 and not self._active["feedback"]
+    )
+    if self._active["action_frames_sent"] == 0 or action_never_accepted:
       self._finish_locked("CANCELLED_BEFORE_SEND", now_nanos, requested_cancel_reason=reason)
       return
     self._active["cancel_requested"] = True
@@ -400,6 +416,13 @@ class TeslaTurnSignalRealtimeController:
           if phase == "cancel":
             self._active["cancel_rejections"] += 1
           if phase == "action":
+            self._active["action_rejections"] += 1
+            if (self._active["cancel_requested"] and
+                self._active["action_rejections"] == self._active["action_frames_sent"] and
+                self._active["action_frames_echoed"] == 0 and not self._active["feedback"]):
+              self._finish_locked("CANCELLED_BEFORE_SEND", monotonic_nanos,
+                                  requested_cancel_reason=self._active["cancel_reason"])
+              return
             # A rejection applies to this counter/template pair. Keep the
             # existing request active and try the next fresh OEM template;
             # the existing vehicle-feedback/session timeouts still bound it.
@@ -520,7 +543,7 @@ class TeslaTurnSignalRealtimeController:
       elif (self._active["cancel_requested"] and
             now_nanos - self._active["cancel_requested_nanos"] >= CANCEL_TOTAL_TIMEOUT_NS):
         self._finish_locked("CANCEL_TIMEOUT", now_nanos)
-      elif now_nanos - self._active["started_nanos"] >= self._active["session_timeout_ns"]:
+      elif now_nanos - self._active["last_keepalive_nanos"] >= self._active["session_timeout_ns"]:
         if not self._active["cancel_requested"]:
           self._request_cancel_locked("session_timeout", now_nanos)
 

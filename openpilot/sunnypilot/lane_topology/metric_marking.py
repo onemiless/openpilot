@@ -268,6 +268,18 @@ def measure_metric_marking(image: np.ndarray, samples: tuple[MetricLaneSample, .
   if fixed_evidence.marking_type == LaneMarkingType.solid:
     return fixed_evidence
   if fixed_evidence.marking_type == LaneMarkingType.dashed:
+    # Wet paint and headlamp reflections can split a continuous line into
+    # several bright islands at the fixed threshold. Only override short-gap
+    # dashed evidence when the conservative floor strongly restores the same
+    # strip as a continuous solid line.
+    continuity_presence = contrast >= min(MIN_ADAPTIVE_CONTRAST, contrast_threshold)
+    continuity_evidence = classify_metric_presence(distances, continuity_presence)
+    if (fixed_evidence.max_internal_dark_gap_m <= 4.0
+        and continuity_evidence.marking_type == LaneMarkingType.solid
+        and continuity_evidence.coverage >= 0.85
+        and continuity_evidence.max_internal_dark_gap_m <= 1.0
+        and structure_valid(continuity_evidence, continuity_presence)):
+      return continuity_evidence
     if structure_valid(fixed_evidence, fixed_presence):
       return fixed_evidence
     fixed_evidence = MetricMarkingEvidence.unknown(len(distances))

@@ -129,7 +129,9 @@
           ]
         },
         "routeNoticeDistanceM": { "type": "integer", "minimum": 0, "maximum": 100000 },
-        "routeNoticeObservedAtMs": { "type": "integer", "minimum": 0 }
+        "routeNoticeObservedAtMs": { "type": "integer", "minimum": 0 },
+        "turnSignalHold": { "type": "boolean" },
+        "turnSignalCountdownS": { "type": "integer", "minimum": 0, "maximum": 3600 }
       }
     },
     "lanes": {

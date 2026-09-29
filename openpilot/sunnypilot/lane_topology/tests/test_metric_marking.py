@@ -89,6 +89,28 @@ def test_metric_marking_recovers_moderately_blurred_low_contrast_lines():
     assert 0.0 < evidence.confidence < 1.0
 
 
+def test_metric_marking_restores_continuous_low_contrast_paint_between_bright_reflections():
+  image = np.full((120, 180), 40, dtype=np.uint8)
+  samples = tuple(MetricLaneSample(float(distance), 30 + (distance - 8) * 4, 60.0)
+                  for distance in np.arange(8.0, 36.0, 1.0))
+  image[57:64, :] = 48
+  for sample in samples:
+    if sample.distance_m % 9.0 < 3.0:
+      column = int(sample.u)
+      image[57:64, column - 2:column + 3] = 90
+
+  evidence = measure_metric_marking(image, samples)
+
+  assert evidence.marking_type == LaneMarkingType.solid
+  assert evidence.coverage >= 0.85
+
+
+def test_metric_marking_keeps_real_dark_gaps_dashed_during_continuity_check():
+  image, samples = synthetic_marking(LaneMarkingType.dashed, contrast=40, blur_sigma=0.0)
+
+  assert measure_metric_marking(image, samples).marking_type == LaneMarkingType.dashed
+
+
 def test_metric_marking_uses_repeated_partial_dashes_as_low_confidence_evidence():
   image, samples = synthetic_marking(LaneMarkingType.dashed, contrast=40, blur_sigma=0.0)
   low_resolution_window = tuple(sample for sample in samples if 8.0 <= sample.distance_m <= 24.0)

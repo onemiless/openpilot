@@ -97,6 +97,21 @@ def test_parses_bounded_normalized_snapshot():
   assert snapshot.route_notice_distance_m == 350
 
 
+def test_parses_app_owned_turn_signal_hold_and_countdown():
+  body = payload()
+  body["guidance"]["turnSignalHold"] = True
+  body["guidance"]["turnSignalCountdownS"] = 37
+
+  snapshot = parse_snapshot(encode(body))
+
+  assert snapshot.turn_signal_hold
+  assert snapshot.turn_signal_countdown_s == 37
+
+  del body["guidance"]["turnSignalCountdownS"]
+  with pytest.raises(NavAssistProtocolError, match="requires turnSignalCountdownS"):
+    parse_snapshot(encode(body))
+
+
 def test_sequence_route_revision_and_local_ttl():
   now = 1_000_000_000
   receiver = store(clock_ns=lambda: now)

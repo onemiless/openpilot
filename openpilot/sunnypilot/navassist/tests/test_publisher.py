@@ -35,6 +35,18 @@ def test_fresh_snapshot_maps_to_typed_cereal_without_control_commands():
   assert state.rejectReason == "none"
 
 
+def test_app_turn_signal_hold_and_countdown_reach_typed_cereal():
+  raw = payload()
+  raw["guidance"]["turnSignalHold"] = True
+  raw["guidance"]["turnSignalCountdownS"] = 37
+  current = AcceptedSnapshot(parse_snapshot(encode(raw)), 1_000_000_000, 1_500_000_000)
+
+  state = build_nav_assist_message(current, 1_100_000_000).navAssistStateSP
+
+  assert state.turnSignalHold
+  assert state.turnSignalCountdownS == 37
+
+
 def test_local_expiry_fails_closed_while_retaining_diagnostics():
   message = build_nav_assist_message(
     accepted(), 1_500_000_001, local_localization_valid=True,

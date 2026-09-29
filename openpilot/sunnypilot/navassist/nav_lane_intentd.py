@@ -295,9 +295,11 @@ def anchored_amap_ego_index(topology, oem: dict, amap_lane_count: int) -> int | 
 
 def oem_crossing_allowed(topology, oem: dict, *, side: str, visual_healthy: bool,
                          now_ns: int | None = None, ignore_solid: bool = False) -> bool:
-  """Either 0x399 permission or visual evidence may allow crossing; known hazards veto."""
+  """Fuse 0x399 and visual crossing evidence; a fresh OEM denial vetoes ordinary starts."""
   if side not in ("left", "right"):
     raise ValueError("side must be left or right")
+  if oem.get("permissionValid", False) and not oem.get(f"{side}Allowed", False) and not ignore_solid:
+    return False
   permissions = lane_change_start_permissions(
     topology, healthy=visual_healthy, now_ns=time.monotonic_ns() if now_ns is None else now_ns,
     oem_permissions=(bool(oem.get("permissionValid") and oem.get("leftAllowed")),
@@ -470,6 +472,7 @@ def main() -> None:
       maneuver_event_id=int(nav.maneuverEventId),
       maneuver=str(nav.maneuver),
       distance_m=float(nav.maneuverDistanceM),
+      turn_signal_hold=bool(nav_linked and (nav.turnSignalHold or car_state.standstill)),
       source_interrupted=bool(base_healthy and not nav.stale and str(nav.mode) == "realtime"
                               and nav.routeMatched and not nav.routeActive and nav.maneuverEventId == 0),
     )
@@ -543,6 +546,8 @@ def main() -> None:
     state.ignoreSolidBoundary = bool(lane_request_active and plan.ignore_solid_boundary)
     state.routeRevision = plan.route_revision
     state.maneuverEventId = intent.request_id if intent.signal_requested and intent.target_lane_index < 0 else plan.maneuver_event_id
+    state.turnSignalHold = bool(intent.signal_requested and intent.target_lane_index < 0 and nav_linked and
+                                (nav.turnSignalHold or car_state.standstill))
     state.reason = intent.reason
     state.sessionId = plan.session_id
     pm.send("navLaneIntentSP", message)

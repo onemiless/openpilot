@@ -259,7 +259,49 @@ def test_navigation_lane_intent_requests_and_cancels_bounded_tesla_signal_sessio
 
   sm.data["navLaneIntentSP"].signalRequested = False
   adapter._update_nav_turn_signal(102)
-  assert validation.cancels == [("nav-fa57a52d-7-3-left", 102)]
+  assert validation.cancels == []
+
+  sm.data["navLaneIntentSP"].signalRequested = True
+  adapter._update_nav_turn_signal(103)
+  assert len(validation.requests) == 1
+  sm.data["navLaneIntentSP"].signalRequested = False
+  adapter._update_nav_turn_signal(104)
+  adapter._update_nav_turn_signal(1_500_000_104)
+  assert validation.cancels == [("nav-fa57a52d-7-3-left", 1_500_000_104)]
+
+  sm.data["navLaneIntentSP"].signalRequested = True
+  adapter._update_nav_turn_signal(1_500_000_105)
+  assert len(validation.requests) == 1
+  sm.data["navLaneIntentSP"].requestId = sm.data["navLaneIntentSP"].maneuverEventId = 4
+  adapter._update_nav_turn_signal(1_500_000_106)
+  assert len(validation.requests) == 2
+
+
+def test_navigation_red_light_hold_refreshes_existing_physical_lamp_session():
+  now = time.monotonic()
+  sm = FakeSubMaster(now=now)
+  sm.data["navLaneIntentSP"] = SimpleNamespace(
+    valid=True, signalRequested=True, turnSignalHold=True, direction="right",
+    sessionId="session-red", routeRevision=2, requestId=9, maneuverEventId=9,
+  )
+  adapter = TeslaCardAdapter("tesla", SimpleNamespace(CS=FakeState()), sm)
+
+  class FakeValidation:
+    configured = True
+    def __init__(self):
+      self.refreshes = []
+    def submit_request(self, *_args, **_kwargs):
+      return True
+    def refresh_session(self, test_id, now_nanos):
+      self.refreshes.append((test_id, now_nanos))
+      return True
+
+  validation = FakeValidation()
+  adapter.validation = validation
+  adapter._update_nav_turn_signal(100)
+  adapter._update_nav_turn_signal(200)
+
+  assert validation.refreshes == [("nav-5c948cf5-2-9-right", 200)]
 
 
 def test_temporarily_busy_signal_controller_retries_with_bounded_backoff():
@@ -360,7 +402,9 @@ def test_pre_turn_lamp_transitions_to_same_direction_lane_change_without_blinkin
 
   sm.data["navLaneIntentSP"].signalRequested = False
   adapter._update_nav_turn_signal(102)
-  assert validation.cancels == [("nav-fa57a52d-7-11-left", 102)]
+  assert not validation.cancels
+  adapter._update_nav_turn_signal(1_500_000_102)
+  assert validation.cancels == [("nav-fa57a52d-7-11-left", 1_500_000_102)]
 
 
 def test_navigation_signal_direction_change_cancels_old_lamp_before_requesting_new_one():

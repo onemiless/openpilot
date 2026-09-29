@@ -74,6 +74,7 @@ class NavTurnPlan:
   maneuver: str
   distance_m: float
   source_interrupted: bool = False
+  turn_signal_hold: bool = False
 
 
 @dataclass(frozen=True)
@@ -137,7 +138,12 @@ class NavTurnSignalCoordinator:
     event_key = (plan.session_id, plan.route_revision, plan.maneuver_event_id)
 
     if self._active_key is not None:
-      if now_ns - self._active_since_ns > self.SIGNAL_TIMEOUT_NS:
+      same_active_event = event_key == self._active_key and direction == self._active_direction
+      if plan.valid and same_active_event and plan.turn_signal_hold:
+        # A fresh direction-matched red countdown or the vehicle's measured
+        # standstill keeps this same navigation turn session alive.
+        self._active_since_ns = now_ns
+      elif now_ns - self._active_since_ns > self.SIGNAL_TIMEOUT_NS:
         return self._reset("turnSignalTimeout")
       same_route_direction = ((plan.session_id, plan.route_revision) == self._active_key[:2]
                               and direction == self._active_direction)
@@ -475,7 +481,10 @@ class NavLaneIntentCoordinator:
       )
     if not base_healthy:
       if self._phase not in ("idle", "cooldown") and self._candidate is not None:
-        return self._abort(self._candidate[0], "health")
+        return self._abort(
+          self._candidate[0], "health",
+          driver_cancelled=(self._phase == "changing" and (vehicle.steering_pressed or vehicle.brake_pressed)),
+        )
       self._reset()
       return self._idle("health")
 

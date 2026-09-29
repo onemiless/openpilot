@@ -69,7 +69,7 @@ LOCATION_KEYS = frozenset((
 GUIDANCE_KEYS = frozenset((
   "maneuver", "maneuverDistanceM", "nextManeuver", "nextManeuverDistanceM", "currentRoad", "nextRoad",
   "roadClass", "roadType", "advisorySpeedMps", "parallelRoadStatus", "elevatedRoadStatus", "routeNoticeType",
-  "routeNoticeDistanceM", "routeNoticeObservedAtMs", "observedAtMs",
+  "routeNoticeDistanceM", "routeNoticeObservedAtMs", "observedAtMs", "turnSignalHold", "turnSignalCountdownS",
 ))
 LANES_KEYS = frozenset(("observedAtMs", "items"))
 LANE_ITEM_KEYS = frozenset(("index", "allowedActions", "recommendedActions", "recommended", "routeAvoid"))
@@ -130,6 +130,8 @@ class NavAssistSnapshot:
   route_notice_type: str
   route_notice_distance_m: float
   route_notice_observed_at_ms: int
+  turn_signal_hold: bool
+  turn_signal_countdown_s: int
   lane_guidance_present: bool
   lane_guidance_observed_at_ms: int
   lanes: tuple[LaneGuidance, ...]
@@ -326,6 +328,10 @@ def parse_snapshot(body: bytes) -> NavAssistSnapshot:
   location_observed_at_ms = _integer(location, "observedAtMs", 0, 2**63 - 1) if location_present else 0
   guidance_observed_at_ms = _integer(guidance, "observedAtMs", 0, 2**63 - 1) if guidance_present else 0
   maneuver = _enum(guidance, "maneuver", MANEUVER_VALUES) if guidance_present else "none"
+  turn_signal_hold = _optional_boolean(guidance, "turnSignalHold")
+  turn_signal_countdown_s = _optional_integer(guidance, "turnSignalCountdownS", 0, 3_600)
+  if turn_signal_hold and turn_signal_countdown_s < 0:
+    _reject("malformed", "turnSignalHold requires turnSignalCountdownS")
   lane_observed_at_ms = _integer(lane_block, "observedAtMs", 0, 2**63 - 1) if lane_guidance_present else 0
 
   return NavAssistSnapshot(
@@ -368,6 +374,8 @@ def parse_snapshot(body: bytes) -> NavAssistSnapshot:
     route_notice_type=_enum(guidance, "routeNoticeType", ROUTE_NOTICE_VALUES, default="none"),
     route_notice_distance_m=float(_optional_integer(guidance, "routeNoticeDistanceM", 0, 100_000, default=0)),
     route_notice_observed_at_ms=_optional_integer(guidance, "routeNoticeObservedAtMs", 0, 2**63 - 1, default=0),
+    turn_signal_hold=turn_signal_hold,
+    turn_signal_countdown_s=turn_signal_countdown_s,
     lane_guidance_present=lane_guidance_present,
     lane_guidance_observed_at_ms=lane_observed_at_ms,
     lanes=tuple(lanes),

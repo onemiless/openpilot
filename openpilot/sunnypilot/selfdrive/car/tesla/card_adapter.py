@@ -25,6 +25,9 @@ from openpilot.sunnypilot.selfdrive.traffic_control.tesla_observer import (
 CONTEXT_STALE_S = 0.2
 NAV_SIGNAL_SESSION_TIMEOUT_NS = 60_000_000_000
 NAV_SIGNAL_RETRY_NS = 500_000_000
+# Match NavTurnSignalCoordinator's existing plan-gap allowance so a transient
+# same-event intent gap does not tear down and recreate the physical lamp session.
+NAV_SIGNAL_RELEASE_GRACE_NS = 1_500_000_000
 LIGHTING_STALE_NS = 2_000_000_000
 LIGHTING_MESSAGE = "ID3F5VCFRONT_lighting"
 CONTEXT_SERVICES = ("selfdriveStateSP", "modelV2", "navLaneIntentSP", "deviceMotion", "extrinsicsCalibration")
@@ -124,7 +127,9 @@ class TeslaCardAdapter:
     self.validation = TeslaTurnSignalRealtimeController(configured) if self.enabled else None
     self._last_nav_signal_request: tuple[str, int, int, str] | None = None
     self._active_nav_signal_test_id: str | None = None
+    self._active_nav_signal_event: tuple[str, int, int] | None = None
     self._nav_signal_retry_after_ns = 0
+    self._nav_signal_release_after_ns = 0
     self.ambient = AmbientLightingController() if self.enabled else None
 
   def _create_road_context_parser(self):
@@ -224,11 +229,12 @@ class TeslaCardAdapter:
     if self._active_nav_signal_test_id is not None and callable(status_fn):
       status = status_fn()
       if status is None or status.get("test_id") != self._active_nav_signal_test_id:
-        # The realtime controller can finish a session asynchronously after a
-        # context loss. Clear the adapter-side ownership so the same still-live
-        # navigation event may retry when lateral control becomes available.
+        # The realtime controller can finish asynchronously after a lateral or
+        # context loss. Let that still-live navigation event retry on recovery.
         self._active_nav_signal_test_id = None
+        self._active_nav_signal_event = None
         self._last_nav_signal_request = None
+        self._nav_signal_release_after_ns = 0
     now = time.monotonic()
     service = "navLaneIntentSP"
     fresh = bool(
@@ -238,18 +244,28 @@ class TeslaCardAdapter:
     intent = self.sm[service]
     direction = str(intent.direction) if fresh else "none"
     requested = bool(fresh and intent.valid and intent.signalRequested and direction in ("left", "right"))
+    turn_signal_hold = bool(requested and getattr(intent, "turnSignalHold", False))
     if not requested:
       if self._active_nav_signal_test_id is not None:
+        event = (str(intent.sessionId), int(intent.routeRevision), int(intent.maneuverEventId)) if fresh and intent.valid else None
+        if event == self._active_nav_signal_event:
+          if self._nav_signal_release_after_ns == 0:
+            self._nav_signal_release_after_ns = now_nanos + NAV_SIGNAL_RELEASE_GRACE_NS
+          if now_nanos < self._nav_signal_release_after_ns:
+            return
         self.validation.request_cancel(self._active_nav_signal_test_id, now_nanos)
         self._active_nav_signal_test_id = None
-      self._last_nav_signal_request = None
+        self._active_nav_signal_event = None
+      self._nav_signal_release_after_ns = 0
       self._nav_signal_retry_after_ns = 0
       return
 
+    self._nav_signal_release_after_ns = 0
     if not lateral_active:
       if self._active_nav_signal_test_id is not None:
         self.validation.request_cancel(self._active_nav_signal_test_id, now_nanos)
       self._active_nav_signal_test_id = None
+      self._active_nav_signal_event = None
       self._last_nav_signal_request = None
       self._nav_signal_retry_after_ns = 0
       return
@@ -257,6 +273,8 @@ class TeslaCardAdapter:
     session_id = str(intent.sessionId)
     key = (session_id, int(intent.routeRevision), int(intent.requestId), direction)
     if key == self._last_nav_signal_request:
+      if turn_signal_hold and self._active_nav_signal_test_id is not None:
+        self.validation.refresh_session(self._active_nav_signal_test_id, now_nanos)
       return
     if self._active_nav_signal_test_id is not None and self._last_nav_signal_request is not None:
       previous_session, previous_revision, _previous_request, previous_direction = self._last_nav_signal_request
@@ -265,9 +283,12 @@ class TeslaCardAdapter:
         # lane alignment stabilizes. Keep the physical lamp continuously on and
         # transfer logical ownership without opening a second CAN session.
         self._last_nav_signal_request = key
+        if turn_signal_hold:
+          self.validation.refresh_session(self._active_nav_signal_test_id, now_nanos)
         return
       self.validation.request_cancel(self._active_nav_signal_test_id, now_nanos)
       self._active_nav_signal_test_id = None
+      self._active_nav_signal_event = None
       self._last_nav_signal_request = None
       self._nav_signal_retry_after_ns = now_nanos + NAV_SIGNAL_RETRY_NS
       return
@@ -287,6 +308,7 @@ class TeslaCardAdapter:
     if accepted:
       self._last_nav_signal_request = key
       self._active_nav_signal_test_id = test_id
+      self._active_nav_signal_event = (session_id, key[1], event_id)
       self._nav_signal_retry_after_ns = now_nanos + NAV_SIGNAL_RETRY_NS
     elif not self.validation.configured:
       # Capability is fixed when card/Panda initialize; retrying cannot make it

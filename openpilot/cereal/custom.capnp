@@ -656,6 +656,8 @@ struct NavAssistStateSP @0xc2243c65e0340384 {
   routeNoticeDistanceM @43 :Float32;
   routeNoticeObservedAtMs @44 :UInt64;
   laneChangeSpeechCompletedId @45 :Text;
+  turnSignalHold @46 :Bool;  # Fresh App-owned red-light countdown asks the current maneuver lamp session to remain active.
+  turnSignalCountdownS @47 :Int16 = -1;
 
   struct LaneGuidance {
     index @0 :UInt8;
@@ -822,6 +824,7 @@ struct NavLaneIntentSP @0xcd96dafb67a082d0 {
   allowUnknownCrossing @13 :Bool;  # SP policy input; never bypasses stale geometry or road edge.
   ignoreSolidBoundary @14 :Bool;  # SP policy input for forkNow only; road edge remains non-crossable.
   announcementId @15 :Text;  # Exact pending speech receipt; never grants crossing permission.
+  turnSignalHold @16 :Bool;  # Hold the same navigation turn lamp while red-countdown or vehicle standstill is current; never authorizes lateral movement.
 
   enum Direction {
     none @0;

@@ -37,8 +37,10 @@ def adapter_for(accept=False):
   adapter.validation = Controller()
   adapter.sm = SM()
   adapter._active_nav_signal_test_id = None
+  adapter._active_nav_signal_event = None
   adapter._last_nav_signal_request = None
   adapter._nav_signal_retry_after_ns = 0
+  adapter._nav_signal_release_after_ns = 0
   return adapter
 
 
@@ -61,6 +63,7 @@ def test_successful_navigation_is_not_exhausted_after_sixty_four_events():
     a._update_nav_turn_signal(event * 2_000_000_000 + 1)
     assert a.validation.calls == event
     a.sm.intent.signalRequested = False
+    a.sm.intent.maneuverEventId = event + 1
     a._update_nav_turn_signal(event * 2_000_000_000 + 2)
     a.sm.intent.signalRequested = True
 

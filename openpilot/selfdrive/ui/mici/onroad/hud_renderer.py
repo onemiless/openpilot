@@ -213,7 +213,9 @@ class HudRenderer(Widget):
         type_text_sp = {"solid": "SOLID", "dashed": "DASHED"}
         left_text = type_text_sp.get(str(topology_sp.leftMarking))
         right_text = type_text_sp.get(str(topology_sp.rightMarking))
-        if not topology_sp.valid or topology_sp.stale or topology_sp.ambiguous or left_text is None or right_text is None:
+        if (not topology_sp.valid or topology_sp.stale or topology_sp.ambiguous
+            or not topology_sp.leftEvidenceValid or not topology_sp.rightEvidenceValid
+            or left_text is None or right_text is None):
           return
         lane_number = topology_sp.egoLaneIndexFromLeft + 1
         validity = "CROSSING DATA VALID" if topology_sp.validForControl else "OBSERVATION ONLY"

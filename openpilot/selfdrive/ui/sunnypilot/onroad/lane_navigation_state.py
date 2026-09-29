@@ -115,8 +115,8 @@ def lane_display_from_service(topology, *, seen: bool, alive: bool, valid: bool)
     return LaneOverlayDisplay("左侧  未知", "车道识别中", "右侧  未知")
 
   reliable = bool(topology.valid and not topology.stale and not topology.ambiguous)
-  left_marking = str(topology.leftMarking) if reliable else "unknown"
-  right_marking = str(topology.rightMarking) if reliable else "unknown"
+  left_marking = str(topology.leftMarking) if reliable and getattr(topology, "leftEvidenceValid", True) else "unknown"
+  right_marking = str(topology.rightMarking) if reliable and getattr(topology, "rightEvidenceValid", True) else "unknown"
   left = MARKING_LABELS.get(left_marking, "未知")
   right = MARKING_LABELS.get(right_marking, "未知")
   lane_index = int(topology.egoLaneIndexFromLeft)

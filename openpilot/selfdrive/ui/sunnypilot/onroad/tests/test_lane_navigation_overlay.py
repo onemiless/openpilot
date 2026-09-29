@@ -62,6 +62,28 @@ def test_lane_overlay_reports_uncertainty_instead_of_disappearing():
   assert not display.reliable
 
 
+def test_lane_overlay_does_not_display_retained_type_when_current_side_evidence_disagrees():
+  topology = SimpleNamespace(
+    leftMarking="dashed",
+    rightMarking="solid",
+    leftEvidenceValid=False,
+    rightEvidenceValid=True,
+    egoLaneIndexFromLeft=1,
+    visibleLaneCount=3,
+    valid=True,
+    stale=False,
+    ambiguous=False,
+    validForControl=True,
+  )
+
+  display = lane_display_from_service(topology, seen=True, alive=True, valid=True)
+
+  assert display is not None
+  assert display.left == "左  未知"
+  assert display.right == "右  实线"
+  assert display.center == "可见车道  2 / 3"
+
+
 def test_lane_overlay_uses_display_only_ui_bridge_when_track_service_is_absent():
   topology = SimpleNamespace(ego_lane_index_from_left=0, visible_lane_count=2, stale=False)
 

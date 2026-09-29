@@ -27,8 +27,8 @@ def vehicle(*, bsm_left=False, bsm_right=False, state=ObservedLaneChangeState.of
 
 
 def turn_plan(*, valid=True, maneuver="turnLeft", distance=100.0, session="session-a", revision=1, event=11,
-              source_interrupted=False):
-  return NavTurnPlan(valid, session, revision, event, maneuver, distance, source_interrupted)
+              source_interrupted=False, turn_signal_hold=False):
+  return NavTurnPlan(valid, session, revision, event, maneuver, distance, source_interrupted, turn_signal_hold)
 
 
 def test_source_zero_event_keeps_existing_lamp_identity_until_source_recovers():
@@ -215,6 +215,27 @@ def test_navigation_turn_signal_retains_a_bounded_hard_timeout():
     turn_plan(), speed_mps=15.0, now_ns=NavTurnSignalCoordinator.SIGNAL_TIMEOUT_NS + 1,
   )
   assert not timed_out.signal_requested
+
+
+def test_fresh_app_red_light_hold_suspends_timeout_only_for_the_same_turn_event():
+  coordinator = NavTurnSignalCoordinator()
+  coordinator.update(turn_plan(), speed_mps=10.0, now_ns=0)
+
+  held = coordinator.update(
+    turn_plan(turn_signal_hold=True), speed_mps=0.0,
+    now_ns=NavTurnSignalCoordinator.SIGNAL_TIMEOUT_NS + 1,
+  )
+  after_green = coordinator.update(
+    turn_plan(turn_signal_hold=False), speed_mps=1.0,
+    now_ns=NavTurnSignalCoordinator.SIGNAL_TIMEOUT_NS + 2,
+  )
+  changed = coordinator.update(
+    turn_plan(event=12, turn_signal_hold=True), speed_mps=0.0,
+    now_ns=2 * NavTurnSignalCoordinator.SIGNAL_TIMEOUT_NS + 3,
+  )
+
+  assert held.signal_requested and after_green.signal_requested
+  assert not changed.signal_requested and changed.reason == "turnSignalTimeout"
 
 
 def test_navigation_turn_signal_drops_after_the_bounded_plan_gap_grace():
@@ -461,6 +482,34 @@ def test_execution_abort_cannot_restart_same_event_after_recovery():
         assert result.reason == "laneChangeCompletionUnconfirmed"
         assert not result.signal_requested and not result.lane_change_ready
       assert coordinator._relative_consistency._completed_changes == 0
+
+
+def test_driver_takeover_during_changing_cannot_retry_as_final_fork():
+  for fault in ("steering", "brake", "lateral"):
+    coordinator, current_plan, observed, car = relative_change_started(LaneIntentDirection.left)
+    stopped = replace(
+      car,
+      steering_pressed=fault == "steering",
+      brake_pressed=fault == "brake",
+      lateral_active=fault != "lateral",
+    )
+    terminal = coordinator.update(current_plan, observed, stopped, now_ns=3_000_000_000)
+    assert terminal.reason == "health"
+
+    fork = replace(current_plan, force_fork=True, ignore_solid_boundary=True)
+    recovered = replace(
+      car,
+      lane_change_state=ObservedLaneChangeState.off,
+      lane_change_direction=LaneIntentDirection.none,
+      steering_pressed=False,
+      brake_pressed=False,
+      lateral_active=True,
+    )
+    retry = coordinator.update(fork, observed, recovered, now_ns=3_100_000_000)
+    assert retry.signal_requested == (fault == "lateral")
+    assert retry.lane_change_ready == (fault == "lateral")
+    if fault != "lateral":
+      assert retry.reason == "laneChangeCompletionUnconfirmed"
 
 
 def test_invalid_topology_does_not_hide_opposite_model_direction():

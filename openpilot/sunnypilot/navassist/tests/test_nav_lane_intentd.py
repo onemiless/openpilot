@@ -242,14 +242,14 @@ def test_visual_geometry_does_not_depend_on_239_position():
   assert visual_lane_geometry(observed, healthy=False) == (False, 0, -1, None, None)
 
 
-def test_399_permission_can_authorize_without_fresh_visual_or_with_visual_solid():
+def test_399_permission_vetoes_ordinary_visual_crossing_and_can_authorize_visual_solid():
   observed = oem_topology()
   denied = {"permissionValid": True, "leftAllowed": False, "rightAllowed": True,
             "leftLaneEvidenceValid": True, "rightLaneEvidenceValid": True}
   assert not oem_crossing_allowed(observed, denied, side="left", visual_healthy=True)
   assert oem_crossing_allowed(observed, denied, side="right", visual_healthy=True)
   assert not oem_crossing_allowed(observed, {"permissionValid": False}, side="right", visual_healthy=True)
-  assert oem_crossing_allowed(observed, denied, side="left", visual_healthy=True, now_ns=1_000_000_000)
+  assert not oem_crossing_allowed(observed, denied, side="left", visual_healthy=True, now_ns=1_000_000_000)
   assert oem_crossing_allowed(observed, {"permissionValid": False, "leftSafetyBlocked": True},
                               side="left", visual_healthy=True, now_ns=1_000_000_000)
   assert not oem_crossing_allowed(observed, {**denied, "leftSafetyBlocked": True},
@@ -259,6 +259,10 @@ def test_399_permission_can_authorize_without_fresh_visual_or_with_visual_solid(
              "leftLaneEvidenceValid": True, "rightLaneEvidenceValid": True}
   solid = oem_topology(left_marking="solid")
   assert oem_crossing_allowed(solid, allowed, side="left", visual_healthy=True)
+  assert oem_crossing_allowed(solid, denied, side="left", visual_healthy=True,
+                              now_ns=1_000_000_000, ignore_solid=True)
+  assert not oem_crossing_allowed(solid, {**denied, "leftSafetyBlocked": True}, side="left",
+                                  visual_healthy=True, now_ns=1_000_000_000, ignore_solid=True)
   # Without either fresh positive source, there is no permission.
   assert oem_crossing_allowed(solid, allowed, side="left", visual_healthy=False)
   assert not oem_crossing_allowed(observed, {"permissionValid": False, "leftAllowed": True},

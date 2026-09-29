@@ -99,6 +99,8 @@ def build_nav_assist_message(current: AcceptedSnapshot | None, now_ns: int, *, l
   state.routeNoticeType = ROUTE_NOTICE_TO_CEREAL[snapshot.route_notice_type if route_notice_valid else "none"]
   state.routeNoticeDistanceM = snapshot.route_notice_distance_m if route_notice_valid else 0.0
   state.routeNoticeObservedAtMs = snapshot.route_notice_observed_at_ms
+  state.turnSignalHold = snapshot.turn_signal_hold
+  state.turnSignalCountdownS = snapshot.turn_signal_countdown_s
   state.laneGuidanceObservedAtMs = snapshot.lane_guidance_observed_at_ms
   state.sourceAgeMs = current.age_ms(now_ns)
   lane_guidance_age_ms = snapshot.source_wall_time_ms - snapshot.lane_guidance_observed_at_ms
