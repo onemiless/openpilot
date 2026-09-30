@@ -323,7 +323,10 @@ class DesireHelper:
         entry_allowed=left_turn_allowed if selected_left else right_turn_allowed,
         keep_allowed=left_keep if selected_left else right_keep,
         hard_blocked=left_turn_blocked if selected_left else right_turn_blocked,
-        completed=turn_completed,
+        # A matched navigation turn owns its completion while its turn-only
+        # request is still current. The geometric hint can briefly fire near
+        # peak steering before the car has landed in the destination lane.
+        completed=turn_completed and not nav_turn_only,
         retry_soft_loss=turn_soft_reentry,
       )
       left_turn_allowed = active_turn and selected_left

@@ -468,6 +468,26 @@ def test_cp_completion_hint_and_lifecycle(angle, near, far, expected):
   assert (dh.desire == log.Desire.none) == expected
 
 
+def test_navigation_turn_request_prevents_early_completion_until_release():
+  dh = turn_helper()
+  nav_turn = intent(direction='right', target=-1)
+  options = dict(left_turn_allowed=False, right_turn_allowed=True,
+                 left_neighbor_exists=False, right_neighbor_exists=False,
+                 left_start_allowed=False, right_start_allowed=False)
+
+  dh.update(car_state(vEgo=5., rightBlinker=True), True, 1., nav_lane_intent=nav_turn, **options)
+  assert dh.desire == log.Desire.turnRight
+  dh.update(car_state(vEgo=5., rightBlinker=True), True, 1., nav_lane_intent=nav_turn,
+            turn_completed=True, **options)
+  assert dh.desire == log.Desire.turnRight
+
+  released = intent(direction='right', signal=False, target=-1)
+  dh.update(car_state(vEgo=5., rightBlinker=True), True, 1., nav_lane_intent=released,
+            turn_completed=True, **options)
+  assert dh.desire == log.Desire.none
+  assert dh.turn_maneuver.state == 'finished'
+
+
 def test_lateral_deactivation_ends_active_turn_until_signal_is_reset():
   dh = turn_helper(); update(dh)
   dh.update(car_state(vEgo=5., leftBlinker=True), False, 1., left_turn_allowed=True, right_turn_allowed=False)
