@@ -22,6 +22,7 @@ from tinygrad.tensor import Tensor
 
 import openpilot.cereal.messaging as messaging
 from openpilot.sunnypilot.modeld_v2.helpers import load_oob
+from openpilot.sunnypilot import jetlink_adapter
 from openpilot.cereal import log
 from opendbc.car.structs import car
 from openpilot.cereal.services import SERVICE_LIST
@@ -407,7 +408,6 @@ def main(demo=False):
   sentry.set_tag("daemon", PROCESS_NAME)
   cloudlog.bind(daemon=PROCESS_NAME)
   setproctitle(PROCESS_NAME)
-  config_realtime_process(7, 54)
 
   CHESTNUT = chestnut_present()
   if CHESTNUT:
@@ -417,6 +417,10 @@ def main(demo=False):
   params.put_bool("ChestnutLoading", CHESTNUT)
   params.put("ChestnutLoadingProgress", 1 if CHESTNUT else 0, block=True)
   params.remove("ChestnutActive")
+  if not CHESTNUT:
+    jetlink_adapter.prepare()
+
+  config_realtime_process(7, 54)
 
   last_loading_progress = -1
   def update_loading_progress(progress: int):
@@ -465,6 +469,8 @@ def main(demo=False):
     params=params,
     update_loading_progress=update_loading_progress,
   )
+  if (joined := jetlink_adapter.attach(small_model, vipc_client_main.width, vipc_client_main.height)) is not None:
+    model = joined
   cloudlog.warning(f"models loaded in {time.monotonic() - st:.1f}s, modeld starting")
 
   # messaging
@@ -602,6 +608,9 @@ def main(demo=False):
     if 'action_t' in model.numpy_inputs:
       inputs['action_t'] = np.array([lat_action_t, long_action_t], dtype=np.float32)
 
+    model.in_control = jetlink_adapter.in_control(sm)
+    model.frame_drop_ratio = frame_drop_ratio
+    handovers = getattr(model, 'handovers', 0)
     mt1 = time.perf_counter()
     send_chestnut = (chestnut_state is not None and
                     run_count % round(model.constants.MODEL_FREQ / SERVICE_LIST['chestnutState'].frequency) == 0)
@@ -614,6 +623,8 @@ def main(demo=False):
       long_delay = CP.longitudinalActuatorDelay + model.LONG_SMOOTH_SECONDS
     mt2 = time.perf_counter()
     model_execution_time = mt2 - mt1
+    if getattr(model, 'handovers', 0) != handovers:
+      run_count = 0
 
     if model_output is not None:
       model_output_t = time.monotonic()
@@ -626,6 +637,7 @@ def main(demo=False):
       drivingdata_send = messaging.new_message('drivingModelData')
       posenet_send = messaging.new_message('cameraOdometry')
       mdv2sp_send = messaging.new_message('modelDataV2SP')
+      mdv2sp_send.modelDataV2SP.acceleratorState = getattr(model, 'big_model_state', 'none')
 
       action = model.get_action_from_model(model_output, prev_action, lat_action_t, long_action_t, v_ego)
       fill_model_msg(drivingdata_send, modelv2_send, model_output, action,
