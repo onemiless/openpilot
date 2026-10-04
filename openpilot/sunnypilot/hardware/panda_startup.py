@@ -25,6 +25,8 @@ class PandaStartupIO:
     HARDWARE.recover_internal_panda()
 
   def list_internal(self) -> list[str]:
+    if HARDWARE.get_device_type() == "tici":
+      return Panda.list(usb_only=True)
     return Panda.spi_list()
 
   def is_bootstub(self, serial: str) -> bool:
@@ -48,7 +50,7 @@ class PandaStartup:
     self.profile = profile or get_hardware_profile()
 
   def prepare(self, attempt: int, should_exit: Callable[[], bool]) -> PandaStartupResult:
-    if self.profile != HardwareProfile.C3XL:
+    if self.profile != HardwareProfile.C3XL and HARDWARE.get_device_type() != "tici":
       if (attempt % 2) == 0:
         self.io.reset_internal()
         return PandaStartupResult.RESET
