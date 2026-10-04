@@ -24,6 +24,7 @@ b6ceca145001958f88c686d57feac8c9e8a7073c. Ambient source is the actual
 - DM changes during onroad; enabled-on-C3 default or disabled-on-C3XL capability lost; reenabling leaves stale lockout state.
 - Internal SPI plus external USB Panda, or internal DOS plus external USB, selects different boards for firmware confirmation and C++ runtime; propagate one verified serial through the startup chain.
 - New model/compiler/tinygrad format mismatched; missing LFS/chunks, native runner fails, fallback loses valid model publication.
+- Concurrent UI in the production namespace takes uiDebug ownership and terminates the active UI; timeout alone does not restore it. Use one production UI and enable restart_if_crash; isolated message prefixes do not grant concurrent DRM ownership.
 - Device experimentation occurs with ignition/controls active or switches to a partially built tree.
 
 ## Acceptance and artifacts
