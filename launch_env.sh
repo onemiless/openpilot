@@ -20,3 +20,13 @@ if [ -z "$AGNOS_VERSION" ]; then
 fi
 
 export STAGING_ROOT="/data/safe_staging"
+
+# Boot images follow the explicit physical profile, never a branch label.
+profile_value="${SUNNYPILOT_HARDWARE_PROFILE:-}"
+if [ -z "$profile_value" ] && [ -f /data/hardware_profile ]; then
+  profile_value="$(cat /data/hardware_profile)"
+fi
+export AGNOS_MANIFEST_FILE="openpilot/common/hardware/comma/agnos.json"
+if [ "$profile_value" = "c3xl" ]; then
+  export AGNOS_MANIFEST_FILE="openpilot/common/hardware/comma/agnos-c3xl.json"
+fi

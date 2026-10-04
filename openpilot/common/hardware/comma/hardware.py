@@ -70,7 +70,8 @@ class HardwareComma(HardwareBase):
 
   @cached_property
   def amplifier(self):
-    if self.get_device_type() == "mici":
+    from openpilot.sunnypilot.hardware.profile import has_amplifier
+    if self.get_device_type() == "mici" or not has_amplifier():
       return None
     return Amplifier()
 

@@ -8,6 +8,7 @@ from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.multilang import tr, tr_noop
 from openpilot.system.ui.widgets import DialogResult
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.sunnypilot.hardware.profile import has_driver_camera
 
 if gui_app.sunnypilot_ui():
   from openpilot.system.ui.sunnypilot.widgets.list_view import toggle_item_sp as toggle_item
@@ -46,6 +47,12 @@ class TogglesLayout(Widget):
 
     # param, title, desc, icon, needs_restart
     self._toggle_defs = {
+      "DriverMonitoringEnabled": (
+        lambda: tr("DM 驾驶员监控"),
+        tr_noop("开启驾驶员监控。关闭后不启动 DM 进程。只能停车时修改，下次驾驶生效。"),
+        "monitoring.png",
+        False,
+      ),
       "OpenpilotEnabledToggle": (
         lambda: tr("Enable sunnypilot"),
         DESCRIPTIONS["OpenpilotEnabledToggle"],
@@ -202,7 +209,9 @@ class TogglesLayout(Widget):
     # TODO: make a param control list item so we don't need to manage internal state as much here
     # refresh toggles from params to mirror external changes
     for param in self._toggle_defs:
-      self._toggles[param].action_item.set_state(self._params.get_bool(param))
+      value = self._params.get(param, return_default=True) if param == "DriverMonitoringEnabled" else self._params.get_bool(param)
+      self._toggles[param].action_item.set_state(bool(value))
+    self._toggles["DriverMonitoringEnabled"].action_item.set_enabled(ui_state.is_offroad() and has_driver_camera())
 
     # these toggles need restart, block while engaged
     for toggle_def in self._toggle_defs:
@@ -237,6 +246,9 @@ class TogglesLayout(Widget):
       self._params.put_bool("ExperimentalMode", state, block=True)
 
   def _toggle_callback(self, state: bool, param: str):
+    if param == "DriverMonitoringEnabled" and (not ui_state.is_offroad() or not has_driver_camera()):
+      self._update_toggles()
+      return
     if param == "ExperimentalMode":
       self._handle_experimental_mode_toggle(state)
       return

@@ -8,6 +8,7 @@ from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationCircleButt
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callback
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.sunnypilot.hardware.profile import has_driver_camera
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
 
@@ -53,6 +54,11 @@ class TogglesLayoutMici(NavScroller):
                                                    "Set speed is a maximum, not a target.\n" +
                                                    "These are alpha features. Expect mistakes.\n" +
                                                    "The path colors show acceleration and braking.")
+    self._dm_toggle = BigToggle("DM 驾驶员监控",
+      initial_state=bool(ui_state.params.get("DriverMonitoringEnabled", return_default=True)),
+      toggle_callback=self._on_driver_monitoring,
+      description="关闭后不启动 DM 进程。只能停车时修改，下次驾驶生效。")
+    self._dm_toggle.set_enabled(lambda: ui_state.is_offroad() and has_driver_camera())
     is_metric_toggle = BigParamControl("use metric units", "IsMetric")
     ldw_toggle = BigParamControl("lane departure warnings", "IsLdwEnabled",
                                  description="Warn when you drift across a detected lane line.\n" +
@@ -75,6 +81,7 @@ class TogglesLayoutMici(NavScroller):
       self._experimental_btn,
       is_metric_toggle,
       ldw_toggle,
+      self._dm_toggle,
       always_on_dm_toggle,
       record_front,
       record_mic,
@@ -130,9 +137,16 @@ class TogglesLayoutMici(NavScroller):
         self._personality_toggle.set_visible(False)
         ui_state.params.remove("ExperimentalMode")
 
+    self._dm_toggle.set_checked(bool(ui_state.params.get("DriverMonitoringEnabled", return_default=True)))
+
     # Refresh toggles from params to mirror external changes
     for key, item in self._refresh_toggles:
       item.set_checked(ui_state.params.get_bool(key))
+
+  def _on_driver_monitoring(self, state: bool):
+    if ui_state.is_offroad() and has_driver_camera():
+      ui_state.params.put_bool("DriverMonitoringEnabled", state, block=True)
+    self._update_toggles()
 
   def _on_experimental_mode(self, state: bool):
     if state and not ui_state.params.get_bool("ExperimentalModeConfirmed"):

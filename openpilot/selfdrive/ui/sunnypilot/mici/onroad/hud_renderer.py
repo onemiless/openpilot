@@ -7,21 +7,25 @@ See the LICENSE.md file in the root directory for more details.
 import pyray as rl
 
 from openpilot.selfdrive.ui.mici.onroad.hud_renderer import HudRenderer
+from openpilot.selfdrive.ui.sunnypilot.onroad.traffic_control import TrafficControlRenderer
 from openpilot.selfdrive.ui.sunnypilot.onroad.blind_spot_indicators import BlindSpotIndicators
 
 
 class HudRendererSP(HudRenderer):
   def __init__(self):
     super().__init__()
+    self.traffic_control_renderer = TrafficControlRenderer(compact=True)
     self.blind_spot_indicators = BlindSpotIndicators()
 
   def _update_state(self) -> None:
     super()._update_state()
     self.blind_spot_indicators.update()
+    self.traffic_control_renderer.update()
 
   def _render(self, rect: rl.Rectangle) -> None:
     super()._render(rect)
     self.blind_spot_indicators.render(rect)
+    self.traffic_control_renderer.render(rect)
 
   def _has_blind_spot_detected(self) -> bool:
 

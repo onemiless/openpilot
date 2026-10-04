@@ -12,6 +12,7 @@ from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationDialog, Bi
 from openpilot.selfdrive.ui.sunnypilot.mici.layouts.sunnylink import SunnylinkLayoutMici
 from openpilot.selfdrive.ui.sunnypilot.mici.layouts.models import ModelsLayoutMici
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.selfdrive.ui.sunnypilot.mici.layouts.tesla import TeslaSettingsMici
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.multilang import tr
 
@@ -66,6 +67,10 @@ class SettingsLayoutSP(OP.SettingsLayout):
 
     items = self._scroller._items.copy()
 
+    vehicle_panel = TeslaSettingsMici()
+    vehicle_btn = SettingsBigButton(tr("Tesla / 纵向规划"), "", gui_app.texture("../../sunnypilot/selfdrive/assets/offroad/icon_models.png", 64, 64))
+    vehicle_btn.set_click_callback(lambda: gui_app.push_widget(vehicle_panel))
+    items.insert(1, vehicle_btn)
     items.insert(1, models_btn)
     items.insert(5, sunnylink_btn)
 

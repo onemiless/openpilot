@@ -10,6 +10,9 @@ import numpy as np
 import SCons.Errors
 from SCons.Defaults import _stripixes
 
+from openpilot.sunnypilot.hardware.profile import get_hardware_profile
+
+HARDWARE_PROFILE = get_hardware_profile().value
 COMMA_HARDWARE = os.path.isfile('/AGNOS')
 
 SCons.Warnings.warningAsException(True)
@@ -55,7 +58,7 @@ assert arch in [
   "Darwin",       # macOS arm64 (x86 not supported)
 ]
 
-pkg_names = ['acados', 'capnproto', 'eigen', 'ffmpeg', 'json11', 'ncurses', 'zeromq', 'zstd']
+pkg_names = ['acados', 'capnproto', 'eigen', 'ffmpeg', 'json11', 'libusb', 'ncurses', 'zeromq', 'zstd']
 pkgs = [importlib.import_module(name) for name in pkg_names]
 acados = pkgs[pkg_names.index('acados')]
 ffmpeg = pkgs[pkg_names.index('ffmpeg')]
@@ -167,6 +170,9 @@ env = Environment(
   tools=["default", "cython", "compilation_db", "rednose_filter"],
   toolpath=["#msgq_repo/site_scons/site_tools", "#rednose_repo/site_scons/site_tools"],
 )
+if HARDWARE_PROFILE == 'c3xl':
+  env.Append(CPPDEFINES=['SUNNYPILOT_HARDWARE_PROFILE_C3XL'])
+
 # SCons' Darwin linker tool doesn't define the variables used to expand RPATH.
 if arch == "Darwin":
   env["RPATHPREFIX"] = "-Wl,-rpath,"

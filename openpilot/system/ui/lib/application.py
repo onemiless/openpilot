@@ -20,6 +20,7 @@ from importlib.resources import as_file, files
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.hardware import HARDWARE, PC
 from openpilot.system.ui.lib.multilang import FONT_FALLBACK_LANGUAGES, TRANSLATIONS_DIR, multilang
+from openpilot.system.ui.lib.font_characters import fallback_font_characters
 from openpilot.common.realtime import Ratekeeper
 
 from openpilot.system.ui.sunnypilot.lib.application import GuiApplicationExt
@@ -709,8 +710,7 @@ class GuiApplication(GuiApplicationExt):
   def fallback_font(self) -> rl.Font:
     language = multilang.language
     if language not in self._fallback_fonts:
-      chars = set(map(chr, range(32, 127))) | set(EXTRA_FONT_CHARS)
-      chars.update(TRANSLATIONS_DIR.joinpath(f"app_{language}.po").read_text(encoding="utf-8"))
+      chars = fallback_font_characters(language, EXTRA_FONT_CHARS + "势域夜白监控盲区氛围灯联动驾驶员返回")
       codepoints = sorted(map(ord, chars))
       codepoint_buffer = rl.ffi.new("int[]", codepoints)
       with as_file(FONT_DIR) as fspath:

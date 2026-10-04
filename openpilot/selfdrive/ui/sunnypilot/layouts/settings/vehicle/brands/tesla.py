@@ -6,9 +6,10 @@ See the LICENSE.md file in the root directory for more details.
 """
 from opendbc.sunnypilot.car.tesla.values import TeslaFlagsSP
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.vehicle.brands.base import BrandSettings
+from openpilot.selfdrive.ui.sunnypilot.layouts.settings.vehicle.brands.tesla_control import TeslaControlSettingsAdapter
 from openpilot.selfdrive.ui.ui_state import ui_state
-from openpilot.system.ui.lib.multilang import tr
-from openpilot.system.ui.sunnypilot.widgets.list_view import multiple_button_item_sp, toggle_item_sp
+from openpilot.system.ui.lib.multilang import tr, trf
+from openpilot.system.ui.sunnypilot.widgets.list_view import multiple_button_item_sp, toggle_item_sp, option_item_sp
 
 COOP_STEERING_MIN_KMH = 23
 OEM_STEERING_MIN_KMH = 48
@@ -18,15 +19,31 @@ KM_TO_MILE = 0.621371
 class TeslaSettings(BrandSettings):
   def __init__(self):
     super().__init__()
+    self.control_profile = TeslaControlSettingsAdapter()
     self.coop_steering_toggle = toggle_item_sp(tr("Cooperative Steering (Beta)"), "", param="TeslaCoopSteering")
     self.mads_screen_button = multiple_button_item_sp(
       title=lambda: tr("MADS Screen Activation"),
       description="",
-      buttons=[lambda: tr("Off"), lambda: tr("3-Finger"), lambda: tr("4-Finger"), lambda: tr("5-Finger")],
+      buttons=[lambda: tr("Off"), lambda: tr("3-Finger"), lambda: tr("5-Finger")],
       param="TeslaMadsScreenButton",
       inline=False,
     )
-    self.items = [self.coop_steering_toggle, self.mads_screen_button]
+    self.blindspot_ambient_toggle = toggle_item_sp(
+      tr("盲区联动氛围灯"), tr("检测到盲区时，对应侧常亮红色。按车机深浅色模式自动切换昼夜亮度，缺失时参考近光灯状态。"), param="TeslaBlindspotAmbientEnabled")
+    self.blindspot_ambient_day_brightness = option_item_sp(
+      param="TeslaBlindspotAmbientDayBrightness", title=lambda: tr("盲区氛围灯：白天亮度"),
+      description=tr("白天使用的百分比亮度，0–100%。"), min_value=0, max_value=100, value_change_step=1,
+      label_callback=lambda value: f"{value}%", inline=True)
+    self.blindspot_ambient_brightness = option_item_sp(
+      param="TeslaBlindspotAmbientBrightness", title=lambda: tr("盲区氛围灯：夜间亮度"),
+      description=tr("夜间使用的百分比亮度，0–100%。"), min_value=0, max_value=100, value_change_step=1,
+      label_callback=lambda value: f"{value}%", inline=True)
+    self.items = [self.control_profile.radar_backend, self.coop_steering_toggle,
+                  self.mads_screen_button, self.control_profile.traffic_control_mode,
+                  self.control_profile.traffic_stop_reference,
+                  self.control_profile.traffic_control_max_speed,
+                  self.control_profile.settings_button, self.blindspot_ambient_toggle,
+                  self.blindspot_ambient_day_brightness, self.blindspot_ambient_brightness]
 
   def update_settings(self):
     is_metric = ui_state.is_metric
@@ -36,12 +53,14 @@ class TeslaSettings(BrandSettings):
     display_value_oem = OEM_STEERING_MIN_KMH if is_metric else round(OEM_STEERING_MIN_KMH * KM_TO_MILE)
 
     coop_steering_disabled_msg = tr("Enable \"Always Offroad\" in Device panel, or turn vehicle off to toggle.")
-    coop_steering_warning = tr(f"Warning: May experience steering oscillations below {display_value_oem} {unit} during turns, " +
-                               "recommend disabling this feature if you experience these.")
+    coop_steering_warning = trf(
+      "Warning: May experience steering oscillations below {speed} {unit} during turns, recommend disabling this feature if you experience these.",
+      speed=display_value_oem, unit=unit,
+    )
     coop_steering_desc = (
       f"<b>{coop_steering_warning}</b><br><br>" +
       f"{tr('Allows the driver to provide limited steering input while openpilot is engaged.')}<br>" +
-      f"{tr(f'Only works above {display_value_coop} {unit}.')}"
+      f"{trf('Only works above {speed} {unit}.', speed=display_value_coop, unit=unit)}"
     )
 
     if not ui_state.is_offroad():
@@ -49,6 +68,10 @@ class TeslaSettings(BrandSettings):
 
     self.coop_steering_toggle.set_description(coop_steering_desc)
     self.coop_steering_toggle.action_item.set_enabled(ui_state.is_offroad())
+
+    self.control_profile.update_settings()
+    self.blindspot_ambient_brightness.action_item.set_enabled(ui_state.params.get_bool("TeslaBlindspotAmbientEnabled"))
+    self.blindspot_ambient_day_brightness.action_item.set_enabled(ui_state.params.get_bool("TeslaBlindspotAmbientEnabled"))
 
     has_vehicle_bus = ui_state.CP_SP is not None and bool(ui_state.CP_SP.flags & TeslaFlagsSP.HAS_VEHICLE_BUS)
     self.mads_screen_button.set_visible(has_vehicle_bus)

@@ -8,6 +8,7 @@
 
 #include "common/util.h"
 #include "common/hardware/base.h"
+#include "sunnypilot/hardware/profile.h"
 
 class HardwareComma : public HardwareNone {
 public:
@@ -20,7 +21,12 @@ public:
   }
 
   static cereal::InitData::DeviceType get_device_type() {
+    if ((get_name() == "tici") && sunnypilot::hardware::is_c3xl()) {
+      return cereal::InitData::DeviceType::TIZI;
+    }
+
     static const std::map<std::string, cereal::InitData::DeviceType> device_map = {
+      {"tici", cereal::InitData::DeviceType::TICI},
       {"tizi", cereal::InitData::DeviceType::TIZI},
       {"mici", cereal::InitData::DeviceType::MICI}
     };

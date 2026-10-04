@@ -25,12 +25,14 @@ from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroa
 
 from openpilot.common.version import get_build_metadata
 from openpilot.common.hardware import HARDWARE
+from openpilot.sunnypilot.hardware.driver_monitoring import driver_monitoring_enabled
 
 from openpilot.sunnypilot.mads.mads import ModularAssistiveDrivingSystem
 from openpilot.sunnypilot import get_sanitize_int_param
 from openpilot.sunnypilot.selfdrive.car.car_specific import CarSpecificEventsSP
 from openpilot.sunnypilot.selfdrive.car.cruise_helpers import CruiseHelper
 from openpilot.sunnypilot.selfdrive.car.intelligent_cruise_button_management.controller import IntelligentCruiseButtonManagement
+from openpilot.sunnypilot.selfdrive.car.tesla.control_runtime import TeslaControlRuntime
 from openpilot.sunnypilot.selfdrive.selfdrived.button_state_tracker import ButtonStateTracker
 from openpilot.sunnypilot.selfdrive.selfdrived.events import EventsSP
 
@@ -97,8 +99,17 @@ class SelfdriveD(CruiseHelper):
 
     # TODO: de-couple selfdrived with card/conflate on carState without introducing controls mismatches
     self.car_state_sock = messaging.sub_sock('carState', timeout=20)
+    self.tesla_control = TeslaControlRuntime(self.CP.brand == 'tesla')
+    self.car_state_sp_sock = messaging.sub_sock('carStateSP', conflate=True) if self.tesla_control.enabled else None
+    self.car_state_sp_flags = 0
+    self.car_state_sp_mono_time = 0
 
     ignore = self.sensor_packets + self.gps_packets + ['alertDebug', 'lateralManeuverPlan'] + ['modelDataV2SP', 'longitudinalPlanSP']
+    self.dm_enabled = driver_monitoring_enabled(self.params)
+    if not self.dm_enabled:
+      # C3XL has no cabin camera and does not run visual driver monitoring.
+      # Retain every unrelated process, camera, and communication fault check.
+      ignore += ['cabinCameraState', 'driverMonitoringState']
     if SIMULATION:
       ignore += ['cabinCameraState', 'managerState']
     if REPLAY:
@@ -248,7 +259,7 @@ class SelfdriveD(CruiseHelper):
       self.events.add(EventName.resumeBlocked)
 
     # Handle DM
-    if not self.CP.notCar:
+    if not self.CP.notCar and self.dm_enabled:
       # Block engaging until lockout times out or ignition reset
       if self.sm['driverMonitoringState'].lockout and not self.dm_lockout_set:
         self.params.put_bool("DriverTooDistracted", True)
@@ -271,12 +282,14 @@ class SelfdriveD(CruiseHelper):
       if self.sm['driverMonitoringState'].visionPolicyState.uncertainOffroadAlertPercent >= 100 and not self.dm_uncertain_alerted:
         set_offroad_alert("Offroad_DriverMonitoringUncertain", True)
         self.dm_uncertain_alerted = True
+    if not self.CP.notCar:
       self.events_sp.add_from_msg(self.sm['longitudinalPlanSP'].events)
 
     # Add car events, ignore if CAN isn't valid
     if CS.canValid:
       car_events = self.car_events.update(CS, self.CS_prev, self.sm['carControl']).to_msg()
       self.events.add_from_msg(car_events)
+      self.tesla_control.filter_transition_events(self.events)
 
       car_events_sp = self.car_events_sp.update(CS, self.events).to_msg()
       self.events_sp.add_from_msg(car_events_sp)
@@ -453,7 +466,6 @@ class SelfdriveD(CruiseHelper):
       self.logged_comm_issue = None
 
     if not self.CP.notCar and not big_model_settling:  # localization has nothing to work with during the load
-      # the defaults of a message that was never received are not a localizer failure
       if self.sm.seen['deviceMotion'] and not self.sm['deviceMotion'].posenetOK:
         self.events.add(EventName.posenetInvalid)
       if self.sm.seen['deviceMotion'] and not self.sm['deviceMotion'].inputsOK:
@@ -529,6 +541,14 @@ class SelfdriveD(CruiseHelper):
   def data_sample(self):
     _car_state = messaging.recv_one(self.car_state_sock)
     CS = _car_state.carState if _car_state else self.CS_prev
+    if self.car_state_sp_sock is not None:
+      car_state_sp = messaging.recv_one_or_none(self.car_state_sp_sock)
+      if car_state_sp is not None and car_state_sp.valid:
+        self.car_state_sp_flags = int(car_state_sp.carStateSP.flags)
+        self.car_state_sp_mono_time = int(car_state_sp.logMonoTime)
+
+    car_state_mono_time = int(_car_state.logMonoTime) if _car_state is not None else 0
+    self.tesla_control.update(self.car_state_sp_flags, car_state_mono_time, self.car_state_sp_mono_time)
 
     self.sm.update(0)
 
@@ -660,6 +680,7 @@ class SelfdriveD(CruiseHelper):
     self.publish_selfdriveState(CS)
 
     self.CS_prev = CS
+    self.tesla_control.commit_cycle()
 
   def params_thread(self, evt):
     while not evt.is_set():

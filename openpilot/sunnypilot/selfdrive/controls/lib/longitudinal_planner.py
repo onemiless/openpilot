@@ -22,10 +22,10 @@ LongitudinalPlanSource = custom.LongitudinalPlanSP.LongitudinalPlanSource
 
 
 class LongitudinalPlannerSP:
-  def __init__(self, CP: structs.CarParams, CP_SP: structs.CarParamsSP, mpc):
+  def __init__(self, CP: structs.CarParams, CP_SP: structs.CarParamsSP, mpc, *, enable_dec: bool = True):
     self.events_sp = EventsSP()
     self.resolver = SpeedLimitResolver()
-    self.dec = DynamicExperimentalController(CP, mpc)
+    self.dec = DynamicExperimentalController(CP, mpc) if enable_dec else None
     self.scc = SmartCruiseControl()
     self.resolver = SpeedLimitResolver()
     self.sla = SpeedLimitAssist(CP, CP_SP)
@@ -75,8 +75,19 @@ class LongitudinalPlannerSP:
 
   def update(self, sm: messaging.SubMaster) -> None:
     self.events_sp.clear()
-    self.dec.update(sm)
+    self._update_backend(sm)
     self.e2e_alerts_helper.update(sm, self.events_sp)
+
+  def _update_backend(self, sm: messaging.SubMaster) -> None:
+    """Backend extension point; the upstream provider keeps DEC unchanged."""
+    self.dec.update(sm)
+
+  def _publish_backend_state(self, longitudinal_plan_sp) -> None:
+    """Publish backend-specific diagnostics without forking the common plan."""
+    dec = longitudinal_plan_sp.dec
+    dec.state = DecState.blended if self.dec.mode() == 'blended' else DecState.acc
+    dec.enabled = self.dec.enabled()
+    dec.active = self.dec.active()
 
   def publish_longitudinal_plan_sp(self, sm: messaging.SubMaster, pm: messaging.PubMaster) -> None:
     plan_sp_send = messaging.new_message('longitudinalPlanSP')
@@ -89,11 +100,7 @@ class LongitudinalPlannerSP:
     longitudinalPlanSP.aTarget = float(self.output_a_target)
     longitudinalPlanSP.events = self.events_sp.to_msg()
 
-    # Dynamic Experimental Control
-    dec = longitudinalPlanSP.dec
-    dec.state = DecState.blended if self.dec.mode() == 'blended' else DecState.acc
-    dec.enabled = self.dec.enabled()
-    dec.active = self.dec.active()
+    self._publish_backend_state(longitudinalPlanSP)
 
     # Smart Cruise Control
     smartCruiseControl = longitudinalPlanSP.smartCruiseControl
