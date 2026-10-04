@@ -119,7 +119,7 @@ class TogglesLayout(Widget):
       toggle = toggle_item(
         title,
         desc,
-        self._params.get_bool(param),
+        bool(self._params.get(param, return_default=True)) if param == "DriverMonitoringEnabled" else self._params.get_bool(param),
         callback=lambda state, p=param: self._toggle_callback(state, p),
         icon=icon,
       )

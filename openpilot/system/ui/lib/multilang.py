@@ -215,3 +215,7 @@ tr, trn = multilang.tr, multilang.trn
 # no-op marker for static strings translated later
 def tr_noop(s: str) -> str:
   return s
+
+
+def trf(text: str, *args, **kwargs) -> str:
+  return tr(text).format(*args, **kwargs)
