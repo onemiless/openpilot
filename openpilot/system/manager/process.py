@@ -59,6 +59,7 @@ def join_process(process: Process, timeout: float) -> None:
 
 
 class ManagerProcess(ABC):
+  CRASH_RESTART_BACKOFF = 5.0
   daemon = False
   sigkill = False
   should_run: Callable[[bool, Params, car.CarParams], bool]
@@ -66,10 +67,21 @@ class ManagerProcess(ABC):
   enabled = True
   name = ""
   shutting_down = False
+  restart_if_crash = False
+  last_crash_restart = float("-inf")
 
   @abstractmethod
   def start(self) -> None:
     pass
+
+  def restart(self) -> None:
+    now = time.monotonic()
+    if now - self.last_crash_restart < self.CRASH_RESTART_BACKOFF:
+      return
+    cloudlog.error(f"restarting {self.name} after crash")
+    self.stop()
+    self.start()
+    self.last_crash_restart = now
 
   def stop(self, retry: bool = True, block: bool = True, sig: signal.Signals | None = None) -> int | None:
     if self.proc is None:
@@ -155,13 +167,15 @@ class NativeProcess(ManagerProcess):
 
 
 class PythonProcess(ManagerProcess):
-  def __init__(self, name, module, should_run, enabled=True, sigkill=False):
+  def __init__(self, name, module, should_run, enabled=True, sigkill=False, restart_if_crash=False):
     self.name = name
     self.module = module
     self.should_run = should_run
     self.enabled = enabled
     self.sigkill = sigkill
     self.launcher = launcher
+    self.restart_if_crash = restart_if_crash
+    self.last_crash_restart = float("-inf")
 
   def start(self) -> None:
     # In case we only tried a non blocking stop we need to stop it before restarting
@@ -228,6 +242,8 @@ def ensure_running(procs: ValuesView[ManagerProcess], started: bool, params: Par
   running = []
   for p in procs:
     if p.enabled and p.name not in not_run and p.should_run(started, params, CP):
+      if p.restart_if_crash and p.proc is not None and not p.proc.is_alive():
+        p.restart()
       running.append(p)
     else:
       p.stop(block=False)
