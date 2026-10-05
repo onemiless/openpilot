@@ -108,9 +108,12 @@ checks the copied bytes and permissions, and rechecks source afterward.
 ## Local staging and acceptance evidence
 
 Staging copies the current recursive tracked source and explicit runtime files,
-preserves symlinks that resolve within the source and all file permissions, and
+preserves relative symlinks that resolve within the source and all file permissions, and
 adds the lock and executable boot template. It includes source metadata such as
 `.gitmodules`; it does not include Git object databases or recreate a Git checkout.
+Absolute symlinks are rejected even when their targets are inside source: copying
+them unchanged would leave the staged directory dependent on the old checkout path.
+The tool does not rewrite link targets or change their semantics.
 The destination must not exist and must be outside source. Files are assembled in
 a temporary sibling directory and renamed into place only after verification.
 Failures remove the unpublished temporary directory. Producers using this tool
@@ -151,7 +154,8 @@ evidence. It verifies clean recursive dependency locking, stage bytes and execut
 permissions, existing/source destination rejection, missing/LFS artifact rejection,
 permission regression, same-size/same-mtime corruption under `--rehash` and staging,
 dirty parent/nested dependency rejection, uninitialized-submodule rejection, and
-that generated files do not dirty source. It also executes the staged boot template
+that generated files do not dirty source. Manifest and stage independently reject
+an absolute symlink to an internal source file. It also executes the staged boot template
 through an actual shell chain (`launch_openpilot.sh` to `launch_chffrplus.sh` to
 `python3`) with competing host/venv executable stubs, checking that the specified
 venv wins and the inherited PCIe setting survives. Only the device directory `cd`

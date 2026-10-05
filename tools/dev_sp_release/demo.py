@@ -152,6 +152,19 @@ def main():
     git(root / "dep/nested", "checkout", "--", "data")
     assert not git(root, "status", "--porcelain", "--untracked-files=all")
     checks.append({"check": "source_remains_clean", "passed": True})
+    # Absolute links remain bound to the source even when their targets are internal.
+    (root / "absolute-internal-link").symlink_to(root / "source.txt")
+    commit(root, "absolute internal symlink regression")
+    cli("refuse_absolute_internal_symlink_manifest", create, False, "absolute symlink")
+    # Also exercise stage's independent source validation with an identity-current lock.
+    altered = json.loads(manifest_path.read_text())
+    altered["repositories"][0]["head"] = git(root, "rev-parse", "HEAD")
+    altered["tracked_file_count"] += 1
+    altered_manifest = home / "absolute-link-stage-manifest.json"
+    altered_manifest.write_text(json.dumps(altered))
+    cli("refuse_absolute_internal_symlink_stage", ["stage", "--manifest", str(altered_manifest),
+                                                   "--destination", str(failed_stage)], False, "absolute symlink")
+    assert not failed_stage.exists()
   evidence = {"status": "passed", "scope": "temporary repositories and local staging only",
               "checks": checks, "device": "pending", "onroad": "pending",
               "repeat_command": [sys.executable, str(Path(__file__).resolve()), "--output", str(output)],

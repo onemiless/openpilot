@@ -33,6 +33,8 @@ def source_path(root, relative):
   path = root / relative
   if Path(relative).is_absolute() or ".." in Path(relative).parts or relative == ".":
     raise ValueError(f"unsafe relative path: {relative}")
+  if path.is_symlink() and Path(os.readlink(path)).is_absolute():
+    raise ValueError(f"absolute symlink is not portable in staged source: {relative}")
   if root not in path.resolve().parents:
     raise ValueError(f"source path escapes checkout: {relative}")
   return path

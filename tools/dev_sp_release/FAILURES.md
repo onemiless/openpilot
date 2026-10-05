@@ -10,6 +10,8 @@ The executable E2E demo must leave JSON evidence and fail on regression:
 - Executable bits change after manifest creation or are lost during copying.
 - Destination already exists, is inside the source, or contains an incomplete previous attempt.
 - Manifest path escapes the source, or a source symlink escapes its checkout.
+- Absolute symlink points inside source but remains bound to the old source path
+  after staging, making the local source bundle unusable when source is removed.
 - Generation makes the source dirty; output must live outside the checkout.
 - Boot template lacks an explicit standard/C3XL profile or uses a nonofficial launch path.
 - Boot PATH selects the host Python instead of the specified C3 venv interpreter,
