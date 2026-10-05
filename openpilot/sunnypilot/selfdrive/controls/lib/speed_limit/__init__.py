@@ -4,6 +4,11 @@ Copyright (c) 2021-, Haibin Wen, sunnypilot, and a number of other contributors.
 This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
+from openpilot.sunnypilot.selfdrive.car.tesla.speed_limit_policy import (
+  TESLA_PCM_LONG_REQUIRED_MAX_SET_SPEED as TESLA_PCM_LONG_REQUIRED_MAX_SET_SPEED,
+  required_cruise_speed,
+)
+
 LIMIT_ADAPT_ACC = -1.  # m/s^2 Ideal acceleration for the adapting (braking) phase when approaching speed limits.
 LIMIT_MAX_MAP_DATA_AGE = 10.  # s Maximum time to hold to map data, then consider it invalid inside limits controllers.
 
@@ -11,14 +16,6 @@ LIMIT_MAX_MAP_DATA_AGE = 10.  # s Maximum time to hold to map data, then conside
 PCM_LONG_REQUIRED_MAX_SET_SPEED = {
   True: (33.3333, 36.1111),  # km/h, (120, 130)
   False: (31.2928, 35.7632),  # mph, (70, 80)
-}
-
-# Tesla PCM longitudinal confirms SLA through the displayed cruise set speed.
-# Keep the upstream fixed maximum for other brands, while Tesla follows the
-# actual detected limit in the same discrete steps exposed by its cruise UI.
-TESLA_PCM_LONG_REQUIRED_MAX_SET_SPEED = {
-  True: tuple((speed, speed / 3.6) for speed in range(20, 131, 10)),
-  False: tuple((speed, speed * 0.44704) for speed in range(15, 91, 5)),
 }
 
 CONFIRM_SPEED_THRESHOLD = {
@@ -32,7 +29,4 @@ def resolve_pcm_long_required_max(metric: bool, limit_conv: int, has_speed_limit
     cst_low, cst_high = PCM_LONG_REQUIRED_MAX_SET_SPEED[metric]
     return cst_low if has_speed_limit and limit_conv < CONFIRM_SPEED_THRESHOLD[metric] else cst_high
 
-  segments = TESLA_PCM_LONG_REQUIRED_MAX_SET_SPEED[metric]
-  if not has_speed_limit:
-    return segments[-1][1]
-  return next((value for threshold, value in segments if limit_conv <= threshold), segments[-1][1])
+  return required_cruise_speed(metric, limit_conv, has_speed_limit)
