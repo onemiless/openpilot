@@ -3,7 +3,7 @@ import pickle
 import struct
 from pathlib import Path
 
-from openpilot.common.file_chunker import get_manifest_path
+from openpilot.common.file_chunker import get_chunk_name, get_manifest_path
 from openpilot.common.hardware.usb import CHESTNUT_USB_PRODUCT, USB_DEVICES_PATH, is_chestnut_usb_id
 
 MODELS_DIR = Path(__file__).resolve().parent / 'models'
@@ -43,18 +43,22 @@ def _compiled_file(path: Path) -> bool:
     return False
 
 
-def chestnut_compiled(selected_model: bool = False) -> bool:
-  if selected_model:
-    from openpilot.common.hardware.hw import Paths
-    from openpilot.sunnypilot.models.helpers import get_selected_bundle, _bundle_artifacts
-    bundle = get_selected_bundle(source='chestnut')
-    if bundle is not None:
-      artifacts = _bundle_artifacts(bundle)
-      model_ready = bool(artifacts) and all(_compiled_file(Path(Paths.model_root()) / name) for name, _ in artifacts)
-    else:
-      model_ready = _compiled_file(modeld_pkl_path(chestnut=True)) or Path(get_manifest_path(modeld_pkl_path(chestnut=True))).is_file()
-  else:
-    path = modeld_pkl_path(chestnut=True)
-    model_ready = _compiled_file(path) or Path(get_manifest_path(path)).is_file()
-  return model_ready and all(
-    _compiled_file(MODELS_DIR / f'big_driving_warp_{size}_tinygrad.pkl') for size in ('1344x760', '1928x1208'))
+def compiled_model_file(path: Path, expected_chunks: int | None = None) -> bool:
+  """Cheap loader-file completeness check; download/activation verifies hashes."""
+  if path.is_file():
+    return _compiled_file(path)
+  try:
+    count = int(Path(get_manifest_path(path)).read_text().strip())
+    # ponytail: cap probes at 1024 chunks (~45 GiB); raise only for larger supported models.
+    return 0 < count <= 1024 and (expected_chunks is None or count == expected_chunks) and all(
+      _compiled_file(Path(get_chunk_name(path, i, count))) for i in range(count))
+  except (OSError, ValueError):
+    return False
+
+
+def chestnut_warps_compiled() -> bool:
+  return all(_compiled_file(MODELS_DIR / f'big_driving_warp_{size}_tinygrad.pkl') for size in ('1344x760', '1928x1208'))
+
+
+def chestnut_compiled() -> bool:
+  return compiled_model_file(modeld_pkl_path(chestnut=True)) and chestnut_warps_compiled()

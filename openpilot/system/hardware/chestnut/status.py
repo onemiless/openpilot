@@ -2,7 +2,8 @@ import time
 
 from openpilot.common.hardware.usb import CHESTNUT_USB_PRODUCT, is_chestnut_usb_id
 from openpilot.common.version import get_build_metadata, CHESTNUT_BRANCHES
-from openpilot.selfdrive.modeld.helpers import MODELS_DIR, chestnut_compiled
+from openpilot.selfdrive.modeld.helpers import MODELS_DIR
+from openpilot.sunnypilot.models.helpers import selected_chestnut_compiled
 
 
 CHESTNUT_RELEASE_BRANCHES = ("release-chestnut", "release-chestnut-staging", "nightly-chestnut")
@@ -81,7 +82,8 @@ class ChestnutStatus:
     release = branch in CHESTNUT_RELEASE_BRANCHES
     missing = self.usb_failed or (offroad and release and time.monotonic() - self.started > 10. and len(detected) != 1)
     slow_usb = offroad and len(devices) == 1 and devices[0]["speedMbps"] < 5000
-    big_model_available = (MODELS_DIR / 'big_driving_supercombo.onnx').is_file() or chestnut_compiled(selected_model=True)
+    model_compiled = selected_chestnut_compiled()
+    big_model_available = (MODELS_DIR / 'big_driving_supercombo.onnx').is_file() or model_compiled
     current_channel = get_build_metadata().channel
     chestnut_target = CHESTNUT_BRANCHES.get(current_channel)
     chestnut_needs_switch = len(devices) == 1 and not big_model_available and chestnut_target is not None
@@ -96,6 +98,6 @@ class ChestnutStatus:
     else:
       pcie_alert = "Chestnut GPU unavailable. PCIe link is not up. Check the GPU is securely seated."
     set_alert("Offroad_ChestnutPcieUnavailable", self.pcie_failed, pcie_alert)
-    set_alert("Offroad_ChestnutUncompiled", offroad and firmware_ok and not chestnut_compiled(selected_model=True))
+    set_alert("Offroad_ChestnutUncompiled", offroad and firmware_ok and not model_compiled)
     set_alert("Offroad_ChestnutUpdateFailed", offroad and firmware_failed)
     self.offroad = offroad
