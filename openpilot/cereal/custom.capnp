@@ -473,6 +473,7 @@ struct BackupManagerSP @0xf98d843bfd7004a3 {
 struct CarStateSP @0xb86e6369214c01c8 {
   speedLimit @0 :Float32;
   flags @1 :UInt32;  # Optional car-module runtime flags (Tesla split-control ownership).
+  # Retired visualization field; retain ordinal/type for recorded-log compatibility.
   teslaRoadContext @2 :TeslaRoadContext;
   teslaTrafficControl @3 :TeslaTrafficControl;
 }

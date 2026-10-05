@@ -1,12 +1,11 @@
 """Configuration adapter between openpilot Params and the Tesla opendbc module.
 
 Keep the generic car interface unaware of individual Tesla feature switches.  A
-single snapshot is taken during CarParams initialization; dynamic switches that
-are explicitly supported by opendbc are read there at runtime.
+explicit snapshots cross the CarParams and CarState initialization seams.
+CarState latches its snapshot once; live accessory/SLA settings stay in card.
 """
 
 from collections.abc import Mapping
-from enum import IntEnum
 from typing import Protocol
 
 
@@ -29,15 +28,8 @@ INITIALIZATION_KEYS = (
   "DynamicAutoStockCurveToSP",
   "TeslaApHybrid",
   "TeslaDynamicApLongitudinal",
-  "TeslaSpeedButtonValidation",
-  "TeslaTurnSignalValidation",
+  "TeslaTouchLongitudinalSwitch",
 )
-
-
-class TeslaRadarBackend(IntEnum):
-  OEM = 0
-  ARS408 = 1
-  DISABLED = 2
 
 
 def normalize_mads_screen_button(raw: object) -> int:

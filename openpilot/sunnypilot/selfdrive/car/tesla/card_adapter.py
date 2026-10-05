@@ -8,9 +8,8 @@ adding Tesla branches throughout generic card.
 import time
 from typing import Any
 
-from opendbc.sunnypilot.car.tesla.values import TeslaSafetyFlagsSP
 from openpilot.sunnypilot.selfdrive.car.tesla.ambient_lighting import AmbientLightingController
-from openpilot.sunnypilot.selfdrive.car.tesla.validation_controller import TeslaTurnSignalRealtimeController
+from openpilot.sunnypilot.selfdrive.car.tesla.control_profile import snapshot_as_dict
 from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.common import Mode
 
 from openpilot.sunnypilot.selfdrive.traffic_control.tesla_observer import (
@@ -22,7 +21,7 @@ CONTEXT_STALE_S = 0.2
 LIGHTING_STALE_NS = 2_000_000_000
 LIGHTING_MESSAGE = "ID3F5VCFRONT_lighting"
 DISPLAY_MESSAGE = "UI_status2"
-CONTEXT_SERVICES = ("selfdriveStateSP", "modelV2")
+CONTEXT_SERVICES = ("selfdriveStateSP",)
 
 
 def longitudinal_context(sm, now: float) -> tuple[int, bool, bool, float, bool, bool, bool, float, bool, float, bool]:
@@ -65,29 +64,18 @@ class TeslaCardAdapter:
   SPEED_BUTTON_ADDRESS = 0x3C2
   VEHICLE_BUS = 1
 
-  def __init__(self, brand: str, car_interface: Any, submaster: Any):
+  def __init__(self, brand: str, car_interface: Any, submaster: Any, params=None):
     self.enabled = brand == "tesla"
     self.car_interface = car_interface
     self.sm = submaster
     self.traffic_control_observer = TeslaTrafficControlObserver() if self.enabled else None
-    self.road_context_parser = self._create_road_context_parser() if self.enabled else None
     self.lighting_parser = self._create_lighting_parser() if self.enabled else None
     self.speed_limit_assist_configured: bool | None = None
-    configured = bool(getattr(car_interface, "CP_SP", None) and
-                      car_interface.CP_SP.safetyParam & TeslaSafetyFlagsSP.TURN_SIGNAL_VALIDATION)
-    self.validation = TeslaTurnSignalRealtimeController(configured) if self.enabled else None
     self.ambient = AmbientLightingController() if self.enabled else None
 
-  def _create_road_context_parser(self):
-    try:
-      from opendbc.can import CANParser
-      from opendbc.car import Bus
-      from opendbc.car.tesla.values import CANBUS, DBC
-
-      fingerprint = self.car_interface.CP.carFingerprint
-      return CANParser(DBC[fingerprint][Bus.party], [("DAS_road", float("nan"))], CANBUS.party)
-    except (AttributeError, KeyError):
-      return None
+    self._startup_configured = False
+    if params is not None:
+      self.service_params(params)
 
   def _create_lighting_parser(self):
     try:
@@ -121,8 +109,6 @@ class TeslaCardAdapter:
 
     if self.traffic_control_observer is not None:
       self.traffic_control_observer.update(can_list, time.monotonic_ns())
-    if self.road_context_parser is not None:
-      self.road_context_parser.update(can_list)
     if self.lighting_parser is not None:
       self.lighting_parser.update(can_list)
 
@@ -133,59 +119,30 @@ class TeslaCardAdapter:
       for address, data, source in frames:
         if self.ambient is not None:
           self.ambient.observe_frame(mono_time, address, data, source)
-        if self.validation is not None:
-          self.validation.observe_frame(mono_time, address, data, source)
         if update_template is not None and source == self.VEHICLE_BUS and address == self.SPEED_BUTTON_ADDRESS:
           update_template(data, mono_time)
 
-    if self.validation is None:
-      return []
     now_nanos = time.monotonic_ns()
-    self.validation.advance_time(now_nanos)
-    # Cancellation cannot depend on controlsd continuing to publish carControl.
-    return self.validation.take_can_sends(now_nanos, cancel_only=True) + self.ambient.take_can_sends(now_nanos)
+    return self.ambient.take_can_sends(now_nanos)
 
   def control_sends(self, car_state, car_control, now_nanos: int) -> list:
-    if self.validation is None:
+    if not self.enabled:
       return []
-    now = time.monotonic()
-    model_valid = (self.sm.seen["modelV2"] and self.sm.valid["modelV2"] and
-                   now - self.sm.recv_time["modelV2"] <= CONTEXT_STALE_S)
-    lane_change = self.sm["modelV2"].meta
-    self.validation.update_lane_change_context(
-      now_nanos,
-      valid=model_valid,
-      state=int(getattr(lane_change.laneChangeState, "raw", lane_change.laneChangeState)),
-      direction=int(getattr(lane_change.laneChangeDirection, "raw", lane_change.laneChangeDirection)),
-      lateral_active=bool(car_control.latActive),
-      brake_pressed=bool(car_state.brakePressed),
-    )
     state = getattr(self.car_interface, "CS", None)
     left_level = int(getattr(state, "tesla_blindspot_left_level", 2 if getattr(car_state, "leftBlindspot", False) else 0))
     right_level = int(getattr(state, "tesla_blindspot_right_level", 2 if getattr(car_state, "rightBlindspot", False) else 0))
     self.ambient.update_blindspot(left_level, right_level, self._night_mode(now_nanos), now_nanos)
-    return self.validation.take_can_sends(now_nanos) + self.ambient.take_can_sends(now_nanos)
+    return self.ambient.take_can_sends(now_nanos)
 
   def service_params(self, params) -> None:
+    if self.enabled and not self._startup_configured:
+      update_config = getattr(getattr(self.car_interface, "CS", None), "update_config", None)
+      if update_config is not None:
+        update_config(snapshot_as_dict(params))
+      self._startup_configured = True
     self.speed_limit_assist_configured = params.get("SpeedLimitMode", return_default=True) == Mode.assist
-    if self.validation is not None:
-      self.validation.service_params(params)
     if self.ambient is not None:
       self.ambient.service_params(params)
-
-  def update_state(self, state_sp, now_ns: int | None = None) -> None:
-    if self.road_context_parser is None:
-      return
-
-    from opendbc.sunnypilot.car.tesla.carstate_ext import publish_tesla_road_context
-
-    timestamp_ns = self.road_context_parser.ts_nanos["DAS_road"]["DAS_stopLineDist"]
-    publish_tesla_road_context(
-      state_sp,
-      self.road_context_parser.vl["DAS_road"],
-      timestamp_ns,
-      time.monotonic_ns() if now_ns is None else now_ns,
-    )
 
   def publish_state(self, state_sp, now_ns: int | None = None) -> None:
     if self.traffic_control_observer is None:

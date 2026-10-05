@@ -167,6 +167,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"TeslaTouchLongitudinalSwitch", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaApHybrid", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaDynamicApLongitudinal", {PERSISTENT | BACKUP, BOOL, "0"}},
+    // Retired Web/test keys: compatibility tombstones only. No production execution; never reuse.
     {"TeslaAmbientLightingRequest", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, STRING}},
     {"TeslaAmbientLightingOffroadActive", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, BOOL, "0"}},
     {"TeslaAmbientLightingStatus", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, STRING}},
@@ -177,6 +178,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"TeslaTurnSignalTestResult", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON}},
     {"TeslaTurnSignalTestStatus", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON}},
     {"TeslaTurnSignalTestCancel", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON}},
+    // Active Tesla control configuration.
     {"DynamicAutoStock", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"DynamicAutoStockBlinkerToSP", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"DynamicAutoStockCurveToSP", {PERSISTENT | BACKUP, BOOL, "0"}},

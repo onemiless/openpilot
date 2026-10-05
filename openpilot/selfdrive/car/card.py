@@ -124,7 +124,7 @@ class Car:
       self.CI, self.CP, self.CP_SP = CI, CI.CP, CI.CP_SP
       self.RI = RI
 
-    self.tesla_adapter = TeslaCardAdapter(self.CP.brand, self.CI, self.sm)
+    self.tesla_adapter = TeslaCardAdapter(self.CP.brand, self.CI, self.sm, self.params)
 
     self.CP.alternativeExperience = 0
     # mads
@@ -201,7 +201,6 @@ class Car:
 
     # Update carState from CAN
     CS, CS_SP = self.CI.update(can_list)
-    self.tesla_adapter.update_state(CS_SP)
     CS_SP = convert_to_capnp(CS_SP)
     self.tesla_adapter.publish_state(CS_SP)
 

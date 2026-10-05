@@ -7,7 +7,6 @@ must be filtered to preserve the mixed-control session.
 """
 
 from dataclasses import dataclass, field
-from enum import StrEnum
 from typing import Protocol
 
 from opendbc.sunnypilot.car.tesla.values import TeslaFlagsSP
@@ -21,15 +20,6 @@ EventName = log.OnroadEvent.EventName
 class EventCollection(Protocol):
   def has(self, event_name: int) -> bool: ...
   def remove(self, event_name: int) -> None: ...
-
-
-class TeslaLongitudinalOwner(StrEnum):
-  sp = "sp"
-  stock_unknown = "stockUnknown"
-  dynamic_stock = "dynamicStock"
-  manual_stock = "manualStock"
-  ap_hybrid_sp = "apHybridSp"
-  ap_hybrid_stock = "apHybridStock"
 
 
 @dataclass(frozen=True)
@@ -51,19 +41,6 @@ class TeslaControlState:
   @property
   def exit_recovery(self) -> bool:
     return bool(self.flags & TeslaFlagsSP.AP_HYBRID_EXIT_RECOVERY_ACTIVE)
-
-  @property
-  def longitudinal_owner(self) -> TeslaLongitudinalOwner:
-    if self.ap_hybrid:
-      return TeslaLongitudinalOwner.ap_hybrid_stock if self.stock_longitudinal else TeslaLongitudinalOwner.ap_hybrid_sp
-    if self.flags & TeslaFlagsSP.DYNAMIC_STOCK_ACTIVE:
-      return TeslaLongitudinalOwner.dynamic_stock
-    if self.flags & TeslaFlagsSP.MANUAL_STOCK_ACTIVE:
-      return TeslaLongitudinalOwner.manual_stock
-    if self.stock_longitudinal:
-      return TeslaLongitudinalOwner.stock_unknown
-    return TeslaLongitudinalOwner.sp
-
 
 def state_is_fresh(car_state_mono_time: int, car_state_sp_mono_time: int) -> bool:
   age = car_state_mono_time - car_state_sp_mono_time
@@ -102,9 +79,6 @@ class TeslaControlRuntime:
       EventName.wrongCruiseMode,
       EventName.pcmDisable,
     ]
-    if not self.current.exit_recovery:
-      suppressed.append(EventName.accFaulted)
-
     for event in suppressed:
       if events.has(event):
         events.remove(event)
