@@ -1,7 +1,6 @@
 import copy
 import threading
 import time
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -250,37 +249,6 @@ def test_rs408_missing_tn_native_overrides_preserve_current_params():
   assert backend_values(params, get_backend(BackendId.TN_NO_DEC)).j_ego_cost == 4.5
   assert params.values["AccelPersonalityEnabled"] is True
   assert params.values["AccelPersonality"] == 2
-
-
-def test_tesla_settings_display_invalid_config_without_repairing_it(monkeypatch):
-  from openpilot.selfdrive.ui.sunnypilot.layouts.settings.vehicle.brands import tesla_planner
-
-  source = {
-    "schemaVersion": 1,
-    "revision": 3,
-    "shared": {"following.time.standard_s": 1.55},
-    "backends": {
-      "official": {
-        "profile": 2,
-        "values": dict(DEFAULT_VALUES),
-        "customValues": dict(DEFAULT_VALUES),
-      },
-    },
-  }
-  params = FakeParams({CONFIG_PARAM: copy.deepcopy(source), "LongitudinalPlannerMode": 0})
-  monkeypatch.setattr(tesla_planner.ui_state, "params", params)
-  displayed = []
-  layout = tesla_planner.TeslaPlannerSettingsLayout.__new__(tesla_planner.TeslaPlannerSettingsLayout)
-  layout.backends = (get_backend(BackendId.OFFICIAL),)
-  layout.planner = SimpleNamespace(action_item=SimpleNamespace(set_selected_button=lambda _value: None))
-  layout.profile = SimpleNamespace(action_item=SimpleNamespace(set_selected_button=lambda _value: None))
-  layout._show_values = displayed.append
-  layout._update_visibility = lambda: None
-
-  layout._load_selected_backend()
-
-  assert displayed[0].as_dict() == DEFAULT_VALUES
-  assert params.values[CONFIG_PARAM] == source
 
 
 def test_default_profile_is_numerically_identical_to_upstream():

@@ -10,6 +10,7 @@ from collections.abc import Callable
 import pyray as rl
 
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.selfdrive.ui.sunnypilot.tesla_settings import CHOICES, TITLES, option_kwargs
 from openpilot.sunnypilot.selfdrive.car.tesla.control_profile import normalize_mads_screen_button
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.vehicle.brands.tesla_planner import TeslaPlannerSettingsLayout
 from openpilot.sunnypilot.selfdrive.traffic_control import TRAFFIC_SIGNAL_CONTROL_PARAM, planner_session_is_active
@@ -34,70 +35,52 @@ class TeslaControlSettingsLayout(Widget):
     )
 
     self.touch_longitudinal_switch = toggle_item_sp(
-      title=tr("4-Finger Longitudinal Switch"),
+      title=tr(TITLES["TeslaTouchLongitudinalSwitch"]),
       param="TeslaTouchLongitudinalSwitch",
       description=tr("Use a 4-finger infotainment press to switch longitudinal control between sunnypilot and Tesla ACC."),
       enabled=ui_state.is_offroad,
     )
     self.ap_hybrid = toggle_item_sp(
-      title=tr("AP Hybrid Control (Experimental)"),
+      title=tr(TITLES["TeslaApHybrid"]),
       param="TeslaApHybrid",
       description=tr("Keep a Tesla AP session available while sunnypilot arbitrates lateral and longitudinal control."),
       enabled=ui_state.is_offroad,
     )
     self.dynamic_ap_longitudinal = toggle_item_sp(
-      title=tr("Dynamic AP Control (Experimental)"),
+      title=tr(TITLES["TeslaDynamicApLongitudinal"]),
       param="TeslaDynamicApLongitudinal",
       description=tr("Use speed hysteresis to select both Tesla AP control axes or sunnypilot control axes."),
       enabled=ui_state.is_offroad,
     )
     self.dynamic_auto_stock = toggle_item_sp(
-      title=tr("Dynamic Auto Stock ACC"),
+      title=tr(TITLES["DynamicAutoStock"]),
       param="DynamicAutoStock",
       description=tr("Select Tesla ACC above the high-speed threshold when the stock longitudinal handoff is ready."),
       enabled=ui_state.is_offroad,
     )
     self.blinker_to_sp = toggle_item_sp(
-      title=tr("Turn Signal → SP Longitudinal"),
+      title=tr(TITLES["DynamicAutoStockBlinkerToSP"]),
       param="DynamicAutoStockBlinkerToSP",
       description=tr("Return Dynamic Auto Stock ACC to sunnypilot after a confirmed turn signal."),
       enabled=ui_state.is_offroad,
     )
     self.curve_to_sp = toggle_item_sp(
-      title=tr("Curve → SP Longitudinal"),
+      title=tr(TITLES["DynamicAutoStockCurveToSP"]),
       param="DynamicAutoStockCurveToSP",
       description=tr("Return Dynamic Auto Stock ACC to sunnypilot when vision or map curve control becomes active."),
       enabled=ui_state.is_offroad,
     )
     self.speed_high = option_item_sp(
-      title=tr("Speed Threshold High"),
+      title=tr(TITLES["DynamicAutoStockSpeedKph"]),
       param="DynamicAutoStockSpeedKph",
-      min_value=40,
-      max_value=120,
-      value_change_step=5,
-      label_callback=lambda value: f"{value} km/h",
+      **option_kwargs("DynamicAutoStockSpeedKph"),
       description=tr("Allow a configured dynamic mode to select Tesla control above this speed."),
     )
     self.speed_low = option_item_sp(
-      title=tr("Speed Threshold Low"),
+      title=tr(TITLES["DynamicAutoStockSpeedLowKph"]),
       param="DynamicAutoStockSpeedLowKph",
-      min_value=20,
-      max_value=100,
-      value_change_step=5,
-      label_callback=lambda value: f"{value} km/h",
+      **option_kwargs("DynamicAutoStockSpeedLowKph"),
       description=tr("Return a configured dynamic mode to sunnypilot below this speed."),
-    )
-    self.turn_signal_validation = toggle_item_sp(
-      title=tr("Tesla Turn Signal CAN Test"),
-      param="TeslaTurnSignalValidation",
-      description=tr("Allow the local browser to send bounded turn-signal validation frames using fresh OEM templates. Restart after changing."),
-      enabled=ui_state.is_offroad,
-    )
-    self.speed_button_validation = toggle_item_sp(
-      title=tr("Tesla Speed Button CAN Test"),
-      param="TeslaSpeedButtonValidation",
-      description=tr("Allow the local browser to send one bounded speed-button validation tick using a fresh OEM template. Restart after changing."),
-      enabled=ui_state.is_offroad,
     )
     self.items = [
       self.planner_settings,
@@ -109,8 +92,6 @@ class TeslaControlSettingsLayout(Widget):
       self.curve_to_sp,
       self.speed_high,
       self.speed_low,
-      self.turn_signal_validation,
-      self.speed_button_validation,
     ]
     self._scroller = Scroller(self.items, line_separator=True, spacing=0)
 
@@ -136,8 +117,6 @@ class TeslaControlSettingsLayout(Widget):
     self.dynamic_ap_longitudinal.action_item.set_enabled(offroad and has_longitudinal)
     self.speed_high.action_item.set_enabled(offroad)
     self.speed_low.action_item.set_enabled(offroad)
-    self.turn_signal_validation.action_item.set_enabled(offroad)
-    self.speed_button_validation.action_item.set_enabled(offroad)
     self._update_visibility()
 
   def _render(self, rect):
@@ -166,33 +145,27 @@ class TeslaControlSettingsAdapter:
       ui_state.params.put("TeslaMadsScreenButton", screen_button, block=True)
 
     self.radar_backend = multiple_button_item_sp(
-      title=lambda: tr("Tesla Radar Backend"),
+      title=lambda: tr(TITLES["TeslaARS408Radar"]),
       description=lambda: tr("Select Tesla radar, an external Continental ARS408, or disable radar input. Restart after changing."),
-      buttons=[lambda: tr("OEM"), lambda: tr("ARS408"), lambda: tr("Off")],
+      buttons=[lambda label=label: tr(label) for label, _ in CHOICES["TeslaARS408Radar"]],
       param="TeslaARS408Radar",
       inline=False,
     )
     self.traffic_control_mode = toggle_item_sp(
-      title=tr("Traffic Light Control (Experimental)"),
+      title=tr(TITLES["TeslaTrafficSignalControlEnabled"]),
       description=tr("When off, Traffic control is fully disabled; raw Tesla traffic-light data remains available for diagnostics. When on, confirmed red lights can stop the vehicle and confirmed green lights can start it when the path is clear."),  # noqa: E501
       param=TRAFFIC_SIGNAL_CONTROL_PARAM,
     )
     self.traffic_stop_reference = option_item_sp(
-      title=tr("Traffic Light Stop Reference"),
+      title=tr(TITLES["TeslaTrafficStopReference"]),
       param="TeslaTrafficStopReference",
-      min_value=20,
-      max_value=120,
-      value_change_step=5,
-      label_callback=lambda value: f"{value / 10.0:.1f} m",
+      **option_kwargs("TeslaTrafficStopReference"),
       description=tr("Adjust how far before Tesla's reported traffic-control point the vehicle stops. Higher values stop earlier; lower values stop closer. Changes apply to the next traffic-light event without restarting."),  # noqa: E501
     )
     self.traffic_control_max_speed = option_item_sp(
-      title=tr("Traffic Light Control Maximum Speed"),
+      title=tr(TITLES["TeslaTrafficControlMaxSpeed"]),
       param="TeslaTrafficControlMaxSpeed",
-      min_value=20,
-      max_value=120,
-      value_change_step=5,
-      label_callback=lambda value: f"{value} km/h",
+      **option_kwargs("TeslaTrafficControlMaxSpeed"),
       description=tr("Do not establish a new traffic-light control event above this speed. Existing braking is never cancelled abruptly, and changes apply without restarting."),  # noqa: E501
     )
     self._settings_layout = TeslaControlSettingsLayout(lambda: gui_app.pop_widget())

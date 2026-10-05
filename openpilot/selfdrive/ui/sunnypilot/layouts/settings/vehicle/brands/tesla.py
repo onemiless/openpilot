@@ -8,6 +8,7 @@ from opendbc.sunnypilot.car.tesla.values import TeslaFlagsSP
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.vehicle.brands.base import BrandSettings
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.vehicle.brands.tesla_control import TeslaControlSettingsAdapter
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.selfdrive.ui.sunnypilot.tesla_settings import CHOICES, TITLES, option_kwargs
 from openpilot.system.ui.lib.multilang import tr, trf
 from openpilot.system.ui.sunnypilot.widgets.list_view import multiple_button_item_sp, toggle_item_sp, option_item_sp
 
@@ -20,24 +21,23 @@ class TeslaSettings(BrandSettings):
   def __init__(self):
     super().__init__()
     self.control_profile = TeslaControlSettingsAdapter()
-    self.coop_steering_toggle = toggle_item_sp(tr("Cooperative Steering (Beta)"), "", param="TeslaCoopSteering")
+    self.coop_steering_toggle = toggle_item_sp(tr(TITLES["TeslaCoopSteering"]), "", param="TeslaCoopSteering")
     self.mads_screen_button = multiple_button_item_sp(
-      title=lambda: tr("MADS Screen Activation"),
+      title=lambda: tr(TITLES["TeslaMadsScreenButton"]),
       description="",
-      buttons=[lambda: tr("Off"), lambda: tr("3-Finger"), lambda: tr("5-Finger")],
+      buttons=[lambda label=label: tr(label) for label, _ in CHOICES["TeslaMadsScreenButton"]],
       param="TeslaMadsScreenButton",
       inline=False,
     )
     self.blindspot_ambient_toggle = toggle_item_sp(
-      tr("盲区联动氛围灯"), tr("检测到盲区时，对应侧常亮红色。按车机深浅色模式自动切换昼夜亮度，缺失时参考近光灯状态。"), param="TeslaBlindspotAmbientEnabled")
+      tr(TITLES["TeslaBlindspotAmbientEnabled"]),
+      tr("检测到盲区时，对应侧常亮红色。按车机深浅色模式自动切换昼夜亮度，缺失时参考近光灯状态。"), param="TeslaBlindspotAmbientEnabled")
     self.blindspot_ambient_day_brightness = option_item_sp(
-      param="TeslaBlindspotAmbientDayBrightness", title=lambda: tr("盲区氛围灯：白天亮度"),
-      description=tr("白天使用的百分比亮度，0–100%。"), min_value=0, max_value=100, value_change_step=1,
-      label_callback=lambda value: f"{value}%", inline=True)
+      param="TeslaBlindspotAmbientDayBrightness", title=lambda: tr(TITLES["TeslaBlindspotAmbientDayBrightness"]),
+      description=tr("白天使用的百分比亮度，0–100%。"), **option_kwargs("TeslaBlindspotAmbientDayBrightness"), inline=True)
     self.blindspot_ambient_brightness = option_item_sp(
-      param="TeslaBlindspotAmbientBrightness", title=lambda: tr("盲区氛围灯：夜间亮度"),
-      description=tr("夜间使用的百分比亮度，0–100%。"), min_value=0, max_value=100, value_change_step=1,
-      label_callback=lambda value: f"{value}%", inline=True)
+      param="TeslaBlindspotAmbientBrightness", title=lambda: tr(TITLES["TeslaBlindspotAmbientBrightness"]),
+      description=tr("夜间使用的百分比亮度，0–100%。"), **option_kwargs("TeslaBlindspotAmbientBrightness"), inline=True)
     self.items = [self.control_profile.radar_backend, self.coop_steering_toggle,
                   self.mads_screen_button, self.control_profile.traffic_control_mode,
                   self.control_profile.traffic_stop_reference,

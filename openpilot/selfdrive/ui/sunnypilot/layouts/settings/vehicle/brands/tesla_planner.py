@@ -5,29 +5,15 @@ import pyray as rl
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.registry import BackendId, ordered_backends
 from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.tuning import (
-  DEFAULT_VALUES, VALUE_SPECS, LongitudinalTuning, apply_backend_profile, backend_profile, backend_values, save_backend_values,
+  DEFAULT_VALUES, VALUE_SPECS, backend_profile,
 )
 from openpilot.sunnypilot.selfdrive.traffic_control import planner_session_is_active
-from openpilot.system.ui.lib.multilang import tr, tr_noop
-from openpilot.system.ui.sunnypilot.widgets.list_view import multiple_button_item_sp, option_item_sp, toggle_item_sp
+from openpilot.selfdrive.ui.sunnypilot.tesla_settings import CHOICES, TITLES, TUNING_ITEMS, apply_tuning_profile, load_tuning, save_tuning, tuning_notice
+from openpilot.system.ui.lib.multilang import tr
+from openpilot.system.ui.sunnypilot.widgets.list_view import ListItemSP, multiple_button_item_sp, option_item_sp, toggle_item_sp
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.network import NavButton
 from openpilot.system.ui.widgets.scroller_tici import Scroller
-
-
-TUNING_ITEMS = (
-  ("stop_distance", "MpcStopDistance", tr_noop("Stop Distance"), "m"),
-  ("comfort_brake", "MpcComfortBrake", tr_noop("Comfort Brake"), "m/s²"),
-  ("lead_danger_factor", "MpcLeadDangerFactor", tr_noop("Lead Danger Factor"), ""),
-  ("t_follow_relaxed", "MpcTFollowRelaxed", tr_noop("T Follow Relaxed"), "s"),
-  ("t_follow_standard", "MpcTFollowStandard", tr_noop("T Follow Standard"), "s"),
-  ("t_follow_aggressive", "MpcTFollowAggressive", tr_noop("T Follow Aggressive"), "s"),
-  ("x_ego_obstacle_cost", "MpcXObstacleCost", tr_noop("Obstacle Cost"), ""),
-  ("j_ego_cost", "MpcJerkCost", tr_noop("Jerk Cost"), ""),
-  ("jerk_factor_relaxed", "MpcJerkFactorStandard", tr_noop("Relaxed Jerk Factor"), ""),
-  ("a_change_cost", "MpcAccelChangeCost", tr_noop("Accel Change Cost"), ""),
-  ("danger_zone_cost", "MpcDangerZoneCost", tr_noop("Danger Zone Cost"), ""),
-)
 
 
 class TeslaPlannerSettingsLayout(Widget):
@@ -38,6 +24,8 @@ class TeslaPlannerSettingsLayout(Widget):
     self._back_button.set_click_callback(back_btn_callback)
     self.backends = ordered_backends()
     self._setting_values = False
+    self.tuning_error = ""
+    self.status_description = ""
 
     self.planner = multiple_button_item_sp(
       title=lambda: tr("Longitudinal Planner"),
@@ -55,13 +43,13 @@ class TeslaPlannerSettingsLayout(Widget):
       inline=False,
     )
     self.tn_accel_enabled = toggle_item_sp(
-      title=tr("TN Accel Personality"), param="AccelPersonalityEnabled",
+      title=tr(TITLES["AccelPersonalityEnabled"]), param="AccelPersonalityEnabled",
       description=tr("Enable TN's acceleration profile controller."),
     )
     self.tn_accel_profile = multiple_button_item_sp(
-      title=lambda: tr("TN Accel Profile"),
+      title=lambda: tr(TITLES["AccelPersonality"]),
       description=lambda: tr("Choose Eco, Normal, or Sport acceleration limits for TN-NoDEC."),
-      buttons=[lambda: tr("Eco"), lambda: tr("Normal"), lambda: tr("Sport")],
+      buttons=[lambda label=label: tr(label) for label, _ in CHOICES["AccelPersonality"]],
       param="AccelPersonality", inline=False,
     )
 
@@ -76,7 +64,8 @@ class TeslaPlannerSettingsLayout(Widget):
         on_value_changed=self._on_tuning_changed, enabled=lambda: True, inline=True,
       ))
 
-    self.items = [self.planner, self.profile, self.tn_accel_enabled, self.tn_accel_profile, *self.options]
+    self.status = ListItemSP(description_visible=True)
+    self.items = [self.status, self.planner, self.profile, self.tn_accel_enabled, self.tn_accel_profile, *self.options]
     self._scroller = Scroller(self.items, line_separator=True, spacing=0)
     self._load_selected_backend()
 
@@ -98,49 +87,56 @@ class TeslaPlannerSettingsLayout(Widget):
 
   def _load_selected_backend(self):
     backend = self._backend()
-    profile = backend_profile(ui_state.params, backend)
-    ui_state.params.put("MpcTuningProfile", profile, block=True)
+    values, self.tuning_error = load_tuning(ui_state.params, backend)
     self.planner.action_item.set_selected_button(self._backend_index())
-    self.profile.action_item.set_selected_button(profile)
-    try:
-      values = backend_values(ui_state.params, backend)
-    except ValueError:
-      # An unknown or mixed legacy config must remain untouched for recovery.
-      values = LongitudinalTuning()
-    self._show_values(values)
+    if values is not None:
+      profile = backend_profile(ui_state.params, backend)
+      ui_state.params.put("MpcTuningProfile", profile, block=True)
+      self.profile.action_item.set_selected_button(profile)
+      self._show_values(values)
     self._update_visibility()
 
   def _on_planner_changed(self, index: int):
+    if not ui_state.is_offroad() or planner_session_is_active(ui_state.sm):
+      return
     if 0 <= index < len(self.backends):
       ui_state.params.put("LongitudinalPlannerMode", int(self.backends[index].id), block=True)
       self._load_selected_backend()
 
   def _on_profile_changed(self, profile: int):
-    try:
-      values = apply_backend_profile(ui_state.params, self._backend(), profile)
-    except ValueError:
-      return
-    self._show_values(values)
+    values, self.tuning_error = apply_tuning_profile(ui_state.params, self._backend(), profile)
+    if values is not None:
+      ui_state.params.put("MpcTuningProfile", profile, block=True)
+      self.profile.action_item.set_selected_button(profile)
+      self._show_values(values)
     self._update_visibility()
 
   def _on_tuning_changed(self, _value):
-    if self._setting_values or int(ui_state.params.get("MpcTuningProfile", return_default=True)) != 2:
+    if self._setting_values or self.tuning_error or int(ui_state.params.get("MpcTuningProfile", return_default=True)) != 2:
       return
     values = dict(DEFAULT_VALUES)
     by_param = {option.action_item.param_key: option.action_item.get_value() / 100.0 for option in self.options}
     for field, param, _, _ in TUNING_ITEMS:
       values[field] = by_param[param]
-    try:
-      save_backend_values(ui_state.params, self._backend(), values, profile=2)
-    except ValueError:
-      return
+    self.tuning_error = save_tuning(ui_state.params, self._backend(), values)
+    if self.tuning_error:
+      self._load_selected_backend()
+    self._update_visibility()
 
   def _update_visibility(self):
     tn = self._backend().id == BackendId.TN_NO_DEC
-    custom = int(ui_state.params.get("MpcTuningProfile", return_default=True)) == 2
+    custom = not self.tuning_error and int(ui_state.params.get("MpcTuningProfile", return_default=True)) == 2
+    self.profile.action_item.set_enabled(not self.tuning_error)
+    self.status_description = self.tuning_error or tuning_notice(self._backend())
+    self.status.set_title(tr("配置无效，原值已保留") if self.tuning_error else tr("Official部分参数为近似调节"))
+    self.status.set_description(self.status_description)
+    self.status.show_description(True)
+    self.status.set_visible(bool(self.status_description))
     self.tn_accel_enabled.set_visible(tn)
     self.tn_accel_profile.set_visible(tn and ui_state.params.get_bool("AccelPersonalityEnabled"))
-    for option in self.options:
+    for (field, _, title, _), option in zip(TUNING_ITEMS, self.options, strict=True):
+      option.set_title(tr(title) + (tr("（近似）") if field in self._backend().approximate_tuning_fields else ""))
+      option.set_visible(not self.tuning_error)
       option.action_item.set_enabled(custom)
 
   def _update_state(self):
