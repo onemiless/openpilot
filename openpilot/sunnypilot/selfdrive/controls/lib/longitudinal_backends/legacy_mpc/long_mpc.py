@@ -5,8 +5,8 @@ import time
 import numpy as np
 
 from openpilot.cereal import log
-from opendbc.car.interfaces import ACCEL_MAX, ACCEL_MIN
-from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import (
+from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.legacy_mpc.contract import (
+  ACCEL_MAX, ACCEL_MIN, LEAD_ACCEL_TAU, MIN_X_LEAD_FACTOR,
   ACADOS_SOLVER_TYPE,
   A_EGO_COST,
   COST_DIM,
@@ -14,7 +14,6 @@ from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import (
   CRASH_DISTANCE,
   FCW_IDXS,
   LIMIT_COST,
-  LongitudinalMpc as UpstreamLongitudinalMpc,
   LongitudinalPlanSource,
   N,
   T_DIFFS,
@@ -24,7 +23,7 @@ from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import (
   get_jerk_factor,
 )
 from openpilot.common.swaglog import cloudlog
-from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.tuning import LongitudinalTuning
+from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.tuning import LongitudinalTuning, TuningController
 
 
 MODEL_NAME = "sp_legacy_cruise_v1"
@@ -49,7 +48,6 @@ def get_safe_obstacle_distance(v_ego, t_follow, comfort_brake, stop_distance):
 def generate_legacy_ocp(model_name=MODEL_NAME, export_dir=EXPORT_DIR, qp_solver_cond_n=1):
   from acados.acados_template import AcadosModel, AcadosOcp
   from casadi import SX, vertcat
-  from openpilot.selfdrive.modeld.constants import index_function
 
   model = AcadosModel()
   model.name = model_name
@@ -123,14 +121,12 @@ def generate_legacy_ocp(model_name=MODEL_NAME, export_dir=EXPORT_DIR, qp_solver_
   ocp.solver_options.qp_solver_iter_max = 10
   ocp.solver_options.qp_tol = 1e-3
   ocp.solver_options.tf = T_IDXS[-1]
-  ocp.solver_options.shooting_nodes = np.array([
-    index_function(index, max_val=10.0, max_idx=N) for index in range(N + 1)
-  ])
+  ocp.solver_options.shooting_nodes = T_IDXS.copy()
   ocp.code_export_directory = export_dir
   return ocp
 
 
-class LegacyCruiseLongitudinalMpc(UpstreamLongitudinalMpc):
+class LegacyCruiseLongitudinalMpc:
   """The final rs408 eight-parameter cruise-obstacle MPC on the current runtime."""
 
   def __init__(self, solver_class, fallback_solver_class, dt):
@@ -145,6 +141,40 @@ class LegacyCruiseLongitudinalMpc(UpstreamLongitudinalMpc):
     self.fallback_solver = fallback_solver_class(FALLBACK_MODEL_NAME, ACADOS_SOLVER_TYPE, N)
     self.reset()
     self.source = LongitudinalPlanSource.cruise
+
+  def configure_runtime_tuning(self, params, backend) -> None:
+    self._tuning_controller = TuningController(params, backend)
+
+  def _refresh_runtime_tuning(self) -> None:
+    if self._tuning_controller is not None:
+      self.runtime_tuning = self._tuning_controller.update(self.dt)
+
+  def set_cur_state(self, v, a):
+    v_prev = self.x0[1]
+    self.x0[1] = v
+    self.x0[2] = a
+    if abs(v_prev - v) > 2.:
+      for index in range(N + 1):
+        self.solver.set(index, 'x', self.x0)
+
+  @staticmethod
+  def extrapolate_lead(x_lead, v_lead, a_lead, a_lead_tau):
+    a_lead_traj = a_lead * np.exp(-a_lead_tau * (T_IDXS ** 2) / 2.)
+    v_lead_traj = np.clip(v_lead + np.cumsum(T_DIFFS * a_lead_traj), 0.0, 1e8)
+    x_lead_traj = x_lead + np.cumsum(T_DIFFS * v_lead_traj)
+    return np.column_stack((x_lead_traj, v_lead_traj))
+
+  def process_lead(self, lead):
+    v_ego = self.x0[1]
+    if lead is not None and lead.present:
+      x_lead, v_lead, a_lead, a_lead_tau = lead.dRel, lead.vLead, lead.aLeadK, lead.aLeadTau
+    else:
+      x_lead, v_lead, a_lead, a_lead_tau = 50.0, v_ego + 10.0, 0.0, LEAD_ACCEL_TAU
+    min_x_lead = MIN_X_LEAD_FACTOR * (v_ego + v_lead) * (v_ego - v_lead) / (-ACCEL_MIN * 2)
+    x_lead = np.clip(x_lead, min_x_lead, 1e8)
+    v_lead = np.clip(v_lead, 0.0, 1e8)
+    a_lead = np.clip(a_lead, -10., 5.)
+    return self.extrapolate_lead(x_lead, v_lead, a_lead, a_lead_tau)
 
   def reset(self):
     self.solver.reset()

@@ -1,4 +1,4 @@
-from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import (
+from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.legacy_mpc.contract import (
   LongitudinalPlanSource as LongitudinalPlanSource,
   T_IDXS as T_IDXS,
 )

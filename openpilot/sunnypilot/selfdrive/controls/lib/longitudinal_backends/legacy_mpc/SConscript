@@ -55,13 +55,12 @@ model_files = {model: generated_model_files(model, gen) for model, gen in MODELS
 all_generated_files = [path for model, _ in MODELS for path in model_files[model][0]]
 source_list = [
   'long_mpc.py',
-  '#openpilot/selfdrive/modeld/constants.py',
+  'contract.py',
   acados_include_dir.File('acados_c/ocp_nlp_interface.h'),
   acados_template_dir.File('c_templates_tera/acados_solver.in.c'),
 ]
 generated_models = env.Command(all_generated_files, source_list, f'cd {Dir(".").abspath} && python3 long_mpc.py')
-env.Depends(generated_models, [msgq_python, common_python,
-  File("#openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/c_generated_code/acados_ocp_solver_pyx.so")])
+env.Depends(generated_models, [msgq_python, common_python])
 
 
 def build_mpc(model, gen):

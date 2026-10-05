@@ -58,7 +58,7 @@ def test_experimental_provider_is_installed_and_isolated_from_official():
 
   assert module_path.is_file()
   source = module_path.read_text()
-  assert f"class {class_name}(UpstreamLongitudinalPlanner)" in source
+  assert f"class {class_name}(LegacyLongitudinalPlanner)" in source
   assert "def is_e2e" not in source  # Preserve the shared legacy DEC/Experimental Mode behavior.
 
 
@@ -157,9 +157,8 @@ def test_custom_backends_share_one_generated_legacy_solver_contract():
 
 def test_custom_planners_only_enable_solver_recovery_while_longitudinal_is_active():
   root = Path(__file__).parents[1] / "lib" / "longitudinal_backends"
-  for backend in ("experimental", "tn_no_dec"):
-    source = (root / backend / "planner.py").read_text()
-    assert "set_recovery_enabled(sm['carControl'].longActive)" in source
+  source = (root / "legacy_mpc" / "planner.py").read_text()
+  assert "set_recovery_enabled(sm['carControl'].longActive)" in source
 
 
 def test_tn_stopping_policy_fails_safe_on_invalid_inputs():

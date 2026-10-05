@@ -7,7 +7,7 @@ See the LICENSE.md file in the root directory for more details.
 
 import numpy as np
 
-from opendbc.car.interfaces import ACCEL_MIN, ACCEL_MAX
+from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.legacy_mpc.contract import ACCEL_MIN, ACCEL_MAX
 
 
 class LongitudinalMpcSP:

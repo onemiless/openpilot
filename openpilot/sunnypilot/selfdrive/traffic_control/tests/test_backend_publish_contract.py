@@ -43,7 +43,7 @@ class PublishInputs:
       "radarState": ns(leadOne=ns(present=False, dRel=0.0), leadTwo=ns(present=False, dRel=0.0)),
       "carState": ns(vEgo=8.0, aEgo=0.0, gasPressed=False, brakePressed=False, vCruise=50.0),
       "carControl": ns(enabled=True, longActive=True),
-      "controlsState": ns(),
+      "controlsState": ns(forceDecel=False),
       "modelV2": ns(action=ns(shouldStop=False)),
       "selfdriveState": ns(personality=log.LongitudinalPersonality.standard),
     }

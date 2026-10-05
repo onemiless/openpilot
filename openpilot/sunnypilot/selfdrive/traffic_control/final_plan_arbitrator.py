@@ -581,6 +581,11 @@ class FinalPlanArbitrator:
       return TrafficStartBlockReason.eventMismatch
     if self._completed_start_session_id == session_id:
       return TrafficStartBlockReason.alreadyStarted
+    # OEM green may clear a model-only traffic STOP, but never a driver
+    # no-response/soft-disable deceleration or an unknown safety state.
+    if ("controlsState" not in sm.seen or not self._healthy(sm, "controlsState")
+        or sm["controlsState"].forceDecel):
+      return TrafficStartBlockReason.unsafeBasePlan
     if not self._driver_allows_start(sm):
       return TrafficStartBlockReason.driverOverride
     if self._go_lead_blocked(plan, sm, session_id, now_ns):

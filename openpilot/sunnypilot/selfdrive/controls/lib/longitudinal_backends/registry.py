@@ -16,6 +16,8 @@ class BackendSpec:
   provider: str
   capabilities: frozenset[str] = frozenset()
   stopping_policy: str | None = None
+  approximate_tuning_fields: frozenset[str] = frozenset()
+  tuning_notice: str = ""
 
 
 # The official provider always points at the current upstream planner. It is
@@ -27,6 +29,8 @@ OFFICIAL_BACKEND = BackendSpec(
   label="Official",
   provider="openpilot.selfdrive.controls.lib.longitudinal_planner:LongitudinalPlanner",
   capabilities=frozenset({"upstream"}),
+  approximate_tuning_fields=frozenset({"comfort_brake", "stop_distance"}),
+  tuning_notice="Official 保持官方六参数求解器；舒适制动与停车距离通过障碍物平移近似实现，非八参数 MPC 的等价调参。默认值不改变官方行为。",
 )
 
 EXPERIMENTAL_BACKEND = BackendSpec(

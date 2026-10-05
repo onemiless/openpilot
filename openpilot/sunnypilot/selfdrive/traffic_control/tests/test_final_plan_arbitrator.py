@@ -139,6 +139,7 @@ def fake_sm(*, phase=TrafficControlPhase.off, light_state=0, target=False,
     "radarState": ns(leadOne=no_lead, leadTwo=ns(present=False, dRel=0.0)),
     "carState": ns(vEgo=v_ego, aEgo=0.0, gasPressed=False, brakePressed=False, vCruise=50.0),
     "carControl": ns(enabled=True, longActive=True, leftBlinker=False, rightBlinker=False),
+    "controlsState": ns(forceDecel=False),
     "modelV2": ns(action=ns(shouldStop=base_model_stop)),
     "selfdriveState": ns(personality=personality),
   })

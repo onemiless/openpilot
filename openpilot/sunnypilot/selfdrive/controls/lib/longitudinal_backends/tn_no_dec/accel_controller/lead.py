@@ -14,7 +14,7 @@ from openpilot.cereal import log
 from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.tn_no_dec.long_mpc import (
   LongitudinalMpc, LongitudinalPlanSource, STOP_DISTANCE, T_IDXS, get_T_FOLLOW, get_stopped_equivalence_factor,
 )
-from openpilot.selfdrive.controls.radard import _LEAD_ACCEL_TAU
+from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.legacy_mpc.contract import LEAD_ACCEL_TAU as _LEAD_ACCEL_TAU
 from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.tn_no_dec.accel_controller.constants import (
   COMFORT_DECEL, MAX_LEAD_ACCEL_TAU, MIN_LEAD_SPEED, STOP_GAP_RESERVE, STOP_HOLD_SPEED_FLOOR, sanitize_profile,
 )

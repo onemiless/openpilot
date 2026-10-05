@@ -15,6 +15,8 @@ def _load_stopping_policy(spec: BackendSpec):
 
 def create_long_control(CP, CP_SP, *, params=None) -> LongControl:
   """Attach only the selected backend's stopping policy to upstream control."""
+  if CP.brand != "tesla":
+    return LongControl(CP, CP_SP)
   params = Params() if params is None else params
   spec = latch_active_backend(params)
   return LongControl(CP, CP_SP, stopping_policy=_load_stopping_policy(spec))

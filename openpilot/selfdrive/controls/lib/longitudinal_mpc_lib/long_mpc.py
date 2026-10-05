@@ -280,20 +280,10 @@ class LongitudinalMpc:
     if personality == log.LongitudinalPersonality.relaxed:
       jerk_factor *= self.runtime_tuning.jerk_factor_relaxed
     a_change_cost = self.runtime_tuning.a_change_cost if prev_accel_constraint else 0
-    jerk_factor = self._scale_backend_jerk_factor(jerk_factor)
     cost_weights = [self.runtime_tuning.x_ego_obstacle_cost, X_EGO_COST, V_EGO_COST, A_EGO_COST,
                     jerk_factor * a_change_cost, jerk_factor * self.runtime_tuning.j_ego_cost]
     constraint_cost_weights = [LIMIT_COST, LIMIT_COST, LIMIT_COST, self.runtime_tuning.danger_zone_cost]
     self.set_cost_weights(cost_weights, constraint_cost_weights)
-
-  def _scale_backend_jerk_factor(self, jerk_factor: float) -> float:
-    return jerk_factor
-
-  def _apply_backend_params(self) -> None:
-    pass
-
-  def _save_backend_solution_status(self) -> None:
-    pass
 
   def set_cur_state(self, v, a):
     v_prev = self.x0[1]
@@ -362,7 +352,6 @@ class LongitudinalMpc:
     self.params[:,3] = np.copy(self.a_prev)
     self.params[:,4] = t_follow
     self.params[:,5] = self.runtime_tuning.lead_danger_factor
-    self._apply_backend_params()
 
     self.run()
     if (np.any(lead_xv_0[FCW_IDXS,0] - self.x_sol[FCW_IDXS,0] < CRASH_DISTANCE) and
@@ -378,7 +367,6 @@ class LongitudinalMpc:
     self.solver.constraints_set(0, "ubx", self.x0)
 
     self.solution_status = self.solver.solve()
-    self._save_backend_solution_status()
     self.solve_time = float(self.solver.get_stats('time_tot')[0])
 
     for i in range(N+1):
