@@ -74,9 +74,9 @@ def main():
     (venv_bin / "python3").chmod(0o755)
     (host_bin / "python3").chmod(0o755)
 
-    def cli(name, arguments, succeeds=True, contains=None):
+    def cli(name, arguments, succeeds=True, contains=None, environment=None):
       command = [sys.executable, str(CLI), "--repo", str(root), *arguments]
-      result = subprocess.run(command, capture_output=True, text=True)
+      result = subprocess.run(command, capture_output=True, text=True, env=environment)
       payload = json.loads(result.stdout)
       assert (result.returncode == 0) == succeeds, (name, result.stdout, result.stderr)
       if contains:
@@ -117,6 +117,30 @@ def main():
     cli("default_c3_venv_manifest", create[:-2] + ["--output", str(default_manifest)])
     assert json.loads(default_manifest.read_text())["boot_venv_bin"] == "/usr/local/venv/bin"
     cli("refuse_relative_venv_bin", create + ["--venv-bin", "relative"], False, "absolute single PATH directory")
+    # Deterministic Git-LFS output fixture: delegate every other Git operation unchanged.
+    git_shim = home / "git-shim"
+    git_shim.mkdir()
+    real_git = shutil.which("git")
+    (git_shim / "git").write_text(
+      f"#!{sys.executable}\nimport os, sys\n"
+      "if sys.argv[-2:] == ['lfs', 'env']:\n"
+      "  print(os.environ['RELEASE_E2E_LFS_ENV'])\n"
+      "else:\n"
+      f"  os.execv({real_git!r}, [{real_git!r}, *sys.argv[1:]])\n")
+    (git_shim / "git").chmod(0o755)
+    ordered = {**os.environ, "PATH": f"{git_shim}:{os.environ['PATH']}", "RELEASE_E2E_LFS_ENV":
+               "Endpoint=https://example.invalid/a/info/lfs (auth=none)\n"
+               "Endpoint(second)=https://example.invalid/b/info/lfs (auth=basic)"}
+    reordered = {**ordered, "RELEASE_E2E_LFS_ENV":
+                 "Endpoint(second)=https://example.invalid/b/info/lfs (auth=none)\n"
+                 "Endpoint=https://example.invalid/a/info/lfs (auth=basic)"}
+    endpoint_manifest = home / "endpoint-manifest.json"
+    cli("multi_remote_lfs_manifest", create + ["--output", str(endpoint_manifest)], environment=ordered)
+    cli("multi_remote_lfs_reordered_preflight", ["preflight", "--manifest", str(endpoint_manifest)], environment=reordered)
+    cli("multi_remote_lfs_repeated_preflight", ["preflight", "--manifest", str(endpoint_manifest)], environment=ordered)
+    changed_endpoint = {**ordered, "RELEASE_E2E_LFS_ENV": "Endpoint=https://example.invalid/changed/info/lfs (auth=none)"}
+    cli("multi_remote_lfs_changed_url_rejected", ["preflight", "--manifest", str(endpoint_manifest)],
+        False, "dependency lock changed", environment=changed_endpoint)
     cli("refuse_existing_stage", ["stage", "--manifest", str(manifest_path), "--destination", str(staging)], False)
     cli("refuse_source_output", [*create[:4], str(root / "manifest.json"), *create[5:]], False, "outside source")
     cli("missing_baseline", [*create[:2], "0" * 40, *create[3:]], False)

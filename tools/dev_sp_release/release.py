@@ -76,7 +76,8 @@ def checkout(root, prefix=""):
   head = git(root, "rev-parse", "HEAD")
   lfs = subprocess.run(["git", "-C", str(root), "lfs", "env"], capture_output=True, text=True)
   lock = {"path": prefix or ".", "head": head,
-          "lfs_endpoints": [line for line in lfs.stdout.splitlines() if line.startswith("Endpoint")],
+          "lfs_endpoints": sorted({line.split("=", 1)[1].rsplit(" (auth=", 1)[0]
+                                   for line in lfs.stdout.splitlines() if line.startswith("Endpoint") and "=" in line}),
           "lfs_env_available": lfs.returncode == 0}
   locks, files = [lock], []
   for entry in git(root, "ls-tree", "-rz", "HEAD").split("\0"):

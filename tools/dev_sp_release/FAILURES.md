@@ -17,6 +17,8 @@ The executable E2E demo must leave JSON evidence and fail on regression:
 - Boot PATH selects the host Python instead of the specified C3 venv interpreter,
   so the official launch chain cannot import installed runtime dependencies.
 - Boot template changes an inherited PCIe setting while correcting interpreter selection.
+- LFS endpoint enumeration order or credential-cache auth status changes between
+  manifest and preflight despite identical endpoint URLs, causing false identity rejection.
 
 Source-only success cannot establish runtime model readiness, firmware flashing,
 device startup, vehicle control behavior, or onroad acceptance.

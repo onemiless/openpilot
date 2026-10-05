@@ -91,12 +91,18 @@ python3 "$SOURCE/tools/dev_sp_release/release.py" --repo "$SOURCE" preflight \
 ```
 
 The manifest records the baseline, runtime parent SHA, every recursive actual HEAD
-and expected gitlink, effective LFS endpoint output from `git lfs env` (or explicit
+and expected gitlink, effective LFS endpoint URLs from `git lfs env` (or explicit
 unavailability), tracked file count, changed-file SHA256 and permissions, optional
 runtime file SHA256/size/mtime/mode, catalog path and boot template. Changed gitlinks
 include the current tracked contents of that dependency in the hash inventory.
 Missing, uninitialized, mismatched or dirty dependencies fail explicitly; a populated
 directory is not accepted as a valid submodule checkout.
+
+LFS endpoint identity is a sorted, deduplicated URL list. Enumeration order and
+remote labels are excluded, and trailing `(auth=...)` state is excluded because
+credential-cache/session state can change independently of source identity.
+A changed endpoint URL still fails preflight. Regenerate manifests created by an
+older tool that stored raw endpoint lines before using this normalized check.
 
 Manifest creation hashes requested runtime files once. Normal preflight rechecks
 Git identities, cleanliness, metadata, pointer headers and changed files up to
@@ -162,3 +168,8 @@ venv wins and the inherited PCIe setting survives. Only the device directory `cd
 is mapped to the temporary staging directory through a Bash function; the generated
 script itself is executed unchanged. It creates no unit-test framework,
 changes no live source refs and proves no device behavior.
+
+The LFS regression uses a deterministic CLI Git wrapper only for `git lfs env`,
+delegating every other operation to the real Git executable. It changes endpoint
+order and auth state between manifest and repeated preflight, verifies those
+changes are accepted, and verifies that a changed endpoint URL is rejected.
