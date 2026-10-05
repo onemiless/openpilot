@@ -1,7 +1,6 @@
 {
-  "source": "/Users/mile/Desktop/mo-op/artifacts/nav-prebuild-publish/openpilot/selfdrive/assets/fonts/NotoSansCJKsc-Navigation.otf",
+  "source_url": "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf",
   "source_sha256": "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b",
-  "output_sha256": "5d546d97ff87e907599d7b34b5fdeb8c70d7f81d31d08b0b53f7384a4b42b3d2",
-  "glyph_codepoints": 676,
-  "family": "Noto Sans CJK SC, existing full navigation font"
+  "family": "Noto Sans CJK SC",
+  "build_command": "PYTHONPATH=. python tools/sp_tesla_e2e/build_chinese_font.py --source <verified-full-font.otf> --output <subset.otf> --receipt <receipt.json>"
 }
