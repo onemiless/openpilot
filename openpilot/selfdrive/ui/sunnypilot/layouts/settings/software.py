@@ -9,6 +9,8 @@ import subprocess
 from openpilot.selfdrive.ui.layouts.settings.software import SoftwareLayout
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.common.hardware import HARDWARE
+from openpilot.sunnypilot.hardware.branches import is_prebuild_branch, selectable_tici_branches
+from openpilot.sunnypilot.hardware.profile import get_hardware_profile
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.multilang import tr, tr_noop
 from openpilot.system.ui.widgets import DialogResult
@@ -53,18 +55,24 @@ class SoftwareLayoutSP(SoftwareLayout):
   def _on_select_branch(self):
     current_git_branch = ui_state.params.get("GitBranch") or ""
     branches_str = ui_state.params.get("UpdaterAvailableBranches") or ""
-    branches = [b for b in branches_str.split(",") if b]
+    branches = list(dict.fromkeys(b for b in branches_str.split(",") if b))
     current_target = ui_state.params.get("UpdaterTargetBranch") or ""
     top_level_branches = [current_git_branch, "release-mici", "release-tizi", "staging", "dev", "master"]
 
     if HARDWARE.get_device_type() == "tici":
-      top_level_branches = ["release-tici", "staging-tici"]
-      branches = [b for b in branches if b.endswith("-tici")]
+      top_level_branches = [current_git_branch, "dev-sp", "release-tici", "staging-tici"]
+      branches = selectable_tici_branches(branches, get_hardware_profile(), current_git_branch)
+    elif current_git_branch and current_git_branch not in branches:
+      branches.insert(0, current_git_branch)
+
+    top_level_branches = list(dict.fromkeys(top_level_branches))
+    if current_target not in branches:
+      current_target = current_git_branch
 
     top_level_nodes = [TreeNode(b, {'display_name': b}) for b in top_level_branches if b in branches]
     remaining_branches = [b for b in branches if b not in top_level_branches]
-    prebuilt_nodes = [TreeNode(b, {'display_name': b}) for b in remaining_branches if b.endswith("-prebuilt")]
-    non_prebuilt_nodes = [TreeNode(b, {'display_name': b}) for b in remaining_branches if not b.endswith("-prebuilt")]
+    prebuilt_nodes = [TreeNode(b, {'display_name': b}) for b in remaining_branches if is_prebuild_branch(b)]
+    non_prebuilt_nodes = [TreeNode(b, {'display_name': b}) for b in remaining_branches if not is_prebuild_branch(b)]
 
     folders = [
       TreeFolder("", top_level_nodes),
@@ -75,7 +83,7 @@ class SoftwareLayoutSP(SoftwareLayout):
     def _on_branch_selected(result):
       if result == DialogResult.CONFIRM and self._branch_dialog is not None:
         selection = self._branch_dialog.selection_ref
-        if selection:
+        if selection and selection in branches:
           ui_state.params.put("UpdaterTargetBranch", selection)
           self._branch_btn.action_item.set_value(selection)
           subprocess.run(["pkill", "-SIGUSR1", "-f", "openpilot.system.updated.updated"], check=False)
