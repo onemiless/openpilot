@@ -261,7 +261,7 @@ def main():
     print(json.dumps(result))
   except (ValueError, OSError, KeyError, subprocess.CalledProcessError) as error:
     print(json.dumps({"status": "failed", "error": str(error)}))
-    raise SystemExit(1)
+    raise SystemExit(1) from None
 
 
 if __name__ == "__main__":

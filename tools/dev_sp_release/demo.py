@@ -122,17 +122,17 @@ def main():
     git_shim.mkdir()
     real_git = shutil.which("git")
     (git_shim / "git").write_text(
-      f"#!{sys.executable}\nimport os, sys\n"
-      "if sys.argv[-2:] == ['lfs', 'env']:\n"
-      "  print(os.environ['RELEASE_E2E_LFS_ENV'])\n"
-      "else:\n"
+      f"#!{sys.executable}\nimport os, sys\n" +
+      "if sys.argv[-2:] == ['lfs', 'env']:\n" +
+      "  print(os.environ['RELEASE_E2E_LFS_ENV'])\n" +
+      "else:\n" +
       f"  os.execv({real_git!r}, [{real_git!r}, *sys.argv[1:]])\n")
     (git_shim / "git").chmod(0o755)
     ordered = {**os.environ, "PATH": f"{git_shim}:{os.environ['PATH']}", "RELEASE_E2E_LFS_ENV":
-               "Endpoint=https://example.invalid/a/info/lfs (auth=none)\n"
+               "Endpoint=https://example.invalid/a/info/lfs (auth=none)\n" +
                "Endpoint(second)=https://example.invalid/b/info/lfs (auth=basic)"}
     reordered = {**ordered, "RELEASE_E2E_LFS_ENV":
-                 "Endpoint(second)=https://example.invalid/b/info/lfs (auth=none)\n"
+                 "Endpoint(second)=https://example.invalid/b/info/lfs (auth=none)\n" +
                  "Endpoint=https://example.invalid/a/info/lfs (auth=basic)"}
     endpoint_manifest = home / "endpoint-manifest.json"
     cli("multi_remote_lfs_manifest", create + ["--output", str(endpoint_manifest)], environment=ordered)
