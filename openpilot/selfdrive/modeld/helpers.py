@@ -34,7 +34,27 @@ def chestnut_present() -> bool:
       pass
   return False
 
-def chestnut_compiled() -> bool:
-  path = modeld_pkl_path(chestnut=True)
-  return (path.is_file() or Path(get_manifest_path(path)).is_file()) and all(
-    (MODELS_DIR / f'big_driving_warp_{size}_tinygrad.pkl').is_file() for size in ('1344x760', '1928x1208'))
+def _compiled_file(path: Path) -> bool:
+  try:
+    with path.open('rb') as f:
+      header = f.read(64)
+      return bool(header) and not header.startswith(b'version https://git-lfs.github.com/spec/v1')
+  except OSError:
+    return False
+
+
+def chestnut_compiled(selected_model: bool = False) -> bool:
+  if selected_model:
+    from openpilot.common.hardware.hw import Paths
+    from openpilot.sunnypilot.models.helpers import get_selected_bundle, _bundle_artifacts
+    bundle = get_selected_bundle(source='chestnut')
+    if bundle is not None:
+      artifacts = _bundle_artifacts(bundle)
+      model_ready = bool(artifacts) and all(_compiled_file(Path(Paths.model_root()) / name) for name, _ in artifacts)
+    else:
+      model_ready = _compiled_file(modeld_pkl_path(chestnut=True)) or Path(get_manifest_path(modeld_pkl_path(chestnut=True))).is_file()
+  else:
+    path = modeld_pkl_path(chestnut=True)
+    model_ready = _compiled_file(path) or Path(get_manifest_path(path)).is_file()
+  return model_ready and all(
+    _compiled_file(MODELS_DIR / f'big_driving_warp_{size}_tinygrad.pkl') for size in ('1344x760', '1928x1208'))

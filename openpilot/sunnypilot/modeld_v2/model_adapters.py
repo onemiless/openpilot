@@ -11,6 +11,7 @@ import pickle
 import numpy as np
 
 from openpilot.common.basedir import BASEDIR
+from openpilot.selfdrive.modeld.helpers import MODELS_DIR
 from openpilot.sunnypilot.modeld_v2.compile_modeld import (POLICY_INPUTS, derive_frame_skip,
                                                            make_split_input_queues, make_supercombo_input_queues)
 from openpilot.sunnypilot.modeld_v2.stock_dependencies import make_input_queues as stock_make_input_queues, nv12_copy_size
@@ -64,7 +65,7 @@ class BaseModelAdapter:
       self.warp_frame_size = self.nv12_info[3]
       return self.jits[(self.cam_w, self.cam_h)]
 
-    warp_dir = Path(BASEDIR) / "openpilot/sunnypilot/modeld_v2/models"
+    warp_dir = MODELS_DIR if self.is_native else Path(BASEDIR) / "openpilot/sunnypilot/modeld_v2/models"
     warp_name = f'{"big_" if self.chestnut else ""}driving_warp_{self.cam_w}x{self.cam_h}_tinygrad.pkl'
     with open(warp_dir / warp_name, 'rb') as f:
       warp_data = pickle.load(f)
@@ -169,7 +170,7 @@ class NativeTinygradAdapter(BaseModelAdapter):
     self.frame_copy_size = stride * (y_height + uv_height)
 
     self.input_shapes_orig = self.jits['metadata']['input_shapes']
-    self._vision_input_names = [k for k in self.input_shapes_orig if 'img' in k]
+    self._vision_input_names = ['img', 'big_img']
     self.vision_output_slices = pickle.loads(codecs.decode(self.jits['metadata']['metadata']['output_slices'].encode(), 'base64'))
 
     self.run_warp = self._load_warp()
