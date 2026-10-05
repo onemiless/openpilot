@@ -6,9 +6,11 @@ from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.common.hardware import COMMA_HARDWARE
 from openpilot.system.ui.lib.application import gui_app, FontWeight, TextAlignment, TextAlignmentVertical
 from openpilot.system.ui.lib.multilang import tr
+from openpilot.system.ui.lib.multilang import multilang
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.label import Label
+from openpilot.selfdrive.ui.onroad.alert_localizer import localize_alert_text
 
 AlertSize = log.SelfdriveState.AlertSize
 AlertStatus = log.SelfdriveState.AlertStatus
@@ -112,7 +114,8 @@ class AlertRenderer(Widget):
       return None
 
     # Return current alert
-    return Alert(text1=ss.alertText1, text2=ss.alertText2, size=ss.alertSize.raw, status=ss.alertStatus.raw)
+    text1, text2 = localize_alert_text(ss.alertType, ss.alertText1, ss.alertText2, multilang.language)
+    return Alert(text1=text1, text2=text2, size=ss.alertSize.raw, status=ss.alertStatus.raw)
 
   def _render(self, rect: rl.Rectangle):
     alert = self.get_alert(ui_state.sm)

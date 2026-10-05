@@ -5,7 +5,8 @@ import pyray as rl
 from openpilot.cereal import messaging
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.sunnypilot.selfdrive.car.tesla.bms import BmsState
-from openpilot.system.ui.lib.application import gui_app, FontWeight, FONT_SCALE, font_fallback
+from openpilot.system.ui.lib.application import gui_app, FontWeight, FONT_SCALE
+from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.button import Button, ButtonStyle
 
@@ -16,6 +17,8 @@ class BmsLayout(Widget):
     self.state = BmsState()
     self.sock = None
     self.supported = False
+    self._visible = False
+    self._car_fingerprint = None
     self.page = 0
     self.tabs = [Button(label, click_callback=lambda index=i: self._select_page(index), font_size=42)
                  for i, label in enumerate(('概览', '电芯', '诊断'))]
@@ -24,19 +27,34 @@ class BmsLayout(Widget):
 
   def show_event(self):
     super().show_event()
+    self._visible = True
     self.state = BmsState()
-    cp = ui_state.CP
-    self.supported = cp is not None and cp.brand == 'tesla' and any(
-      model in cp.carFingerprint for model in ('MODEL_3', 'MODEL_Y'))
-    if self.supported and self.sock is None:
-      self.sock = messaging.sub_sock('can', timeout=0)
+    self._sync_subscription()
 
   def hide_event(self):
+    self._visible = False
     self.sock = None
+    self._car_fingerprint = None
+    self.supported = False
+    self.state = BmsState()
     super().hide_event()
+
+  def _sync_subscription(self):
+    cp = ui_state.CP
+    fingerprint = cp.carFingerprint if cp is not None and cp.brand == 'tesla' and any(
+      model in cp.carFingerprint for model in ('MODEL_3', 'MODEL_Y')) else None
+    if fingerprint != self._car_fingerprint:
+      self.state = BmsState()
+      self.sock = None
+      self._car_fingerprint = fingerprint
+    self.supported = fingerprint is not None
+    if self._visible and self.supported and self.sock is None:
+      self.sock = messaging.sub_sock('can', timeout=0)
 
   def _update_state(self):
     super()._update_state()
+    if self._visible:
+      self._sync_subscription()
     if self.sock is None:
       return
     now = time.monotonic()
@@ -71,7 +89,8 @@ class BmsLayout(Widget):
     number = '—' if value is None else f'{value:.{precision}f}'
     size = (144 if primary else 88)*scale
     self._text(number, x, y+57*scale, size, self.white, True)
-    unit_width = rl.measure_text_ex(gui_app.font(), unit, 36*scale*FONT_SCALE, 0).x
+    # ASCII units use the Inter atlas in _text, not the language fallback.
+    unit_width = rl.measure_text_ex(gui_app.font(), unit, 36*scale*FONT_SCALE, 0).x  # noqa: TID251
     self._text(unit, rect.x+rect.width-unit_width-28*scale, rect.y+rect.height-52*scale,
                36*scale, self.accent if primary else self.muted)
     if note:
@@ -89,7 +108,7 @@ class BmsLayout(Widget):
     self._text('电池与能耗', x, y, 56*s, self.white, True)
     fresh = any(v is not None for v in data.values())
     status = ('实时数据' if fresh else '等待车辆数据') if self.supported else '仅支持 Model 3 / Y'
-    sw = rl.measure_text_ex(font_fallback(gui_app.font()), status, 34*s*FONT_SCALE, 0).x
+    sw = measure_text_cached(gui_app.font(), status, 34*s).x
     self._text(status, x+w-sw, y+15*s, 34*s, self.accent if fresh else amber)
     gap = 20*s
     for i, tab in enumerate(self.tabs):
