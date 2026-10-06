@@ -108,6 +108,19 @@ class ModelState(ModelStateBase):
       pkl_path = str(default_pkl) if _pkl_exists(default_pkl) else None
     assert pkl_path is not None, f"No driving pkl found for {'chestnut' if chestnut else 'small model'} — all models must be compiled with compile_modeld.py"
     self._init_combined(pkl_path, cam_w, cam_h, model_bundle)
+    if not chestnut:
+      try:
+        self.warmup()
+      except RuntimeError as e:
+        if str(e) != "model output not finite":
+          raise
+        default_pkl = str(modeld_pkl_path(chestnut=False))
+        if str(pkl_path) == default_pkl:
+          raise
+        cloudlog.exception("small model output invalid; falling back to bundled model")
+        self.generation = None
+        self._init_combined(default_pkl, cam_w, cam_h, None)
+        self.warmup()
 
   def _init_combined(self, pkl_path, cam_w, cam_h, bundle):
     cloudlog.warning(f"loading combined pkl: {pkl_path}")
@@ -189,7 +202,7 @@ class ModelState(ModelStateBase):
 
     if self._combined_model_type == 'supercombo':
       model_output = raw_outputs.numpy().flatten()
-      if self.chestnut and not np.all(np.isfinite(model_output)):
+      if not np.all(np.isfinite(model_output)):
         raise RuntimeError("model output not finite")
       sliced = {k: model_output[np.newaxis, v] for k, v in self.vision_output_slices.items()}
       outputs = self.parser.parse_outputs(sliced)
