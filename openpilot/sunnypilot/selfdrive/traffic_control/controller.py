@@ -12,6 +12,9 @@ from openpilot.sunnypilot.selfdrive.traffic_control.tesla_observer import (
 )
 
 STOP_EVIDENCE_LOSS_GRACE_S = 2.0
+# Safety net for a bypass/yellowPass whose point never reports 255: release
+# after this much travel once the bound point is behind the car.
+PASS_POINT_RELEASE_TRAVEL_M = 300.0
 
 
 class TrafficControlMode(IntEnum):
@@ -136,6 +139,10 @@ class TeslaTrafficControlController:
     self.flash_latched = False
     self.stable_green_since_ns = 0
     self.yellow_latched: bool | None = None
+    # Control point owned by the current bypass/yellowPass (odometer station).
+    # None means no point is owned: the bypass lasts only while the driver holds the gas.
+    self.pass_station: float | None = None
+    self.pass_latch_station: float | None = None
     self.release_since_ns: int | None = None
     self.release_red_preserve_session: bool | None = None
     self.driver_override_until_ns = 0
@@ -209,6 +216,8 @@ class TeslaTrafficControlController:
     self.flash_latched = False
     self.stable_green_since_ns = 0
     self.yellow_latched = None
+    self.pass_station = None
+    self.pass_latch_station = None
     self.release_since_ns = None
     self.release_red_preserve_session = None
     self.last_distance_innovation = 0.0
@@ -333,6 +342,32 @@ class TeslaTrafficControlController:
     self.phase = (TrafficControlPhase.braking if required >= 0.5 else TrafficControlPhase.approachRed) \
       if phase == TrafficControlPhase.approachRed else phase
     self._mark_transition(reason)
+
+  def _latch_pass(self, distance: float | None) -> None:
+    self.pass_station = self.ego_station + distance if distance is not None else None
+    self.pass_latch_station = self.ego_station if distance is not None else None
+
+  def _pass_point_passed(self, observation: TeslaTrafficControlObservation, v_ego: float) -> bool:
+    """Track the control point owned by bypass/yellowPass; True once it is behind the car.
+
+    The latch belongs to one light: colour changes, gas release or slowing
+    down never re-arm it. It ends when the point is passed (odometer reaches
+    it, then 255) or Tesla reports a different, farther point.
+    """
+    if self.pass_station is None or self.pass_latch_station is None:
+      return True
+    in_range = observation.distance <= self.config.max_control_distance
+    travel = self.ego_station - self.pass_latch_station
+    expected = self.pass_station - self.ego_station
+    if in_range:
+      passed = (observation.distance > max(expected, 0.0) + max(20.0, v_ego)
+                or (expected <= 0.0 and travel >= PASS_POINT_RELEASE_TRAVEL_M))
+      if not passed:
+        self.pass_station = self.ego_station + observation.distance
+      return passed
+    # 255 mid-approach is a dropout, not a pass: require the odometer to be at
+    # the line (one 2 Hz frame of travel plus margin).
+    return expected <= v_ego * 0.5 + 5.0
 
   def _set_release(self, now_ns: int, reason: str = "green_release") -> None:
     self.phase = TrafficControlPhase.release
@@ -545,6 +580,16 @@ class TeslaTrafficControlController:
     self.direction_unknown = False
     self.stop_direction_unknown = False
     if gas_pressed:
+      if self.phase not in (TrafficControlPhase.bypass, TrafficControlPhase.yellowPass):
+        # Bind the takeover to the point already tracked. With no point in range
+        # (speed adjustment on open road) the bypass lasts only while gas is held.
+        ahead = (self.last_raw_distance - (self.ego_station - self.last_distance_ego_station)
+                 if self.last_raw_distance is not None
+                 and self.last_raw_distance <= self.config.max_control_distance else 0.0)
+        if (ahead <= 0.0 and observation.available and observation.control_type == 3
+            and observation.distance <= self.config.max_control_distance):
+          ahead = observation.distance
+        self._latch_pass(ahead if ahead > 0.0 else None)
       self.phase = TrafficControlPhase.bypass
       self.stop_session_id = 0
       self._mark_transition("driver_bypass")
@@ -643,11 +688,20 @@ class TeslaTrafficControlController:
       else:
         self.override_reconfirm_count = 0
 
+    if (self.phase in (TrafficControlPhase.bypass, TrafficControlPhase.yellowPass)
+        and self._pass_point_passed(observation, v_ego)):
+      self.pass_station = None
+      self.pass_latch_station = None
+      self.yellow_latched = None
+      if not gas_pressed:
+        # A held pedal keeps bypass only while held; it never latches the next point.
+        self.phase = TrafficControlPhase.off
+        self.candidate_count = 0
+        self.candidate_first_ns = 0
+        self._mark_transition("pass_point_released")
+
     if observation.distance > self.config.max_control_distance:
       wrapped = bool(self.last_raw_distance is not None and self.last_raw_distance <= 2.0 and observation.distance >= 250.0)
-      if observation.distance >= 250.0 and self.phase == TrafficControlPhase.yellowPass:
-        self.yellow_latched = None
-        self.phase = TrafficControlPhase.passed
       if wrapped:
         self.phase = TrafficControlPhase.passed
         self.stop_session_id = 0
@@ -691,6 +745,7 @@ class TeslaTrafficControlController:
       self.candidate_count = 0
       self.candidate_first_ns = 0
       self.phase = TrafficControlPhase.bypass
+      self._latch_pass(observation.distance)
       self.last_raw_distance = observation.distance
       self.last_distance_ego_station = self.ego_station
       self._mark_transition("speed_above_limit")
@@ -889,6 +944,7 @@ class TeslaTrafficControlController:
         self._start_stop(observation, v_ego, TrafficControlPhase.yellowStop, "yellow_stop")
       elif self.yellow_latched is False:
         self.phase = TrafficControlPhase.yellowPass
+        self._latch_pass(observation.distance)
         self._mark_transition("yellow_pass")
       else:
         self.phase = TrafficControlPhase.redCandidate
