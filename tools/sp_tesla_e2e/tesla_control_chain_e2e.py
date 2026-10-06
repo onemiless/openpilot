@@ -223,8 +223,6 @@ def accessory_chain():
     params = Params(temp)
     params.put_bool("TeslaBlindspotAmbientEnabled", True, block=True)
     params.put("TeslaBlindspotAmbientBrightness", 30, block=True)
-    params.put("TeslaAmbientLightingRequest", json.dumps({"id": "retired", "side": "left", "created_ns": now}), block=True)
-    params.put("TeslaTurnSignalTestRequest", {"test_id": "retired", "direction": "left"}, block=True)
     sm = messaging.SubMaster(["modelV2", "longitudinalPlanSP", "carControl", "selfdriveStateSP"])
     adapter = TeslaCardAdapter("tesla", ci, sm)
     adapter.service_params(params)

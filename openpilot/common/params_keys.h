@@ -167,17 +167,6 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"TeslaTouchLongitudinalSwitch", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaApHybrid", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaDynamicApLongitudinal", {PERSISTENT | BACKUP, BOOL, "0"}},
-    // Retired Web/test keys: compatibility tombstones only. No production execution; never reuse.
-    {"TeslaAmbientLightingRequest", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, STRING}},
-    {"TeslaAmbientLightingOffroadActive", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, BOOL, "0"}},
-    {"TeslaAmbientLightingStatus", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, STRING}},
-    {"TeslaSpeedButtonValidation", {PERSISTENT | BACKUP, BOOL, "0"}},
-    {"TeslaTurnSignalValidation", {PERSISTENT | BACKUP, BOOL, "0"}},
-    {"TeslaWebDrivingVisualization", {PERSISTENT | BACKUP, BOOL, "0"}},
-    {"TeslaTurnSignalTestRequest", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON}},
-    {"TeslaTurnSignalTestResult", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON}},
-    {"TeslaTurnSignalTestStatus", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON}},
-    {"TeslaTurnSignalTestCancel", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON}},
     // Active Tesla control configuration.
     {"DynamicAutoStock", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"DynamicAutoStockBlinkerToSP", {PERSISTENT | BACKUP, BOOL, "0"}},
@@ -192,6 +181,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"TeslaTrafficSignalControlEnabled", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaTrafficStopReference", {PERSISTENT | BACKUP, INT, "50"}},  // decimeters
     {"TeslaTrafficControlMaxSpeed", {PERSISTENT | BACKUP, INT, "60"}},  // km/h
+    {"LoggingEnabled", {PERSISTENT | BACKUP, BOOL, "1"}},
 
     // --- sunnypilot params --- //
     {"ApiCache_DriveStats", {PERSISTENT, JSON}},
@@ -225,7 +215,6 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"IsReleaseSpBranch", {CLEAR_ON_MANAGER_START, BOOL}},
     {"LastGPSPositionLLK", {PERSISTENT, STRING}},
     {"LeadDepartAlert", {PERSISTENT | BACKUP, BOOL, "0"}},
-    {"LoggingEnabled", {PERSISTENT | BACKUP, BOOL, "1"}},
     {"MaxTimeOffroad", {PERSISTENT | BACKUP, INT, "1800"}},
     {"ModelRunnerTypeCache", {CLEAR_ON_ONROAD_TRANSITION, INT}},
     {"OffroadMode", {CLEAR_ON_MANAGER_START, BOOL}},

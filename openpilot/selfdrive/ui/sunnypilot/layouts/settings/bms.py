@@ -4,7 +4,7 @@ import pyray as rl
 
 from openpilot.cereal import messaging
 from openpilot.selfdrive.ui.ui_state import ui_state
-from openpilot.sunnypilot.selfdrive.car.tesla.bms import BmsState
+from openpilot.sunnypilot.selfdrive.car.tesla.bms import BmsState, FRAME_LENGTHS
 from openpilot.system.ui.lib.application import gui_app, FontWeight, FONT_SCALE
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.system.ui.widgets import Widget
@@ -67,6 +67,8 @@ class BmsLayout(Widget):
       if not msg.valid or not 0 <= now - timestamp <= 3:
         continue
       for frame in msg.can:
+        if frame.src != 1 or frame.address not in FRAME_LENGTHS:
+          continue
         self.state.update(frame.address, bytes(frame.dat), frame.src, timestamp)
     sm = ui_state.sm
     self.state.integrate(now, sm['carState'].vEgo if sm.alive['carState'] and sm.valid['carState'] else None)
