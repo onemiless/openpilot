@@ -45,6 +45,8 @@ TRANSITION_REASON_CODES = {
   "red_after_release": 17,
   "signal_lost_release": 18,
   "dropout_reconfirmed": 19,
+  "override_ended": 20,
+  "next_control_point": 21,
 }
 
 

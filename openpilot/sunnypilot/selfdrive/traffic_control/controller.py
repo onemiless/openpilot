@@ -673,18 +673,36 @@ class TeslaTrafficControlController:
       self.stop_evidence_lost_since_ns = 0
 
     if self.phase == TrafficControlPhase.bypass:
-      self.last_raw_distance = observation.distance
-      self.last_distance_ego_station = self.ego_station
-      self.last_real_color = observation.light_state
-      return self._decision()
+      if self.driver_override_active or v_ego > self.config.max_control_speed:
+        self.last_raw_distance = observation.distance
+        self.last_distance_ego_station = self.ego_station
+        self.last_real_color = observation.light_state
+        return self._decision()
+      # Gas and over-speed are temporary overrides. Once both end, this frame
+      # re-enters normal RED confirmation; the arbitrator feasibility gate
+      # rejects a stop that is no longer comfortable.
+      self.phase = TrafficControlPhase.off
+      self.candidate_count = 0
+      self.candidate_first_ns = 0
+      self._mark_transition("override_ended")
 
     if self.phase == TrafficControlPhase.yellowPass:
-      # Yellow PASS is a one-time decision for this current-lane event. A
-      # later RED cannot reacquire Traffic ownership near the line.
-      self.last_raw_distance = observation.distance
-      self.last_distance_ego_station = self.ego_station
-      self.last_real_color = observation.light_state
-      return self._decision()
+      predicted = (self.last_raw_distance - (self.ego_station - self.last_distance_ego_station)
+                   if self.last_raw_distance is not None else observation.distance)
+      if observation.distance <= max(predicted, 0.0) + max(20.0, v_ego):
+        # Yellow PASS is a one-time decision for this current-lane event. A
+        # later RED cannot reacquire Traffic ownership near the line.
+        self.last_raw_distance = observation.distance
+        self.last_distance_ego_station = self.ego_station
+        self.last_real_color = observation.light_state
+        return self._decision()
+      # Tesla moved to a farther point without a 255 frame: the passed light
+      # no longer owns the yellow PASS.
+      self.yellow_latched = None
+      self.phase = TrafficControlPhase.off
+      self.candidate_count = 0
+      self.candidate_first_ns = 0
+      self._mark_transition("next_control_point")
 
     if (self.phase not in (*self.ACTIVE_PHASES, TrafficControlPhase.release)
         and v_ego > self.config.max_control_speed):

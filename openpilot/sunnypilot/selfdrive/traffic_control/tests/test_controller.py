@@ -1013,26 +1013,24 @@ def test_route63_style_can_fusion_does_not_hold_ten_meters_early():
   assert abs(decision.remaining_distance - (16.0 - decision.stop_reference)) <= 2.0
 
 
-def test_driver_gas_bypasses_the_current_event_until_it_is_passed():
+def test_driver_gas_only_suppresses_control_while_overriding():
   c = controller()
-  update(c, 1.0, observation(40.0, 1, 1.0), gas=True)
-  update(c, 1.5, observation(35.0, 1, 1.5), gas=False)
-  decision = update(c, 2.0, observation(30.0, 1, 2.0), gas=False)
-  assert decision.phase == TrafficControlPhase.bypass
-  assert not decision.driver_override_active
-  assert not decision.apply_constraint
-  still_bypassed = update(c, 2.5, observation(25.0, 1, 2.5), gas=False)
-  assert still_bypassed.phase == TrafficControlPhase.bypass
-  assert not still_bypassed.apply_constraint
+  update(c, 1.0, observation(40.0, 1, 1.0), v_ego=5.0, gas=True)
+  cooldown = update(c, 1.5, observation(37.5, 1, 1.5), v_ego=5.0)
+  assert cooldown.phase == TrafficControlPhase.bypass
+  assert not cooldown.apply_constraint
+  resumed = [update(c, t, observation(40.0 - 5.0 * (t - 1.0), 1, t), v_ego=5.0) for t in (2.0, 2.5, 3.0, 3.5)]
+  assert resumed[-1].phase != TrafficControlPhase.bypass
+  assert resumed[-1].apply_constraint
 
 
-def test_speed_limit_bypasses_the_whole_event_instead_of_rearming_late():
+def test_speed_limit_bypass_ends_once_below_the_limit():
   c = controller(max_control_speed=10.0)
   first = update(c, 1.0, observation(80.0, 1, 1.0), v_ego=12.0)
   assert first.phase == TrafficControlPhase.bypass
-  slower = update(c, 1.5, observation(74.0, 1, 1.5), v_ego=8.0)
-  assert slower.phase == TrafficControlPhase.bypass
-  assert not slower.apply_constraint
+  resumed = [update(c, t, observation(80.0 - 8.0 * (t - 1.0), 1, t), v_ego=8.0) for t in (1.5, 2.0, 2.5, 3.0)]
+  assert resumed[-1].phase != TrafficControlPhase.bypass
+  assert resumed[-1].apply_constraint
 
 
 def test_turn_signal_does_not_override_current_lane_can_stop():
