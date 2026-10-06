@@ -40,6 +40,9 @@ def logging(started: bool, params: Params, CP: car.CarParams) -> bool:
   run = (not CP.notCar) or not params.get_bool("DisableLogging")
   return started and run
 
+def logging_enabled(started: bool, params: Params, CP: car.CarParams) -> bool:
+  return params.get_bool("LoggingEnabled")
+
 def ublox_available() -> bool:
   return os.path.exists('/dev/ttyHS0') and not os.path.exists('/persist/comma/use-quectel-gps')
 
@@ -120,15 +123,15 @@ def and_(*fns):
 procs = [
   DaemonProcess("manage_athenad", "openpilot.system.athena.manage_athenad", "AthenadPid"),
 
-  NativeProcess("loggerd", "openpilot/system/loggerd", ["./loggerd"], logging),
-  NativeProcess("encoderd", "openpilot/system/loggerd", ["./encoderd"], only_onroad),
+  NativeProcess("loggerd", "openpilot/system/loggerd", ["./loggerd"], and_(logging, logging_enabled)),
+  NativeProcess("encoderd", "openpilot/system/loggerd", ["./encoderd"], and_(only_onroad, logging_enabled)),
   NativeProcess("stream_encoderd", "openpilot/system/loggerd", ["./encoderd", "--stream"], or_(livestream, notcar)),
-  PythonProcess("logmessaged", "openpilot.system.logmessaged", always_run),
+  PythonProcess("logmessaged", "openpilot.system.logmessaged", logging_enabled),
 
   NativeProcess("camerad", "openpilot/system/camerad", ["./camerad"], or_(driverview, livestream), enabled=not WEBCAM),
   PythonProcess("webcamerad", "openpilot.system.camerad.webcam.camerad", driverview, enabled=WEBCAM),
-  PythonProcess("proclogd", "openpilot.system.proclogd", only_onroad, enabled=platform.system() != "Darwin"),
-  PythonProcess("journald", "openpilot.system.journald", only_onroad, platform.system() != "Darwin"),
+  PythonProcess("proclogd", "openpilot.system.proclogd", and_(only_onroad, logging_enabled), enabled=platform.system() != "Darwin"),
+  PythonProcess("journald", "openpilot.system.journald", and_(only_onroad, logging_enabled), platform.system() != "Darwin"),
   PythonProcess("micd", "openpilot.system.micd", audio_input),
   PythonProcess("timed", "openpilot.system.timed", always_run, enabled=not PC),
 
@@ -160,10 +163,10 @@ procs = [
   PythonProcess("radard", "openpilot.selfdrive.controls.radard", only_onroad),
   PythonProcess("hardwared", "openpilot.system.hardware.hardwared", always_run),
   PythonProcess("modem", "openpilot.common.hardware.comma.modem", always_run, enabled=COMMA_HARDWARE),
-  PythonProcess("tombstoned", "openpilot.system.tombstoned", always_run, enabled=not PC),
+  PythonProcess("tombstoned", "openpilot.system.tombstoned", logging_enabled, enabled=not PC),
   PythonProcess("updated", "openpilot.system.updated.updated", only_offroad, enabled=not PC),
-  PythonProcess("uploader", "openpilot.system.loggerd.uploader", uploader_ready),
-  PythonProcess("statsd", "openpilot.sunnypilot.system.statsd", always_run),
+  PythonProcess("uploader", "openpilot.system.loggerd.uploader", and_(uploader_ready, logging_enabled)),
+  PythonProcess("statsd", "openpilot.sunnypilot.system.statsd", logging_enabled),
 
   # debug procs
   NativeProcess("bridge", "openpilot/cereal/messaging", ["./bridge"], notcar),
@@ -172,7 +175,7 @@ procs = [
   # sunnylink <3
   DaemonProcess("manage_sunnylinkd", "openpilot.sunnypilot.sunnylink.athena.manage_sunnylinkd", "SunnylinkdPid"),
   PythonProcess("sunnylink_registration_manager", "openpilot.sunnypilot.sunnylink.registration_manager", sunnylink_need_register_shim),
-  PythonProcess("statsd_sp", "openpilot.sunnypilot.sunnylink.statsd", and_(always_run, sunnylink_ready_shim)),
+  PythonProcess("statsd_sp", "openpilot.sunnypilot.sunnylink.statsd", and_(logging_enabled, sunnylink_ready_shim)),
 ]
 
 # sunnypilot
@@ -197,7 +200,7 @@ procs += [
 ]
 
 if os.path.exists("../../sunnypilot/sunnylink/uploader.py"):
-  procs += [PythonProcess("sunnylink_uploader", "openpilot.sunnypilot.sunnylink.uploader", use_sunnylink_uploader_shim)]
+  procs += [PythonProcess("sunnylink_uploader", "openpilot.sunnypilot.sunnylink.uploader", and_(use_sunnylink_uploader_shim, logging_enabled))]
 
 
 managed_processes = {p.name: p for p in procs}
