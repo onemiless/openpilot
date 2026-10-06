@@ -20,6 +20,7 @@ class BmsLayout(Widget):
     self._visible = False
     self._car_fingerprint = None
     self.page = 0
+    self._display = (float('-inf'), None, None)
     self.tabs = [Button(label, click_callback=lambda index=i: self._select_page(index), font_size=42)
                  for i, label in enumerate(('概览', '电芯', '诊断'))]
     for tab in self.tabs:
@@ -67,6 +68,15 @@ class BmsLayout(Widget):
         continue
       for frame in msg.can:
         self.state.update(frame.address, bytes(frame.dat), frame.src, timestamp)
+    sm = ui_state.sm
+    self.state.integrate(now, sm['carState'].vEgo if sm.alive['carState'] and sm.valid['carState'] else None)
+
+  def _display_data(self, now):
+    # 2 Hz text refresh; 100 Hz values redrawn every frame read as flicker.
+    shown_at, state, data = self._display
+    if state is not self.state or not 0 <= now - shown_at < .5:
+      self._display = (now, self.state, self.state.snapshot(now))
+    return self._display[2]
 
   def _select_page(self, index):
     self.page = index
@@ -98,7 +108,7 @@ class BmsLayout(Widget):
 
   def _render(self, rect):
     now = time.monotonic()
-    data = self.state.snapshot(now)
+    data = self._display_data(now)
     self.scale = min(1., rect.width/1560, rect.height/1030)
     s = self.scale
     self.white, self.muted = rl.Color(245, 247, 250, 255), rl.Color(176, 186, 201, 255)
@@ -119,19 +129,22 @@ class BmsLayout(Widget):
     cs_fresh = ui_state.sm.alive['carState'] and ui_state.sm.valid['carState']
     cs = ui_state.sm['carState']
     speed = cs.vEgo*3.6 if cs_fresh else None
-    consumption = data['power']*1000/speed if speed is not None and speed>=10 and data['power'] is not None else None
     delta = None if data['cell_min'] is None or data['cell_max'] is None else (data['cell_max']-data['cell_min'])*1000
     if self.page == 0:
-      self._card(rl.Rectangle(x, top, half, 310*s), '剩余电量 · SOC', data['soc'], '%', 1, True)
-      self._card(rl.Rectangle(x+half+gap, top, half, 310*s), '瞬时能耗', consumption, 'Wh/km', 0, True,
-                 '低速或停车时隐藏')
+      if data['soc_display'] is not None:
+        self._card(rl.Rectangle(x, top, half, 310*s), '剩余电量 · SOC', data['soc_display'], '%', 0, True,
+                   f"BMS {data['soc']:.1f}%")
+      else:
+        self._card(rl.Rectangle(x, top, half, 310*s), '剩余电量 · SOC', data['soc'], '%', 1, True)
+      self._card(rl.Rectangle(x+half+gap, top, half, 310*s), '平均能耗', data['consumption'], 'Wh/km', 0, True,
+                 '近 2 km 滑动平均')
       third = (w-2*gap)/3
       for i, (label, key, unit, digits) in enumerate([('电池功率', 'power', 'kW', 1),
                                                      ('电池电压', 'voltage', 'V', 1), ('电池电流', 'current', 'A', 1)]):
         self._card(rl.Rectangle(x+i*(third+gap), top+330*s, third, 204*s), label, data[key], unit, digits)
       self._card(rl.Rectangle(x, top+554*s, half, 190*s), '剩余电量', data['remaining'], 'kWh')
       self._card(rl.Rectangle(x+half+gap, top+554*s, half, 190*s), 'BMS 估算满充容量', data['capacity'], 'kWh')
-      self._text('正值为耗电，负值为能量回收。能耗为瞬时值。', x, top+775*s, 34*s, self.muted)
+      self._text('正值为耗电，负值为能量回收。能耗为近 2 km 平均值。', x, top+775*s, 34*s, self.muted)
     elif self.page == 1:
       temp_delta = None if data['temp_min'] is None or data['temp_max'] is None else data['temp_max']-data['temp_min']
       cards = [('最低电芯温度', data['temp_min'], '°C', 1), ('最高电芯温度', data['temp_max'], '°C', 1),
@@ -155,8 +168,8 @@ class BmsLayout(Widget):
         item = self.state.frames.get(address)
         active = item is not None and 0<=now-item[1]<=3
         label = '在线' if active else ('已过期' if item else '未收到')
-        bx, by = x+(i%3)*(w+gap)/3, top+579*s+(i//3)*82*s
-        rw = (w-2*gap)/3
+        bx, by = x+(i%4)*(w+gap)/4, top+579*s+(i//4)*82*s
+        rw = (w-3*gap)/4
         rl.draw_rectangle_rounded(rl.Rectangle(bx, by, rw, 65*s), .15, 8, rl.Color(28,33,42,255))
         self._text(f'{address:03X}  ·  {label}', bx+20*s, by+12*s, 34*s, self.accent if active else self.muted)
       self._text('只读监测 · 不发送 CAN 指令，不执行故障码扫描。', x, top+777*s, 32*s, self.muted)
