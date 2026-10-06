@@ -211,7 +211,8 @@ class HomeLayout(Widget):
   def _refresh(self):
     self._version_text = self._get_version_text()
     update_available = self.update_alert.refresh()
-    alert_count = self.offroad_alert.refresh()
+    # Home hides offroad alerts; excessive actuation stays because only its acknowledge button clears the engage lock.
+    alert_count = self.offroad_alert.refresh() if self.params.get("Offroad_ExcessiveActuation") else 0
     alerts_present = alert_count > 0
 
     # Show panels on transition from no alert/update to any alerts/update
