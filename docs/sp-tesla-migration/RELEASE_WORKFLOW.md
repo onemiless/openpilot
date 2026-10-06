@@ -8,7 +8,7 @@ The implementation uses only Python's standard library and the installed Git CLI
 ## Start from an identified candidate
 
 Record the exact current worktree, branch and HEAD before changing source. Keep
-dirty worktrees intact and do sync work in an isolated candidate checkout. The
+dirty files intact and do sync work as scoped commits on `dev-sp`. The
 reviewed official baseline for this migration is
 `16322aef167fe14de8af28a9e437101ed3c4dac5`. The existing `master` was 124 commits
 behind this baseline when this workflow was introduced; its branch name is not
@@ -17,7 +17,7 @@ evidence of freshness. Do not switch to or publish `master` blindly.
 1. Fetch official changes without replacing the current feature branch. Identify
    the candidate official SHA, commit date, its relationship to the previous
    baseline, and the retained Tesla feature manifest.
-2. Build a sync candidate branch and review the official delta. Merge or port
+2. Review the official delta and implement the sync on `dev-sp`. Merge or port
    only after checking the full dependency closure: parent source, recursive
    gitlinks, DBC/CAN/safety, Params, schemas, UI, model catalog and loader, warp
    settings, launch configuration and hardware profile.

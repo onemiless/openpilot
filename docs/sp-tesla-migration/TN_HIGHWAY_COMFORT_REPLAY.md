@@ -1,8 +1,8 @@
 # TN highway comfort candidate
 
 The implementation lives on `dev-sp` in `tn_no_dec/long_mpc.py`. Its review
-switch, `LongitudinalMpc.high_speed_comfort_enabled`, defaults to `False`.
-This commit records tested code; it does not enable it for normal driving.
+switch, `LongitudinalMpc.high_speed_comfort_enabled`, defaults to `True`.
+The user requested default activation and C3 alignment on 2026-10-06.
 
 When explicitly enabled for replay, the candidate blends the configured
 comfort-braking assumption toward 1.8 m/s² over 15–25 m/s. Available lead
@@ -32,5 +32,5 @@ has the same update-method AST as this implementation.
 
 The candidate can also react earlier to a false visual lead. Recorded-ego
 replay is not closed-loop vehicle evidence, and neither establishes road
-acceptance. Keep normal-driving activation separate from this source commit.
+acceptance. Device activation still requires deployment and runtime checks.
 Rollback uses `git revert` on this commit, not a branch switch or hard reset.

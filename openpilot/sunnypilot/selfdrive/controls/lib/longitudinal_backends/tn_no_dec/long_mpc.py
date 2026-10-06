@@ -23,7 +23,7 @@ from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.tn_no_dec
 class LongitudinalMpc(LegacyCruiseLongitudinalMpc, LongitudinalMpcSP):
   """Final rs408 TN MPC with the retained acceleration-controller hooks."""
 
-  high_speed_comfort_enabled = False  # isolated review switch
+  high_speed_comfort_enabled = True
 
   def __init__(self, dt):
     LongitudinalMpcSP.__init__(self)
