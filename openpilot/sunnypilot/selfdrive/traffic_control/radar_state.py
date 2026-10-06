@@ -45,7 +45,6 @@ TRANSITION_REASON_CODES = {
   "red_after_release": 17,
   "signal_lost_release": 18,
   "dropout_reconfirmed": 19,
-  "pass_point_released": 20,
 }
 
 
