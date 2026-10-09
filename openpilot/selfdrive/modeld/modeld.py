@@ -147,6 +147,9 @@ class ChestnutState:
     self.pm.send('chestnutState', msg)
 
 
+ChestnutGpuState = ChestnutState
+
+
 class FrameMeta:
   frame_id: int = 0
   timestamp_sof: int = 0

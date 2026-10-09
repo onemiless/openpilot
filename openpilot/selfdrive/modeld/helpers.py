@@ -76,6 +76,8 @@ def load_oob(f, *, total_size: int | None = None, progress_callback=None):
     progress_callback(1.0)
   return result
 
+MODELD_PKL_KEYS = ('metadata', 'input_devices', 'run_model')
+
 def chestnut_present() -> bool:
   for d in USB_DEVICES_PATH.glob("*"):
     try:
