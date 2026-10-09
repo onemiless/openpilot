@@ -76,6 +76,47 @@ def test_wait_disconnected_allows_slow_c3xl_teardown(monkeypatch):
   assert eject._wait_disconnected()
 
 
+def test_low_speed_recovery_restores_vbus_and_verifies_superspeed(tmp_path, monkeypatch):
+  vbus = tmp_path / "enable"
+  vbus.write_text("1\n")
+  state = {"connected": True, "speed": 12}
+
+  def write_vbus(value):
+    state["connected"] = value.strip() != "0"
+    if state["connected"]:
+      state["speed"] = 5000
+    return len(value)
+
+  monkeypatch.setattr(eject, "VBUS_PATH", str(vbus))
+  monkeypatch.setattr(eject.Path, "write_text", lambda self, value: write_vbus(value) if self == vbus else len(value))
+  monkeypatch.setattr(eject, "find_runtime_chestnut", lambda: (
+    (str(tmp_path / "4-1"), None, None) if state["connected"] else (None, None, None)))
+  monkeypatch.setattr(eject, "_runtime_speed_mbps", lambda: (
+    (str(tmp_path / "4-1"), state["speed"]) if state["connected"] else (None, 0)))
+  monkeypatch.setattr(eject.time, "sleep", lambda _: None)
+
+  report = eject.recover_low_speed_link()
+
+  assert report == {"state": "recovered", "disconnected": True, "speed_before": 12, "speed_after": 5000}
+  assert state["connected"]
+
+
+def test_low_speed_recovery_restores_vbus_when_disconnect_check_fails(tmp_path, monkeypatch):
+  vbus = tmp_path / "enable"
+  vbus.write_text("1\n")
+  writes = []
+
+  monkeypatch.setattr(eject, "VBUS_PATH", str(vbus))
+  monkeypatch.setattr(eject, "_runtime_speed_mbps", lambda: (str(tmp_path / "3-1"), 12))
+  monkeypatch.setattr(eject, "_wait_disconnected", lambda _: (_ for _ in ()).throw(RuntimeError("probe failed")))
+  monkeypatch.setattr(eject.Path, "write_text", lambda self, value: writes.append(value) or len(value))
+
+  with pytest.raises(RuntimeError, match="probe failed"):
+    eject.recover_low_speed_link()
+
+  assert writes == ["0\n", "1\n"]
+
+
 def test_ejector_rejects_onroad_request():
   params = FakeParams({"UsbGpuEjectRequest": True})
   ejector = ChestnutEjector(params)
@@ -166,6 +207,70 @@ def test_initial_offroad_does_not_automatically_power_down(monkeypatch):
   ejector.update(True, present, auto_power_down=False)
 
   start.assert_not_called()
+
+
+def test_initial_low_speed_recovery_requires_stable_offroad_state(monkeypatch):
+  params = FakeParams({"IsOffroad": True})
+  ejector = ChestnutEjector(params)
+  start = Mock()
+  clock = [10.0]
+  monkeypatch.setattr(ejector, "_start_low_speed_recovery", start)
+  monkeypatch.setattr("openpilot.system.hardware.chestnut.ejector.time.monotonic", lambda: clock[0])
+  slow = [{"vendorId": 0x3801, "productId": 0x0001, "manufacturer": "tiny",
+           "product": "custom ed4e39b7-CLEAN", "speedMbps": 12}]
+
+  ejector.update(True, slow, recover_initial_low_speed=True)
+  clock[0] += ejector.LOW_SPEED_RECOVERY_DELAY - 0.1
+  ejector.update(True, slow, recover_initial_low_speed=True)
+  start.assert_not_called()
+
+  clock[0] += 0.1
+  ejector.update(True, slow, recover_initial_low_speed=True)
+  ejector.update(True, slow, recover_initial_low_speed=True)
+
+  start.assert_called_once_with()
+  assert ejector.low_speed_recovery_attempted
+
+
+def test_initial_low_speed_recovery_does_not_run_onroad_or_at_superspeed(monkeypatch):
+  params = FakeParams({"IsOffroad": True})
+  ejector = ChestnutEjector(params)
+  start = Mock()
+  monkeypatch.setattr(ejector, "_start_low_speed_recovery", start)
+  monkeypatch.setattr(ejector, "LOW_SPEED_RECOVERY_DELAY", 0.0)
+  slow = [{"vendorId": 0x3801, "productId": 0x0001, "manufacturer": "tiny",
+           "product": "custom ed4e39b7-CLEAN", "speedMbps": 12}]
+  ready = [{**slow[0], "speedMbps": 5000}]
+
+  ejector.update(False, slow, recover_initial_low_speed=True)
+  ejector.update(True, ready, recover_initial_low_speed=True)
+  params.values["IsOffroad"] = False
+  ejector.update(True, slow, recover_initial_low_speed=True)
+
+  start.assert_not_called()
+
+
+def test_low_speed_worker_rechecks_offroad_and_uses_project_pythonpath(monkeypatch):
+  params = FakeParams({"IsOffroad": True})
+  captured = {}
+
+  def run(command, **kwargs):
+    captured["command"] = command
+    return SimpleNamespace(returncode=0, stdout='{"state":"recovered"}\n')
+
+  monkeypatch.setattr("openpilot.system.hardware.chestnut.ejector.subprocess.run", run)
+  ejector = ChestnutEjector(params)
+  ejector.recover_low_speed()
+
+  assert captured["command"] == [
+    "sudo", "env", f"PYTHONPATH={BASEDIR}", "/usr/local/venv/bin/python", "-u",
+    f"{BASEDIR}/openpilot/system/hardware/chestnut/eject.py", "--recover-low-speed",
+  ]
+
+  params.values["IsOffroad"] = False
+  captured.clear()
+  ejector.recover_low_speed()
+  assert captured == {}
 
 
 def test_manual_eject_remains_available_before_first_onroad(monkeypatch):

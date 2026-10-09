@@ -10,8 +10,10 @@ from openpilot.selfdrive.ui.sunnypilot.onroad.lane_navigation_state import (
   NavigationOverlayDisplay,
   lane_display_from_service,
   lane_display_from_ui_bridge,
+  load_overlay_position,
   navigation_display_from_service,
   overlay_layout,
+  save_overlay_position,
 )
 from openpilot.system.ui.lib.application import FONT_DIR, FontWeight, gui_app
 
@@ -19,8 +21,8 @@ from openpilot.system.ui.lib.application import FONT_DIR, FontWeight, gui_app
 BACKGROUND = rl.Color(9, 15, 23, 226)
 TEXT = rl.Color(248, 251, 255, 255)
 SECONDARY = rl.Color(183, 197, 211, 255)
-ACCENT = rl.Color(90, 210, 255, 255)
 WARNING = rl.Color(255, 200, 97, 255)
+NAV_GREEN = rl.Color(41, 190, 125, 255)
 
 
 class LaneNavigationOverlay:
@@ -31,6 +33,49 @@ class LaneNavigationOverlay:
     self._text_font: rl.Font | None = None
     self._characters: set[str] = set()
     self._measurements: dict[tuple[str, int, bool], rl.Vector2] = {}
+    self._position = load_overlay_position()
+    self._card_rect: rl.Rectangle | None = None
+    self._container_rect: rl.Rectangle | None = None
+    self._bottom_inset = 24.0
+    self._dragging = False
+    self._drag_offset = rl.Vector2()
+
+  @property
+  def is_dragging(self) -> bool:
+    return self._dragging
+
+  def handle_mouse_event(self, mouse_event) -> bool:
+    if self._card_rect is None or self._container_rect is None:
+      self._dragging = False
+      return False
+    if mouse_event.left_pressed:
+      if not rl.check_collision_point_rec(mouse_event.pos, self._card_rect):
+        return False
+      self._dragging = True
+      self._drag_offset = rl.Vector2(mouse_event.pos.x - self._card_rect.x, mouse_event.pos.y - self._card_rect.y)
+    elif not self._dragging:
+      return False
+
+    if mouse_event.left_down or mouse_event.left_released:
+      self._move_to(mouse_event.pos)
+    if mouse_event.left_released:
+      self._dragging = False
+      try:
+        self._position = save_overlay_position(self._position)
+      except OSError:
+        pass
+    return True
+
+  def _move_to(self, mouse_pos) -> None:
+    assert self._card_rect is not None and self._container_rect is not None
+    available_x = max(0.0, self._container_rect.width - self._card_rect.width)
+    available_y = max(0.0, self._container_rect.height - self._bottom_inset - self._card_rect.height)
+    local_x = max(0.0, min(available_x, mouse_pos.x - self._drag_offset.x - self._container_rect.x))
+    local_y = max(0.0, min(available_y, mouse_pos.y - self._drag_offset.y - self._container_rect.y))
+    self._position = (
+      local_x / available_x if available_x > 0 else 0.5,
+      local_y / available_y if available_y > 0 else 1.0,
+    )
 
   def render(self, rect: rl.Rectangle) -> None:
     from openpilot.selfdrive.ui.ui_state import ui_state
@@ -65,6 +110,8 @@ class LaneNavigationOverlay:
   def render_display(self, rect: rl.Rectangle, lane_display: LaneOverlayDisplay | None,
                      nav_display: NavigationOverlayDisplay | None, *, bottom_inset: float = 24.0) -> None:
     if lane_display is None and nav_display is None:
+      self._card_rect = None
+      self._container_rect = None
       return
     texts = []
     if nav_display is not None:
@@ -72,11 +119,16 @@ class LaneNavigationOverlay:
     if lane_display is not None:
       texts.extend((lane_display.left, lane_display.center, lane_display.right))
     self._prepare_text(texts)
-    layout = overlay_layout(rect.width, rect.height, bottom_inset=bottom_inset)
+    self._container_rect = rect
+    self._bottom_inset = bottom_inset
+    layout = overlay_layout(rect.width, rect.height, bottom_inset=bottom_inset, position=self._position)
+    layout_rect = self._offset(layout.navigation, rect)
     if nav_display is not None:
-      self._draw_navigation(self._offset(layout.navigation, rect), nav_display, lane_display)
+      self._card_rect = layout_rect
+      self._draw_navigation(layout_rect, nav_display, lane_display)
     elif lane_display is not None:
-      self._draw_lane_strip(self._offset(layout.navigation, rect), lane_display)
+      self._card_rect = None
+      self._draw_lane_strip(layout_rect, lane_display)
 
   def _prepare_text(self, texts: list[str]) -> None:
     # Road names are dynamic and not necessarily in the UI translation atlas.
@@ -106,37 +158,49 @@ class LaneNavigationOverlay:
 
   @staticmethod
   def _card(box: rl.Rectangle) -> None:
-    rl.draw_rectangle_rounded(box, 0.18, 10, BACKGROUND)
-    rl.draw_rectangle_rounded_lines_ex(box, 0.18, 10, 1.2, rl.Color(122, 148, 173, 125))
+    rl.draw_rectangle_rounded(box, 0.14, 10, BACKGROUND)
+    rl.draw_rectangle_rounded_lines_ex(box, 0.14, 10, 1.0, rl.Color(255, 255, 255, 72))
 
   def _draw_navigation(self, box: rl.Rectangle, display: NavigationOverlayDisplay,
                        lane_display: LaneOverlayDisplay | None) -> None:
     self._card(box)
-    accent = WARNING if display.warning else ACCENT if display.linked else SECONDARY
+    accent = WARNING if display.warning else NAV_GREEN if display.linked else SECONDARY
     rl.begin_scissor_mode(int(box.x), int(box.y), int(box.width), int(box.height))
     compact = box.width < 700
     footer_height = 44.0 if lane_display is not None else 0.0
     content_height = box.height - footer_height
-    rl.draw_rectangle_rounded(
-      rl.Rectangle(box.x + 5, box.y + 14, 5, max(10, content_height - 28)), 0.8, 6, accent,
-    )
-    icon_size = 64.0 if compact else 76.0
-    icon_box = rl.Rectangle(box.x + 22, box.y + (content_height - icon_size) / 2, icon_size, icon_size)
-    self._draw_maneuver(icon_box, display.maneuver if display.current_guidance else "none", accent)
-    x = icon_box.x + icon_box.width + 20
-    available = max(0, box.x + box.width - 20 - x)
+    tile_margin = 10.0
+    tile_width = 126.0 if compact else 142.0
+    tile = rl.Rectangle(box.x + tile_margin, box.y + tile_margin, tile_width, content_height - tile_margin * 2)
+    tile_color = rl.Color(accent.r, accent.g, accent.b, 238 if display.linked or display.warning else 156)
+    rl.draw_rectangle_rounded(tile, 0.16, 8, tile_color)
+    icon_size = 62.0 if compact else 72.0
+    icon_box = rl.Rectangle(tile.x + (tile.width - icon_size) / 2, tile.y + 12, icon_size, icon_size)
+    self._draw_maneuver(icon_box, display.maneuver if display.current_guidance else "none", TEXT)
+    if display.current_guidance and display.distance:
+      distance_size = 28 if compact else 31
+      distance = self._fit(display.distance, tile.width - 12, distance_size, bold=True)
+      distance_width = self._measure(distance, distance_size, True).x
+      self._draw_text(distance, tile.x + (tile.width - distance_width) / 2,
+                      tile.y + tile.height - distance_size - 10, distance_size, TEXT, bold=True)
+
+    x = tile.x + tile.width + (16 if compact else 22)
+    available = max(0, box.x + box.width - 18 - x)
     if display.current_guidance:
-      size = 45 if compact else 54
-      distance = self._fit(display.distance, available, size, bold=True)
-      self._draw_text(distance, x, box.y + 9, size, TEXT, bold=True)
-      instruction_x = x + self._measure(distance, size, True).x + 22
-      instruction_size = 34 if compact else 40
-      instruction = self._fit(display.instruction, box.x + box.width - 20 - instruction_x, instruction_size)
-      self._draw_text(instruction, instruction_x, box.y + 17, instruction_size, TEXT)
+      instruction_size = 36 if compact else 42
+      instruction = self._fit(display.instruction, available, instruction_size, bold=True)
+      self._draw_text(instruction, x, box.y + 14, instruction_size, TEXT, bold=True)
     else:
-      self._draw_text(self._fit(display.title, available, 36), x, box.y + 17, 36, TEXT)
-    self._draw_text(self._fit(display.subtitle, available, 25), x, box.y + 65, 25, SECONDARY)
-    self._draw_text(self._fit(display.detail, available, 24), x, box.y + 95, 24, accent)
+      title_size = 32 if compact else 36
+      self._draw_text(self._fit(display.title, available, title_size, bold=True),
+                      x, box.y + 16, title_size, TEXT, bold=True)
+    subtitle_size = 23 if compact else 26
+    self._draw_text(self._fit(display.subtitle, available, subtitle_size),
+                    x, box.y + 65, subtitle_size, SECONDARY)
+    detail_y = box.y + content_height - 39
+    rl.draw_line_ex(rl.Vector2(x, detail_y - 7), rl.Vector2(box.x + box.width - 18, detail_y - 7),
+                    1.0, rl.Color(255, 255, 255, 48))
+    self._draw_text(self._fit(display.detail, available, 23), x, detail_y, 23, accent)
     if lane_display is not None:
       self._draw_lane_footer(rl.Rectangle(box.x, box.y + box.height - footer_height, box.width, footer_height), lane_display)
     rl.end_scissor_mode()
@@ -250,14 +314,19 @@ class LaneNavigationOverlay:
     if key not in self._measurements:
       if len(self._measurements) >= 1024:
         self._measurements.clear()
-      self._measurements[key] = rl.measure_text_ex(self._font_bold if bold else self._text_font, text, size, 0)  # noqa: TID251
+      self._measurements[key] = rl.measure_text_ex(self._font_for(text, bold), text, size, 0)  # noqa: TID251
     return self._measurements[key]
+
+  def _font_for(self, text: str, bold: bool) -> rl.Font:
+    # Inter has no CJK glyphs. Keep it for bold ASCII distances, while all
+    # localized or road-name text uses the dynamically populated CJK font.
+    return self._font_bold if bold and text.isascii() else self._text_font
 
   def _draw_text(self, text: str, x: float, y: float, size: int, color: rl.Color, *, bold: bool = False) -> None:
     # These locally loaded road-name glyphs must not be replaced by the global
     # translation-only fallback atlas. Measurement and drawing use the same font.
     draw = getattr(rl, "_orig_draw_text_ex", rl.draw_text_ex)
-    draw(self._font_bold if bold else self._text_font, text, rl.Vector2(x, y), size, 0, color)
+    draw(self._font_for(text, bold), text, rl.Vector2(x, y), size, 0, color)
 
   def _draw_centered(self, box: rl.Rectangle, text: str, size: int, color: rl.Color) -> None:
     measured = self._measure(text, size)

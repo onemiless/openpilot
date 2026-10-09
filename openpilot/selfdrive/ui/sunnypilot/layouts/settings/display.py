@@ -28,7 +28,14 @@ class DisplayLayout(Widget):
 
   def _initialize_items(self):
     from openpilot.selfdrive.ui.ui_state import device  # local import avoids the UI-state cycle
+    from openpilot.system.ui.lib.screen_cast import notify_screen_cast
 
+    self._screen_cast_toggle = toggle_item_sp(
+      param="C3ScreenCasting",
+      callback=notify_screen_cast,
+      title="C3 浏览器投屏与触控",
+      description="开启后用车机浏览器访问 http://99.99.99.99:8088/screen。无人观看时不采集画面；停车时可切换。",
+    )
     self._offroad_brightness = option_item_sp(
       param="Brightness",
       title=lambda: tr("Offroad Brightness"),
@@ -89,6 +96,7 @@ class DisplayLayout(Widget):
       label_callback=lambda value: f"{int(value/60)} m"
     )
     items = [
+      self._screen_cast_toggle,
       self._offroad_brightness,
       self._onroad_brightness,
       self._onroad_brightness_timer,
@@ -113,6 +121,9 @@ class DisplayLayout(Widget):
 
   def _update_state(self):
     super()._update_state()
+
+    from openpilot.selfdrive.ui.ui_state import ui_state
+    self._screen_cast_toggle.action_item.set_enabled(ui_state.is_offroad())
 
     brightness_val = self._onroad_brightness.action_item.current_value
     self._onroad_brightness_timer.action_item.set_enabled(brightness_val not in (OnroadBrightness.AUTO, OnroadBrightness.AUTO_DARK))

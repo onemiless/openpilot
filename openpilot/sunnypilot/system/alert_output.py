@@ -20,8 +20,9 @@ class Beepd:
   def __init__(self):
     self.current_alert = AudibleAlert.none
     self.mads_enabled = None
-    self.lane_change_initialized = False
-    self.lane_change_beep_request_id = 0
+    self.maneuver_initialized = False
+    self.maneuver_action = None
+    self.maneuver_pending_until = 0.0
     self.settings_cache = SettingsCache()
     # timestamp until which promptRepeat should be suppressed
     self.prompt_suppress_until = 0
@@ -47,29 +48,40 @@ class Beepd:
                      stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL, check=False)
       self.gpio_fd = os.open(GPIO_VALUE_PATH, os.O_WRONLY | os.O_CLOEXEC)
       self._beep(False)
-    except OSError:
+    except OSError as error:
+      print(f"[BEEP] GPIO initialization failed: {error}", flush=True)
+      if self.gpio_fd is not None:
+        os.close(self.gpio_fd)
       self.gpio_fd = None
 
   def _beep(self, on):
     if self.gpio_fd is None:
-      return
+      raise OSError("buzzer GPIO unavailable")
     os.lseek(self.gpio_fd, 0, os.SEEK_SET)
-    os.write(self.gpio_fd, b"1" if on else b"0")
+    if os.write(self.gpio_fd, b"1" if on else b"0") != 1:
+      raise OSError("short buzzer GPIO write")
 
   def _worker(self):
     while True:
       func = self.beep_queue.get()
       try:
         func()
+        print("[BEEP] output complete", flush=True)
+      except Exception as error:
+        # A failed edge must not kill all subsequent warnings. Do not replay a
+        # partially emitted pulse; keep evidence for a parked hardware check.
+        print(f"[BEEP] output failed: {type(error).__name__}: {error}", flush=True)
       finally:
         self.beep_queue.task_done()
 
   def _pulse_sequence(self, count):
     def run_sequence():
       for pulse in range(count):
-        self._beep(True)
-        time.sleep(BEEP_PULSE_SECONDS)
-        self._beep(False)
+        try:
+          self._beep(True)
+          time.sleep(BEEP_PULSE_SECONDS)
+        finally:
+          self._beep(False)
         if pulse < count - 1:
           time.sleep(BEEP_GAP_SECONDS)
 
@@ -97,9 +109,12 @@ class Beepd:
   def dispatch_beep(self, func):
     try:
       self.beep_queue.put_nowait(func)
+      print("[BEEP] queued", flush=True)
+      return True
     except queue.Full:
       # Alerts are edge notifications. Do not build an unbounded delayed queue.
-      pass
+      print("[BEEP] queue full", flush=True)
+      return False
 
   def close(self):
     if self.gpio_fd is not None:
@@ -137,9 +152,11 @@ class Beepd:
     if sm.updated['selfdriveStateSP']:
       self.update_mads(bool(sm['selfdriveStateSP'].mads.enabled))
 
-    if sm.updated['navLaneIntentSP']:
-      self.update_lane_change(
-        sm['navLaneIntentSP'], enabled=self.settings_cache.read().lane_change_buzzer_enabled,
+    if sm.updated['modelV2'] or sm.updated['modelDataV2SP']:
+      self.update_maneuver(
+        sm['modelV2'].meta, sm['modelDataV2SP'],
+        enabled=self.settings_cache.read().lane_change_buzzer_enabled,
+        healthy=sm.all_checks(['modelV2', 'modelDataV2SP', 'carControl']) and bool(sm['carControl'].latActive),
       )
 
   def update_mads(self, enabled):
@@ -151,18 +168,37 @@ class Beepd:
       self.mads_enabled = enabled
       self.dispatch_beep(self.engage if enabled else self.disengage)
 
-  def update_lane_change(self, intent, *, enabled):
-    ready = bool(intent.valid and intent.spLaneChangeReady)
-    request_id = int(intent.requestId)
-    if not self.lane_change_initialized:
-      self.lane_change_initialized = True
-      if ready:
-        self.lane_change_beep_request_id = request_id
+  def update_maneuver(self, meta, turn, *, enabled, healthy):
+    if not healthy:
+      self.maneuver_initialized = False
+      self.maneuver_action = None
+      self.maneuver_pending_until = 0.0
       return
-    if ready and request_id > 0 and request_id != self.lane_change_beep_request_id:
-      self.lane_change_beep_request_id = request_id
-      if enabled:
-        self.dispatch_beep(self.engage)
+    lane_state = int(meta.laneChangeState.raw)
+    lane_direction = int(meta.laneChangeDirection.raw)
+    turn_direction = int(turn.laneTurnDirection.raw)
+    action = None
+    # Starting=2, finishing=3. Keeping the action through finishing prevents
+    # duplicate pulses. This also covers ordinary blinker-led lane changes.
+    if lane_state in (2, 3) and lane_direction in (1, 2):
+      action = ('lane', lane_direction)
+    elif turn.turnDecisionReason == 'turnActive' and turn_direction in (1, 2):
+      action = ('turn', turn_direction)
+    if not self.maneuver_initialized:
+      self.maneuver_initialized = True
+      self.maneuver_action = action
+      return  # Do not announce an action already active at process startup.
+    now = time.monotonic()
+    if action != self.maneuver_action:
+      self.maneuver_action = action
+      self.maneuver_pending_until = now + 0.5 if action is not None and enabled else 0.0
+      if action is not None:
+        print(f"[BEEP] maneuver start: {action}, enabled={enabled}", flush=True)
+    if not enabled or action is None:
+      self.maneuver_pending_until = 0.0
+    elif now < self.maneuver_pending_until:
+      if self.dispatch_beep(self.engage):
+        self.maneuver_pending_until = 0.0
 
   def test_beepd_thread(self):
     frame = 0
@@ -189,7 +225,7 @@ class Beepd:
     if test:
       threading.Thread(target=self.test_beepd_thread, daemon=True).start()
 
-    sm = messaging.SubMaster(['selfdriveState', 'selfdriveStateSP', 'navLaneIntentSP'])
+    sm = messaging.SubMaster(['selfdriveState', 'selfdriveStateSP', 'modelV2', 'modelDataV2SP', 'carControl'], frequency=20)
     rk = Ratekeeper(20)
 
     while True:

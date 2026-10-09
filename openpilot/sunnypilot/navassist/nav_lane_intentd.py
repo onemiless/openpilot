@@ -212,10 +212,13 @@ def build_lane_plan(nav, topology, *, healthy: bool, settings: NavAssistSettings
         True, str(nav.sessionId), int(nav.routeRevision), int(nav.maneuverEventId), lane_count, (inward_visual,),
         heuristic=True, edge_direction=direction, navigation_valid=nav_valid,
       )
-    if (nav_valid and amap_ego_index is not None and amap_lane_count == lane_count
-        and fallback_side is not None and math.isfinite(distance_m) and 0.0 <= distance_m <= lookahead_m):
-      aligned = tuple(index for index in recommended if
-                      (index <= amap_ego_index if fallback_side == "left" else index >= amap_ego_index))
+    common_index_known = (amap_ego_index is not None and 0 <= amap_ego_index < lane_count
+                          and amap_lane_count == lane_count)
+    if nav_valid and common_index_known:
+      aligned = recommended
+      if fallback_side is not None and math.isfinite(distance_m) and 0.0 <= distance_m <= lookahead_m:
+        aligned = tuple(index for index in recommended if
+                        (index <= amap_ego_index if fallback_side == "left" else index >= amap_ego_index))
       if aligned:
         return NavLanePlan(True, str(nav.sessionId), int(nav.routeRevision), int(nav.maneuverEventId),
                            lane_count, aligned, navigation_valid=nav_valid)
@@ -223,7 +226,14 @@ def build_lane_plan(nav, topology, *, healthy: bool, settings: NavAssistSettings
       (fallback_side == "left" and 0 in recommended)
       or (fallback_side == "right" and amap_lane_count - 1 in recommended)
     )
-    if nav_valid and edge_recommended and math.isfinite(distance_m) and 0.0 <= distance_m <= lookahead_m:
+    # Explicit common-index recommendations win above. When their absolute
+    # mapping is unknown, retain the existing turn/exit directional edge plan.
+    # A slight bend still needs an edge recommendation; it may only follow the road.
+    directional_fallback = fallback_side is not None and (
+      edge_recommended or (not common_index_known and maneuver not in ("slightLeft", "slightRight"))
+    )
+    if (nav_valid and int(nav.maneuverEventId) != 0 and directional_fallback
+        and math.isfinite(distance_m) and 0.0 <= distance_m <= lookahead_m):
       target = 0 if fallback_side == "left" else max(0, lane_count - 1)
       return NavLanePlan(
         True, str(nav.sessionId), int(nav.routeRevision), int(nav.maneuverEventId),
@@ -235,8 +245,8 @@ def build_lane_plan(nav, topology, *, healthy: bool, settings: NavAssistSettings
         navigation_valid=nav_valid,
       )
     # AMap lane indices describe the complete road while modelV2 exposes only a
-    # local visible window. Without an edge-qualified directional target there
-    # is no common absolute index, so retain the observation but do not control.
+    # local visible window. Without a common index or qualified route direction,
+    # retain the observation but do not guess a target.
     return NavLanePlan(
       False, str(nav.sessionId), int(nav.routeRevision), int(nav.maneuverEventId), amap_lane_count, (),
       navigation_valid=nav_valid,

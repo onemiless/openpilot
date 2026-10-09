@@ -19,6 +19,7 @@ from openpilot.selfdrive.debug.tesla_turn_signal_test import (
   get_validation_status,
   start_validation_session,
 )
+from openpilot.selfdrive.debug.screen_cast_web import serve_screen_cast
 from openpilot.selfdrive.debug.device_settings import settings_snapshot, validate_and_write
 from openpilot.selfdrive.debug.device_hotspot import hotspot_status, set_hotspot_enabled
 from openpilot.selfdrive.debug.device_console_auth import client_is_local, console_status, require_offroad
@@ -759,6 +760,10 @@ class DeviceConsoleHandler(BaseHTTPRequestHandler):
     query = parse_qs(request.query, keep_blank_values=True)
     if not client_is_local(self.client_address[0]):
       self._send(HTTPStatus.FORBIDDEN, "text/plain; charset=utf-8", "仅允许本地网络访问".encode())
+      return
+    if path in ("/screen", "/screen/") or path.startswith("/api/screen/"):
+      if self._gateway_authorized():
+        serve_screen_cast(self, path)
       return
     gateway_route = path in ("/gateway", "/api/gateway") or path.startswith(("/gateway/", "/api/gateway/"))
     if gateway_route:

@@ -26,7 +26,7 @@ from openpilot.common.linux import LinuxSystemStats
 from openpilot.system.loggerd.config import get_available_percent
 from openpilot.common.swaglog import cloudlog
 from openpilot.sunnypilot.hardware.profile import (
-  allows_automatic_power_down, get_hardware_profile, power_down_requested,
+  HardwareProfile, allows_automatic_power_down, get_hardware_profile, power_down_requested,
 )
 from openpilot.sunnypilot.system.statsd import statlog
 from openpilot.system.hardware.power_monitoring import PowerMonitoring
@@ -259,8 +259,6 @@ def hardware_thread(end_event, hw_queue) -> None:
   uptime_offroad: float = params.get("UptimeOffroad", return_default=True)
   uptime_onroad: float = params.get("UptimeOnroad", return_default=True)
   last_uptime_ts: float = time.monotonic()
-  last_network_metered: bool | None = None
-  last_runner_voltage: bool | None = None
 
   HARDWARE.initialize_hardware()
   thermal_config = HARDWARE.get_thermal_config()
@@ -329,7 +327,15 @@ def hardware_thread(end_event, hw_queue) -> None:
     msg.deviceState.screenBrightnessPercent = HARDWARE.get_screen_brightness()
 
     set_usb_state(msg.deviceState, last_hw_state.usb_state)
-    chestnut_ejector.update(started_ts is None, last_hw_state.usb_state, auto_power_down=started_seen)
+    panda_safe_for_usb_recovery = sm.valid['pandaStates'] and bool(pandaStates) and all(
+      not (p.ignitionLine or p.ignitionCan or p.controlsAllowed) and str(p.safetyModel) == "noOutput"
+      for p in pandaStates
+    )
+    chestnut_ejector.update(
+      started_ts is None, last_hw_state.usb_state, auto_power_down=started_seen,
+      recover_initial_low_speed=(hardware_profile == HardwareProfile.C3XL and not started_seen and
+                                 panda_safe_for_usb_recovery),
+    )
     chestnut.update(started_ts is None, last_hw_state.usb_state)
     set_offroad_alert_if_changed("Offroad_ChestnutBranch", msg.deviceState.chestnutPresent and not big_model_available)
 
@@ -474,10 +480,7 @@ def hardware_thread(end_event, hw_queue) -> None:
 
     # GitHub runner auto off: 9V is used as the threshold because most desktop runners
     # will rarely exceed 5V so 9V is set as our buffer between desk use and car use.
-    runner_voltage = bool(voltage and voltage > 9000)
-    if runner_voltage != last_runner_voltage:
-      params.put_bool("GithubRunnerSufficientVoltage", runner_voltage)
-      last_runner_voltage = runner_voltage
+    params.put_bool("GithubRunnerSufficientVoltage", ((voltage or 0) and voltage > 9000))
 
     power_monitor.calculate(voltage, onroad_conditions["ignition"])
     msg.deviceState.offroadPowerUsageUwh = power_monitor.get_power_used()
@@ -547,9 +550,7 @@ def hardware_thread(end_event, hw_queue) -> None:
         except Exception:
           cloudlog.exception("failed to save offroad status")
 
-    if msg.deviceState.networkMetered != last_network_metered:
-      params.put_bool("NetworkMetered", msg.deviceState.networkMetered)
-      last_network_metered = msg.deviceState.networkMetered
+    params.put_bool("NetworkMetered", msg.deviceState.networkMetered)
 
     now_ts = time.monotonic()
     if off_ts:
@@ -559,10 +560,8 @@ def hardware_thread(end_event, hw_queue) -> None:
     last_uptime_ts = now_ts
 
     if (count % int(60. / DT_HW)) == 0:
-      # Accounting must not hold up deviceState when another parameter writer
-      # is waiting for the filesystem journal while holding the Params lock.
-      params.put("UptimeOffroad", uptime_offroad)
-      params.put("UptimeOnroad", uptime_onroad)
+      params.put("UptimeOffroad", uptime_offroad, block=True)
+      params.put("UptimeOnroad", uptime_onroad, block=True)
 
     count += 1
     should_start_prev = should_start

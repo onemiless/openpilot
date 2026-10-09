@@ -19,6 +19,7 @@ from openpilot.sunnypilot.navassist.server import NavAssistHTTPServer
 from openpilot.sunnypilot.navassist.udp_receiver import NavAssistUDPServer, UDP_SNAPSHOT_PORT
 from openpilot.sunnypilot.navassist.diagnostics import ingress_status_path
 from openpilot.sunnypilot.navassist.settings import atomic_json
+from openpilot.sunnypilot.navassist.diagnostic_events import DiagnosticEvents
 
 
 LISTEN_HOST = "0.0.0.0"
@@ -81,7 +82,9 @@ def main() -> None:
   oem_navigation_feedback = OemNavigationFeedback()
   speech_feedback = {}
   lane_decision = {}
-  server = NavAssistHTTPServer((LISTEN_HOST, LISTEN_PORT), store, identity, pairing)
+  diagnostic_events = DiagnosticEvents()
+  server = NavAssistHTTPServer((LISTEN_HOST, LISTEN_PORT), store, identity, pairing,
+                              diagnostics_provider=diagnostic_events.snapshot)
   udp_server = NavAssistUDPServer(
     (LISTEN_HOST, UDP_SNAPSHOT_PORT), store, ack_payload_provider=oem_lane_feedback.snapshot,
     telemetry_provider=oem_navigation_feedback.snapshot,
@@ -117,7 +120,7 @@ def main() -> None:
     )
 
     pm = messaging.PubMaster(["navAssistStateSP"])
-    sm = messaging.SubMaster(["liveLocationKalman", "carState", "carControl", "radarState", "modelV2", "navLaneIntentSP"])
+    sm = messaging.SubMaster(["liveLocationKalman", "carState", "carControl", "radarState", "modelV2", "navLaneIntentSP", "laneTopologyStateSP"])
     can_sock = messaging.sub_sock("can", conflate=False)
     ratekeeper = Ratekeeper(PUBLISH_HZ)
     next_maintenance_ns = 0
@@ -129,6 +132,7 @@ def main() -> None:
           event.can, now_ns=int(event.logMonoTime), received_ns=time.monotonic_ns(), valid=bool(event.valid),
         )
       now_ns = time.monotonic_ns()
+      diagnostic_events.observe(sm, now_ns, time.time_ns() // 1_000_000)
       car_valid = all(sm.seen[name] and sm.alive[name] and sm.valid[name] for name in ("carState", "carControl", "modelV2"))
       radar_valid = bool(sm.seen["radarState"] and sm.alive["radarState"] and sm.valid["radarState"])
       car_state = sm["carState"]

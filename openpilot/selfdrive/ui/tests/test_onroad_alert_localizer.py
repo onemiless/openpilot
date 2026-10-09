@@ -1,8 +1,9 @@
 import pytest
 import re
+from types import SimpleNamespace
 
 from openpilot.selfdrive.selfdrived.events import EVENTS, EVENT_NAME
-from openpilot.selfdrive.ui.onroad.alert_localizer import localize_alert_text
+from openpilot.selfdrive.ui.onroad.alert_localizer import localize_alert_text, localized_lane_change_source
 from openpilot.sunnypilot.selfdrive.selfdrived.events import EVENTS_SP, EVENT_NAME_SP
 from openpilot.sunnypilot.selfdrive.selfdrived.events_base import Alert
 
@@ -17,6 +18,37 @@ def test_simplified_chinese_restores_legacy_static_sp_alert():
 
   assert text1 == "自动车道居中功能已关闭"
   assert text2 == "请手动控制方向"
+
+
+@pytest.mark.parametrize(("intent", "expected"), [
+  (SimpleNamespace(valid=True, signalRequested=True, targetLaneIndex=-1,
+                   direction="left", reason="turnApproach"), "正在左转"),
+  (SimpleNamespace(valid=True, signalRequested=True, targetLaneIndex=-1,
+                   direction="right", reason="turnApproach"), "正在右转"),
+  (SimpleNamespace(valid=True, signalRequested=True, targetLaneIndex=1,
+                   direction="left", reason="efficiency:heuristicChanging"), "向左超车"),
+  (SimpleNamespace(valid=True, signalRequested=True, targetLaneIndex=1,
+                   direction="right", reason="efficiency:heuristicChanging"), "向右超车"),
+  (SimpleNamespace(valid=True, signalRequested=True, targetLaneIndex=1,
+                   direction="left", reason="heuristicChanging"), "向左换道"),
+  (SimpleNamespace(valid=True, signalRequested=True, targetLaneIndex=1,
+                   direction="right", reason="heuristicChanging"), "向右换道"),
+])
+def test_simplified_chinese_distinguishes_automatic_lane_maneuver_source(intent, expected):
+  assert localized_lane_change_source(intent, healthy=True, language="zh-CHS") == expected
+
+
+def test_lane_maneuver_source_keeps_generic_alert_for_manual_or_unhealthy_context():
+  manual = SimpleNamespace(valid=True, signalRequested=False, targetLaneIndex=-1, direction="none", reason="")
+  automatic = SimpleNamespace(valid=True, signalRequested=True, targetLaneIndex=0,
+                              direction="left", reason="heuristicChanging")
+  unknown_turn = SimpleNamespace(valid=True, signalRequested=True, targetLaneIndex=-1,
+                                 direction="none", reason="turnApproach")
+
+  assert localized_lane_change_source(manual, healthy=True, language="zh-CHS") is None
+  assert localized_lane_change_source(unknown_turn, healthy=True, language="zh-CHS") is None
+  assert localized_lane_change_source(automatic, healthy=False, language="zh-CHS") is None
+  assert localized_lane_change_source(automatic, healthy=True, language="en") is None
 
 
 def test_simplified_chinese_formats_dynamic_speed_limit_target():

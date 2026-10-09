@@ -14,6 +14,7 @@ LANE_CHANGE_TIME_MAX = 10.
 LANE_CHANGE_START_TIME = 0.5
 LANE_CHANGE_CANCEL_TIME_MAX = 2.0
 NAV_LANE_CHANGE_FINISH_TIME = 1.0  # CP's finishing/recovery phase, without a new lateral controller.
+NAV_SIGNAL_FEEDBACK_TIME = 2.5  # Existing Tesla vehicle-feedback budget; wait for a late navigation lamp.
 
 TURN_DESIRES = {
   TurnDirection.none: log.Desire.none,
@@ -37,6 +38,7 @@ class DesireHelper:
     self._active_nav_signal_feedback = False
     self._nav_signal_tail_direction: str | None = None
     self._nav_signal_tail_turn_only = False
+    self._nav_signal_tail_wait = 0.0
     self._cancelled_signal = False
     self._signal_direction = None
     self._signal_is_lane_change = False
@@ -79,9 +81,12 @@ class DesireHelper:
                        getattr(nav_lane_intent, "requestId", 0), nav_direction) if nav_signal else None)
     if (self._active_nav_signal_direction is not None
         and (not nav_requested or nav_direction != self._active_nav_signal_direction)):
-      if self._active_nav_signal_feedback:
+      if self._active_nav_signal_feedback or not self._active_nav_signal_turn_only:
         self._nav_signal_tail_direction = self._active_nav_signal_direction
         self._nav_signal_tail_turn_only = self._active_nav_signal_turn_only
+        # Intent cancellation can precede the first physical ON observation.
+        # That delayed lamp still belongs to navigation, not manual ALC.
+        self._nav_signal_tail_wait = 0.0 if self._active_nav_signal_feedback else NAV_SIGNAL_FEEDBACK_TIME
       self._active_nav_signal_direction = None
       self._active_nav_signal_turn_only = False
       self._active_nav_signal_feedback = False
@@ -96,15 +101,21 @@ class DesireHelper:
       if self._nav_signal_tail_direction == nav_direction:
         self._nav_signal_tail_direction = None
         self._nav_signal_tail_turn_only = False
+        self._nav_signal_tail_wait = 0.0
       physical_nav_signal_on = ((nav_direction == "left" and carstate.leftBlinker and not carstate.rightBlinker)
                                 or (nav_direction == "right" and carstate.rightBlinker and not carstate.leftBlinker))
       self._active_nav_signal_feedback |= physical_nav_signal_on
     if self._nav_signal_tail_direction is not None:
       tail_signal_on = ((self._nav_signal_tail_direction == "left" and carstate.leftBlinker and not carstate.rightBlinker)
                         or (self._nav_signal_tail_direction == "right" and carstate.rightBlinker and not carstate.leftBlinker))
-      if not tail_signal_on:
+      if tail_signal_on:
+        self._nav_signal_tail_wait = 0.0  # Once observed, retain the existing ON -> OFF release.
+      elif self._nav_signal_tail_wait > DT_MDL:
+        self._nav_signal_tail_wait -= DT_MDL
+      else:
         self._nav_signal_tail_direction = None
         self._nav_signal_tail_turn_only = False
+        self._nav_signal_tail_wait = 0.0
 
     nav_left = nav_signal and str(nav_lane_intent.direction) == "left"
     nav_right = nav_signal and str(nav_lane_intent.direction) == "right"

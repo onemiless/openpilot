@@ -1,6 +1,7 @@
 import json
 import subprocess
 import threading
+import time
 
 from openpilot.common.basedir import BASEDIR
 from openpilot.common.hardware.usb import CHESTNUT_ROM_USB_IDS, CHESTNUT_USB_IDS, is_chestnut_runtime_device
@@ -31,11 +32,15 @@ def parse_safe_poweroff_report(output: str) -> dict:
 
 class ChestnutEjector:
   """Own asynchronous offroad link shutdown and manual detach requests."""
+  LOW_SPEED_RECOVERY_DELAY = 3.0
+
   def __init__(self, params: Params):
     self.params = params
     self.thread: threading.Thread | None = None
     self.detached_seen = False
     self.auto_power_down_attempted = False
+    self.low_speed_since: float | None = None
+    self.low_speed_recovery_attempted = False
 
   def eject(self, *, automatic: bool = False) -> None:
     command = ["sudo", "env", f"PYTHONPATH={BASEDIR}/tinygrad_repo", "/usr/local/venv/bin/python", "-u",
@@ -67,11 +72,33 @@ class ChestnutEjector:
                                    name="chestnut-auto-power-down" if automatic else "chestnut-eject")
     self.thread.start()
 
-  def update(self, offroad: bool, usb_state: list[dict], *, auto_power_down: bool = False) -> None:
+  def recover_low_speed(self) -> None:
+    if not self.params.get_bool("IsOffroad"):
+      return
+    command = ["sudo", "env", f"PYTHONPATH={BASEDIR}", "/usr/local/venv/bin/python", "-u",
+               f"{BASEDIR}/openpilot/system/hardware/chestnut/eject.py", "--recover-low-speed"]
+    ret = subprocess.run(command, cwd=BASEDIR,
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, check=False)
+    cloudlog.event("chestnut low-speed recovery done", returncode=ret.returncode,
+                   output=ret.stdout.strip()[-1000:], error=ret.returncode != 0)
+
+  def _start_low_speed_recovery(self) -> None:
+    self.thread = threading.Thread(target=self.recover_low_speed, daemon=True,
+                                   name="chestnut-low-speed-recovery")
+    self.thread.start()
+
+  def update(self, offroad: bool, usb_state: list[dict], *, auto_power_down: bool = False,
+             recover_initial_low_speed: bool = False) -> None:
     detected = any((d["vendorId"], d["productId"]) in CHESTNUT_USB_IDS + CHESTNUT_ROM_USB_IDS for d in usb_state)
     runtime_detected = any(is_chestnut_runtime_device(d) for d in usb_state)
     ready = any(is_chestnut_runtime_device(d) and d.get("speedMbps", 0) == 5000 for d in usb_state)
     status = self.params.get("UsbGpuEjectStatus")
+
+    low_speed = runtime_detected and not ready
+    if not (recover_initial_low_speed and offroad and self.params.get_bool("IsOffroad") and low_speed):
+      self.low_speed_since = None
+    elif self.low_speed_since is None:
+      self.low_speed_since = time.monotonic()
 
     if not offroad or not runtime_detected:
       self.auto_power_down_attempted = False
@@ -96,6 +123,13 @@ class ChestnutEjector:
       self.params.remove("UsbGpuEjectError")
       self.auto_power_down_attempted = True
       self._start(automatic=False)
+      return
+
+    if (self.low_speed_since is not None and not self.low_speed_recovery_attempted and
+        time.monotonic() - self.low_speed_since >= self.LOW_SPEED_RECOVERY_DELAY and
+        (self.thread is None or not self.thread.is_alive())):
+      self.low_speed_recovery_attempted = True
+      self._start_low_speed_recovery()
       return
 
     if not (auto_power_down and offroad and self.params.get_bool("IsOffroad") and runtime_detected):

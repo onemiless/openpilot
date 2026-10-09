@@ -14,6 +14,45 @@ def point(track, d, y, v):
   return NS(trackId=track, dRel=d, yRel=y, vRel=v, deprecated=NS(measured=True))
 
 
+@pytest.mark.parametrize('speed,distance,relative_speed,unsafe', [
+  (25.24856185913086, 14.6, .75, True),  # Recorded 12:42 start.
+  (25., 14.6, 0., True), (25., 14.6, 1., True), (25., 14.6, 10., True),
+  (25., 29.99, .75, True), (25., 30., .75, False),
+  (25., 31., -1., True), (25., 32., -1., False),
+  (25., 49., 0., False), (25., 70., 5., False),
+  (25., 25., -10., True), (25., 50., -10., False),
+  (35., 41.99, 1., True), (35., 42., 1., False),
+  (17., 20., 2., True), (17., 21., 2., False),
+  (0., 5., 10., True), (0., 12., 0., False),
+  (float('nan'), 50., 0., True), (25., float('nan'), 0., True),
+  (25., 50., float('nan'), True), (25., 50., float('inf'), True),
+  (-1., 50., 0., True),
+])
+def test_adjacent_merge_space_includes_equal_and_faster_targets(speed, distance, relative_speed, unsafe):
+  assert side_lead_unsafe(point(2, distance, 3.5, relative_speed), speed) is unsafe
+
+
+@pytest.mark.parametrize('direction', [Direction.left, Direction.right])
+def test_near_faster_neighbor_blocks_request_and_withdraws_before_start(direction):
+  data = inputs()
+  data['topology'] = replace(data['topology'], left_neighbor_exists=direction == Direction.left,
+                             right_neighbor_exists=direction == Direction.right)
+  y = 3.5 if direction == Direction.left else -3.5
+  data['radar'].points = [point(1, 40., 0., -5.), point(2, 14.6, y, .75)]
+  selector = EfficiencyLaneSelector()
+  for now in (1, 4_000_000_001):
+    plan, requested = select(selector, data, now)
+    assert not requested and selector.active is None
+  data['radar'].points[1].dRel = 70.
+  select(selector, data, 5_000_000_001)
+  plan, requested = select(selector, data, 9_000_000_001)
+  assert requested and plan.edge_direction == direction
+  data['radar'].points[1].dRel = 14.6
+  plan, requested = select(selector, data, 9_050_000_001)
+  assert not requested and selector.active is None
+  assert selector.reason == 'efficiencyGapLost'
+
+
 def inputs():
   return dict(
     route_plan=NavLanePlan(True, 'route', 1, 2, 3, ()),
@@ -244,8 +283,8 @@ def test_unusable_opposite_side_does_not_veto_observed_left_lane(fault):
 def test_every_observed_side_target_must_pass_reference_gap_check():
   d = inputs(); s = EfficiencyLaneSelector()
   d['topology'] = replace(d['topology'], right_crossing_allowed=False)
-  d['radar'].points[1] = point(2, 8., 3.5, 3.)
-  faster_target = point(4, 20., 3.5, -10.)
+  d['radar'].points[1] = point(2, 35., 3.5, 3.)
+  faster_target = point(4, 40., 3.5, -10.)
   d['radar'].points.append(faster_target)
   assert not select(s, d, 0)[1]
   assert not select(s, d, 800_000_000)[1]
@@ -400,6 +439,35 @@ def test_navigation_preempts_preparation_but_not_an_executing_change():
   assert select(s, d, 6_000_000_000)[0] == active
   d['nav'].routeRevision = 2
   assert not select(s, d, 6_100_000_000)[1]
+
+
+def test_navigation_priority_holds_through_short_guidance_gap_then_reevaluates():
+  d = inputs(); s = EfficiencyLaneSelector()
+  d['route_reserved'] = True
+  assert not select(s, d, 0)[1]
+  d['route_reserved'] = False
+  for stamp in (100_000_000, 800_000_000, 2_999_999_999):
+    assert not select(s, d, stamp)[1]
+    assert s.reason == 'efficiencyNavigationPriority'
+    assert s.candidate is None
+  assert not select(s, d, 3_000_000_000)[1]
+  assert select(s, d, 3_800_000_000)[1]
+
+
+@pytest.mark.parametrize('reset', ['route', 'source'])
+def test_navigation_priority_hold_does_not_cross_route_or_invalid_source(reset):
+  d = inputs(); s = EfficiencyLaneSelector()
+  d['route_reserved'] = True
+  select(s, d, 0)
+  d['route_reserved'] = False
+  if reset == 'route':
+    d['nav'].routeRevision += 1
+  else:
+    d['healthy'] = False
+    select(s, d, 100_000_000)
+    d['healthy'] = True
+  select(s, d, 200_000_000)
+  assert select(s, d, 1_000_000_000)[1]
 
 
 def test_real_coordinator_unconfirmed_attempt_waits_for_exit_then_retries():
@@ -664,3 +732,104 @@ def test_track_changes_do_not_bypass_a_new_unsafe_target_or_lost_benefit():
   d['radar'].points[1].dRel = 60.
   assert not select(s, d, 900_000_000)[1]
   assert select(s, d, 1_700_000_000)[1]
+
+
+def goal_inputs(direction=Direction.right):
+  d = inputs()
+  d['nav'].maneuverEventId = 42
+  d['nav'].currentStepIndex = 3
+  d['nav'].maneuver = 'slightRight' if direction == Direction.right else 'mergeLeft'
+  d['nav'].maneuverDistanceM = 800.
+  d['route_plan'] = replace(d['route_plan'], maneuver_event_id=42, recommended_indices=(2 if direction == Direction.right else 0,),
+                            heuristic=True, edge_direction=direction, navigation_valid=True)
+  d['topology'] = replace(d['topology'], ego_lane_index=2 if direction == Direction.right else 0,
+                         left_neighbor_exists=direction == Direction.right, right_neighbor_exists=direction == Direction.left)
+  return d
+
+
+@pytest.mark.parametrize('direction', [Direction.left, Direction.right])
+def test_aligned_navigation_goal_still_blocks_new_efficiency(direction):
+  d = goal_inputs(direction)
+  s = EfficiencyLaneSelector()
+  for stamp in (0, 800_000_000, 4_000_000_000, 10_000_000_000):
+    assert not select(s, d, stamp)[1]
+    assert s.reason == 'efficiencyNavigationPriority'
+    assert s.active is None and s.candidate is None
+
+
+@pytest.mark.parametrize('gap', ['hints', 'topology', 'radarHealth', 'lowSpeed', 'steering'])
+def test_same_navigation_goal_survives_hint_and_execution_gaps(gap):
+  d = goal_inputs()
+  s = EfficiencyLaneSelector()
+  assert not select(s, d, 0)[1]
+  d['route_plan'] = replace(d['route_plan'], recommended_indices=(), heuristic=False, edge_direction=Direction.none)
+  if gap == 'topology':
+    d['topology'] = replace(d['topology'], valid_for_control=False)
+  if gap == 'radarHealth':
+    d['healthy'] = False
+  if gap == 'lowSpeed':
+    d['vehicle'] = replace(d['vehicle'], speed_mps=10.)
+  if gap == 'steering':
+    d['vehicle'] = replace(d['vehicle'], steering_pressed=True)
+  assert not select(s, d, 1_000_000_000)[1]
+  d['topology'] = inputs()['topology']
+  d['healthy'] = True
+  d['vehicle'] = inputs()['vehicle']
+  d['nav'].maneuverDistanceM = 205.
+  for stamp in (10_000_000_000, 10_800_000_000, 60_000_000_000):
+    assert not select(s, d, stamp)[1]
+    assert s.reason == 'efficiencyNavigationPriority'
+    assert s.active is None
+
+
+@pytest.mark.parametrize('field,value', [('sessionId', 'next'), ('routeRevision', 2), ('maneuverEventId', 43),
+  ('currentStepIndex', 4), ('maneuver', 'straight'), ('valid', False), ('stale', True), ('routeActive', False),
+  ('routeMatched', False), ('mode', 'simulation'), ('maneuverDistanceM', 0.),
+  ('maneuverDistanceM', float('nan')), ('maneuverDistanceM', 100_000.)])
+def test_navigation_goal_released_by_event_source_or_approach_end(field, value):
+  d = goal_inputs()
+  s = EfficiencyLaneSelector()
+  assert not select(s, d, 0)[1]
+  d['route_plan'] = replace(d['route_plan'], recommended_indices=(), edge_direction=Direction.none)
+  old = getattr(d['nav'], field)
+  setattr(d['nav'], field, value)
+  select(s, d, 10_000_000_000)
+  assert s.navigation_goal_key is None
+  setattr(d['nav'], field, old)
+  d['topology'] = inputs()['topology']
+  # Restored source alone cannot fabricate a remembered goal without a plan.
+  select(s, d, 20_000_000_000)
+  assert select(s, d, 20_800_000_000)[1]
+
+
+def test_disabled_efficiency_clears_remembered_navigation_goal():
+  d = goal_inputs()
+  s = EfficiencyLaneSelector()
+  select(s, d, 0)
+  d['enabled'] = False
+  assert not select(s, d, 1_000_000_000)[1]
+  assert s.navigation_goal_key is None
+
+
+def test_unconfirmed_slight_bend_does_not_invent_a_navigation_goal():
+  d = goal_inputs()
+  s = EfficiencyLaneSelector()
+  d['route_plan'] = replace(d['route_plan'], recommended_indices=(), edge_direction=Direction.none)
+  d['topology'] = inputs()['topology']
+  assert not select(s, d, 0)[1]
+  assert select(s, d, 800_000_000)[1]
+  assert s.navigation_goal_key is None
+
+
+def test_new_navigation_goal_does_not_replace_started_efficiency():
+  d = inputs()
+  s = EfficiencyLaneSelector()
+  select(s, d, 0)
+  active, selected = select(s, d, 800_000_000)
+  assert selected
+  d['vehicle'] = replace(d['vehicle'], lane_change_state=State.starting, lane_change_direction=active.edge_direction)
+  goal = goal_inputs(Direction.right)
+  d.update(nav=goal['nav'], route_plan=goal['route_plan'], route_reserved=True)
+  plan, selected = select(s, d, 900_000_000)
+  assert selected and plan.edge_direction == active.edge_direction
+  assert s.navigation_goal_key is not None

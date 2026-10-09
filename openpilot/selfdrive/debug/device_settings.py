@@ -115,6 +115,7 @@ def _translate_option(text: str, key: str) -> str:
 # These controls intentionally have no SunnyLink schema entry. Keep the local
 # console whitelist narrow: it is not a generic Params editor.
 EXTRA_SETTINGS: tuple[dict[str, Any], ...] = (
+  {"key": "C3ScreenCasting", "widget": "toggle", "title": "C3 浏览器投屏与触控", "description": "入口 http://99.99.99.99:8088/screen；无人观看不采集，行驶中按负载降帧。", "category": "Tesla", "group": "Tesla", "offroad_only": True},
   {"key": "Brightness", "widget": "option", "title": "停车界面亮度", "category": "Display", "group": "显示", "min": 10, "max": 100, "step": 10, "unit": "%", "offroad_only": True},
   {"key": "TeslaARS408Radar", "widget": "multiple_button", "title": "Tesla 雷达后端", "category": "Tesla", "group": "Tesla", "options": [{"value": 0, "label": "原车"}, {"value": 1, "label": "ARS408"}, {"value": 2, "label": "关闭"}], "offroad_only": True},
   {"key": "DynamicAutoStock", "widget": "toggle", "title": "动态原车 ACC", "category": "Tesla", "group": "Tesla", "offroad_only": True},
@@ -251,6 +252,9 @@ def validate_and_write(key: str, value: Any, params: Params | None = None) -> di
     if not isinstance(value, bool):
       raise ValueError("开关值必须是 true 或 false")
     params.put_bool(key, value, block=True)
+    if key == "C3ScreenCasting":
+      from openpilot.system.ui.lib.screen_cast import notify_screen_cast
+      notify_screen_cast(value)
   else:
     options = setting.get("options")
     if options is not None:

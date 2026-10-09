@@ -1,11 +1,16 @@
 from types import SimpleNamespace
+import pyray as rl
 from openpilot.cereal import custom
 
+from openpilot.selfdrive.ui.sunnypilot.onroad import lane_navigation_overlay
+from openpilot.selfdrive.ui.sunnypilot.onroad.lane_navigation_overlay import LaneNavigationOverlay
 from openpilot.selfdrive.ui.sunnypilot.onroad.lane_navigation_state import (
+  load_overlay_position,
   lane_display_from_service,
   lane_display_from_ui_bridge,
   navigation_display_from_service,
   overlay_layout,
+  save_overlay_position,
 )
 from openpilot.sunnypilot.lane_topology.types import LaneMarkingType
 
@@ -222,8 +227,6 @@ def test_navigation_overlay_makes_fork_now_bypass_visible():
   )
   assert display.detail == "右分叉请求"
 
-
-
 def test_tici_overlay_layout_is_bounded_and_embeds_lane_footer_in_navigation_card():
   layout = overlay_layout(2160, 1080)
   nav_x, nav_y, nav_width, nav_height = layout.navigation
@@ -232,6 +235,8 @@ def test_tici_overlay_layout_is_bounded_and_embeds_lane_footer_in_navigation_car
   right_x, right_y, right_width, right_height = layout.right_lane
 
   assert 0 <= nav_x and nav_x + nav_width <= 2160
+  assert nav_width == 760
+  assert nav_height == 204
   assert 0 <= left_x and right_x + right_width <= 2160
   assert nav_y < lane_y < nav_y + nav_height
   assert lane_y == center_y == right_y
@@ -239,6 +244,61 @@ def test_tici_overlay_layout_is_bounded_and_embeds_lane_footer_in_navigation_car
   assert left_x + left_width == center_x
   assert center_x + center_width == right_x
   assert lane_y + lane_height == nav_y + nav_height
+
+
+def test_overlay_layout_uses_normalized_draggable_position_and_clamps_it():
+  top_left = overlay_layout(2160, 1080, position=(0.0, 0.0))
+  bottom_right = overlay_layout(2160, 1080, bottom_inset=84, position=(1.0, 1.0))
+  clamped = overlay_layout(2160, 1080, bottom_inset=84, position=(4.0, -2.0))
+
+  assert top_left.navigation[:2] == (0.0, 0.0)
+  assert bottom_right.navigation[0] + bottom_right.navigation[2] == 2160
+  assert bottom_right.navigation[1] + bottom_right.navigation[3] == 1080 - 84
+  assert clamped.navigation[0] == bottom_right.navigation[0]
+  assert clamped.navigation[1] == 0.0
+
+
+def test_overlay_position_persists_without_changing_navigation_settings(tmp_path):
+  path = tmp_path / "ui.json"
+  assert load_overlay_position(path) == (0.5, 1.0)
+  assert save_overlay_position((0.25, 0.75), path) == (0.25, 0.75)
+  assert load_overlay_position(path) == (0.25, 0.75)
+  assert save_overlay_position((2.0, -1.0), path) == (1.0, 0.0)
+  assert load_overlay_position(path) == (1.0, 0.0)
+
+
+def test_overlay_drag_tracks_whole_card_clamps_and_saves(monkeypatch):
+  overlay = object.__new__(LaneNavigationOverlay)
+  overlay._position = (0.5, 1.0)
+  overlay._card_rect = rl.Rectangle(100, 200, 760, 204)
+  overlay._container_rect = rl.Rectangle(0, 0, 2160, 1080)
+  overlay._bottom_inset = 24.0
+  overlay._dragging = False
+  overlay._drag_offset = rl.Vector2()
+  saved = []
+  monkeypatch.setattr(lane_navigation_overlay, 'save_overlay_position',
+                      lambda position: saved.append(position) or position)
+
+  press = SimpleNamespace(pos=rl.Vector2(150, 250), left_pressed=True, left_down=True, left_released=False)
+  move = SimpleNamespace(pos=rl.Vector2(60, 70), left_pressed=False, left_down=True, left_released=False)
+  release = SimpleNamespace(pos=rl.Vector2(4000, 3000), left_pressed=False, left_down=False, left_released=True)
+
+  assert overlay.handle_mouse_event(press) and overlay.is_dragging
+  assert overlay.handle_mouse_event(move)
+  assert 0.0 < overlay._position[0] < 0.01 and 0.0 < overlay._position[1] < 0.03
+  assert overlay.handle_mouse_event(release) and not overlay.is_dragging
+  assert overlay._position == (1.0, 1.0)
+  assert saved == [(1.0, 1.0)]
+
+
+def test_navigation_overlay_uses_cjk_font_for_bold_chinese_title():
+  overlay = object.__new__(LaneNavigationOverlay)
+  overlay._font_bold = object()
+  overlay._text_font = object()
+
+  assert overlay._font_for("500 m", True) is overlay._font_bold
+  assert overlay._font_for("左转", True) is overlay._text_font
+  assert overlay._font_for("人民路", False) is overlay._text_font
 
 
 def test_stale_and_unmatched_guidance_never_retains_an_old_arrow_or_distance():

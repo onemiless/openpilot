@@ -8,7 +8,7 @@ from openpilot.sunnypilot.selfdrive.car.tests.test_nav_signal_retry_budget impor
 
 
 def template(counter):
-  data = bytearray([0xA5, 0x8C, 0x61, 0xB4, 0x5A, 0xC3, (counter << 4) | 7, 0])
+  data = bytearray([0xA5, 0x88, 0x61, 0xB4, 0x5A, 0xC3, (counter << 4) | 7, 0])
   data[7] = v.tesla_body_controls_checksum(data)
   return bytes(data)
 

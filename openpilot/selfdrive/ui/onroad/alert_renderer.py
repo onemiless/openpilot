@@ -9,7 +9,7 @@ from openpilot.system.ui.lib.multilang import multilang, tr
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.label import Label
-from openpilot.selfdrive.ui.onroad.alert_localizer import localize_alert_text
+from openpilot.selfdrive.ui.onroad.alert_localizer import localize_alert_text, LaneChangePrompt
 
 AlertSize = log.SelfdriveState.AlertSize
 AlertStatus = log.SelfdriveState.AlertStatus
@@ -76,6 +76,7 @@ class AlertRenderer(Widget):
     super().__init__()
     self.font_regular: rl.Font = gui_app.font(FontWeight.NORMAL)
     self.font_bold: rl.Font = gui_app.font(FontWeight.BOLD)
+    self._lane_change_prompt = LaneChangePrompt()
 
     # font size is set dynamically
     self._full_text1_label = Label("", font_size=0, font_weight=FontWeight.BOLD, text_alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER,
@@ -86,6 +87,16 @@ class AlertRenderer(Widget):
   def get_alert(self, sm: messaging.SubMaster) -> Alert | None:
     """Generate the current alert based on selfdrive state."""
     ss = sm['selfdriveState']
+    model = sm['modelV2'].meta
+    source_text = self._lane_change_prompt.update(
+      sm['navLaneIntentSP'],
+      healthy=(sm.seen['navLaneIntentSP'] and sm.alive['navLaneIntentSP'] and sm.valid['navLaneIntentSP']
+               and sm.recv_frame['navLaneIntentSP'] > ui_state.started_frame),
+      model_healthy=(sm.seen['modelV2'] and sm.alive['modelV2'] and sm.valid['modelV2']
+                     and sm.recv_frame['modelV2'] > ui_state.started_frame),
+      model_state=str(model.laneChangeState), model_direction=str(model.laneChangeDirection),
+      onroad=ui_state.started, started_frame=ui_state.started_frame, language=multilang.language,
+    )
 
     # Check if selfdriveState messages have stopped arriving
     recv_frame = sm.recv_frame['selfdriveState']
@@ -115,6 +126,9 @@ class AlertRenderer(Widget):
 
     # Return current alert
     text1, text2 = localize_alert_text(ss.alertType, ss.alertText1, ss.alertText2, multilang.language)
+    if ss.alertText1 == "Changing Lanes":
+      if source_text is not None:
+        text1 = source_text
     return Alert(text1=text1, text2=text2, size=ss.alertSize.raw, status=ss.alertStatus.raw, alert_type=ss.alertType)
 
   def _render(self, rect: rl.Rectangle):

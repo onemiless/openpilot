@@ -6,6 +6,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import threading
 import time
+from urllib.parse import parse_qs, urlsplit
 
 from openpilot.sunnypilot.navassist.identity import NavAssistDeviceIdentity, NavAssistPairingStore, verify_signature
 from openpilot.sunnypilot.navassist.protocol import MAX_BODY_BYTES, NavAssistProtocolError, NavAssistStore
@@ -49,12 +50,13 @@ class NavAssistHTTPServer(ThreadingHTTPServer):
 
   def __init__(self, address: tuple[str, int], store: NavAssistStore, identity: NavAssistDeviceIdentity,
                pairing: NavAssistPairingStore, *, rate_limiter: ClientRateLimiter | None = None,
-               max_concurrent_requests: int = 4):
+               max_concurrent_requests: int = 4, diagnostics_provider=None):
     if not 1 <= max_concurrent_requests <= 16:
       raise ValueError("max_concurrent_requests must be in [1, 16]")
     self.store = store
     self.identity = identity
     self.pairing = pairing
+    self.diagnostics_provider = diagnostics_provider
     self.rate_limiter = rate_limiter or ClientRateLimiter()
     self._request_slots = threading.BoundedSemaphore(max_concurrent_requests)
     super().__init__(address, NavAssistRequestHandler)
@@ -142,4 +144,27 @@ class NavAssistRequestHandler(BaseHTTPRequestHandler):
     })
 
   def do_GET(self) -> None:
+    url = urlsplit(self.path)
+    if url.path == '/v3/diagnostics' and self.server.diagnostics_provider is not None:
+      if not self.server.rate_limiter.allow(self.client_address[0]):
+        self._respond(429, {'reason': 'rate_limited'})
+        return
+      query = parse_qs(url.query)
+      current = self.server.store.current()
+      # Same data-only UDP owner/session boundary, not a new control capability.
+      from openpilot.sunnypilot.navassist.udp_receiver import source_key_id
+      if (current is None or current.is_stale(time.monotonic_ns())
+          or query.get('sessionId') != [current.snapshot.session_id]
+          or not self.server.store.owns_source(source_key_id(self.client_address[0]))):
+        self._respond(403, {'reason': 'session_owner'})
+        return
+      try:
+        after = int(query.get('after', ['0'])[0])
+        if after < 0 or len(query.get('after', ['0'])) != 1:
+          raise ValueError()
+      except ValueError:
+        self._respond(400, {'reason': 'cursor'})
+        return
+      self._respond(200, self.server.diagnostics_provider(after))
+      return
     self._respond(405, {"accepted": False, "reason": "method_not_allowed"})

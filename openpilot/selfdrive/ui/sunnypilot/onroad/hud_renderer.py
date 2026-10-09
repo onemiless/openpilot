@@ -152,3 +152,10 @@ class HudRendererSP(HudRenderer):
     self.circular_alerts_renderer.render(rect)
     self.rocket_fuel.render(rect, ui_state.sm)
     self.traffic_control_renderer.render(rect)
+
+  def _handle_mouse_event(self, mouse_event) -> None:
+    super()._handle_mouse_event(mouse_event)
+    self.lane_navigation_overlay.handle_mouse_event(mouse_event)
+
+  def user_interacting(self) -> bool:
+    return super().user_interacting() or self.lane_navigation_overlay.is_dragging

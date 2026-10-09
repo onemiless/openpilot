@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Prepare a Chestnut-connected eGPU for physical removal while offroad."""
 import argparse
+import json
 import os
 import sys
 import time
@@ -11,6 +12,9 @@ from openpilot.system.hardware.chestnut.flash import VBUS_PATH, claim_interface,
 
 DETACH_TIMEOUT = 20.0
 DETACH_PENDING_EXIT_CODE = 75  # EX_TEMPFAIL: the accepted USB remove is still converging
+RECOVERY_DISCONNECT_TIMEOUT = 5.0
+RECOVERY_ENUM_TIMEOUT = 15.0
+RECOVERY_VBUS_OFF_TIME = 2.0
 
 
 class DetachPendingError(RuntimeError):
@@ -25,6 +29,54 @@ def _wait_disconnected(timeout: float = DETACH_TIMEOUT) -> bool:
       return True
     time.sleep(0.1)
   return False
+
+
+def _runtime_speed_mbps() -> tuple[str | None, int]:
+  path, _, _ = find_runtime_chestnut()
+  if path is None:
+    return None, 0
+  try:
+    return path, int((Path(path) / "speed").read_text())
+  except (OSError, ValueError):
+    return path, 0
+
+
+def recover_low_speed_link() -> dict[str, object]:
+  """Power-cycle a runtime device that fell back below SuperSpeed.
+
+  The caller owns the offroad/no-user qualification. This helper deliberately
+  does not claim the interface: offroad chestnut_statusd may have it open, and
+  the VBUS transition is the operation required to reset the failed USB link.
+  """
+  path, speed_before = _runtime_speed_mbps()
+  if path is None:
+    raise RuntimeError("eGPU is not connected")
+  if speed_before >= 5000:
+    return {"state": "already-ready", "speed_before": speed_before, "speed_after": speed_before}
+
+  vbus = Path(VBUS_PATH)
+  if not vbus.exists():
+    raise RuntimeError("eGPU VBUS control is unavailable")
+
+  disconnected = False
+  try:
+    vbus.write_text("0\n")
+    disconnected = _wait_disconnected(RECOVERY_DISCONNECT_TIMEOUT)
+    time.sleep(RECOVERY_VBUS_OFF_TIME)
+  finally:
+    vbus.write_text("1\n")
+
+  deadline = time.monotonic() + RECOVERY_ENUM_TIMEOUT
+  speed_after = 0
+  while time.monotonic() < deadline:
+    _, speed_after = _runtime_speed_mbps()
+    if speed_after >= 5000:
+      return {
+        "state": "recovered", "disconnected": disconnected,
+        "speed_before": speed_before, "speed_after": speed_after,
+      }
+    time.sleep(0.2)
+  raise RuntimeError(f"eGPU re-enumerated below SuperSpeed ({speed_after} Mbps)")
 
 
 def safe_eject() -> bool:
@@ -56,7 +108,18 @@ def safe_eject() -> bool:
 
 def main() -> int:
   parser = argparse.ArgumentParser(description="safely detach the Chestnut eGPU")
-  parser.parse_args()
+  parser.add_argument("--recover-low-speed", action="store_true")
+  args = parser.parse_args()
+  if args.recover_low_speed:
+    try:
+      from openpilot.common.params import Params
+      if not Params().get_bool("IsOffroad"):
+        raise RuntimeError("low-speed recovery requires offroad confirmation")
+      print(json.dumps(recover_low_speed_link(), sort_keys=True), flush=True)
+      return 0
+    except Exception as e:
+      print(e, file=sys.stderr, flush=True)
+      return 1
   try:
     powered_off = safe_eject()
   except DetachPendingError as e:

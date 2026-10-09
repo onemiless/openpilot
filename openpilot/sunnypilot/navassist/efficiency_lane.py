@@ -73,6 +73,8 @@ def side_lead_unsafe(lead, speed_mps):
     return False
   distance = lead.dRel
   relative_speed = lead.vRel
+  if not all(math.isfinite(value) for value in (distance, relative_speed, speed_mps)) or speed_mps < 0.:
+    return True
   if distance <= 5.:
     return True
   min_gap = min(12., max(6., speed_mps * .30))
@@ -83,7 +85,10 @@ def side_lead_unsafe(lead, speed_mps):
       return True
     if distance + relative_speed * 1.5 < min_gap:
       return True
-  return distance < min_gap and relative_speed < 1.
+  # Apply the existing speed-dependent envelope to every adjacent target,
+  # including one pulling away. A positive vRel is not proof of space to merge.
+  merge_gap = max(min_gap + 6., speed_mps * 1.2)
+  return min(distance, distance + relative_speed * 1.5) < merge_gap
 
 
 class EfficiencyLaneSelector:
@@ -102,6 +107,9 @@ class EfficiencyLaneSelector:
     self.reason = 'efficiencyIdle'
     self.unconfirmed_session = None
     self.terminal_reason = 'efficiencyCompletionUnconfirmed'
+    self.navigation_priority_key = None
+    self.navigation_priority_until = 0
+    self.navigation_goal_key = None
 
   def cancel(self, now_ns, reason):
     if self.active is not None:
@@ -120,6 +128,25 @@ class EfficiencyLaneSelector:
       self.settings = settings
     policy = self.settings
     route_key = (str(nav.sessionId), int(nav.routeRevision))
+    goal_key = (*route_key, int(getattr(nav, 'maneuverEventId', 0)),
+                int(getattr(nav, 'currentStepIndex', -1)), str(getattr(nav, 'maneuver', 'none')))
+    distance = float(getattr(nav, 'maneuverDistanceM', math.nan))
+    goal_source_valid = (enabled and nav.valid and not nav.stale and nav.routeActive and nav.routeMatched
+                         and str(nav.mode) == 'realtime' and goal_key[2] != 0
+                         and math.isfinite(distance)
+                         and 0. < distance <= max(policy.turn_lane_lookahead_m, policy.exit_lane_lookahead_m))
+    if self.navigation_goal_key != goal_key or not goal_source_valid:
+      self.navigation_goal_key = None
+    if (goal_source_valid and route_plan.navigation_valid and route_plan.valid and route_plan.recommended_indices
+        and (route_plan.edge_direction != LaneIntentDirection.none or route_reserved)):
+      # Reaching the requested edge does not release the approaching maneuver.
+      # Remember only the inhibition, not a lane index/plan or control permission:
+      # hint/vision gaps must not create another action or revive a cancelled one.
+      self.navigation_goal_key = goal_key
+    goal_reserved = self.navigation_goal_key == goal_key
+    if self.navigation_priority_key != route_key:
+      self.navigation_priority_key = None
+      self.navigation_priority_until = 0
     if (self.active is not None and vehicle.lane_change_state == ObservedLaneChangeState.starting
         and vehicle.lane_change_direction == self.active.edge_direction):
       self.started = True
@@ -154,6 +181,8 @@ class EfficiencyLaneSelector:
       self.cancel(now_ns, 'efficiencyUnavailable')
       return route_plan, False
     if not valid:
+      self.navigation_priority_key = None
+      self.navigation_priority_until = 0
       self.cancel(now_ns, 'efficiencyUnavailable')
       return route_plan, False
     if self.active is not None:
@@ -164,6 +193,11 @@ class EfficiencyLaneSelector:
         # Do not replace an executing manoeuvre with a new navigation request.
         return replace(self.active, lane_count=topology.visible_lane_count), True
     if route_reserved:
+      # jihui c523c47 NAVI_TAKEOVER_HOLD_MS: bridge short KEEP/guidance gaps.
+      # This suppresses new overtake requests only; never reopens a navigation event.
+      self.navigation_priority_key = route_key
+      self.navigation_priority_until = now_ns + 3_000_000_000
+    if goal_reserved or route_reserved or (self.navigation_priority_key == route_key and now_ns < self.navigation_priority_until):
       self.cancel(now_ns, 'efficiencyNavigationPriority')
       return route_plan, False
     if now_ns < self.cooldown_until:

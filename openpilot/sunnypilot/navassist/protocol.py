@@ -469,6 +469,10 @@ class NavAssistStore:
         pass
       _reject("replay", f"replay checkpoint unavailable: {type(error).__name__}")
 
+  def owns_source(self, app_key_id: str) -> bool:
+    with self._lock:
+      return self._app_key_id == app_key_id
+
   def accept(self, body: bytes, app_key_id: str) -> AcceptedSnapshot:
     if not isinstance(app_key_id, str) or APP_KEY_ID_PATTERN.fullmatch(app_key_id) is None:
       _reject("authentication", "missing or malformed app key id")

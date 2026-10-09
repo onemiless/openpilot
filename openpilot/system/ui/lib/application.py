@@ -22,6 +22,7 @@ from openpilot.common.hardware import HARDWARE, PC
 from openpilot.system.ui.lib.multilang import FONT_FALLBACK_LANGUAGES, TRANSLATIONS_DIR, multilang
 from openpilot.system.ui.lib.font_characters import fallback_font_characters
 from openpilot.common.realtime import Ratekeeper
+from openpilot.system.ui.lib.screen_cast import ScreenCastRuntime
 
 from openpilot.system.ui.sunnypilot.lib.application import GuiApplicationExt
 
@@ -96,7 +97,7 @@ FONT_SCALE = 1.242 if BIG_UI else 1.16
 ASSETS_DIR = files("openpilot.selfdrive").joinpath("assets")
 FONT_DIR = ASSETS_DIR.joinpath("fonts")
 # Runtime vehicle-card labels and CAN test results supplement translated glyphs.
-EXTRA_FONT_CHARS = "–‑✓×°§•X⚙✕◀▶✔⌫⇧␣○●↳çêüñ–‑✓×°§•€£¥位充净单围挡收核氛盖累缺耗胎覆送隔鲜池均粘·—…"
+EXTRA_FONT_CHARS = "–‑✓×°§•X⚙✕◀▶✔⌫⇧␣○●↳çêüñ–‑✓×°§•€£¥位充净单围挡收核氛盖累缺耗胎覆送隔鲜池均粘人叉双域局岛引投汇画约荐见译遥链·—…"
 NOTO_FONTS = {
   "ja": "NotoSansCJKjp-Regular.otf",
   "ko": "NotoSansCJKkr-Regular.otf",
@@ -162,6 +163,9 @@ class MouseState:
     self._lock = threading.Lock()
     self._exit_event = threading.Event()
     self._thread = None
+    self._last_local_touch = 0.0
+    self._local_down = [False] * MAX_TOUCH_SLOTS
+    self._remote_down: dict[int, MousePos] = {}
 
   def get_events(self) -> list[MouseEvent]:
     with self._lock:
@@ -205,10 +209,41 @@ class MouseState:
       )
       # Only add changes
       prev = self._prev_mouse_event[slot]
+      with self._lock:
+        self._local_down[slot] = ev.left_down
       if prev is None or ev[:-1] != prev[:-1]:
         with self._lock:
+          if ev.left_pressed or ev.left_released or ev.left_down:
+            self._last_local_touch = ev.t
+            for remote_slot, remote_pos in self._remote_down.items():
+              self._events.append(MouseEvent(remote_pos, remote_slot, False, True, False, ev.t))
+            self._remote_down.clear()
           self._events.append(ev)
         self._prev_mouse_event[slot] = ev
+
+
+  def inject_remote_event(self, x: float, y: float, slot: int, action: int) -> bool:
+    now = time.monotonic()
+    with self._lock:
+      if action in (0, 2) and (any(self._local_down) or now - self._last_local_touch < 0.75):
+        return False
+      # A release/move belongs only to an accepted remote press, never a local finger.
+      if action != 0 and slot not in self._remote_down:
+        return False
+      pos = MousePos(x, y)
+      if action in (0, 2):
+        self._remote_down[slot] = pos
+      else:
+        self._remote_down.pop(slot)
+      self._events.append(MouseEvent(pos, slot, action == 0, action in (1, 3), action in (0, 2), now))
+    return True
+
+  def cancel_remote_events(self) -> None:
+    with self._lock:
+      now = time.monotonic()
+      for slot, pos in self._remote_down.items():
+        self._events.append(MouseEvent(pos, slot, False, True, False, now))
+      self._remote_down.clear()
 
 
 class GuiApplication(GuiApplicationExt):
@@ -247,6 +282,7 @@ class GuiApplication(GuiApplicationExt):
     self._nav_stack_widgets_to_render = 1 if self.big_ui() else 2
 
     self._mouse = MouseState(self._scale)
+    self._screen_cast = ScreenCastRuntime(self._mouse, self._width, self._height)
     self._mouse_events: list[MouseEvent] = []
     self._last_mouse_event: MouseEvent = MouseEvent(MousePos(0, 0), 0, False, False, False, 0.0)
 
@@ -351,6 +387,7 @@ class GuiApplication(GuiApplicationExt):
 
       if not PC:
         self._mouse.start()
+        self._screen_cast.start()
 
   @contextmanager
   def _startup_profile_context(self):
@@ -591,6 +628,7 @@ class GuiApplication(GuiApplicationExt):
 
     self.close_ffmpeg()
 
+    self._screen_cast.stop()
     rl.close_window()
 
   @property
@@ -621,16 +659,21 @@ class GuiApplication(GuiApplicationExt):
         if len(self._mouse_events) > 0:
           self._last_mouse_event = self._mouse_events[-1]
 
-        # Skip rendering when screen is off
-        if not self._should_render:
+        cast_capture = self._screen_cast.should_capture()
+        # Keep display asleep; render only requested cast frames while it is off.
+        if not self._should_render and not cast_capture:
           if PC:
             rl.poll_input_events()
           time.sleep(1 / self._target_fps)
           yield False, 0.0, 0.0
           continue
 
-        if self._render_texture:
-          rl.begin_texture_mode(self._render_texture)
+        cast_render_start = time.thread_time() if cast_capture and not self._should_render else None
+        render_texture = self._render_texture
+        if cast_capture and render_texture is None:
+          render_texture = self._screen_cast.render_target(self._scaled_width, self._scaled_height)
+        if render_texture:
+          rl.begin_texture_mode(render_texture)
           rl.clear_background(rl.BLACK)
         else:
           rl.begin_drawing()
@@ -655,13 +698,13 @@ class GuiApplication(GuiApplicationExt):
         if self._scale != 1.0:
           rl.rl_pop_matrix()
 
-        if self._render_texture:
+        if render_texture:
           rl.end_texture_mode()
           rl.begin_drawing()
           rl.clear_background(rl.BLACK)
           src_rect = rl.Rectangle(0, 0, float(self._scaled_width), -float(self._scaled_height))
           dst_rect = rl.Rectangle(0, 0, float(self._scaled_width), float(self._scaled_height))
-          texture = self._render_texture.texture
+          texture = render_texture.texture
           if texture:
             if BURN_IN_MODE and self._burn_in_shader:
               rl.begin_shader_mode(self._burn_in_shader)
@@ -682,6 +725,9 @@ class GuiApplication(GuiApplicationExt):
         if self._grid_size > 0:
           self._draw_grid()
 
+        if cast_capture and render_texture:
+          render_cpu_ms = (time.thread_time() - cast_render_start) * 1000 if cast_render_start is not None else 0.0
+          self._screen_cast.capture_texture(render_texture.texture, render_cpu_ms)
         rl.end_drawing()
 
         if RECORD:

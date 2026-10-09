@@ -490,6 +490,13 @@ class TeslaTurnSignalRealtimeController:
         return []
 
       phase = "cancel" if self._active["cancel_requested"] else "action"
+      # This bit is ambiguous between the supported body-control layouts. Do not
+      # turn a cancellation into request 7; wait within the existing deadline.
+      if phase == "cancel" and self._template[1] & 0x04:
+        self._active["used_template_generation"] = self._template_generation
+        self._record_locked("cancel_template_deferred", now_nanos, data=self._template.hex(),
+                            template_generation=self._template_generation, reason="ambiguous_request_bit")
+        return []
       direction = self._active["direction"] if phase == "action" else "cancel"
       counter = (decode_body_controls(self._template)["counter"] + 1) % 16
       data = create_body_control_frame(self._template, direction, counter)

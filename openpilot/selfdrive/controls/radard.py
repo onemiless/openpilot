@@ -58,13 +58,14 @@ class Track:
   def __init__(self, identifier: int, v_lead: float, kalman_params: KalmanParams):
     self.identifier = identifier
     self.cnt = 0
+    self.measured = True
     self.aLeadTau = FirstOrderFilter(_LEAD_ACCEL_TAU, 0.45, DT_MDL)
     self.K_A = kalman_params.A
     self.K_C = kalman_params.C
     self.K_K = kalman_params.K
     self.kf = KF1D([[v_lead], [0.0]], self.K_A, self.K_C, self.K_K)
 
-  def update(self, d_rel: float, y_rel: float, v_rel: float, v_lead: float):
+  def update(self, d_rel: float, y_rel: float, v_rel: float, v_lead: float, kalman_params: KalmanParams | None = None):
     # relative values, copy
     self.dRel = d_rel   # LONG_DIST
     self.yRel = y_rel   # -LAT_DIST
@@ -72,6 +73,10 @@ class Track:
     self.vLead = v_lead
 
     # computed velocity and accelerations
+    if kalman_params is not None:
+      self.kf = KF1D(self.kf.x, kalman_params.A, kalman_params.C, kalman_params.K)
+      self.aLeadTau.dt = kalman_params.A[0][1]
+      self.aLeadTau.update_alpha(0.45)
     if self.cnt > 0:
       self.kf.update(self.vLead)
 
@@ -163,6 +168,9 @@ def get_lead(v_ego: float, ready: bool, tracks: dict[int, Track], lead_msg: capn
              model_v_ego: float, lead_prob: float, CP: structs.CarParams, CP_SP: structs.CarParamsSP,
              low_speed_override: bool = True) -> dict[str, Any]:
   # Determine leads, this is where the essential logic happens
+  ars408 = bool(CP.brand == "tesla" and CP_SP.flags & TeslaFlagsSP.ARS408_RADAR)
+  if ars408:
+    tracks = {identifier: track for identifier, track in tracks.items() if track.measured}
   if len(tracks) > 0 and ready and lead_prob > .5:
     ars408_stationary_conflict_guard = bool(
       CP.brand == "tesla" and CP_SP.flags & TeslaFlagsSP.ARS408_RADAR
@@ -179,7 +187,7 @@ def get_lead(v_ego: float, ready: bool, tracks: dict[int, Track], lead_msg: capn
     lead_dict = get_RadarState_from_vision(lead_msg, v_ego, model_v_ego, lead_prob)
 
   if low_speed_override:
-    low_speed_tracks = [c for c in tracks.values() if c.potential_low_speed_lead(v_ego)]
+    low_speed_tracks = [c for c in tracks.values() if c.potential_low_speed_lead(v_ego) and (not ars408 or c.cnt > 2)]
     if len(low_speed_tracks) > 0:
       closest_track = min(low_speed_tracks, key=lambda c: c.dRel)
 
@@ -203,6 +211,8 @@ class RadarD:
   def __init__(self, CP: structs.CarParams, CP_SP: structs.CarParams, delay: float = 0.0):
     self.CP = CP
     self.CP_SP = CP_SP
+    self.ars408 = bool(CP.brand == "tesla" and CP_SP.flags & TeslaFlagsSP.ARS408_RADAR)
+    self.last_radar_time_ns = 0
 
     self.current_time = 0.0
     self.tracks: dict[int, Track] = {}
@@ -226,30 +236,54 @@ class RadarD:
       self.v_ego_hist.append(self.v_ego)
       self.last_v_ego_frame = sm.recv_frame['carState']
 
-    ar_pts = {pt.trackId: [pt.dRel, pt.yRel, pt.vRel] for pt in rr.points}
+    radar_time_ns = sm.logMonoTime['radarTracks'] if self.ars408 else 0
+    radar_fault = any((rr.errors.canError, rr.errors.radarFault, rr.errors.wrongConfig, rr.errors.radarUnavailableTemporary)) if self.ars408 else False
+    fresh_radar = not self.ars408 or radar_time_ns > self.last_radar_time_ns
+    if self.ars408 and fresh_radar:
+      elapsed_s = (radar_time_ns - self.last_radar_time_ns) / 1e9 if self.last_radar_time_ns else DT_MDL
+      if elapsed_s > .2:
+        for track in self.tracks.values():
+          track.measured = False
+          track.cnt = 0
+      self.kalman_params = KalmanParams(float(np.clip(elapsed_s, .011, .199)))
+      self.last_radar_time_ns = radar_time_ns
+    ar_pts = {pt.trackId: pt for pt in rr.points}
 
     # *** remove missing points from meta data ***
     for ids in list(self.tracks.keys()):
-      if ids not in ar_pts:
+      if fresh_radar and ids not in ar_pts:
         self.tracks.pop(ids, None)
 
     # *** compute the tracks ***
     for ids in ar_pts:
       rpt = ar_pts[ids]
+      if not fresh_radar:
+        continue
+      if self.ars408 and (not rpt.deprecated.measured or radar_fault):
+        if ids in self.tracks:
+          self.tracks[ids].measured = False
+          self.tracks[ids].cnt = 0
+        continue
 
       # align v_ego by a fixed time to align it with the radar measurement
-      v_lead = rpt[2] + self.v_ego_hist[0]
+      v_lead = rpt.vRel + self.v_ego_hist[0]
 
       # create the track if it doesn't exist or it's a new track
-      if ids not in self.tracks:
+      if ids not in self.tracks or (self.ars408 and not self.tracks[ids].measured):
         self.tracks[ids] = Track(ids, v_lead, self.kalman_params)
-      self.tracks[ids].update(rpt[0], rpt[1], rpt[2], v_lead)
+      self.tracks[ids].update(rpt.dRel, rpt.yRel, rpt.vRel, v_lead, self.kalman_params if self.ars408 else None)
 
     # *** publish radarState ***
     self.radar_state_valid = sm.all_checks()
     self.radar_state = log.RadarState.new_message()
     self.radar_state.mdMonoTime = sm.logMonoTime['modelV2']
     self.radar_state.radarErrors = rr.errors
+    # Keep predicted occupancy in radarTracks for lane uncertainty, but do not
+    # fuse it (or an old package) as a fresh longitudinal measurement.
+    fusion_tracks = self.tracks
+    if self.ars408 and (not radar_time_ns or radar_time_ns != self.last_radar_time_ns or
+                       sm.logMonoTime['modelV2'] - radar_time_ns > 200_000_000 or radar_fault):
+      fusion_tracks = {}
 
     if len(sm['modelV2'].velocity.x):
       model_v_ego = sm['modelV2'].velocity.x[0]
@@ -265,9 +299,9 @@ class RadarD:
         else:
           self.lead_prob_filters[i].update(lead_prob)
 
-      self.radar_state.leadOne = get_lead(self.v_ego, self.ready, self.tracks, leads_v3[0], model_v_ego, self.lead_prob_filters[0].x,
+      self.radar_state.leadOne = get_lead(self.v_ego, self.ready, fusion_tracks, leads_v3[0], model_v_ego, self.lead_prob_filters[0].x,
                                           self.CP, self.CP_SP, low_speed_override=True)
-      self.radar_state.leadTwo = get_lead(self.v_ego, self.ready, self.tracks, leads_v3[1], model_v_ego, self.lead_prob_filters[1].x,
+      self.radar_state.leadTwo = get_lead(self.v_ego, self.ready, fusion_tracks, leads_v3[1], model_v_ego, self.lead_prob_filters[1].x,
                                           self.CP, self.CP_SP, low_speed_override=False)
 
   def publish(self, pm: messaging.PubMaster):

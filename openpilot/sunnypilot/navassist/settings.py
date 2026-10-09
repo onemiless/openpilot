@@ -51,7 +51,7 @@ SETTING_SPECS = {
   'efficiency_lane_change_enabled': SettingSpec('高速通行收益自动变道', 'ARS408 检到本车道慢车且邻道前方无目标或有足够间隙时，请求原有 SP 变道；跨线许可由视觉或 0x399 提供，盲区仍会阻止。'),
   'enabled': SettingSpec('导航联动', '关闭后仍接收和显示手机导航，不发起导航变道、转弯灯或转弯减速。'),
   'lane_change_enabled': SettingSpec('导航自动靠边变道', '按导航目标请求 SP 原有变道功能；变道灯随此开关，仍执行现有标线、路缘和盲区判断。'),
-  'lane_change_buzzer_enabled': SettingSpec('自动变道蜂鸣提示', '导航靠边或效率超车实际开始变道时，C3 蜂鸣器短鸣一次；打灯等待阶段不鸣响。'),
+  'lane_change_buzzer_enabled': SettingSpec('变道与转弯蜂鸣提示', '模型开始变道或导航转弯激活时，C3 蜂鸣器短鸣一次；打灯等待阶段不鸣响。'),
   'turn_signal_enabled': SettingSpec('转弯提前打灯', '控制路口转弯的灯光请求；不影响自动变道需要的转向灯。'),
   'turn_slowdown_enabled': SettingSpec('导航转弯减速', '通过公共速度目标支持三套纵向；普通靠边变道本身不触发减速。'),
   'turn_lane_lookahead_m': SettingSpec('普通路口靠边提前距离', '进入此距离后才考虑为左转或右转靠边。', 100, 1500, 50, 'm'),

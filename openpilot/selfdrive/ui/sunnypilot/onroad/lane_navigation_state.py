@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import math
+from pathlib import Path
+
+
+DEFAULT_OVERLAY_POSITION = (0.5, 1.0)
 
 
 MARKING_LABELS = {
@@ -88,18 +93,56 @@ class OverlayLayout:
   right_lane: tuple[float, float, float, float]
 
 
-def overlay_layout(width: float, height: float, *, bottom_inset: float = 24) -> OverlayLayout:
-  nav_width = min(920.0, max(0.0, width - 48.0))
-  nav_height = 172.0
+def clamp_overlay_position(position: tuple[float, float]) -> tuple[float, float]:
+  x, y = position
+  if not math.isfinite(x) or not math.isfinite(y):
+    return DEFAULT_OVERLAY_POSITION
+  return max(0.0, min(1.0, x)), max(0.0, min(1.0, y))
+
+
+def overlay_position_path() -> Path:
+  from openpilot.common.hardware import PC
+  from openpilot.common.hardware.hw import Paths
+
+  root = Path(Paths.comma_home()) if PC else Path('/data')
+  return root / 'navassist/ui.json'
+
+
+def load_overlay_position(path: Path | None = None) -> tuple[float, float]:
+  path = overlay_position_path() if path is None else path
+  try:
+    if path.stat().st_size > 1024:
+      return DEFAULT_OVERLAY_POSITION
+    value = json.loads(path.read_text())['overlayPosition']
+    return clamp_overlay_position((float(value['x']), float(value['y'])))
+  except (FileNotFoundError, KeyError, TypeError, ValueError, json.JSONDecodeError, OSError):
+    return DEFAULT_OVERLAY_POSITION
+
+
+def save_overlay_position(position: tuple[float, float], path: Path | None = None) -> tuple[float, float]:
+  from openpilot.sunnypilot.navassist.settings import atomic_json
+
+  path = overlay_position_path() if path is None else path
+  position = clamp_overlay_position(position)
+  atomic_json(path, {'overlayPosition': {'x': position[0], 'y': position[1]}})
+  return position
+
+
+def overlay_layout(width: float, height: float, *, bottom_inset: float = 24,
+                   position: tuple[float, float] = DEFAULT_OVERLAY_POSITION) -> OverlayLayout:
+  nav_width = min(760.0, max(0.0, width - 48.0))
+  nav_height = 204.0
   lane_gap = 0.0
   lane_content = nav_width
   lane_widths = (lane_content * 0.36, lane_content * 0.28, lane_content * 0.36)
   lane_height = 44.0
   lane_total = sum(lane_widths) + 2 * lane_gap
-  nav_y = max(0.0, height - bottom_inset - nav_height)
+  position_x, position_y = clamp_overlay_position(position)
+  nav_x = max(0.0, width - nav_width) * position_x
+  nav_y = max(0.0, height - bottom_inset - nav_height) * position_y
   lane_y = nav_y + nav_height - lane_height
-  nav_x = (width - nav_width) / 2
   lane_x = (width - lane_total) / 2
+  lane_x += nav_x - (width - nav_width) / 2
   return OverlayLayout(
     navigation=(nav_x, nav_y, nav_width, nav_height),
     left_lane=(lane_x, lane_y, lane_widths[0], lane_height),

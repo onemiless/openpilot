@@ -204,6 +204,63 @@ def test_linked_navigation_turn_does_not_require_wide_intersection_opening():
   assert classify(c, 26, curved_ramp, nav_intent=n, nav_state=nav)[0] == (False, False)
 
 
+@pytest.mark.parametrize('maneuver', ['turnLeft', 'sharpLeft', 'uTurnLeft'])
+def test_linked_navigation_left_turn_family_uses_the_same_entry_contract(maneuver):
+  c = TurnIntentClassifier()
+  n = intent(target=-1)
+  n.sessionId = 's'
+  n.routeRevision = 1
+  n.maneuverEventId = 2
+  nav = NS(
+    valid=True, stale=False, gpsWeak=False, routeActive=True, routeMatched=True,
+    publishMonoTime=NOW_NS, sessionId='s', routeRevision=1,
+    maneuverEventId=2, maneuver=maneuver,
+  )
+  curved_road = cp_model(prob=0.9, near=2.0, far=3.0)
+  for i in range(25):
+    classify(c, i, curved_road)
+  nav.publishMonoTime = NOW_NS + 25 * 50_000_000
+  assert classify(c, 25, curved_road, nav_intent=n, nav_state=nav)[0] == (True, False)
+
+
+@pytest.mark.parametrize('maneuver', ['turnRight', 'sharpRight', 'uTurnRight'])
+def test_opposite_navigation_turn_family_does_not_authorize_left(maneuver):
+  c = TurnIntentClassifier()
+  n = intent(target=-1)
+  n.sessionId = 's'
+  n.routeRevision = 1
+  n.maneuverEventId = 2
+  nav = NS(
+    valid=True, stale=False, gpsWeak=False, routeActive=True, routeMatched=True,
+    publishMonoTime=NOW_NS, sessionId='s', routeRevision=1,
+    maneuverEventId=2, maneuver=maneuver,
+  )
+  curved_road = cp_model(prob=0.9, near=2.0, far=3.0)
+  for i in range(25):
+    classify(c, i, curved_road)
+  nav.publishMonoTime = NOW_NS + 25 * 50_000_000
+  assert classify(c, 25, curved_road, nav_intent=n, nav_state=nav)[0] == (False, False)
+
+
+@pytest.mark.parametrize('maneuver', ['turnRight', 'sharpRight', 'uTurnRight'])
+def test_linked_navigation_right_turn_family_uses_the_same_entry_contract(maneuver):
+  c = TurnIntentClassifier()
+  n = intent(direction='right', target=-1)
+  n.sessionId = 's'
+  n.routeRevision = 1
+  n.maneuverEventId = 2
+  nav = NS(
+    valid=True, stale=False, gpsWeak=False, routeActive=True, routeMatched=True,
+    publishMonoTime=NOW_NS, sessionId='s', routeRevision=1,
+    maneuverEventId=2, maneuver=maneuver,
+  )
+  curved_road = cp_model(prob=0.9, near=2.0, far=3.0)
+  for i in range(25):
+    classify(c, i, curved_road)
+  nav.publishMonoTime = NOW_NS + 25 * 50_000_000
+  assert classify(c, 25, curved_road, nav_intent=n, nav_state=nav)[0] == (False, True)
+
+
 def test_linked_navigation_turn_can_confirm_without_negative_neighbor_packet():
   gate = TurnEntryGate()
   n = intent(target=-1)
@@ -259,6 +316,34 @@ def test_soft_loss_waits_for_reconfirmed_entry_but_hard_exit_cannot_retry():
   update(dh, turn_soft_reentry=True, left_safety_blocked=True)
   update(dh, turn_soft_reentry=True)
   assert dh.desire == log.Desire.none and dh.turn_maneuver.state == 'finished'
+
+
+def test_navigation_turn_waits_behind_hard_veto_and_requalifies_after_clear():
+  dh = turn_helper()
+  nav = intent(target=-1)
+  update(dh, turn_soft_reentry=True, nav_lane_intent=nav)
+  assert dh.desire == log.Desire.turnLeft
+  update(dh, turn_soft_reentry=True, nav_lane_intent=nav, left_safety_blocked=True)
+  assert dh.desire == log.Desire.none and dh.turn_maneuver.state == 'waiting'
+  update(dh, turn_soft_reentry=True, nav_lane_intent=nav, left_turn_allowed=False)
+  assert dh.desire == log.Desire.none and dh.turn_maneuver.state == 'waiting'
+  update(dh, turn_soft_reentry=True, nav_lane_intent=nav)
+  assert dh.desire == log.Desire.turnLeft
+
+
+def test_navigation_turn_driver_opposition_remains_terminal():
+  dh = turn_helper()
+  nav = intent(target=-1)
+  update(dh, turn_soft_reentry=True, nav_lane_intent=nav)
+  assert dh.desire == log.Desire.turnLeft
+  dh.update(car_state(vEgo=5., leftBlinker=True, steeringPressed=True, steeringTorque=-2.), True, 1.,
+            nav_lane_intent=nav, left_turn_allowed=True, right_turn_allowed=False,
+            left_turn_keep_allowed=True, right_turn_keep_allowed=False,
+            left_neighbor_exists=False, right_neighbor_exists=False,
+            left_start_allowed=False, right_start_allowed=False, turn_soft_reentry=True)
+  assert dh.desire == log.Desire.none and dh._cancelled_signal
+  update(dh, turn_soft_reentry=True, nav_lane_intent=nav)
+  assert dh.desire == log.Desire.none
 
 
 def test_unknown_oem_recovery_needs_new_side_history():

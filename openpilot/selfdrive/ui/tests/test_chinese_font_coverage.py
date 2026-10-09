@@ -101,3 +101,19 @@ def test_vehicle_card_and_can_results_have_runtime_glyphs():
   assert characters <= fallback_font_characters("zh-CHS", _runtime_extra_font_chars())
   with TTFont(FONT_PATH) as font:
     assert set(map(ord, characters)) <= set(font.getBestCmap())
+
+
+def test_runtime_ui_chinese_literals_are_requested_by_fallback_font():
+  root = Path(__file__).resolve().parents[3]
+  characters = set()
+  for ui_root in (root / "selfdrive/ui", root / "system/ui"):
+    for path in ui_root.rglob("*.py"):
+      if "tests" in path.parts:
+        continue
+      for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+          characters.update(c for c in node.value if '\u4e00' <= c <= '\u9fff')
+
+  requested = fallback_font_characters("zh-CHS", _runtime_extra_font_chars())
+  missing = sorted(characters - requested)
+  assert not missing, f"Simplified Chinese fallback does not request runtime UI glyphs: {''.join(missing)}"

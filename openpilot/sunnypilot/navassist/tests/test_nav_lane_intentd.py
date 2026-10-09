@@ -94,6 +94,25 @@ def test_final_fork_scope_does_not_predict_entry_without_a_decreasing_sample():
   assert not scope.entry_reached
 
 
+@pytest.mark.parametrize('direction', [LaneIntentDirection.left, LaneIntentDirection.right])
+@pytest.mark.parametrize('distance,relative_speed,blocked', [(14.6, .75, True), (14.6, 5., True), (70., .75, False)])
+def test_navigation_ready_waits_for_near_faster_target(direction, distance, relative_speed, blocked):
+  model = SimpleNamespace(laneLines=[SimpleNamespace(x=[0., 100.], y=[y, y])
+                                     for y in (-5.25, -1.75, 1.75, 5.25)])
+  left = direction == LaneIntentDirection.left
+  target = SimpleNamespace(dRel=distance, yRel=3.4 if left else -3.4, vRel=relative_speed,
+                           deprecated=SimpleNamespace(measured=True))
+  ready = NavLaneIntent(signal_requested=True, lane_change_ready=True,
+                        direction=direction, request_id=5, target_lane_index=0 if left else 2)
+  result = apply_radar_target_gate(ready, SimpleNamespace(points=[target]), model, speed_mps=25.25, healthy=True)
+  assert result.lane_change_ready is not blocked
+  assert result.signal_requested and result.request_id == ready.request_id
+  if blocked:
+    assert result.reason == ('radarLeftTargetUnsafe' if left else 'radarRightTargetUnsafe')
+  else:
+    assert result == ready
+
+
 def test_navigation_ready_waits_for_measured_unsafe_adjacent_radar_target():
   model = SimpleNamespace(laneLines=[SimpleNamespace(x=[0., 100.], y=[y, y])
                                      for y in (-5.25, -1.75, 1.75, 5.25)])
@@ -162,8 +181,8 @@ def test_only_an_actual_navigation_lane_target_reserves_overtake():
 
 def test_active_lane_guidance_keeps_efficiency_out_after_reaching_a_recommended_lane():
   lanes = [SimpleNamespace(index=i, recommended=i == 2, routeAvoid=i != 2) for i in range(3)]
-  guidance = lane_guidance_nav(lanes=lanes)
-  current_plan = build_lane_plan(guidance, topology(), healthy=True)
+  guidance = lane_guidance_nav(maneuver='straight', lanes=lanes)
+  current_plan = build_lane_plan(guidance, topology(), healthy=True, amap_ego_index=2)
   observed = LaneTopologyInput(True, 3, 2, True, False, True, False)
 
   assert not navigation_change_pending(current_plan, observed)
@@ -343,17 +362,34 @@ def test_missing_lane_info_uses_visual_extreme_lane_for_ordinary_turns():
   assert not left.ignore_solid_boundary and not right.ignore_solid_boundary
 
 
-def test_unanchored_middle_amap_lane_is_not_treated_as_a_visual_absolute_index():
+@pytest.mark.parametrize('maneuver,target,direction,road_class', [
+  ('turnLeft', 0, LaneIntentDirection.left, 1),
+  ('turnRight', 2, LaneIntentDirection.right, 1),
+  ('exitLeft', 0, LaneIntentDirection.left, 6),
+  ('exitRight', 2, LaneIntentDirection.right, 6),
+  ('keepLeft', 0, LaneIntentDirection.left, 6),
+  ('keepRight', 2, LaneIntentDirection.right, 6),
+])
+def test_unanchored_middle_amap_lane_falls_back_to_route_direction_not_absolute_index(maneuver, target, direction, road_class):
   lanes = [
     SimpleNamespace(index=0, recommended=False),
     SimpleNamespace(index=1, recommended=True),
     SimpleNamespace(index=2, recommended=False),
   ]
-  plan = build_lane_plan(lane_guidance_nav(maneuver="turnLeft", lanes=lanes), topology(), healthy=True)
+  plan = build_lane_plan(lane_guidance_nav(maneuver=maneuver, roadClass=road_class, lanes=lanes), topology(), healthy=True)
 
-  assert not plan.valid
-  assert not plan.heuristic
-  assert plan.recommended_indices == ()
+  assert plan.valid and plan.heuristic
+  assert plan.recommended_indices == (target,) and plan.edge_direction == direction
+  assert not plan.force_fork and not plan.ignore_solid_boundary and not plan.allow_unknown_crossing
+
+
+@pytest.mark.parametrize('updates', [dict(maneuver='straight'), dict(maneuver='none'),
+                                   dict(maneuver='slightRight', roadClass=6), dict(maneuverDistanceM=2500.),
+                                   dict(stale=True), dict(maneuverEventId=0)])
+def test_directional_fallback_requires_existing_route_direction_window_and_identity(updates):
+  lanes = [SimpleNamespace(index=i, recommended=i == 1, routeAvoid=False) for i in range(4)]
+  plan = build_lane_plan(lane_guidance_nav(lanes=lanes, **updates), topology(), healthy=True)
+  assert not plan.valid and not plan.heuristic and not plan.recommended_indices
 
 
 def test_matching_visual_and_oem_position_selects_nearest_amap_lane():
@@ -364,6 +400,28 @@ def test_matching_visual_and_oem_position_selects_nearest_amap_lane():
   plan = build_lane_plan(lane_guidance_nav(lanes=lanes), observed, healthy=True,
                          lane_count_override=3, amap_ego_index=anchor)
   assert anchor == 2 and plan.valid and not plan.heuristic and plan.recommended_indices == (1,)
+
+
+@pytest.mark.parametrize('maneuver', ['straight', 'none', 'keepRight'])
+def test_explicit_anchored_recommended_lane_is_usable_without_turn_direction(maneuver):
+  observed = oem_topology(count=3, index=0)
+  anchor = anchored_amap_ego_index(observed, {"positionValid": True, "position": "leftmost"}, 3)
+  lanes = [SimpleNamespace(index=i, recommended=i == 1, routeAvoid=i == 2) for i in range(3)]
+  guidance = lane_guidance_nav(maneuver=maneuver, maneuverDistanceM=4000., lanes=lanes)
+  plan = build_lane_plan(guidance, observed, healthy=True, amap_ego_index=anchor)
+  assert plan.valid and not plan.heuristic and plan.recommended_indices == (1,)
+  assert NavLaneIntentCoordinator._target(plan, 0) == 1
+  assert not build_lane_plan(guidance, observed, healthy=True).valid
+
+
+def test_anchored_current_recommended_lane_has_priority_over_directional_fallback():
+  observed = oem_topology(count=3, index=0)
+  lanes = [SimpleNamespace(index=i, recommended=i in (0, 1), routeAvoid=i == 2) for i in range(3)]
+  plan = build_lane_plan(lane_guidance_nav(maneuver="straight", lanes=lanes), observed,
+                         healthy=True, amap_ego_index=0)
+  assert plan.valid and NavLaneIntentCoordinator._target(plan, 0) == 0
+  assert plan.recommended_indices == (0, 1)
+  assert navigation_lane_guidance_active(plan, lane_guidance_nav(lanes=lanes))
 
 
 def test_recommended_current_edge_does_not_request_a_lane_change_with_local_visual_window():

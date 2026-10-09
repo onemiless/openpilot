@@ -2,6 +2,102 @@
 
 import re
 
+
+class LaneChangePrompt:
+  """Keep display identity for one fresh automatic request, including its exit."""
+  def __init__(self):
+    self.key = None
+    self.overtake = False
+    self.executing = False
+    self.started_frame = None
+    self.waiting_for_idle = False
+
+  def clear(self):
+    self.key = None
+    self.overtake = False
+    self.executing = False
+    self.waiting_for_idle = False
+
+  def update(self, intent, *, healthy: bool, model_healthy: bool, model_state: str,
+             model_direction: str, onroad: bool, started_frame: int, language: str) -> str | None:
+    if started_frame != self.started_frame:
+      self.clear()
+      self.started_frame = started_frame
+    if language != "zh-CHS" or not onroad or not healthy or not model_healthy or not intent.valid:
+      self.clear()
+      return None
+    active = model_state in ("laneChangeStarting", "laneChangeFinishing")
+    if self.waiting_for_idle:
+      if active:
+        return None
+      self.waiting_for_idle = False
+    if self.executing and not active:
+      self.clear()
+      return None
+    session, revision = str(intent.sessionId), int(intent.routeRevision)
+    if self.key is not None and session and (session, revision) != self.key[:2]:
+      self.clear()
+      if active:
+        self.waiting_for_idle = True
+        return None
+    if intent.signalRequested:
+      direction = str(intent.direction)
+      if intent.targetLaneIndex < 0:
+        self.clear()
+        return localized_lane_change_source(intent, healthy=healthy, language=language)
+      if direction not in ("left", "right") or not session or int(intent.requestId) <= 0:
+        self.clear()
+        return None
+      if active and model_direction in ("left", "right") and model_direction != direction:
+        self.clear()
+        return None
+      key = (session, revision, int(intent.requestId), direction)
+      if active and self.key is not None and key != self.key:
+        self.clear()
+        self.waiting_for_idle = True
+        return None
+      if key != self.key:
+        self.clear()
+        self.key = key
+      self.overtake |= str(intent.reason).startswith("efficiency:")
+      self.executing |= active
+      side = "左" if direction == "left" else "右"
+      prefix = "退出" if model_state == "laneChangeFinishing" and model_direction == "none" else "向"
+      return f"{prefix}{side}{'超车' if self.overtake else '换道'}"
+    if not active or self.key is None:
+      self.clear()
+      return None
+    if model_direction in ("left", "right") and model_direction != self.key[3]:
+      self.clear()
+      return None
+    self.executing = True
+    side = "左" if self.key[3] == "left" else "右"
+    return f"退出{side}{'超车' if self.overtake else '换道'}"
+
+
+def localized_lane_change_source(intent, *, healthy: bool, language: str) -> str | None:
+  """Name an automatic lane maneuver without changing the upstream alert."""
+  if language != "zh-CHS" or not healthy:
+    return None
+  try:
+    if not intent.valid or not intent.signalRequested:
+      return None
+    direction = str(intent.direction)
+    if intent.targetLaneIndex < 0:
+      if direction == "left":
+        return "正在左转"
+      if direction == "right":
+        return "正在右转"
+      return None
+    if direction not in ("left", "right"):
+      return None
+    side = "左" if direction == "left" else "右"
+    if str(intent.reason).startswith("efficiency:"):
+      return f"向{side}超车"
+    return f"向{side}换道"
+  except (AttributeError, TypeError, ValueError):
+    return None
+
 _ZH_CHS_EXACT = {
   "Adaptive Cruise Disabled": "自适应巡航已禁用",
   "Auto adjusting to last speed limit": "正在自动调整至上个限速值",
@@ -178,6 +274,7 @@ _ZH_CHS_DYNAMIC_TEXT = "".join((
   "角度偏移过大偏移转向齿条位置可能异常比例",
   "请检查轮胎胎压或四轮定位系数驾驶风格",
   "已丢弃的帧油门转向剩余分钟",
+  "正在左右转向超车换道退出",
 ))
 
 
