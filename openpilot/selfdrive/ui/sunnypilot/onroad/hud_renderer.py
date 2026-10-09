@@ -37,6 +37,7 @@ class HudRendererSP(HudRenderer):
     self.circular_alerts_renderer = CircularAlertsRenderer()
     self.speed_renderer = SpeedRenderer()
     self._torque_bar = TorqueBar(scale=3.0, always=True)
+    self._npu_icon = gui_app.texture('icons_mici/NPU.png', 144, 106)
 
     self.pcm_cruise_speed: bool = True
     self.show_icbm_status: bool = False
@@ -144,3 +145,10 @@ class HudRendererSP(HudRenderer):
     self.circular_alerts_renderer.render(rect)
     self.traffic_control_renderer.render(rect)
     self.rocket_fuel.render(rect, ui_state.sm)
+
+    if ui_state.started:
+      sm = ui_state.sm
+      phone_result = (ui_state.bigmodel_enabled and sm.alive['modelV2'] and sm.valid['modelV2']
+                      and sm.recv_frame['modelV2'] >= ui_state.started_frame and sm['modelV2'].big)
+      position = rl.Vector2(rect.x + 30, rect.y + rect.height - self._npu_icon.height - 60 - get_bottom_dev_ui_offset())
+      rl.draw_texture_ex(self._npu_icon, position, 0.0, 1.0, COLORS.ENGAGED if phone_result else COLORS.GREY)
