@@ -288,6 +288,9 @@ class Bigmodeld {
 
     VisionStreamType type = sid == kRoad ? VISION_STREAM_NARROW_ROAD : VISION_STREAM_WIDE_ROAD;
     VisionIpcClient vipc("camerad", type, false);
+    const char* camera_state = sid == kRoad ? "narrowRoadCameraState" : "wideRoadCameraState";
+    SubMaster camera_sm({camera_state});
+    bool geometry_rejected = false;
     chipmunk::WarpLut warp_lut;  // 本线程独占：标定不变时每帧只按表取像素
     bool inited = false;
 
@@ -307,6 +310,19 @@ class Bigmodeld {
         // 上游覆盖/滞后（缓冲被新帧顶掉）：不进编码器；后续 SOF 可形成时间槽空洞
         if (buf->get_frame_id() != extra.frame_id) continue;
         const uint64_t recv_ns = nanos_since_boot();
+        camera_sm.update(0);
+        if (!camera_sm.valid(camera_state) || !camera_sm.alive(camera_state)) continue;
+        auto sensor = sid == kRoad ? camera_sm[camera_state].getNarrowRoadCameraState().getSensor()
+                                   : camera_sm[camera_state].getWideRoadCameraState().getSensor();
+        using Sensor = cereal::FrameData::ImageSensor;
+        CameraModel camera_model = sensor == Sensor::OS04C10 ? CameraModel::OS04C10 :
+                                   (sensor == Sensor::AR0231 || sensor == Sensor::OX03C10) ? CameraModel::AR_OX : CameraModel::UNKNOWN;
+        if (!meta_.set_camera_geometry(sid == kWide, camera_model, buf->width, buf->height)) {
+          if (!geometry_rejected) LOGE("bigmodeld: unsupported %s sensor=%d geometry=%zux%zu", camera_state, (int)sensor, buf->width, buf->height);
+          geometry_rejected = true;
+          continue;
+        }
+        geometry_rejected = false;
         // warp 进编码缓冲后立即可放回 VisionIPC 缓冲（配对等待不占上游缓冲）
         VisionBuf* dst = ctx_[sid].pool.acquire();
         float mat[9];

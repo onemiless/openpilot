@@ -46,3 +46,8 @@ case "$device_model" in
     esac ;;
 esac
 export AGNOS_MANIFEST_FILE AGNOS_SKIP_UPDATE
+
+# Match the validated IFE road output and its model/UI intrinsics on C3XL.
+if [ "$profile_value" = "c3xl" ]; then
+  export C3XL_IFE_ROAD_SIZE="${C3XL_IFE_ROAD_SIZE:-1344x760}"
+fi

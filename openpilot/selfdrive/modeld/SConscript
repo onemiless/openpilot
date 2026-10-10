@@ -4,7 +4,7 @@ import os
 import time
 from SCons.Script import Action, Value
 from openpilot.common.file_chunker import chunk_file, get_chunk_targets, get_existing_chunks
-from openpilot.common.transformations.camera import _ar_ox_fisheye, _os_fisheye
+from openpilot.common.transformations.camera import DEVICE_CAMERAS, _ar_ox_fisheye, _os_fisheye
 from openpilot.common.transformations.model import MEDMODEL_INPUT_SIZE
 from openpilot.selfdrive.modeld.constants import ModelConstants
 from openpilot.selfdrive.modeld.helpers import TG_INPUT_DEVICES_PATH, modeld_pkl_path
@@ -40,7 +40,10 @@ def estimate_pickle_max_size(onnx_size):
 
 if arch == 'comma_arm64':
   from openpilot.common.hardware import HARDWARE
-  camera = _os_fisheye if HARDWARE.get_device_type() == "mici" else _ar_ox_fisheye
+  from openpilot.sunnypilot.hardware.profile import HardwareProfile, get_hardware_profile
+  if get_hardware_profile() == HardwareProfile.C3XL and not os.getenv("C3XL_IFE_ROAD_SIZE"):
+    raise RuntimeError("C3XL model build requires sourcing launch_env.sh to select the runtime camera resolution")
+  camera = DEVICE_CAMERAS[(HARDWARE.get_device_type(), "os04c10" if HARDWARE.get_device_type() == "mici" else "ox03c10")].wide_road
   camera_configs = [(camera.width, camera.height)]
   tg_backend = 'QCOM'
   tg_flags = f'DEV={tg_backend} IMAGE=1 FLOAT16=1 NOLOCALS=1 JIT_BATCH_SIZE=0 OPENPILOT_HACKS=1'

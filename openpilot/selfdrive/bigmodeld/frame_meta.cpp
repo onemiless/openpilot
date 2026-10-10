@@ -99,8 +99,39 @@ void get_warp_matrix(const float rpy[3], const float intrinsics[9], bool bigmode
   for (int i = 0; i < 9; i++) out[i] = (float)warp[i];
 }
 
+bool camera_intrinsics(CameraModel sensor, bool wide, int width, int height, float out[9]) {
+  std::memset(out, 0, 9 * sizeof(float));
+  if (sensor == CameraModel::OS04C10 && width == 1344 && height == 760) {
+    std::memcpy(out, wide ? kWideRoadIntrinsics : kNarrowRoadIntrinsics, 9 * sizeof(float));
+    return true;
+  }
+  if (sensor != CameraModel::AR_OX || !((width == 1928 && height == 1208) || (width == 1344 && height == 760))) return false;
+  // Full-frame IFE resize changes fx and fy independently; retain the AR/OX lens focal length.
+  const double focal = wide ? 567.0 : 2648.0;
+  out[0] = focal * width / 1928.0;
+  out[4] = focal * height / 1208.0;
+  out[2] = width * 0.5f;
+  out[5] = height * 0.5f;
+  out[8] = 1.f;
+  return true;
+}
+
 MetaProvider::MetaProvider() {
+  std::memcpy(intrinsics_road_, kNarrowRoadIntrinsics, sizeof intrinsics_road_);
+  std::memcpy(intrinsics_wide_, kWideRoadIntrinsics, sizeof intrinsics_wide_);
   recompute_locked();
+}
+
+bool MetaProvider::set_camera_geometry(bool wide, CameraModel sensor, int width, int height) {
+  float intrinsics[9];
+  const bool valid = camera_intrinsics(sensor, wide, width, height, intrinsics);
+  std::lock_guard<std::mutex> lk(mtx_);
+  float* current = wide ? intrinsics_wide_ : intrinsics_road_;
+  if (std::memcmp(current, intrinsics, sizeof intrinsics)) {
+    std::memcpy(current, intrinsics, sizeof intrinsics);
+    recompute_locked();
+  }
+  return valid;
 }
 
 void MetaProvider::warp(bool wide, float out[9]) const {
@@ -109,8 +140,8 @@ void MetaProvider::warp(bool wide, float out[9]) const {
 }
 
 void MetaProvider::recompute_locked() {
-  get_warp_matrix(rpy_, kNarrowRoadIntrinsics, false, warp_road_);
-  get_warp_matrix(rpy_, kWideRoadIntrinsics, true, warp_wide_);
+  get_warp_matrix(rpy_, intrinsics_road_, false, warp_road_);
+  get_warp_matrix(rpy_, intrinsics_wide_, true, warp_wide_);
 }
 
 void MetaProvider::set_rpy(const float rpy[3]) {

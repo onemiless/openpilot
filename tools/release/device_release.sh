@@ -91,7 +91,12 @@ pkl_cache_hit() {
 
 check_hardware_profile() {
   local profile
-  profile="$(cat "${SUNNYPILOT_HARDWARE_PROFILE_FILE:-/data/hardware_profile}" 2>/dev/null || true)"
+  profile="${SUNNYPILOT_HARDWARE_PROFILE:-$(cat "${SUNNYPILOT_HARDWARE_PROFILE_FILE:-/data/hardware_profile}" 2>/dev/null || true)}"
+  profile="${profile#"${profile%%[![:space:]]*}"}"
+  profile="${profile%"${profile##*[![:space:]]}"}"
+  if [ "$profile" = "c3xl" ]; then
+    export C3XL_IFE_ROAD_SIZE="${C3XL_IFE_ROAD_SIZE:-1344x760}"
+  fi
   case "$RELEASE_BRANCH:${profile:-standard}" in
     *-c3:c3|*-c3:c3xl) ;;
     *-c3:*) die "C3 release requires hardware_profile=c3 or c3xl" ;;
@@ -238,8 +243,8 @@ compile_driving_pkl() {
   [ -f "$DRIVE_ONNX" ] || die "driving onnx 缺失：$DRIVE_ONNX —— $SRC_BRANCH 应 tracked 此文件，前置同步步应已落盘"
   DRIVE_CAMERA_RESOLUTION=$(PYTHONPATH="$SRC:$SRC/openpilot${PYTHONPATH:+:$PYTHONPATH}" /usr/local/venv/bin/python - <<'CAMERA_PY'
 from openpilot.common.hardware import HARDWARE
-from openpilot.common.transformations.camera import _ar_ox_fisheye, _os_fisheye
-camera = _os_fisheye if HARDWARE.get_device_type() == "mici" else _ar_ox_fisheye
+from openpilot.common.transformations.camera import DEVICE_CAMERAS
+camera = DEVICE_CAMERAS[(HARDWARE.get_device_type(), "os04c10" if HARDWARE.get_device_type() == "mici" else "ox03c10")].wide_road
 print(f"{camera.width}x{camera.height}")
 CAMERA_PY
   ) || die "camera preset lookup failed"

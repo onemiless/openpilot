@@ -33,10 +33,17 @@ void get_warp_matrix(const float rpy[3], const float intrinsics[9], bool bigmode
 extern const float kNarrowRoadIntrinsics[9];
 extern const float kWideRoadIntrinsics[9];
 
+// Match the sensor families in common/transformations/camera.py; dimensions alone are not a lens ID.
+enum class CameraModel { UNKNOWN, AR_OX, OS04C10 };
+bool camera_intrinsics(CameraModel sensor, bool wide, int width, int height, float out[9]);
+
 // 帧头元数据提供者：rpyCalib 由标定线程喂（extrinsicsCalibration），fill() 由取帧线程调。
 class MetaProvider {
  public:
   MetaProvider();
+
+  // Capture must verify live sensor metadata and accepted geometry before reading warp().
+  bool set_camera_geometry(bool wide, CameraModel sensor, int width, int height);
 
   // extrinsicsCalibration.rpyCalib 更新时调用（任意线程）。
   void set_rpy(const float rpy[3]);
@@ -61,6 +68,8 @@ class MetaProvider {
   void recompute_locked();
 
   mutable std::mutex mtx_;
+  float intrinsics_road_[9] = {};
+  float intrinsics_wide_[9] = {};
   float rpy_[3] = {0.f, 0.f, 0.f};
   float warp_road_[9] = {0};
   float warp_wide_[9] = {0};

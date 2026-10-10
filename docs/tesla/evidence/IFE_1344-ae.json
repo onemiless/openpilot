@@ -1,0 +1,29 @@
+{
+  "scope": "compiled actual AE ROI function, no physical exposure acceptance",
+  "rows": [
+    {
+      "camera": 0,
+      "roi": [
+        65,
+        251,
+        1215,
+        331
+      ],
+      "inside_visible_1344x760": true,
+      "max_sample_offset": 819327,
+      "luma_plane_bytes": 1081344
+    },
+    {
+      "camera": 1,
+      "roi": [
+        64,
+        99,
+        1217,
+        624
+      ],
+      "inside_visible_1344x760": true,
+      "max_sample_offset": 1017856,
+      "luma_plane_bytes": 1081344
+    }
+  ]
+}

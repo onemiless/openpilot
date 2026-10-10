@@ -1,0 +1,221 @@
+{
+  "pass": true,
+  "scope": "compiled geometry/register configuration only, no device acceptance",
+  "registers_y_uv": [
+    [
+      3,
+      88016775,
+      805494393,
+      0,
+      0,
+      1927,
+      49743031,
+      805514703,
+      0,
+      0,
+      1207
+    ],
+    [
+      3,
+      43976583,
+      805682419,
+      0,
+      0,
+      1927,
+      24839351,
+      805723038,
+      0,
+      0,
+      1207
+    ]
+  ],
+  "cases": [
+    {
+      "profile": "c3xl",
+      "size": "1344x760",
+      "camera": 0,
+      "output_type": 0,
+      "sensor": 0,
+      "geometry": [
+        1344,
+        760,
+        1408,
+        768,
+        384,
+        2428928,
+        1
+      ],
+      "resize": true
+    },
+    {
+      "profile": "c3xl",
+      "size": "1344x760",
+      "camera": 1,
+      "output_type": 0,
+      "sensor": 0,
+      "geometry": [
+        1344,
+        760,
+        1408,
+        768,
+        384,
+        2428928,
+        1
+      ],
+      "resize": true
+    },
+    {
+      "profile": "standard",
+      "size": "1344x760",
+      "camera": 0,
+      "output_type": 0,
+      "sensor": 0,
+      "geometry": [
+        1928,
+        1208,
+        2048,
+        1216,
+        608,
+        4804608,
+        0
+      ],
+      "resize": false
+    },
+    {
+      "profile": "c3",
+      "size": "1344x760",
+      "camera": 0,
+      "output_type": 0,
+      "sensor": 0,
+      "geometry": [
+        1928,
+        1208,
+        2048,
+        1216,
+        608,
+        4804608,
+        0
+      ],
+      "resize": false
+    },
+    {
+      "profile": "c3xl",
+      "size": "",
+      "camera": 0,
+      "output_type": 0,
+      "sensor": 0,
+      "geometry": [
+        1928,
+        1208,
+        2048,
+        1216,
+        608,
+        4804608,
+        0
+      ],
+      "resize": false
+    },
+    {
+      "profile": "c3xl",
+      "size": "1928x1208",
+      "camera": 0,
+      "output_type": 0,
+      "sensor": 0,
+      "geometry": [
+        1928,
+        1208,
+        2048,
+        1216,
+        608,
+        4804608,
+        0
+      ],
+      "resize": false
+    },
+    {
+      "profile": "c3xl",
+      "size": "garbage",
+      "camera": 0,
+      "output_type": 0,
+      "sensor": 0,
+      "geometry": [
+        1928,
+        1208,
+        2048,
+        1216,
+        608,
+        4804608,
+        0
+      ],
+      "resize": false
+    },
+    {
+      "profile": "c3xl",
+      "size": "1344x760",
+      "camera": 2,
+      "output_type": 0,
+      "sensor": 0,
+      "geometry": [
+        1928,
+        1208,
+        2048,
+        1216,
+        608,
+        4804608,
+        0
+      ],
+      "resize": false
+    },
+    {
+      "profile": "c3xl",
+      "size": "1344x760",
+      "camera": 0,
+      "output_type": 1,
+      "sensor": 0,
+      "geometry": [
+        1928,
+        1208,
+        2048,
+        1216,
+        608,
+        4804608,
+        0
+      ],
+      "resize": false
+    },
+    {
+      "profile": "c3xl",
+      "size": "1344x760",
+      "camera": 0,
+      "output_type": 0,
+      "sensor": 1,
+      "geometry": [
+        1344,
+        760,
+        1408,
+        768,
+        384,
+        2428928,
+        0
+      ],
+      "resize": false
+    },
+    {
+      "profile": "c3xl",
+      "size": "1344x760",
+      "camera": 0,
+      "output_type": 0,
+      "sensor": 0,
+      "geometry": [
+        1920,
+        1208,
+        1920,
+        1216,
+        608,
+        4571136,
+        0
+      ],
+      "resize": false
+    }
+  ]
+}

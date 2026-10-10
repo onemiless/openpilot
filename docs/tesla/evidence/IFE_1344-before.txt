@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/Users/mile/work/tesla-port/lean-mici/tools/tesla/ife_geometry_e2e.py", line 11, in <module>
+    assert (cam/'ife_scale.h').is_file(), 'IFE scaling implementation absent'
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+AssertionError: IFE scaling implementation absent
