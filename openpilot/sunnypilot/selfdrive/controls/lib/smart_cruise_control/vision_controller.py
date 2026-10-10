@@ -112,7 +112,7 @@ class SmartCruiseControlVision:
     clear_threshold = _ABORT_ENTERING_PRED_LAT_ACC_TH if self.state == VisionState.entering else _FINISH_LAT_ACC_TH
     if (self.state in (VisionState.entering, VisionState.leaving)
         and self.long_enabled and self.enabled and not self.long_override
-        and self.current_lat_acc < clear_threshold and self.max_pred_lat_acc < clear_threshold):
+        and self.desired_lat_acc < clear_threshold and self.max_pred_lat_acc < clear_threshold):
       self.turn_clear_frames += 1
     else:
       self.turn_clear_frames = 0

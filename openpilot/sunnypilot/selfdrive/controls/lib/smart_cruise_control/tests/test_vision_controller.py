@@ -154,7 +154,7 @@ class TestSmartCruiseControlVision(OpenpilotTestCase):
     self.sm['controlsState'].curvature = 0.001
     self.sm['controlsState'].desiredCurvature = 0.01
     self.scc_v.update(self.sm, True, False, 10.0, 0.0, 0.0)
-    assert np.isclose(self.scc_v.current_lat_acc, 1.0)
+    assert np.isclose(self.scc_v.desired_lat_acc, 1.0)
 
   def test_route_verified_straight_transient_never_activates_turn_control(self):
     fixture_path = Path(__file__).parent / "fixtures/sccv_straight_transient.json"
@@ -247,7 +247,7 @@ class TestSmartCruiseControlVision(OpenpilotTestCase):
     self.scc_v.long_override = False
     for frame in fixture['frames']:
       self.scc_v.v_ego = frame['v']
-      self.scc_v.current_lat_acc = frame['current']
+      self.scc_v.desired_lat_acc = frame['current']
       self.scc_v.max_pred_lat_acc = frame['predicted']
       self.scc_v._update_state_machine()
       # At 07:28:40 the prediction briefly clears, then current/predicted
