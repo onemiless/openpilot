@@ -322,7 +322,7 @@ def main(demo=False):
   pm = PubMaster(pub_socks)
   sm = SubMaster([
     "deviceState", "carState", "narrowRoadCameraState", "extrinsicsCalibration", "driverMonitoringState",
-    "carControl", "lateralDelay", "navLaneIntentSP", "laneTopologyStateSP", "navAssistStateSP",
+    "carControl", "carControlSP", "lateralDelay", "navLaneIntentSP", "laneTopologyStateSP", "navAssistStateSP",
   ], frequency=ModelConstants.MODEL_RUN_FREQ)
 
   publish_state = PublishState()

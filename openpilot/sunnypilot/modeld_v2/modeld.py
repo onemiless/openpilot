@@ -478,7 +478,7 @@ def main(demo=False):
   pm = PubMaster(pub_socks)
   sm = SubMaster([
     "deviceState", "carState", "narrowRoadCameraState", "extrinsicsCalibration", "driverMonitoringState",
-    "carControl", "lateralDelay", "navLaneIntentSP", "laneTopologyStateSP", "navAssistStateSP",
+    "carControl", "carControlSP", "lateralDelay", "navLaneIntentSP", "laneTopologyStateSP", "navAssistStateSP",
   ], frequency=model.constants.MODEL_FREQ)
 
   publish_state = PublishState()
@@ -646,6 +646,7 @@ def main(demo=False):
                      publish_state, meta_main.frame_id, meta_extra.frame_id, frame_id,
                      frame_drop_ratio, meta_main.timestamp_eof, model_execution_time, live_calib_seen, meta_constants)
       modelv2_send.modelV2.big = model.chestnut
+      drivingdata_send.drivingModelData.big = model.chestnut
 
       desire_state = modelv2_send.modelV2.meta.desireState
       l_lane_change_prob = desire_state[log.Desire.laneChangeLeft]
