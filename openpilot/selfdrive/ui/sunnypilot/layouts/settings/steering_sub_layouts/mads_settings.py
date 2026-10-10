@@ -9,6 +9,7 @@ import pyray as rl
 
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.sunnypilot.mads.helpers import MadsSteeringModeOnBrake
+from opendbc.sunnypilot.car.tesla.values import MadsScreenButtonType, TeslaFlagsSP
 from openpilot.system.ui.lib.multilang import tr, tr_noop
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.network import NavButton
@@ -94,6 +95,10 @@ class MadsSettingsLayout(Widget):
 
     if brand == "rivian":
       return True
+    if brand == "tesla":
+      has_vehicle_bus = ui_state.CP_SP is not None and bool(ui_state.CP_SP.flags & TeslaFlagsSP.HAS_VEHICLE_BUS)
+      screen_button = ui_state.params.get("TeslaMadsScreenButton", return_default=True)
+      return not has_vehicle_bus or screen_button == MadsScreenButtonType.OFF
     return False
 
   def _update_steering_mode_description(self, button_index: int):

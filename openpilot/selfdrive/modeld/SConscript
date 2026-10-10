@@ -4,7 +4,7 @@ import os
 import time
 from SCons.Script import Action, Value
 from openpilot.common.file_chunker import chunk_file, get_chunk_targets, get_existing_chunks
-from openpilot.common.transformations.camera import _ar_ox_fisheye, _os_fisheye
+from openpilot.common.transformations.camera import DEVICE_CAMERAS, _ar_ox_fisheye, _os_fisheye
 from openpilot.common.transformations.model import MEDMODEL_INPUT_SIZE, DM_INPUT_SIZE
 from openpilot.selfdrive.modeld.constants import ModelConstants
 from openpilot.selfdrive.modeld.helpers import TG_INPUT_DEVICES_PATH, chestnut_present, modeld_pkl_path
@@ -23,14 +23,19 @@ def estimate_pickle_max_size(onnx_size):
   # the ONNX size. Overestimating only adds an empty trailing chunk.
   return 2.0 * onnx_size + 10 * 1024 * 1024
 
+all_camera_configs = [(c.width, c.height) for c in (_ar_ox_fisheye, _os_fisheye)]
+
 if arch == 'comma_arm64':
   from openpilot.common.hardware import HARDWARE
-  camera = _os_fisheye if HARDWARE.get_device_type() == "mici" else _ar_ox_fisheye
-  camera_configs = [(camera.width, camera.height)]
+  device_type = HARDWARE.get_device_type()
+  sensor = "os04c10" if device_type == "mici" else "ox03c10"
+  device_camera = DEVICE_CAMERAS.get((device_type, sensor))
+  camera = device_camera.wide_road if device_camera is not None else (_os_fisheye if device_type == "mici" else _ar_ox_fisheye)
+  camera_configs = all_camera_configs if os.getenv('PREBUILT_ALL_CAMERAS') else [(camera.width, camera.height)]
   tg_backend = 'QCOM'
   tg_flags = f'DEV={tg_backend} IMAGE=1 FLOAT16=1 NOLOCALS=1 JIT_BATCH_SIZE=0 OPENPILOT_HACKS=1'
 else:
-  camera_configs = [(c.width, c.height) for c in (_ar_ox_fisheye, _os_fisheye)]
+  camera_configs = all_camera_configs
   tg_backend = 'CPU'
   tg_flags = f'DEV=CPU' if arch == 'Darwin' else 'DEV=CPU:LLVM'
 

@@ -600,13 +600,13 @@ def main(demo=False):
     inputs:dict[str, np.ndarray] = {
       model.desire_key: vec_desire,
       'traffic_convention': traffic_convention,
+      # The joining model advertises the small model's optional inputs, but a
+      # large model can take over inside run() and always needs action_t.
+      'action_t': np.array([lat_action_t, long_action_t], dtype=np.float32),
     }
 
     if 'lateral_control_params' in model.numpy_inputs:
       inputs['lateral_control_params'] = np.array([v_ego, lat_delay], dtype=np.float32)
-
-    if 'action_t' in model.numpy_inputs:
-      inputs['action_t'] = np.array([lat_action_t, long_action_t], dtype=np.float32)
 
     # Jetlink uses control state and dropped-frame share to decide safe handovers.
     model.in_control = jetlink_adapter.in_control(sm)
@@ -627,6 +627,8 @@ def main(demo=False):
     if getattr(model, 'handovers', 0) != handovers:
       run_count = 0
       frame_drop_ratio = 0.
+      long_delay = CP.longitudinalActuatorDelay + model.LONG_SMOOTH_SECONDS
+      long_action_t = long_delay + frame_delay + action_delay
 
     if model_output is not None:
       model_output_t = time.monotonic()
@@ -736,7 +738,9 @@ def main(demo=False):
           plan[:, Plan.T_FROM_CURRENT_EULER][:, 2], plan[:, Plan.ORIENTATION_RATE][:, 2],
           model.constants.T_IDXS, v_ego, lat_action_t,
         )
-        if v_ego > model.MIN_LAT_CONTROL_SPEED:
+        # Jetlink's ModelFace predates this modeld_v2-only attribute. Its
+        # large model otherwise uses the same 0.3 m/s threshold as ModelState.
+        if v_ego > getattr(model, 'MIN_LAT_CONTROL_SPEED', 0.3):
           turn_curvature = smooth_value(turn_curvature, prev_action.desiredCurvature, model.LAT_SMOOTH_SECONDS)
         else:
           turn_curvature = prev_action.desiredCurvature
