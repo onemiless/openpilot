@@ -16,6 +16,7 @@ openpilot/sunnypilot/modeld_v2/modeld.py text eol=lf
 # This generated CJK subset is intentionally small and must remain available
 # when the fork's GitHub LFS download budget is exhausted.
 openpilot/selfdrive/assets/fonts/NotoSansCJKsc-Regular.otf -filter -diff -merge -text
+openpilot/selfdrive/assets/fonts/NotoSansCJKsc-Navigation.otf -filter -diff -merge -text
 
 openpilot/selfdrive/car/tests/test_models_segs.txt filter=lfs diff=lfs merge=lfs -text
 openpilot/common/hardware/comma/updater filter=lfs diff=lfs merge=lfs -text
