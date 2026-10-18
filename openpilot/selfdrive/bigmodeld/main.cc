@@ -85,6 +85,7 @@ const std::vector<int> kCpuAffinity = {2};
 // 台架 jungle 实测：取帧 p50 30.1→24.5 ms，大模型 REPLY p50 54.6→49.6 ms / p99 61.2→53.9 ms，
 // modeld 收帧不变，locationd inputsOK 无异常。wide 也放 core 2 只再快 ~0.7 ms，却让 FIFO 50 线程
 // 更多压在 locationd 所在核（eagled 曾因高优先级拖慢 sensord 致 locationdTemporaryError），不取。
+constexpr int kIdleWaitMs = 100;
 constexpr int kCaptureFifoPrio = 50;
 const std::vector<int> kCaptureCore[2] = {{2}, {6}};
 
@@ -190,7 +191,7 @@ class TcpSocket : public UplinkSocket {
   }
 
   // 可读即返回（REPLY 到达即醒，不睡满轮询周期）；poll 在锁外，免得挡住发送线程。
-  // 期间 fd 被并发关闭只会让 poll 提前返回，调用方随后 read_some 自会报错重连。
+  // shutdown 会唤醒另一个线程中等待的 poll；close 单独调用不能保证立即返回。
   void wait_readable(int timeout_ms) {
     int fd;
     {
@@ -205,6 +206,7 @@ class TcpSocket : public UplinkSocket {
  private:
   void close_locked() {
     if (fd_ >= 0) {
+      ::shutdown(fd_, SHUT_RDWR);
       ::close(fd_);
       fd_ = -1;
     }
@@ -345,7 +347,7 @@ class Bigmodeld {
   void writer_thread() {
     setup_realtime("bgm_writer");
     while (!do_exit) {
-      if (!sender_->step()) sender_->wait_for_work(2);
+      if (!sender_->step()) sender_->wait_for_work(kIdleWaitMs);
     }
   }
 
@@ -377,7 +379,7 @@ class Bigmodeld {
         continue;
       }
       if (n == 0) {
-        sock_.wait_readable(2);
+        sock_.wait_readable(kIdleWaitMs);
         continue;
       }
       buf.insert(buf.end(), tmp, tmp + n);
