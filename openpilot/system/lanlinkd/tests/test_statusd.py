@@ -11,7 +11,7 @@ def make_fake_submaster_cls(exit_event, stop_after):
   state = {"calls": 0}
 
   class FakeSubMaster:
-    def __init__(self, services):
+    def __init__(self, services, poll=None):
       self.updated = dict.fromkeys(services, False)
 
     def update(self, timeout):
@@ -39,7 +39,8 @@ class TestStatusdRun:
 
     cache = StatusCache({"Version": "0.11.2"}, "tici",
                         params=NS(get=lambda k: None, get_bool=lambda k: False))
-    with patch.object(statusd.messaging, "SubMaster", fake_cls), \
+    with patch.object(statusd.time, "monotonic", side_effect=[0., 2., 4., 6., 8., 10.]), \
+         patch.object(statusd.messaging, "SubMaster", fake_cls), \
          patch.object(statusd, "build_snapshot", flaky_snapshot), \
          patch.object(statusd, "build_capabilities", lambda *a, **k: {}):
       cache.run(exit_event)
@@ -48,7 +49,7 @@ class TestStatusdRun:
     assert cache.snapshot()["stale"] is False
 
   def test_submaster_init_failure_returns(self):
-    def boom(services):
+    def boom(services, poll=None):
       raise RuntimeError("ctor failed")
 
     cache = StatusCache({"Version": "0.11.2"}, "tici",
@@ -62,7 +63,7 @@ class TestStatusdRun:
     n = 60
 
     class FakeSubMaster:
-      def __init__(self, services):
+      def __init__(self, services, poll=None):
         self.updated = dict.fromkeys(services, False)
         self.calls = 0
 
@@ -80,7 +81,8 @@ class TestStatusdRun:
 
     params = NS(get=lambda k: "connected" if k == "BigmodelLinkState" else None, get_bool=lambda k: k == "BigmodelToggle")
     cache = StatusCache({}, "tici", params=params)
-    with patch.object(statusd.messaging, "SubMaster", FakeSubMaster), \
+    with patch.object(statusd.time, "monotonic", side_effect=[float(i) for i in range(n)]), \
+         patch.object(statusd.messaging, "SubMaster", FakeSubMaster), \
          patch.object(statusd, "build_snapshot", lambda *a: {}), \
          patch.object(statusd, "build_capabilities", lambda *a, **k: {}):
       cache.run(exit_event)
@@ -106,7 +108,7 @@ class TestTorqueStatus:
     ltp = self._ltp(2.2)
 
     class FakeSubMaster:
-      def __init__(self, services):
+      def __init__(self, services, poll=None):
         self.updated = dict.fromkeys(services, False)
         self.calls = 0
 
