@@ -206,11 +206,13 @@ class WifiManager:
 
     self._scan_lock = threading.Lock()
     # 同步有界等待 wifi 设备（10s）——lanlinkd 等调用方在实例创建后立即 connect，
-    # 必须保证 _wifi_device 已就绪，否则连接会静默失败（今晚的"一直连接中"根因）
+    # 保证 _wifi_device 通常已就绪。
     self._wait_for_wifi_device(timeout=10)
     if self._wifi_device is None:
-      cloudlog.warning("wifi device not found within 10s; marking manager exited")
-      self._exit = True
+      # NOTE: 不能在这里永久退出。UI (MainLayout) 在开机早期构造 SettingsLayout，
+      # 此时 NetworkManager/wlan0 往往还没就绪；这里一旦置 _exit，scan/state 线程
+      # 永不启动，wifi 列表永久停在 "扫描中"。交给 _initialize 的后台线程继续等。
+      cloudlog.warning("wifi device not found within 10s; will keep waiting in background")
     self._scan_thread = threading.Thread(target=self._network_scanner, daemon=True)
     self._state_thread = threading.Thread(target=self._monitor_state, daemon=True)
     self._initialize()
@@ -218,6 +220,14 @@ class WifiManager:
 
   def _initialize(self):
     def worker():
+      # 后台等待到 wifi 设备出现再启动线程（自动恢复开机竞态；原上游行为）。
+      # __init__ 的有界等待只是给"创建后立即调用"的调用方一个就绪窗口，
+      # 超时不能让 manager 永久死亡。
+      if self._wifi_device is None:
+        self._wait_for_wifi_device()
+      if self._exit:
+        return
+
       # TODO: wait for state thread to start before adding tethering connection, tiny race currently
       self._scan_thread.start()
       self._state_thread.start()
@@ -699,12 +709,9 @@ class WifiManager:
       if self._wifi_device is None:
         deadline = time.monotonic() + 15
         while self._wifi_device is None and not self._exit and time.monotonic() < deadline:
-          time.sleep(0.5)
-          self._get_adapter(NM_DEVICE_TYPE_WIFI) and None
-        if self._wifi_device is None:
-          # 最后兜底：借用 _wait_for_wifi_device 的一次检索
-          device_path = self._get_adapter(NM_DEVICE_TYPE_WIFI)
-          self._wifi_device = device_path
+          self._wifi_device = self._get_adapter(NM_DEVICE_TYPE_WIFI)
+          if self._wifi_device is None:
+            time.sleep(0.5)
 
       if self._wifi_device is None:
         cloudlog.warning("No WiFi device found")

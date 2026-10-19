@@ -50,12 +50,14 @@ class SettingsLayout(Widget):
     self._current_panel = PanelType.DEVICE
 
     # Panel configuration
-    wifi_manager = WifiManager()
-    wifi_manager.set_active(False)
+    # 保存到实例上，供 SettingsLayoutSP 复用（C3 上 base 与 SP 各建一个 WifiManager
+    # 会导致两次 10s 同步等待 + 两套 scan/monitor/tethering 状态）
+    self._wifi_manager = WifiManager()
+    self._wifi_manager.set_active(False)
 
     self._panels = {
       PanelType.DEVICE: PanelInfo(tr_noop("Device"), DeviceLayout()),
-      PanelType.NETWORK: PanelInfo(tr_noop("Network"), NetworkUI(wifi_manager)),
+      PanelType.NETWORK: PanelInfo(tr_noop("Network"), NetworkUI(self._wifi_manager)),
       PanelType.TOGGLES: PanelInfo(tr_noop("Toggles"), TogglesLayout()),
       PanelType.SOFTWARE: PanelInfo(tr_noop("Software"), SoftwareLayout()),
       PanelType.DEVELOPER: PanelInfo(tr_noop("Developer"), DeveloperLayout()),

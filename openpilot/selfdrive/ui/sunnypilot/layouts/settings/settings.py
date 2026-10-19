@@ -22,7 +22,6 @@ from openpilot.selfdrive.ui.sunnypilot.layouts.settings.visuals import VisualsLa
 from openpilot.system.ui.lib.application import gui_app, MousePos
 from openpilot.system.ui.lib.multilang import tr_noop
 from openpilot.system.ui.lib.text_measure import measure_text_cached
-from openpilot.system.ui.lib.wifi_manager import WifiManager
 from openpilot.system.ui.sunnypilot.lib.styles import style
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.scroller_tici import Scroller
@@ -97,7 +96,8 @@ class SettingsLayoutSP(OP.SettingsLayout):
     self._sidebar_scroller = Scroller([], spacing=0, line_separator=False, pad_end=False)
 
     # Panel configuration
-    wifi_manager = WifiManager()
+    # 复用 OP.SettingsLayout.__init__ 已创建的 manager（单实例持有 scan/monitor/tethering）
+    wifi_manager = self._wifi_manager
     wifi_manager.set_active(False)
 
     self._panels = {
