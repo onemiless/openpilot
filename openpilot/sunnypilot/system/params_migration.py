@@ -5,6 +5,7 @@ This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
 import json
+import math
 
 from openpilot.common.swaglog import cloudlog
 from openpilot.sunnypilot.hardware.driver_monitoring import driver_monitoring_default
@@ -104,7 +105,53 @@ def _migrate_model_bundle_slots(_params):
     cloudlog.exception(f"Error migrating model bundle slots: {e}")
 
 
+def normalize_car_params(CP) -> bool:
+  mass = CP.deprecated.mass
+  if not math.isfinite(mass) or mass < 0:
+    raise ValueError("Invalid legacy CarParams mass")
+  if mass == 0:
+    return False
+  CP.rotationalInertiaPerMass /= mass
+  CP.tireStiffnessFrontPerMass /= mass
+  CP.tireStiffnessRearPerMass /= mass
+  CP.deprecated.mass = 0
+  return True
+
+
+def _migrate_car_params(params):
+  from opendbc.car.structs import car
+
+  updates = {}
+  originals = {}
+  for key in ("CarParams", "CarParamsCache", "CarParamsPersistent", "CarParamsPrevRoute"):
+    raw = params.get(key)
+    if raw is None:
+      continue
+    with car.CarParams.from_bytes(raw) as reader:
+      CP = reader.as_builder()
+    if normalize_car_params(CP):
+      originals[key] = raw.hex()
+      updates[key] = CP.to_bytes()
+  if not updates:
+    return
+
+  backup = params.get("SPCarParamsMassNormalizationBackup")
+  if backup is None:
+    backup = {}
+  if not isinstance(backup, dict):
+    raise ValueError("CarParams normalization backup must be an object")
+  for key, raw in originals.items():
+    if key in backup and backup[key] != raw:
+      raise ValueError("CarParams normalization backup already contains a different original")
+    backup[key] = raw
+  # Old managers delete unknown keys; export/restore this backup before switching to old source.
+  params.put("SPCarParamsMassNormalizationBackup", backup, block=True)
+  for key, raw in updates.items():
+    params.put(key, raw, block=True)
+
+
 def run_migration(_params):
+  _migrate_car_params(_params)
   if not _params.get_bool("SPDriverMonitoringDefaultsMigrated"):
     _params.put_bool("DriverMonitoringEnabled", driver_monitoring_default(), block=True)
     _params.put_bool("SPDriverMonitoringDefaultsMigrated", True, block=True)

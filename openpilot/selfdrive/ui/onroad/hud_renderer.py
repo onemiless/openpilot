@@ -19,10 +19,10 @@ class UIConfig:
   header_height: int = 300
   border_size: int = 30
   button_size: int = 192
+  wheel_icon_size: int = 144
   set_speed_width_metric: int = 200
   set_speed_width_imperial: int = 172
   set_speed_height: int = 204
-  wheel_icon_size: int = 144
 
 
 @dataclass(frozen=True)
@@ -69,8 +69,8 @@ class HudRenderer(Widget):
     self._font_semi_bold: rl.Font = gui_app.font(FontWeight.SEMI_BOLD)
     self._font_bold: rl.Font = gui_app.font(FontWeight.BOLD)
     self._font_medium: rl.Font = gui_app.font(FontWeight.MEDIUM)
-
-    self._exp_button: ExpButton = ExpButton(UI_CONFIG.button_size, UI_CONFIG.wheel_icon_size)
+    self._exp_button = ExpButton(UI_CONFIG.button_size, UI_CONFIG.wheel_icon_size)
+    self._exp_button.set_visible(lambda: ui_state.legacy_experimental_available)
 
   def _update_state(self) -> None:
     """Update HUD state based on car state and controls state."""
@@ -122,7 +122,7 @@ class HudRenderer(Widget):
     self._exp_button.render(rl.Rectangle(button_x, button_y, UI_CONFIG.button_size, UI_CONFIG.button_size))
 
   def user_interacting(self) -> bool:
-    return self._exp_button.is_pressed
+    return ui_state.legacy_experimental_available and self._exp_button.is_pressed
 
   def _draw_set_speed(self, rect: rl.Rectangle) -> None:
     """Draw the MAX speed indicator box."""

@@ -13,7 +13,6 @@ import traceback
 
 from opendbc.can import CANPacker
 from opendbc.can.dbc import DBC
-from opendbc.can.parser import get_raw_value
 from opendbc.car import structs
 from opendbc.car.tesla.interface import CarInterface
 from opendbc.car.tesla.values import CAR
@@ -34,8 +33,8 @@ AMBIENT_TEMPLATE = bytes.fromhex("0cffd5aa00f801")
 
 def decoded(dbc, name, frame):
   msg = DBC(dbc).name_to_msg[name]
-  return {name: (get_raw_value(frame[1], sig) -
-                 ((get_raw_value(frame[1], sig) >> (sig.size - 1)) << sig.size if sig.is_signed else 0)) * sig.factor + sig.offset
+  return {name: (sig.get_raw_value(frame[1]) -
+                 ((sig.get_raw_value(frame[1]) >> (sig.size - 1)) << sig.size if sig.is_signed else 0)) * sig.factor + sig.offset
           for name, sig in msg.sigs.items()}
 
 

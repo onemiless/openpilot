@@ -72,7 +72,6 @@ def run(output):
     with patch.object(stock, 'MODELS_DIR', defaults), patch.object(models.Paths, 'model_root', return_value=str(selected)), \
          patch.object(models, 'Params', return_value=params), patch('openpilot.system.hardware.chestnut.status.MODELS_DIR', defaults), \
          patch('openpilot.system.hardware.chestnut.status.get_build_metadata', return_value=SimpleNamespace(channel='dev-sp')), \
-         patch('openpilot.selfdrive.ui.ui_state.read_int', return_value=0), \
          patch.object(models, '_compute_hash', side_effect=AssertionError('periodic readiness must not hash')):
       check('absent_default', False, False)
       drive.write_bytes(POINTER)

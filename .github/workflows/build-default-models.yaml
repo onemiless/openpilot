@@ -47,7 +47,7 @@ jobs:
           if [ "${{ inputs.target }}" = "big" ]; then
             NAME=$(python3 -c "from openpilot.sunnypilot.models.model_name import DEFAULT_BIG_MODEL; print(DEFAULT_BIG_MODEL)")
             HF_DEFAULTS_PATH="models/defaults/big"
-            ONNX_PATH="openpilot/selfdrive/modeld/models/big_driving_supercombo.onnx"
+            ONNX_PATH="openpilot/selfdrive/modeld/models/big_driving_tinygrad.pkl"
           elif [ "${{ inputs.target }}" = "dm" ]; then
             ONNX_PATH="openpilot/selfdrive/modeld/models/dmonitoring_model.onnx"
             HF_DEFAULTS_PATH="models/defaults/dm"
@@ -167,14 +167,13 @@ jobs:
       MODELS_DIR: openpilot/selfdrive/modeld/models
       COMPILER: tinygrad_repo/examples/openpilot
       BIG_PKL: openpilot/selfdrive/modeld/models/big_driving_tinygrad.pkl
-      BIG_ONNX: openpilot/selfdrive/modeld/models/big_driving_supercombo.onnx
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Pull original big ONNX via LFS
-        run: git lfs pull -I "${{ env.BIG_ONNX }}"
+      - name: Pull big PKL via LFS
+        run: git lfs pull -I "${{ env.BIG_PKL }}"
 
       - name: Set environment variables
         run: |
@@ -206,16 +205,6 @@ jobs:
           else:
               raise RuntimeError('Chestnut PCIe link not ready after 10 attempts')
           "
-
-      - name: Compile native big model from original ONNX
-        run: |
-          source ${UV_PROJECT_ENVIRONMENT}/bin/activate
-          export PYTHONPATH="${{ github.workspace }}/tinygrad_repo:${{ github.workspace }}:${PYTHONPATH}"
-          MODEL_CPU=$(python3 -c 'import os; print(max(os.sched_getaffinity(0)))')
-          taskset -c "$MODEL_CPU" env DEV=USB+AMD:LLVM FRAME_DEV=CPU FLOAT16=1 JIT_BATCH_SIZE=0 GMMU=0 TC_OPT=2 TC_MIN_GLOBALS=32 OPENPILOT_HACKS=1 \
-            python3 "${{ github.workspace }}/${{ env.COMPILER }}/compile_onnx.py" \
-            "${{ github.workspace }}/${{ env.BIG_ONNX }}" "${{ github.workspace }}/${{ env.BIG_PKL }}" \
-            --out-of-band --benchmark-runs 1
 
       - name: Compile big warp
         run: |
@@ -258,14 +247,14 @@ jobs:
 
           cp "$MODELS_DIR/${PKL_BASE}" "$OUTPUT_DIR/"
 
-          ONNX_SHA256=$(git cat-file blob "$(git ls-files -s "${{ github.workspace }}/${{ env.BIG_ONNX }}" | awk '{print $2}')" | grep '^oid sha256:' | cut -d: -f2)
+          PKL_LFS_SHA256=$(git cat-file blob "$(git ls-files -s "${{ github.workspace }}/${{ env.BIG_PKL }}" | awk '{print $2}')" | grep '^oid sha256:' | cut -d: -f2)
 
           python3 "${{ github.workspace }}/release/ci/model_generator.py" \
             --model-dir "$MODELS_DIR" \
             --output-dir "$OUTPUT_DIR" \
             --custom-name "$MODEL_NAME" \
             --upstream-branch "${{ needs.resolve.outputs.onnx_ref }}" \
-            --onnx-sha256 "$ONNX_SHA256"
+            --onnx-sha256 "$PKL_LFS_SHA256"
 
           cp "$MODELS_DIR"/big_driving_warp_* "$OUTPUT_DIR/" || true
 
@@ -453,7 +442,8 @@ jobs:
           taskset -c 7 env ${TG_FLAGS} python3 \
             ${{ github.workspace }}/tinygrad_repo/examples/openpilot/compile_onnx.py \
             ${{ github.workspace }}/${{ env.DM_ONNX }} \
-            ${{ github.workspace }}/${{ env.DM_PKL }} --out-of-band --benchmark-runs 1
+            ${{ github.workspace }}/${{ env.DM_PKL }} \
+            --out-of-band --benchmark-runs 1
 
       - name: Compile DM warp
         run: |

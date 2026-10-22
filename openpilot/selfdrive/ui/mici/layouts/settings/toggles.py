@@ -3,13 +3,14 @@ from collections.abc import Callable
 from openpilot.cereal import log
 
 from openpilot.system.ui.widgets.scroller import NavScroller
-from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl, BigMultiParamToggle, BigToggle, GreyBigButton
+from openpilot.selfdrive.ui.mici.widgets.button import BigToggle, BigParamControl, BigMultiParamToggle, GreyBigButton
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationCircleButton
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callback
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.sunnypilot.hardware.profile import has_driver_camera
 from openpilot.sunnypilot.hardware.driver_monitoring import driver_monitoring_configured
+from openpilot.selfdrive.ui.mici.layouts.settings.initial_cruise_speed import InitialCruiseSpeedButton
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
 
@@ -43,7 +44,7 @@ class TogglesLayoutMici(NavScroller):
   def __init__(self):
     super().__init__()
 
-    self._personality_toggle = BigMultiParamToggle("driving personality", "LongitudinalPersonality", ["aggressive", "standard", "relaxed"],
+    self._personality_toggle = BigMultiParamToggle("following distance", "LongitudinalPersonality", ["aggressive", "standard", "relaxed"],
                                                    description="Standard is recommended.\n" +
                                                                "Aggressive follows closer, with firmer gas and braking.\n" +
                                                                "Relaxed leaves more space.\n" +
@@ -60,7 +61,10 @@ class TogglesLayoutMici(NavScroller):
       toggle_callback=self._on_driver_monitoring,
       description="关闭后不启动 DM 进程。只能停车时修改，下次驾驶生效。")
     self._dm_toggle.set_enabled(lambda: ui_state.is_offroad() and has_driver_camera())
-    is_metric_toggle = BigParamControl("use metric units", "IsMetric")
+    self._initial_cruise_speed = InitialCruiseSpeedButton()
+    self._initial_cruise_speed.set_visible(lambda: ui_state.CP is not None and ui_state.has_longitudinal_control and not ui_state.CP.pcmCruise
+                                            and not ui_state.legacy_experimental_available)
+    is_metric_toggle = BigToggle("use metric units", initial_state=ui_state.params.get_bool("IsMetric"), toggle_callback=self._on_metric_toggle)
     ldw_toggle = BigParamControl("lane departure warnings", "IsLdwEnabled",
                                  description="Warn when you drift across a detected lane line.\n" +
                                              "Only above 31 mph (50 km/h), with no turn signal.")
@@ -77,9 +81,12 @@ class TogglesLayoutMici(NavScroller):
                                                    "Disable to use your car's stock driver assistance.")
 
 
+    self._experimental_btn.set_visible(lambda: ui_state.legacy_experimental_available)
+    self._experimental_btn.set_enabled(lambda: ui_state.legacy_experimental_available and ui_state.has_longitudinal_control)
     self._scroller.add_widgets([
-      self._personality_toggle,
       self._experimental_btn,
+      self._personality_toggle,
+      self._initial_cruise_speed,
       is_metric_toggle,
       ldw_toggle,
       self._dm_toggle,
@@ -91,7 +98,6 @@ class TogglesLayoutMici(NavScroller):
 
     # Toggle lists
     self._refresh_toggles = (
-      ("ExperimentalMode", self._experimental_btn),
       ("IsMetric", is_metric_toggle),
       ("IsLdwEnabled", ldw_toggle),
       ("AlwaysOnDM", always_on_dm_toggle),
@@ -123,20 +129,17 @@ class TogglesLayoutMici(NavScroller):
     super().show_event()
     self._update_toggles()
 
+  def _on_metric_toggle(self, state: bool):
+    ui_state.params.put_bool("IsMetric", state, block=True)
+    self._update_toggles()
+
   def _update_toggles(self):
     ui_state.update_params()
+    self._initial_cruise_speed.refresh()
+    self._experimental_btn.set_checked(ui_state.params.get_bool("ExperimentalMode"))
 
-    # CP gating for experimental mode
     if ui_state.CP is not None:
-      if ui_state.has_longitudinal_control:
-        self._experimental_btn.set_visible(True)
-        self._personality_toggle.set_visible(True)
-      else:
-        # no long for now
-        self._experimental_btn.set_visible(False)
-        self._experimental_btn.set_checked(False)
-        self._personality_toggle.set_visible(False)
-        ui_state.params.remove("ExperimentalMode")
+      self._personality_toggle.set_visible(ui_state.has_longitudinal_control)
 
     self._dm_toggle.set_checked(driver_monitoring_configured(ui_state.params))
 
@@ -150,6 +153,8 @@ class TogglesLayoutMici(NavScroller):
     self._update_toggles()
 
   def _on_experimental_mode(self, state: bool):
+    if not ui_state.legacy_experimental_available:
+      return
     if state and not ui_state.params.get_bool("ExperimentalModeConfirmed"):
       # Don't show enabled state until confirm
       self._experimental_btn.set_checked(False)

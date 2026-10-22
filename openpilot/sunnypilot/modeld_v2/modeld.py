@@ -7,8 +7,10 @@ See the LICENSE.md file in the root directory for more details.
 """
 
 from collections.abc import Callable
+import gc
 import os
 os.environ['GMMU'] = '0'
+from tinygrad.device import Device
 import numpy as np
 import threading
 import time
@@ -16,7 +18,7 @@ from setproctitle import setproctitle
 
 import openpilot.cereal.messaging as messaging
 from openpilot.common.hardware import COMMA_HARDWARE
-from openpilot.selfdrive.modeld.helpers import chestnut_present, modeld_pkl_path
+from openpilot.selfdrive.modeld.helpers import chestnut_present, modeld_pkl_path, wait_for_chestnut
 from openpilot.cereal import log
 from opendbc.car.structs import car
 from openpilot.cereal.services import SERVICE_LIST
@@ -24,9 +26,9 @@ from openpilot.cereal.messaging import PubMaster, SubMaster
 from openpilot.cereal.visionipc import VisionStreamType
 from msgq.visionipc import VisionIpcClient, VisionBuf
 from opendbc.car.car_helpers import get_demo_car_params
-from openpilot.common.file_chunker import open_file_chunked
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.params import Params
+from openpilot.common.hardware.usb import cable_connected
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.realtime import config_realtime_process, DT_MDL
 from openpilot.common.transformations.camera import DEVICE_CAMERAS
@@ -55,8 +57,7 @@ BIG_MODEL_TIMEOUT = 60
 
 
 def _pkl_exists(path):
-  from openpilot.common.file_chunker import get_manifest_path
-  return os.path.exists(path) or os.path.exists(get_manifest_path(path))
+  return os.path.exists(path)
 
 
 def _find_driving_pkl(bundle):
@@ -127,7 +128,7 @@ class ModelState(ModelStateBase):
 
   def _init_combined(self, pkl_path, cam_w, cam_h, bundle):
     cloudlog.warning(f"loading combined pkl: {pkl_path}")
-    with open_file_chunked(pkl_path) as source:
+    with open(pkl_path, 'rb') as source:
       plain = source.read(len(MAGIC)) == MAGIC
     if plain:
       jits = load_model(pkl_path, extend=fused_with_warp(cam_w, cam_h, self.chestnut))
@@ -207,6 +208,8 @@ class ModelState(ModelStateBase):
       self.numpy_inputs['big_tfm'][:, :] = transforms[self._wide_key].reshape(3, 3)
 
     raw_outputs = self.adapter.run()
+    if self.chestnut and (err := Device[self.DEV].error_state.host.view(fmt='q')[0]):
+      raise RuntimeError(f"chestnut failed with {err}")
 
     if after_enqueue is not None:
       after_enqueue()
@@ -281,9 +284,8 @@ def main(demo=False):
 
   cloudlog.bind(daemon=PROCESS_NAME)
   setproctitle(PROCESS_NAME)
-  config_realtime_process(7, 54)
 
-  CHESTNUT = chestnut_present()
+  CHESTNUT = _find_driving_pkl(get_active_bundle(chestnut=True)) is not None and (chestnut_present() or cable_connected())
   if CHESTNUT:
     from tinygrad.runtime.ops_amd import AMDDevice
     AMDDevice.wait_timeout_ms = 3000
@@ -291,6 +293,8 @@ def main(demo=False):
   params = Params()
   params.put_bool("ChestnutLoading", CHESTNUT)
   params.remove("ChestnutActive")
+
+  gc.disable()
 
   # visionipc clients
   while True:
@@ -324,6 +328,7 @@ def main(demo=False):
     def load_big():
       nonlocal big_model
       try:
+        wait_for_chestnut()
         m = ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=True)
         m.warmup()
         big_model = m
@@ -333,7 +338,13 @@ def main(demo=False):
     loader.start()
     loader.join(BIG_MODEL_TIMEOUT)
     model = big_model
-    params.put_bool("ChestnutActive", model is not None)
+    if model is None and not params.get_bool("ChestnutRetry"):
+      # a crank can cut the chestnut power during the load, retry once with an onroad cycle
+      cloudlog.error("big model load failed, cycling onroad to retry")
+      params.put_bool("ChestnutRetry", True)
+      params.put_bool("OnroadCycleRequested", True)
+    else:
+      params.put_bool("ChestnutActive", model is not None)
 
   small_model = ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=False) if model is None or CHESTNUT else None
   if model is None:
@@ -342,10 +353,13 @@ def main(demo=False):
   assert model is not None
   cloudlog.warning(f"models loaded in {time.monotonic() - st:.1f}s, modeld starting")
 
+  config_realtime_process(7, 54)
+
   # messaging
   pub_socks = ["modelV2", "drivingModelData", "cameraOdometry", "modelDataV2SP"] + (["chestnutGpuState"] if CHESTNUT else [])
   pm = PubMaster(pub_socks)
-  sm = SubMaster(["deviceState", "carState", "narrowRoadCameraState", "extrinsicsCalibration", "driverMonitoringState", "carControl", "lateralDelay"])
+  sm = SubMaster(["deviceState", "carState", "narrowRoadCameraState", "extrinsicsCalibration", "driverMonitoringState",
+                  "carControl", "controlsState", "lateralDelay"])
 
   publish_state = PublishState()
   chestnut_state = ChestnutGpuState(pm, model.chestnut) if CHESTNUT else None
@@ -473,7 +487,7 @@ def main(demo=False):
                        run_count % round(model.constants.MODEL_FREQ / SERVICE_LIST['chestnutGpuState'].frequency) == 0)
       model_output = model.run(bufs, transforms, inputs, chestnut_state.send if send_chestnut else None)
     except Exception:
-      if not params.get_bool("ChestnutActive"):
+      if not model.chestnut:
         raise
       cloudlog.exception("big model failed, fall back to small")
       params.put_bool("ChestnutActive", False)
@@ -492,6 +506,8 @@ def main(demo=False):
       posenet_send = messaging.new_message('cameraOdometry')
       mdv2sp_send = messaging.new_message('modelDataV2SP')
 
+      if not sm['carControl'].latActive:
+        prev_action.desiredCurvature = sm['controlsState'].curvature
       action = model.get_action_from_model(model_output, prev_action, lat_action_t, long_action_t, v_ego)
       prev_action = action
       fill_model_msg(drivingdata_send, modelv2_send, model_output, action,

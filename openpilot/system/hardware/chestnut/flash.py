@@ -15,6 +15,8 @@ import time
 import zlib
 from pathlib import Path
 
+from openpilot.common.hardware.usb import is_chestnut_runtime_device, read
+
 VID_PIDS = (("add1", "0001"), ("3801", "0001"))
 ROM_VID_PIDS = (("174c", "2464"), ("174c", "2463"))
 ROM_PRODUCT = "USB 3.2 PCIe TinyEnclosure"
@@ -59,13 +61,20 @@ class RomFallback(Exception):
   pass
 
 
-def find_chestnut():
+def find_chestnut(runtime=False):
   found = []
   for d in glob.glob("/sys/bus/usb/devices/*"):
     try:
       vid_pid = (Path(d, "idVendor").read_text().strip(), Path(d, "idProduct").read_text().strip())
-      if vid_pid in VID_PIDS + ROM_VID_PIDS:
-        found.append((d, vid_pid, Path(d, "product").read_text().strip()))
+      product = Path(d, "product").read_text().strip()
+      if runtime:
+        device = {"vendorId": int(vid_pid[0], 16), "productId": int(vid_pid[1], 16),
+                  "product": product, "manufacturer": read(Path(d, "manufacturer")) or ""}
+        if not is_chestnut_runtime_device(device):
+          continue
+      elif vid_pid not in VID_PIDS + ROM_VID_PIDS:
+        continue
+      found.append((d, vid_pid, product))
     except OSError:
       pass
   if len(found) > 1:
@@ -108,7 +117,7 @@ def open_device(path):
 def link_up() -> bool:
   # asm enumerates on USB-C alone, gpu is only usable once pcie link is up
   try:
-    path, _, _ = find_chestnut()
+    path, _, _ = find_chestnut(runtime=True)
     if path is None:
       return False
     fd = open_device(path)

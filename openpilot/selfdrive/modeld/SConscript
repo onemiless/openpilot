@@ -1,14 +1,22 @@
+import ctypes.util
 import glob
 import os
 import time
 from SCons.Script import Action, Value
 from openpilot.common.transformations.camera import _ar_ox_fisheye, _os_fisheye
 from openpilot.common.transformations.model import MEDMODEL_INPUT_SIZE, DM_INPUT_SIZE
-from openpilot.selfdrive.modeld.helpers import chestnut_present
 from openpilot.system.camerad.cameras.nv12_info import get_nv12_info
+from openpilot.selfdrive.modeld.helpers import chestnut_present
 
 
 Import('env', 'arch')
+
+# TODO: add GCC support to tinygrad?
+# tinygrad's CPU:LLVM backend requires libLLVM, skip the build on PC if it's not available
+if arch not in ('comma_arm64', 'Darwin') and ctypes.util.find_library('LLVM') is None:
+  print("\033[93mmodeld: LLVM not found, skipping tinygrad model compilation. Install LLVM to compile models.\033[0m")
+  Return()
+
 lenv = env.Clone()
 lenv.PrependENVPath('PYTHONPATH', Dir('#tinygrad_repo').abspath)
 
@@ -16,7 +24,7 @@ tinygrad_root = env.Dir("#").abspath
 tinygrad_files = ["#"+x for x in glob.glob(env.Dir("#tinygrad_repo").relpath + "/**", recursive=True, root_dir=tinygrad_root)
                   if 'pycache' not in x and os.path.isfile(os.path.join(tinygrad_root, x))]
 
-camera_configs = [(c.width, c.height) for c in (_ar_ox_fisheye, _os_fisheye)]
+camera_configs = [] if os.getenv("SKIP_TINYGRAD_COMPILE") else [(c.width, c.height) for c in (_ar_ox_fisheye, _os_fisheye)]
 
 if arch == 'comma_arm64':
   tg_flags = 'DEV=QCOM IMAGE=1 FLOAT16=1 NOLOCALS=1 JIT_BATCH_SIZE=0 OPENPILOT_HACKS=1'
@@ -24,19 +32,34 @@ else:
   # JIT=2 disables graph batching, which produces incorrect outputs after buffers change.
   tg_flags = 'DEV=METAL JIT=2' if arch == 'Darwin' else 'DEV=CPU:LLVM'
 
+# tinygrad calls brew which needs a $HOME in the env
+mac_brew_string = f'HOME={os.path.expanduser("~")}' if arch == 'Darwin' else ''
+
+warp_deps = [File("#openpilot/system/camerad/cameras/nv12_info.py")]
+compiler = Dir('#tinygrad_repo/examples/openpilot').abspath
+# C3 variants may expose fewer CPUs during offroad builds.
+taskset = f'taskset -c {max(os.sched_getaffinity(0))} ' if arch == 'comma_arm64' else ''
+
+def compile_model(onnx_path, pkl_path):
+  onnx_path, target_pkl_path = File(onnx_path).abspath, File(pkl_path).abspath
+  cmd = (f'{tg_flags} {mac_brew_string} {taskset}python3 "{compiler}/compile_onnx.py" '
+         f'"{onnx_path}" "{target_pkl_path}" --out-of-band --benchmark-runs 1')
+  lenv.Command(
+    target_pkl_path,
+    tinygrad_files + [onnx_path, Value(cmd)],
+    Action(cmd, "  [ONNX] $TARGET"),
+  )
+
+if not os.getenv('SKIP_TINYGRAD_COMPILE'):
+  compile_model('models/dmonitoring_model.onnx', 'models/dmonitoring_model_tinygrad.pkl')
+  compile_model('models/driving_supercombo.onnx', 'models/driving_tinygrad.pkl')
+
 CHESTNUT = chestnut_present()
 if CHESTNUT:
   chestnut_tg_flags = 'DEBUG=1 DEV=USB+AMD:LLVM FRAME_DEV=CPU FLOAT16=1 JIT_BATCH_SIZE=0 GMMU=0 TC_OPT=2 TC_MIN_GLOBALS=32'
   # the USB+AMD GPU takes an exclusive flock; serialize all targets that touch it
   chestnut_lock = File("models/.chestnut.lock").abspath
 
-# tinygrad calls brew which needs a $HOME in the env
-mac_brew_string = f'HOME={os.path.expanduser("~")}' if arch == 'Darwin' else ''
-
-warp_deps = [File("#openpilot/system/camerad/cameras/nv12_info.py")]
-compiler = Dir('#tinygrad_repo/examples/openpilot').abspath
-# Use the highest CPU actually available to this process (C3 can expose fewer CPUs).
-taskset = f'taskset -c {max(os.sched_getaffinity(0))} ' if arch == 'comma_arm64' else ''
 
 def chestnut_action(command):
   def do_compile(target, source, env):
@@ -51,24 +74,6 @@ def chestnut_action(command):
       return
     return env.Execute(command)
   return Action(do_compile, "  [CHESTNUT] $TARGET")
-
-def compile_model(onnx_path, pkl_path, chestnut=False):
-  onnx_path, target_pkl_path = File(onnx_path).abspath, File(pkl_path).abspath
-  cmd_flags = f'{chestnut_tg_flags} OPENPILOT_HACKS=1' if chestnut else tg_flags
-  cmd = (f'{cmd_flags} {mac_brew_string} {taskset}python3 "{compiler}/compile_onnx.py" '
-         f'"{onnx_path}" "{target_pkl_path}" --out-of-band --benchmark-runs 1')
-  node = lenv.Command(
-    target_pkl_path,
-    tinygrad_files + [onnx_path, Value(cmd)],
-    chestnut_action(cmd) if chestnut else Action(cmd, "  [ONNX] $TARGET"),
-  )
-  if chestnut:
-    lenv.SideEffect(chestnut_lock, node)
-
-compile_model('models/dmonitoring_model.onnx', 'models/dmonitoring_model_tinygrad.pkl')
-compile_model('models/driving_supercombo.onnx', 'models/driving_tinygrad.pkl')
-if CHESTNUT:
-  compile_model('models/big_driving_supercombo.onnx', 'models/big_driving_tinygrad.pkl', chestnut=True)
 
 model_w, model_h = MEDMODEL_INPUT_SIZE
 for chestnut in [False, True] if CHESTNUT else [False]:
@@ -86,7 +91,7 @@ for chestnut in [False, True] if CHESTNUT else [False]:
       lenv.SideEffect(chestnut_lock, node)
 
 dm_w, dm_h = DM_INPUT_SIZE
-for cam_w, cam_h in camera_configs:
+for cam_w, cam_h in [] if os.getenv('SKIP_TINYGRAD_COMPILE') else camera_configs:
   dm_pkl_path = File(f"models/dm_warp_{cam_w}x{cam_h}_tinygrad.pkl").abspath
   stride, y_height, uv_height, frame_size = get_nv12_info(cam_w, cam_h)
   cmd = (f'{tg_flags} {mac_brew_string} python3 "{compiler}/compile_warp.py" '

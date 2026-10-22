@@ -559,7 +559,7 @@
               "enablement": [
                 {
                   "type": "capability",
-                  "field": "enable_bsm",
+                  "field": "has_bsm",
                   "equals": true
                 },
                 {
@@ -591,11 +591,189 @@
               "key": "ExperimentalMode",
               "widget": "toggle",
               "title": "Experimental Mode",
+              "description": "Only Tesla Experimental and TN-NoDEC longitudinal backends use this legacy model-control switch.",
+              "visibility": [
+                {
+                  "type": "all",
+                  "conditions": [
+                    {
+                      "type": "capability",
+                      "field": "brand",
+                      "equals": "tesla"
+                    },
+                    {
+                      "type": "any",
+                      "conditions": [
+                        {
+                          "type": "all",
+                          "conditions": [
+                            {
+                              "type": "offroad_only"
+                            },
+                            {
+                              "type": "param",
+                              "key": "LongitudinalPlannerMode",
+                              "equals": 1
+                            }
+                          ]
+                        },
+                        {
+                          "type": "all",
+                          "conditions": [
+                            {
+                              "type": "offroad_only"
+                            },
+                            {
+                              "type": "param",
+                              "key": "LongitudinalPlannerMode",
+                              "equals": 2
+                            }
+                          ]
+                        },
+                        {
+                          "type": "all",
+                          "conditions": [
+                            {
+                              "type": "not",
+                              "condition": {
+                                "type": "offroad_only"
+                              }
+                            },
+                            {
+                              "type": "param",
+                              "key": "ActiveLongitudinalBackend",
+                              "equals": 1
+                            }
+                          ]
+                        },
+                        {
+                          "type": "all",
+                          "conditions": [
+                            {
+                              "type": "not",
+                              "condition": {
+                                "type": "offroad_only"
+                              }
+                            },
+                            {
+                              "type": "param",
+                              "key": "ActiveLongitudinalBackend",
+                              "equals": 2
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
               "enablement": [
                 {
                   "type": "capability",
                   "field": "has_longitudinal_control",
                   "equals": true
+                }
+              ]
+            },
+            {
+              "key": "InitialCruiseSpeedKph",
+              "widget": "option",
+              "title": "Initial Max Speed (km/h)",
+              "description": "Official backend initial max speed; changes apply on the next engagement.",
+              "min": 40,
+              "max": 145,
+              "step": 5,
+              "visibility": [
+                {
+                  "type": "not",
+                  "condition": {
+                    "type": "all",
+                    "conditions": [
+                      {
+                        "type": "capability",
+                        "field": "brand",
+                        "equals": "tesla"
+                      },
+                      {
+                        "type": "any",
+                        "conditions": [
+                          {
+                            "type": "all",
+                            "conditions": [
+                              {
+                                "type": "offroad_only"
+                              },
+                              {
+                                "type": "param",
+                                "key": "LongitudinalPlannerMode",
+                                "equals": 1
+                              }
+                            ]
+                          },
+                          {
+                            "type": "all",
+                            "conditions": [
+                              {
+                                "type": "offroad_only"
+                              },
+                              {
+                                "type": "param",
+                                "key": "LongitudinalPlannerMode",
+                                "equals": 2
+                              }
+                            ]
+                          },
+                          {
+                            "type": "all",
+                            "conditions": [
+                              {
+                                "type": "not",
+                                "condition": {
+                                  "type": "offroad_only"
+                                }
+                              },
+                              {
+                                "type": "param",
+                                "key": "ActiveLongitudinalBackend",
+                                "equals": 1
+                              }
+                            ]
+                          },
+                          {
+                            "type": "all",
+                            "conditions": [
+                              {
+                                "type": "not",
+                                "condition": {
+                                  "type": "offroad_only"
+                                }
+                              },
+                              {
+                                "type": "param",
+                                "key": "ActiveLongitudinalBackend",
+                                "equals": 2
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ],
+              "enablement": [
+                {
+                  "type": "capability",
+                  "field": "has_longitudinal_control",
+                  "equals": true
+                },
+                {
+                  "type": "not",
+                  "condition": {
+                    "type": "capability",
+                    "field": "pcm_cruise",
+                    "equals": true
+                  }
                 }
               ]
             },
@@ -1883,6 +2061,27 @@
               "enablement": [
                 {
                   "type": "not_engaged"
+                }
+              ]
+            },
+            {
+              "key": "NavigationEnabled",
+              "widget": "toggle",
+              "title": "Navigation (Alpha)",
+              "description": "Turn-by-turn navigation with a route map. Set a destination from comma connect.",
+              "visibility": [
+                {
+                  "type": "capability",
+                  "field": "device_type",
+                  "equals": "mici"
+                },
+                {
+                  "type": "not",
+                  "condition": {
+                    "type": "capability",
+                    "field": "is_sp_release",
+                    "equals": true
+                  }
                 }
               ]
             },

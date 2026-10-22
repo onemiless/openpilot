@@ -1,13 +1,10 @@
-import io
-import os
 import sys
-import pickle
-import struct
+import time
 from pathlib import Path
 
-from openpilot.common.file_chunker import get_chunk_name, get_manifest_path, open_file_chunked
+from openpilot.common.file_chunker import get_chunk_name, get_manifest_path
 from openpilot.common.hardware import AGNOS
-from openpilot.common.hardware.usb import CHESTNUT_USB_PRODUCT, USB_DEVICES_PATH, is_chestnut_usb_id
+from openpilot.common.hardware.usb import USB_DEVICES_PATH, is_chestnut_runtime_device, read
 
 MODELS_DIR = Path(__file__).resolve().parent / 'models'
 
@@ -17,31 +14,31 @@ def modeld_pkl_path(chestnut: bool):
   return MODELS_DIR / f'{prefix}driving_tinygrad.pkl'
 
 def load_oob(path, chestnut=False):
-  from tinygrad import Context, Device
-  from tinygrad.device import Buffer
+  from tinygrad import Context
   device = 'USB+AMD:LLVM' if chestnut else 'QCOM' if AGNOS else 'METAL' if sys.platform == 'darwin' else 'CPU:LLVM'
-  chunks = 0 if os.path.isfile(path) else int(Path(get_manifest_path(path)).read_text())
-  paths = [get_chunk_name(path, i, chunks) for i in range(chunks)] or [path]
-  with Context(DEV=device), open_file_chunked(path) as f:
-    opcodes = f.read(struct.unpack('<q', f.read(8))[0])
-    buffers, stage = Buffer(Device.DEFAULT, sum(map(os.path.getsize, paths)) - 8 - len(opcodes)).ensure_allocated(), bytearray(64 << 20)
-    for offset in range(0, buffers.nbytes, len(stage)):
-      n = f.readinto(piece := memoryview(stage)[:min(len(stage), buffers.nbytes - offset)])
-      if n != len(piece):
-        raise EOFError("incomplete model buffer")
-      buffers.view(n, offset).ensure_allocated().copy_from(Buffer("PYTHON", n, initial_value=piece[:n]))
-    return type("_Unpickler", (pickle.Unpickler,), {"persistent_load": lambda self, pid: buffers.view(*pid)})(io.BytesIO(opcodes)).load()
+  with Context(DEV=device):
+    from tinygrad_repo.examples.openpilot.helpers import load_pickle
+    return load_pickle(path, out_of_band=True)
 
 def chestnut_present() -> bool:
   for d in USB_DEVICES_PATH.glob("*"):
     try:
-      usb_id = (int((d / "idVendor").read_text(), 16), int((d / "idProduct").read_text(), 16))
-      product = (d / "product").read_text().strip()
-      if is_chestnut_usb_id(*usb_id) and product == CHESTNUT_USB_PRODUCT:
+      device = {"vendorId": int((d / "idVendor").read_text(), 16), "productId": int((d / "idProduct").read_text(), 16),
+                "product": read(d / "product") or "", "manufacturer": read(d / "manufacturer") or ""}
+      if is_chestnut_runtime_device(device):
         return True
     except Exception:
       pass
   return False
+
+def wait_for_chestnut(timeout: float = 10.) -> None:
+  # the cable is detected before chestnut enumerates
+  st = time.monotonic()
+  while not chestnut_present():
+    if time.monotonic() - st > timeout:
+      raise TimeoutError("chestnut did not enumerate")
+    time.sleep(0.1)
+
 
 def _compiled_file(path: Path) -> bool:
   try:

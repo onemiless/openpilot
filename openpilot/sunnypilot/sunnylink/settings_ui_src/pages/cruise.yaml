@@ -16,10 +16,67 @@ sections:
     title: Experimental Mode
     enablement:
     - $ref: '#/macros/longitudinal'
+    visibility:
+    - &id001
+      type: all
+      conditions:
+      - type: capability
+        field: brand
+        equals: tesla
+      - type: any
+        conditions:
+        - type: all
+          conditions:
+          - type: offroad_only
+          - type: param
+            key: LongitudinalPlannerMode
+            equals: 1
+        - type: all
+          conditions:
+          - type: offroad_only
+          - type: param
+            key: LongitudinalPlannerMode
+            equals: 2
+        - type: all
+          conditions:
+          - type: not
+            condition:
+              type: offroad_only
+          - type: param
+            key: ActiveLongitudinalBackend
+            equals: 1
+        - type: all
+          conditions:
+          - type: not
+            condition:
+              type: offroad_only
+          - type: param
+            key: ActiveLongitudinalBackend
+            equals: 2
+    description: Only Tesla Experimental and TN-NoDEC longitudinal backends use this
+      legacy model-control switch.
+  - key: InitialCruiseSpeedKph
+    widget: option
+    title: Initial Max Speed (km/h)
+    description: Official backend initial max speed; changes apply on the next engagement.
+    min: 40
+    max: 145
+    step: 5
+    visibility:
+    - type: not
+      condition: *id001
+    enablement:
+    - $ref: '#/macros/longitudinal'
+    - type: not
+      condition:
+        type: capability
+        field: pcm_cruise
+        equals: true
   - key: DynamicExperimentalControl
     widget: toggle
     title: Experimental Backend Dynamic Experimental Control
-    description: Only the Tesla Experimental longitudinal backend uses this setting to select ACC or End to End Longitudinal.
+    description: Only the Tesla Experimental longitudinal backend uses this setting
+      to select ACC or End to End Longitudinal.
     visibility:
     - type: capability
       field: brand
@@ -45,12 +102,14 @@ sections:
   - key: DisengageOnAccelerator
     widget: toggle
     title: Disengage Cruise on Accelerator Pedal
-    description: When enabled, pressing the accelerator pedal will disengage longitudinal control.
+    description: When enabled, pressing the accelerator pedal will disengage longitudinal
+      control.
   - key: LongitudinalPersonality
     widget: multiple_button
     title: Driving Personality
-    description: Standard is recommended. In aggressive mode, sunnypilot will follow lead cars closer and be more aggressive
-      with the gas and brake. In relaxed mode sunnypilot will stay further away from lead cars. On supported cars, you can
+    description: Standard is recommended. In aggressive mode, sunnypilot will follow
+      lead cars closer and be more aggressive with the gas and brake. In relaxed mode
+      sunnypilot will stay further away from lead cars. On supported cars, you can
       cycle through these personalities with your steering wheel distance button.
     options:
     - value: 0
@@ -244,7 +303,8 @@ sections:
   - key: SmartCruiseControlVision
     widget: toggle
     title: Vision
-    description: Use vision path predictions to estimate the appropriate speed to drive through turns ahead.
+    description: Use vision path predictions to estimate the appropriate speed to
+      drive through turns ahead.
     visibility:
     - type: any
       conditions:
@@ -266,7 +326,8 @@ sections:
   - key: SmartCruiseControlMap
     widget: toggle
     title: Map
-    description: Use map data to estimate the appropriate speed to drive through turns ahead.
+    description: Use map data to estimate the appropriate speed to drive through turns
+      ahead.
     visibility:
     - type: any
       conditions:

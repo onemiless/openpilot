@@ -16,18 +16,26 @@ export VECLIB_MAXIMUM_THREADS=1
 export QCOM_PRIORITY=12
 
 if [ -z "$AGNOS_VERSION" ]; then
-  export AGNOS_VERSION="19.7"
+  export AGNOS_VERSION="19.9"
 fi
 
 export STAGING_ROOT="/data/safe_staging"
 
 # Boot images follow the explicit physical profile, never a branch label.
 profile_value="${SUNNYPILOT_HARDWARE_PROFILE:-}"
-if [ -z "$profile_value" ] && [ -f /data/hardware_profile ]; then
-  profile_value="$(cat /data/hardware_profile)"
+profile_file="${SUNNYPILOT_HARDWARE_PROFILE_FILE:-/data/hardware_profile}"
+if [ -z "$profile_value" ] && [ -f "$profile_file" ]; then
+  profile_value="$(cat "$profile_file")" || exit 1
+  [ -n "$profile_value" ] || { echo "Empty hardware profile: $profile_file" >&2; exit 1; }
 fi
+case "$profile_value" in
+  ""|standard|c3xl) ;;
+  *) echo "Unsupported hardware profile: $profile_value" >&2; exit 1 ;;
+esac
 export AGNOS_MANIFEST_FILE="openpilot/common/hardware/comma/agnos.json"
 if [ "$profile_value" = "c3xl" ]; then
+  # C3XL's validated boot chain and system image remain on 19.7.
+  export AGNOS_VERSION="19.7"
   export AGNOS_MANIFEST_FILE="openpilot/common/hardware/comma/agnos-c3xl.json"
 fi
 

@@ -210,3 +210,47 @@ The LFS regression uses a deterministic CLI Git wrapper only for `git lfs env`,
 delegating every other operation to the real Git executable. It changes endpoint
 order and auth state between manifest and repeated preflight, verifies those
 changes are accepted, and verifies that a changed endpoint URL is rejected.
+
+
+## 2026-10-22 source integration checkpoint
+
+This round merges official source `f78c6c23773f4e6badcf62ee3ac222eb94c0eeb3`.
+Catalog `a89041fcbc13582893f81971214ff4120795b1d4` adds optional TTM while
+preserving CTM/BMV6 and both selected slots. Use this reviewed source SHA with
+`--baseline`; the earlier first-cycle command examples remain historical.
+Recursive locks and permanent `exp/20261022-sync/integrated` tags identify the
+opendbc/Panda/tinygrad fork commits. Check `retained-features.json` for their
+contracts; these source tags do not certify a device release.
+
+The user explicitly deferred device testing in this round. Do not infer C3,
+C3XL, C4, jiayi or UT3G runtime acceptance from host builds, software protocol
+loopback, loader parsing or another device's earlier report. Stock native
+small/DM/warp artifacts must be rebuilt for the new runtime, not copied from S0.
+
+Panda's new simple-SPI host and old firmware are mutually incompatible. Before
+any future device activation, close the matching host/application/bootstub/safety
+build and rollback gates. Keep C3XL's AGNOS19.7 manifest and boot-chain allowlist;
+standard19.9 and Chestnut8516 must never implicitly flash a custom adapter.
+
+CarParams mass normalization saves exact original bytes in
+`SPCarParamsMassNormalizationBackup`. Before starting an older manager, export
+that JSON and restore the original CP bytes, or restore the full S0 Params
+snapshot. An old manager removes unknown keys; the new backup key alone is not
+a rollback plan after the old manager has started. Normalization is idempotent,
+and historical log migration uses the same unit conversion.
+
+
+Official tracked assets use the upstream Hugging Face `.lfsconfig`; the fork-only
+217304-byte Chinese font is a normal Git blob with its original SHA, under one
+explicit `.gitattributes` exception. This avoids copying upstream model weights
+into the owner's GitHub LFS quota on every sync. Check `git lfs env` for old
+local/worktree URL overrides before fetching; never change another worktree's
+storage configuration to repair this checkout.
+
+Before a source-only push with `GIT_LFS_SKIP_PUSH=1`, prove every candidate LFS
+OID/size exists at that fixed official download endpoint and verify a fresh
+isolated `git lfs pull` plus full byte hashes. This skips redundant upload to
+storage that already has the exact objects; it does not permit publishing missing
+assets or writing to the upstream account. A new fork-only large asset needs its
+own reviewed storage plan. Keep the closure proof and directly stored font in
+the version snapshot. Source publication still does not authorize device activation.

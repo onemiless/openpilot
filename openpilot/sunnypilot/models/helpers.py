@@ -30,9 +30,8 @@ _LAST_VALIDATED_RAW: dict[str, dict | None] = {}
 
 
 def _compute_hash(file_path: str) -> str | None:
-  from openpilot.common.file_chunker import open_file_chunked
   try:
-    with open_file_chunked(file_path) as file:
+    with open(file_path, 'rb') as file:
       return hashlib.file_digest(file, "sha256").hexdigest().lower()
   except OSError:
     return None

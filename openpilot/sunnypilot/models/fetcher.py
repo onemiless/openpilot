@@ -6,13 +6,11 @@ See the LICENSE.md file in the root directory for more details.
 """
 
 import time
-import os
 from pathlib import Path
 import requests
 from requests.exceptions import (SSLError, RequestException, HTTPError)
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
-from openpilot.common.hardware.hw import Paths
 from openpilot.sunnypilot.models.helpers import is_bundle_version_compatible
 from openpilot.cereal import custom
 
@@ -28,40 +26,16 @@ class ModelParser:
     return download_uri
 
   @staticmethod
-  def _parse_chunk(chunk_data) -> custom.ModelManagerSP.Chunk:
-    chunk = custom.ModelManagerSP.Chunk()
-    chunk.fileName = chunk_data.get("file_name")
-    chunk.sha256 = chunk_data.get("sha256")
-    return chunk
-
-  @staticmethod
   def _parse_artifact(artifact_data) -> custom.ModelManagerSP.Artifact:
     artifact = custom.ModelManagerSP.Artifact()
     artifact.fileName = artifact_data.get("file_name")
     artifact.downloadUri = ModelParser._parse_download_uri(artifact_data.get("download_uri", {}))
 
-    if not artifact_data.get("chunks"):
-      name, digest = artifact.fileName, artifact.downloadUri.sha256
-      if not name or Path(name).name != name or name in (".", "..") or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
-        raise ValueError("Invalid model artifact filename or SHA256")
-      # Catalog generations reuse basenames for different compiled bytes; keep rollback files separate.
-      artifact.fileName = f"{digest}/{name}"
-
-    if "chunks" in artifact_data:
-      artifact.chunks = [ModelParser._parse_chunk(chunk_data) for chunk_data in artifact_data["chunks"]]
-
-      try:
-        model_dir = Paths.model_root()
-        os.makedirs(model_dir, exist_ok=True)
-        manifest_path = os.path.join(model_dir, f"{artifact.fileName}.chunkmanifest")
-        num_chunks = str(len(artifact.chunks))
-
-        if not os.path.exists(manifest_path) or open(manifest_path).read().strip() != num_chunks:
-          with open(manifest_path, "w") as f:
-            f.write(num_chunks)
-          cloudlog.info(f"Wrote chunk manifest for {artifact.fileName}: {num_chunks} chunks")
-      except Exception as e:
-        cloudlog.warning(f"Failed to write chunk manifest for {artifact.fileName}: {e}")
+    name, digest = artifact.fileName, artifact.downloadUri.sha256
+    if not name or Path(name).name != name or name in (".", "..") or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+      raise ValueError("Invalid model artifact filename or SHA256")
+    # Catalog generations reuse basenames for different compiled bytes; keep rollback files separate.
+    artifact.fileName = f"{digest}/{name}"
 
     return artifact
 
@@ -279,5 +253,3 @@ if __name__ == "__main__":
       model_overrides = {override.key: override.value for override in bundle.overrides}
       print(f"Bundle: {bundle.internalName}, Type: {model.type}, Status: {bundle.status}, Overrides: {model_overrides}")
       print(f"Artifact: {model.artifact.fileName}, Download URI: {model.artifact.downloadUri.uri}")
-      if model.artifact.chunks:
-        print(f"Contains {len(model.artifact.chunks)} chunks.")

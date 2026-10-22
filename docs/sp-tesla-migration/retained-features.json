@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "official_baseline": "27c132984df60e9ef42ebd1a805738b8c851356f",
+  "official_baseline": "f78c6c23773f4e6badcf62ee3ac222eb94c0eeb3",
   "source_branch": "dev-sp",
   "features": [
     {
@@ -15,7 +15,12 @@
         "opendbc_repo/opendbc/safety/modes/tesla.h"
       ],
       "acceptance": "CAN replay, control handoff and safety integration; device and road evidence separate",
-      "contract": "Parent Params snapshot -> explicit session CS.update_config; FAULT veto preserved; standard actuator outputs contain final physical commands; no retired Web TX consumers"
+      "contract": "Parent Params snapshot -> explicit session CS.update_config; FAULT veto preserved; standard actuator outputs contain final physical commands; no retired Web TX consumers",
+      "source": {
+        "opendbc": "322b203fd504c40bcac69693674534d53eea9929",
+        "official_opendbc": "5be750714349624462da012f2f86ea9b686d8b27"
+      },
+      "steering_protocol_contract": "Select legacy 2-bit or detected 3-bit consistently across fingerprint/CP/DBC/controller/compiled safety. Preserve legacy FSD14 mapping. CP STEERING_3_BIT=8 and safetyParam STEERING_3_BIT=4 do not reuse old FSD14 flags."
     },
     {
       "id": "longitudinal-backends",
@@ -31,10 +36,10 @@
         "openpilot/selfdrive/car/card.py",
         "openpilot/selfdrive/car/cruise.py"
       ],
-      "contract": "Tesla-only custom selection; atomic latch and manager stop-before-clear; Official uses upstream planner, Experimental/TN share legacy planner with frozen solver ABI; Official brake/stop tuning is explicitly approximate; Official has no DEC after upstream sunset; retained Experimental alone owns legacy DEC; TN freshness and diagnostic hooks execute through the common SP publisher; card reads the active session without writing a latch",
+      "contract": "Tesla-only session-latched IDs 0/1/2 with stop-before-clear. Official uses the upstream 0.11.3 planner/AccelBoost and integer InitialCruiseSpeedKph; Experimental/TN retain frozen legacy planning/DEC semantics and baseline replay outputs. Traffic constraints and final CAN authority gates remain independent; do not stack stopping policies.",
       "acceptance": "Official/Experimental/TN-NoDEC selected session and default tuning replay",
       "source": {
-        "official": "27c132984df60e9ef42ebd1a805738b8c851356f",
+        "official": "f78c6c23773f4e6badcf62ee3ac222eb94c0eeb3",
         "retained_legacy": "f400fc5e56839c3ece7f999d18bd54842900df21"
       },
       "compatibility": {
@@ -50,14 +55,16 @@
             "scope": "Tesla Experimental only"
           }
         },
-        "schema": "Preserve LongitudinalPlanSP.dec@0 and all previously published Tesla/AccelController ordinals; no protocol migration in A",
-        "cruise": "Upstream two-argument initialize_v_cruise; legacy DEC initial-speed suppression only for active Experimental"
+        "schema": "Preserve published LongitudinalPlanSP.dec@0, AccelController/Tesla fields, SelfdriveState.experimentalMode@10 and experimentalModeSwitched@14 for legacy consumers; Official does not use the legacy switch.",
+        "cruise": "Official/standard uses integer InitialCruiseSpeedKph; legacy Tesla Experimental/TN retain their initial-speed behavior, converted explicitly to the new integer API. Legacy UI/buttons only appear for supported Tesla legacy backends and respect the active session."
       },
       "verification": [
         "tools/sp_tesla_e2e/upstream_a_backend_e2e.py --stage candidate",
         "tools/sp_tesla_e2e/tesla_planner_chain_e2e.py --mode replay",
-        "tools/sp_tesla_e2e/tesla_planner_chain_e2e.py --mode session-transition"
-      ]
+        "tools/sp_tesla_e2e/tesla_planner_chain_e2e.py --mode session-transition",
+        "tools/sp_tesla_e2e/upstream_control_policy_e2e.py --output <artifact.json>"
+      ],
+      "car_params_contract": "Normalize reused per-mass @22/@23/@24 units exactly once when deprecated.mass>0; reject nonfinite values; preserve original CP bytes in SPCarParamsMassNormalizationBackup before mutation. Export backup/restore original bytes before starting an old manager, which deletes unknown keys; otherwise restore the full S0 Params snapshot."
     },
     {
       "id": "traffic-control",
@@ -117,12 +124,14 @@
       "source": {
         "model_chain": "557c55b54d6da1ec78975735c9c602dca0e85c87",
         "catalog": "a89041fcbc13582893f81971214ff4120795b1d4",
-        "runtime_tinygrad": "69fd4d34d4430036378aba2b43f9d339cdd6ea73",
+        "runtime_tinygrad": "8ba9558ccbe4424d466668290bf2043f0ae29274",
         "catalog_compiler_tinygrad": "5d186bdb43c2bcc6c56b6ececf427c34bada0de9",
-        "default_big_onnx_sha256": "6fee5937923c74848df4a63f6239eb6331c6274dd4bdb7a5d6ec0388a8b543d5",
-        "default_big_native_sha256": "0be3bdfd6dc656afcfc0c5b28a61d2cbc336fa0232c4fd4ebd8ba25990547d88"
+        "default_big_native_sha256": "d4c7a3fcfc95813826ca871a80bea18df833aacb2eb6f5333e25a01e65b1a422",
+        "runtime_upstream_tinygrad": "92b742f711c7d216fd3ed7a46a30a959e3c43bd4",
+        "default_big_source_ref": "1e219d7785cfb7b7343c7f2366347fc86e7ce5f2",
+        "retained_S0_big_onnx_sha256": "6fee5937923c74848df4a63f6239eb6331c6274dd4bdb7a5d6ec0388a8b543d5"
       },
-      "contract": "Selector 21 uses QCOM v25 and Chestnut v28 plain artifacts; preserve model ref and source slot, migrate v20 only when the same ref's new files validate. SHA256 cache directories preserve v27 root/chunks for D0 rollback. Default small/DM native OOB must be rebuilt for this runtime; selected catalog models require SPTGPLN1 and fused plain warp. Keep finite checks for both big and small and retained default-small fallback. No schema, backend ID, opendbc, Panda, SCC or stopping-policy changes in B.",
+      "contract": "Selector21 uses fixed QCOMv25/Chestnutv28 whole-file plain artifacts with source compiler5d186. Runtime8ba955 follows official92b742 plus UT3G-DUAL enumeration; never reuse old native prebuilt/cache as new runtime proof. Default native Big is official MDMv3 PKL d4c7 (not rebuilt from retained CTMv2 ONNX); small/DM/warps build against the selected runtime. Preserve both slot refs, SHA-addressed cache, validation-before-atomic-activation, finite outputs and stock-small fallback; retain old caches for rollback.",
       "regression_models": [
         "original bundled big",
         "LM",
@@ -140,14 +149,18 @@
         "tools/sp_tesla_e2e/model_catalog_migration_e2e.py",
         "tools/sp_tesla_e2e/model_readiness_e2e.py",
         "docs/sp-tesla-migration/MODEL_FAILURES-B.md",
-        "tools/sp_tesla_e2e/catalog_refresh_e2e.py --catalog-dir <fixed catalogs> --output <artifact.json>"
+        "tools/sp_tesla_e2e/catalog_refresh_e2e.py --catalog-dir <fixed catalogs> --output <artifact.json>",
+        "tools/sp_tesla_e2e/hardware_identity_e2e.py --output <artifact.json>",
+        "tools/sp_tesla_e2e/model_build_closure_e2e.py --checkpoint current --catalog-dir <fixed catalogs> --output <artifact.json>"
       ],
-      "known_pending": "The registered original 6fee ONNX was rebuilt with runtime tinygrad69 into native OOB 0be3bdfd, with compiler seed/reload checks and 136 finite real USB AMD frames on C3XL at test source 9bb154b08a8. Fresh remote LFS download matched the full compiled SHA and size. This synthetic test does not establish production 20 Hz; live camera publication, selected models, fallback and rollback remain separate device gates. Legacy NEXT_BUFFER 76cc0a9b is retained only in D0 rollback data. CTMV2 v28 matches the training checkpoint but uses a distinct queue export and remains a catalog model.",
+      "known_pending": "20261022 host integration: actual CTM/BMV6 bytes match catalog SHA and new read_parts validates both frame-size graphs; no AMD kernels or device tests were run. Source/current native MDMv3+DM+warp LFS identities must remain locked separately. C3/C3XL/C4 + jiayi/UT3G cold boot/inference/fallback/physical CAN/road and device rollback remain pending by user request.",
       "hardware_adapters": {
-        "jiayi": "Preserve registered custom runtime identities; USB VID/PID/product alone do not authorize persistent official flashing.",
-        "ut3g": "Preserve deployed 0001 identities; UT3G-DUAL 0002 requires complete app/modeld/monitoring/tinygrad enumeration and remains outside official automatic flashing."
+        "jiayi": "Strict registered ed4/8516 CLEAN runtime identities; shared IDs do not authorize persistent flashing.",
+        "ut3g": "Preserve deployed shared0001 runtime identity; DUAL requires ADD1:0002 + tiny + strict custom [8hex]-UT3G-DUAL across app/modeld/monitoring/tinygrad. Unknown/dirty/ROM are not runtime devices."
       },
-      "catalog_refresh_contract": "a89041fc adds TTM/e46b35b0 to Chestnut v28; existing 16 big and 77 QCOM entries unchanged. Preserve selected CTM/BMV6 and both slot identities; no automatic TTM selection or runtime upgrade in this checkpoint."
+      "catalog_refresh_contract": "a89041fc adds TTM/e46b35b0 to Chestnut v28; existing 16 big and 77 QCOM entries unchanged. Preserve selected CTM/BMV6 and both slot identities; no automatic TTM selection or runtime upgrade in this checkpoint.",
+      "hardware_update_contract": "No board-level enrollment exists, so hardwared refuses automatic persistent writes to shared/ROM identities without claiming a successful flash. Runtime-only finder/link_up may recognize DUAL; explicit manual flasher ID scope stays unchanged. B450 link validity is independent of optional supply telemetry; real low voltage/fault/link failures still gate readiness.",
+      "asset_storage_contract": "Use the official HF LFS endpoint for every tracked official asset; full remote OID/size and fresh-fetch SHA verification precede any source push that skips redundant LFS upload. The 217304-byte fork Chinese font is stored directly in Git with its S0 SHA. Do not push missing assets or assume upstream write access."
     },
     {
       "id": "road-resize",
@@ -176,7 +189,7 @@
         "openpilot/system/ui/lib/font_characters.py"
       ],
       "acceptance": "passive CAN replay, C3 content geometry, page touches and stale display",
-      "contract": "Passive subscription only while visible and compatible CarParams known; resets data across car changes; C3/C4 alert translation at renderer boundary"
+      "contract": "Passive subscription only while visible and compatible CarParams known; resets data across car changes; C3/C4 alert translation at renderer boundary; preserve the S0 custom Chinese font b45930c3ab21d5cbce2ccac2b9ad166ca8569621d70eae9b732ca40e7d10122a rather than replacing it with the smaller official subset; store this 217 KB fork-only font directly in Git while official assets use the official Hugging Face LFS endpoint."
     },
     {
       "id": "dos-f4-and-hardware-profiles",
@@ -190,7 +203,16 @@
         "openpilot/system/camerad/cameras/hw.h",
         "launch_env.sh"
       ],
-      "acceptance": "physical profile identity, board-specific firmware build and offroad startup; C3 does not certify C3XL/C4"
+      "acceptance": "physical profile identity, board-specific firmware build and offroad startup; C3 does not certify C3XL/C4",
+      "source": {
+        "panda": "0d1963ba624f0410a894daf6857eca11b02771d9",
+        "official_panda": "8a16e089b88593914823743df29e1c30b7dd3e00"
+      },
+      "contract": "New simple-SPI host C++/Python, application, bootstub and compiled safety must be one version set. Preserve DOS/F4 reset-cookie/HardFault and H7 support. Old ac0f SPI and new host do not interoperate; upgrade/rollback must restore host+main+bootstub coherently. Standard AGNOS defaults19.9, C3XL stays19.7+its validated manifest; invalid/empty/unreadable explicit profile fails closed, never falls into a standard image.",
+      "verification": [
+        "tools/sp_tesla_e2e/agnos_profile_e2e.py --output <artifact.json>",
+        "panda/tests/spi_protocol_e2e.py <absolute repo root> <artifact directory>"
+      ]
     }
   ]
 }

@@ -82,7 +82,7 @@ def run(catalog_dir: Path, output: Path):
         qcom = params.get('ModelManager_ActiveBundle')
         manager = object.__new__(ModelManagerSP)
         manager.params, manager.selected_bundle, manager.active_bundle = params, None, None
-        manager.chestnut_present, manager._chunk_size, manager._download_start_times = True, 128000, {}
+        manager.chestnut_present, manager._block_size, manager._download_start_times = True, 128000, {}
         manager._download_ref, manager._report_status = 'old-model-ref', lambda: None
         params.put('ModelManager_DownloadRef', 'old-model-ref', block=True)
         destination = model_root / parsed.models[0].artifact.fileName

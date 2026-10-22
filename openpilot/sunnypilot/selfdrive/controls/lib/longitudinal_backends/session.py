@@ -39,3 +39,11 @@ def end_longitudinal_session(params, consumers) -> None:
   with open(BACKEND_LOCK_PATH, "a") as lock_file:
     fcntl.flock(lock_file, fcntl.LOCK_EX)
     params.remove(ACTIVE_BACKEND_PARAM)
+
+
+def legacy_experimental_enabled(CP, params) -> bool:
+  if CP is None or CP.brand != "tesla":
+    return False
+  active = params.get(ACTIVE_BACKEND_PARAM)
+  value = active if active is not None else params.get(DESIRED_BACKEND_PARAM, return_default=True)
+  return get_backend(value).id != BackendId.OFFICIAL

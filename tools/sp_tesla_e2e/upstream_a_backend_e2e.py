@@ -17,8 +17,7 @@ from openpilot.common.params import Params
 from openpilot.common.prefix import OpenpilotPrefix
 from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.factory import create_longitudinal_planner
 from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.longcontrol_factory import create_long_control
-from openpilot.tools.lib.logreader import LogReader
-from tools.sp_tesla_e2e.tesla_planner_chain_e2e import FIXTURE, Inputs, Published
+from tools.sp_tesla_e2e.tesla_planner_chain_e2e import FIXTURE, Inputs, Published, fixture_messages
 
 
 def run_case(route, backend, enabled, experimental, endpoint, stage):
@@ -81,7 +80,7 @@ def run_case(route, backend, enabled, experimental, endpoint, stage):
     elif backend == 0:
       assert not plan_sp.dec.enabled and not plan_sp.dec.active
     # The native model acceleration wins only when the real backend admits it.
-    allows_e2e = experimental and not (expected_dec and enabled and endpoint >= 10.)
+    allows_e2e = (backend == 0 and stage == 'candidate') or (experimental and not (expected_dec and enabled and endpoint >= 10.))
     assert (str(plan.longitudinalPlanSource) == 'e2e') == allows_e2e, (
       backend, enabled, experimental, endpoint, str(plan.longitudinalPlanSource))
     assert all(math.isfinite(v) for v in (plan.aTarget, control_accel, *plan.speeds, *plan.accels, *plan.jerks))
@@ -153,6 +152,7 @@ def cruise_case(route, backend, enabled, experimental, stage):
     card.CC_prev = structs.CarControl(enabled=False)
     card.v_cruise_helper = VCruiseHelper(ci.CP, ci.CP_SP)
     card.experimental_mode, card.dynamic_experimental_control = experimental, enabled
+    card.initial_cruise_speed = 60
     card.is_metric = True
     raw_can = can_list_to_can_capnp(frames, msgtype='can')
     # Only IPC delivery and the unrelated radar endpoint are replaced. The
@@ -160,7 +160,7 @@ def cruise_case(route, backend, enabled, experimental, stage):
     with patch('openpilot.selfdrive.car.card.messaging.drain_sock_raw', return_value=[raw_can]):
       state, _, _ = card.state_update()
     dec_applies = enabled and (stage == 'baseline' or backend == 1)
-    expected = 105. if experimental and not dec_applies else 72.
+    expected = 105. if experimental and not dec_applies and not (backend == 0 and stage == 'candidate') else 72.
     assert state.vCruise == expected, (backend, enabled, experimental, stage, state.vCruise, expected)
     assert params.get('ActiveLongitudinalBackend') == backend
     assert params.get('LongitudinalPlannerMode') == (backend + 1) % 3
@@ -186,7 +186,7 @@ def main():
   result['source_sha256'] = {str(p.resolve().relative_to(root)) if p.resolve().is_relative_to(root) else str(p.resolve()):
                            hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
   try:
-    route = list(LogReader(str(FIXTURE)))
+    route = list(fixture_messages())
     for backend in range(3):
       for enabled in (False, True):
         for experimental in (False, True):

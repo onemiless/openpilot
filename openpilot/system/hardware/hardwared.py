@@ -41,9 +41,10 @@ PANDA_STATES_TIMEOUT = round(1000 / SERVICE_LIST['pandaStates'].frequency * 1.5)
 ONROAD_CYCLE_TIME = 1  # seconds to wait offroad after requesting an onroad cycle
 
 class Chestnut:
-  # flash offroad, modeld ignores chestnut until the product string matches
+  # flash before going onroad, modeld ignores chestnut until the product string matches
   MAX_ATTEMPTS = 3
   RETRY_INTERVAL = 20.
+  STARTUP_TIMEOUT = 30.
 
   def __init__(self):
     self.thread: threading.Thread | None = None
@@ -51,6 +52,10 @@ class Chestnut:
     self.last_attempt = 0.
     self.flashed = False
     self.mismatch = False
+
+  @property
+  def flashing(self) -> bool:
+    return self.thread is not None and self.thread.is_alive() and time.monotonic() - self.last_attempt < self.STARTUP_TIMEOUT
 
   @property
   def failed(self) -> bool:
@@ -69,11 +74,15 @@ class Chestnut:
       self.flashed = False
       return
 
+    # No boards are enrolled for automatic writes; shared USB/ROM IDs do not prove firmware ownership.
+    if any(is_chestnut_usb_id(d["vendorId"], d["productId"], include_bootloader=True) for d in usb_state):
+      return
+
     if not offroad or self.flashed or self.attempts >= self.MAX_ATTEMPTS:
       return
     if self.thread is not None and self.thread.is_alive():
       return
-    if time.monotonic() - self.last_attempt < self.RETRY_INTERVAL:
+    if self.attempts > 0 and time.monotonic() - self.last_attempt < self.RETRY_INTERVAL:
       return
 
     self.attempts += 1
@@ -222,7 +231,7 @@ def hardware_thread(end_event, hw_queue) -> None:
     network_strength=NetworkStrength.unknown,
     network_stats={'wwanTx': -1, 'wwanRx': -1},
     modem_temps=[],
-    usb_state=[],
+    usb_state=get_usb_state(),
   )
 
   all_temp_filter = FirstOrderFilter(0., TEMP_TAU, DT_HW, initialized=False)
@@ -313,7 +322,7 @@ def hardware_thread(end_event, hw_queue) -> None:
     chestnut.update(started_ts is None, last_hw_state.usb_state)
     chestnut_state = sm["chestnutState"]
     chestnut_valid = sm.alive["chestnutState"] and sm.valid["chestnutState"]
-    chestnut_status.update(started_ts is None, branch, last_hw_state.usb_state, chestnut.failed,
+    chestnut_status.update(started_ts is None or not onroad_conditions["ignition"], branch, last_hw_state.usb_state, chestnut.failed,
                            params.get_bool("ChestnutLoading"), params.get("ChestnutActive"),
                            chestnut_state if chestnut_valid else None, set_offroad_alert_if_changed)
     # this subset is only used for offroad
@@ -360,6 +369,8 @@ def hardware_thread(end_event, hw_queue) -> None:
     # must be at an engageable thermal band to go onroad
     startup_conditions["device_temp_engageable"] = thermal_status < ThermalStatus.overheated
 
+    startup_conditions["not_flashing_chestnut"] = not chestnut.flashing
+
     # ensure device is fully booted
     startup_conditions["device_booted"] = startup_conditions.get("device_booted", False) or HARDWARE.booted()
 
@@ -373,7 +384,8 @@ def hardware_thread(end_event, hw_queue) -> None:
     # - TIZI, or
     # - TICI on an upstream tici channel or this fork's dev-sp branch
     build_metadata = get_build_metadata()
-    is_unsupported_combo = COMMA_HARDWARE and HARDWARE.get_device_type() == "tici" and build_metadata.channel_type != "tici" and build_metadata.channel != "dev-sp"
+    is_unsupported_combo = (COMMA_HARDWARE and HARDWARE.get_device_type() == "tici" and
+                            build_metadata.channel_type != "tici" and build_metadata.channel != "dev-sp")
     startup_conditions["not_tici"] = not is_unsupported_combo
     onroad_conditions["not_tici"] = not is_unsupported_combo
     set_offroad_alert("Offroad_TiciSupport", is_unsupported_combo, extra_text=build_metadata.channel)

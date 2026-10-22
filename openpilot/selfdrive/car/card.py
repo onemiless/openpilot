@@ -185,6 +185,7 @@ class Car:
     self.v_cruise_helper = VCruiseHelper(self.CP, self.CP_SP)
 
     self.is_metric = self.params.get_bool("IsMetric")
+    self.initial_cruise_speed = self.params.get("InitialCruiseSpeedKph", return_default=True)
     self.experimental_mode = self.params.get_bool("ExperimentalMode")
 
     # card is driven by can recv, expected at 100Hz
@@ -223,10 +224,15 @@ class Car:
     self.v_cruise_helper.update_v_cruise(CS, self.sm['carControl'].enabled, self.is_metric)
     if self.sm['carControl'].enabled and not self.CC_prev.enabled:
       # Use CarState w/ buttons from the step selfdrived enables on
-      experimental_mode = self.experimental_mode
-      if self.CP.brand == "tesla" and get_backend(self.params.get(ACTIVE_BACKEND_PARAM)).id == BackendId.EXPERIMENTAL:
-        experimental_mode = experimental_mode and not self.params.get_bool("DynamicExperimentalControl")
-      self.v_cruise_helper.initialize_v_cruise(self.CS_prev, experimental_mode)
+      initial_speed = self.initial_cruise_speed
+      if self.CP.brand == "tesla":
+        backend = get_backend(self.params.get(ACTIVE_BACKEND_PARAM))
+        if backend.id != BackendId.OFFICIAL:
+          experimental_mode = self.experimental_mode
+          if backend.id == BackendId.EXPERIMENTAL:
+            experimental_mode = experimental_mode and not self.params.get_bool("DynamicExperimentalControl")
+          initial_speed = 105 if experimental_mode else 40
+      self.v_cruise_helper.initialize_v_cruise(self.CS_prev, initial_speed)
 
     # TODO: mirror the carState.cruiseState struct?
     CS.vCruise = float(self.v_cruise_helper.v_cruise_kph)
@@ -314,7 +320,8 @@ class Car:
   def params_thread(self, evt):
     while not evt.is_set():
       self.is_metric = self.params.get_bool("IsMetric")
-      self.experimental_mode = self.params.get_bool("ExperimentalMode") and self.CP.openpilotLongitudinalControl
+      self.initial_cruise_speed = self.params.get("InitialCruiseSpeedKph", return_default=True)
+      self.experimental_mode = self.params.get_bool("ExperimentalMode")
 
       # sunnypilot
       self.v_cruise_helper.read_custom_set_speed_params()

@@ -27,8 +27,19 @@ from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.registry 
 from openpilot.sunnypilot.selfdrive.traffic_control.controller import TrafficControlPhase
 from openpilot.sunnypilot.selfdrive.traffic_control.final_plan_arbitrator import FinalPlanArbitrator
 from openpilot.tools.lib.logreader import LogReader
+from openpilot.sunnypilot.system.params_migration import normalize_car_params
 
 FIXTURE = Path('openpilot/sunnypilot/selfdrive/controls/tests/fixtures/tesla_legacy_planner_warm.rlog.zst')
+
+
+def fixture_messages():
+  for reader in LogReader(str(FIXTURE)):
+    if reader.which() == 'carParams':
+      migrated = reader.as_builder()
+      normalize_car_params(migrated.carParams)
+      yield migrated.as_reader()
+    else:
+      yield reader
 
 
 class Inputs:
@@ -276,7 +287,7 @@ def manager_transition_case(name, stubborn):
       def __init__(self):
         self.iteration = 0
         self.values = {'deviceState': ns(started=False), 'carParams': next(
-          m.carParams for m in LogReader(str(FIXTURE)) if m.which() == 'carParams'), 'pandaStates': []}
+          m.carParams for m in fixture_messages() if m.which() == 'carParams'), 'pandaStates': []}
 
       def __getitem__(self, key):
         return self.values[key]
@@ -379,7 +390,7 @@ def replay_rows():
             apply_backend_profile(p, get_backend(backend), profile)
           config = p.get('LongitudinalTuningConfig')
         messages = []
-        for reader in LogReader(str(FIXTURE)):
+        for reader in fixture_messages():
           m = reader.as_builder()
           if m.which() == 'selfdriveState':
             m.selfdriveState.experimentalMode = e2e
@@ -412,13 +423,13 @@ def main():
     result['transitions'] = manager_transition()
     result['passed'] = all(r['passed'] for r in result['transitions'])
   elif args.mode == 'non-tesla':
-    result['scope_cases'] = non_tesla_scope(list(LogReader(str(FIXTURE))))
+    result['scope_cases'] = non_tesla_scope(list(fixture_messages()))
     result['passed'] = all(r['passed'] for r in result['scope_cases'])
   elif args.mode == 'cold-start':
-    result['chain'] = control_chain(list(LogReader(str(FIXTURE))), cold_start=True)
+    result['chain'] = control_chain(list(fixture_messages()), cold_start=True)
     result['passed'] = all(r['passed'] for r in result['chain'])
   elif args.mode == 'p1':
-    result['chain'] = control_chain(list(LogReader(str(FIXTURE))))
+    result['chain'] = control_chain(list(fixture_messages()))
     result['multiprocess'] = process_latch()
     result['official_default_parity'] = official_default_parity()
     result['tuning_metadata'] = {spec.slug: {'approximate_fields': sorted(spec.approximate_tuning_fields),
