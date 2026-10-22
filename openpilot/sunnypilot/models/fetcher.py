@@ -146,7 +146,7 @@ class ModelCache:
 
 class ModelFetcher:
   """Handles fetching and caching of model data from remote source"""
-  CATALOG_REF = "da2d8dac5f77e3a6f72fefbfb14edea3555f05f6"
+  CATALOG_REF = "a89041fcbc13582893f81971214ff4120795b1d4"
   MODEL_URL = f"https://raw.githubusercontent.com/sunnypilot/sunnypilot-models/{CATALOG_REF}/docs/driving_models_v25.json"
   MODEL_URL_CHESTNUT = f"https://raw.githubusercontent.com/sunnypilot/sunnypilot-models/{CATALOG_REF}/docs/driving_models_chestnut_v28.json"
 

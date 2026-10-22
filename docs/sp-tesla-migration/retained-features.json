@@ -106,25 +106,48 @@
       "review_edges": [
         "openpilot/selfdrive/modeld/helpers.py",
         "openpilot/system/hardware/chestnut/status.py",
-        "tinygrad_repo"
+        "tinygrad_repo",
+        "openpilot/common/hardware/usb.py",
+        "openpilot/system/hardware/hardwared.py",
+        "openpilot/system/hardware/chestnut/monitoring.py",
+        "openpilot/system/hardware/chestnut/flash.py",
+        "tinygrad_repo/tinygrad/runtime/ops_amd.py"
       ],
       "acceptance": "readiness E2E, catalog/download/Params E2E, actual executable wrapper, selected real inference, DM and small-model fallback; physical and road evidence separately recorded",
       "source": {
         "model_chain": "557c55b54d6da1ec78975735c9c602dca0e85c87",
-        "catalog": "da2d8dac5f77e3a6f72fefbfb14edea3555f05f6",
+        "catalog": "a89041fcbc13582893f81971214ff4120795b1d4",
         "runtime_tinygrad": "69fd4d34d4430036378aba2b43f9d339cdd6ea73",
         "catalog_compiler_tinygrad": "5d186bdb43c2bcc6c56b6ececf427c34bada0de9",
         "default_big_onnx_sha256": "6fee5937923c74848df4a63f6239eb6331c6274dd4bdb7a5d6ec0388a8b543d5",
         "default_big_native_sha256": "0be3bdfd6dc656afcfc0c5b28a61d2cbc336fa0232c4fd4ebd8ba25990547d88"
       },
       "contract": "Selector 21 uses QCOM v25 and Chestnut v28 plain artifacts; preserve model ref and source slot, migrate v20 only when the same ref's new files validate. SHA256 cache directories preserve v27 root/chunks for D0 rollback. Default small/DM native OOB must be rebuilt for this runtime; selected catalog models require SPTGPLN1 and fused plain warp. Keep finite checks for both big and small and retained default-small fallback. No schema, backend ID, opendbc, Panda, SCC or stopping-policy changes in B.",
-      "regression_models": ["original bundled big", "LM", "BMV6", "CTM", "CTMV2", "CTV3M", "MDM", "MDMV3", "stock small", "selected QCOM", "DM"],
+      "regression_models": [
+        "original bundled big",
+        "LM",
+        "BMV6",
+        "CTM",
+        "CTMV2",
+        "CTV3M",
+        "MDM",
+        "MDMV3",
+        "stock small",
+        "selected QCOM",
+        "DM"
+      ],
       "verification": [
         "tools/sp_tesla_e2e/model_catalog_migration_e2e.py",
         "tools/sp_tesla_e2e/model_readiness_e2e.py",
-        "docs/sp-tesla-migration/MODEL_FAILURES-B.md"
+        "docs/sp-tesla-migration/MODEL_FAILURES-B.md",
+        "tools/sp_tesla_e2e/catalog_refresh_e2e.py --catalog-dir <fixed catalogs> --output <artifact.json>"
       ],
-      "known_pending": "The registered original 6fee ONNX was rebuilt with runtime tinygrad69 into native OOB 0be3bdfd, with compiler seed/reload checks and 136 finite real USB AMD frames on C3XL at test source 9bb154b08a8. Fresh remote LFS download matched the full compiled SHA and size. This synthetic test does not establish production 20 Hz; live camera publication, selected models, fallback and rollback remain separate device gates. Legacy NEXT_BUFFER 76cc0a9b is retained only in D0 rollback data. CTMV2 v28 matches the training checkpoint but uses a distinct queue export and remains a catalog model."
+      "known_pending": "The registered original 6fee ONNX was rebuilt with runtime tinygrad69 into native OOB 0be3bdfd, with compiler seed/reload checks and 136 finite real USB AMD frames on C3XL at test source 9bb154b08a8. Fresh remote LFS download matched the full compiled SHA and size. This synthetic test does not establish production 20 Hz; live camera publication, selected models, fallback and rollback remain separate device gates. Legacy NEXT_BUFFER 76cc0a9b is retained only in D0 rollback data. CTMV2 v28 matches the training checkpoint but uses a distinct queue export and remains a catalog model.",
+      "hardware_adapters": {
+        "jiayi": "Preserve registered custom runtime identities; USB VID/PID/product alone do not authorize persistent official flashing.",
+        "ut3g": "Preserve deployed 0001 identities; UT3G-DUAL 0002 requires complete app/modeld/monitoring/tinygrad enumeration and remains outside official automatic flashing."
+      },
+      "catalog_refresh_contract": "a89041fc adds TTM/e46b35b0 to Chestnut v28; existing 16 big and 77 QCOM entries unchanged. Preserve selected CTM/BMV6 and both slot identities; no automatic TTM selection or runtime upgrade in this checkpoint."
     },
     {
       "id": "road-resize",
@@ -139,7 +162,7 @@
         "openpilot/system/camerad/cameras/camera_common.cc",
         "openpilot/common/transformations/camera.py"
       ],
-      "contract": "CHESTNUT_ROAD_SIZE=1344x760 is explicit; OX03C10 road streams only, cabin unchanged, intrinsics scaled once",
+      "contract": "Since c3a0d5e77cc: eligible non-C4/tici/tizi 1928x1208 road streams default to 1344x760 before VisionIPC, without an opt-in environment variable; cabin unchanged, intrinsics scaled once. Preserve actual sensor/device geometry and choose matching model warps.",
       "acceptance": "actual camera dimensions, QCOM fallback, real model messages and sustained frame rate"
     },
     {
