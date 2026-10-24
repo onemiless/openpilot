@@ -276,3 +276,25 @@ UT3G/jiayi bridge images and update policy are unchanged. Rebuilding Panda again
 the new opendbc safety does not authorize flashing it. Device identity, matched
 host/application/bootstub, physical inference/CAN/road and full D0 rollback
 acceptance remain pending; previous device evidence does not qualify this source.
+
+
+## C3/tici boot-chain correction (2026-10-24)
+
+A standard profile does not make C3/tici compatible with stock 3X/four boot images.
+The verified stock19.9 A-slot update failed before Linux with Unsupported firmware
+detected on C3 80c4514b. Do not repeat that image set on C3.
+
+C3 keeps the official19.9 system partition but uses mr-one/c3-dev
+`1ec51c0e5ef0f7ab5e00ecc4edeb5b60a39d245b` abl/xbl/xbl_config/boot.
+The independent agnos-c3.json and C3 allowlist pin those images; C3XL retains its
+separate19.7 policy, and tizi/mici retain stock19.9. Both launch and background
+updater use the selected manifest, with no C3 fallback to an unvalidated stock
+boot chain. Corrupt/missing images or weakened A/B verification fail before IO.
+
+The C3 selection failed in the pre-fix E2E. The corrected shell/updater/manifest
+E2E passes23 cases and the existing AGNOS profile E2E passes16. QDL readback
+verified all four C3 images on slotA; only mismatched abl_a and boot_a were written.
+System/userdata/slotB were not rewritten during recovery. The device subsequently
+booted actual AGNOS19.9 with the mr-one C3 kernel; runtime/build and road acceptance
+remain separate. See artifacts/c3-dev-sp-update-20261024-80c4514b in the Desktop
+workspace for the complete initial-failure and recovery evidence.

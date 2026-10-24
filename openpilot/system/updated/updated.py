@@ -196,8 +196,8 @@ def handle_agnos_update() -> None:
   from openpilot.common.hardware.comma.agnos import flash_agnos_update, get_target_slot_number
 
   cur_version = HARDWARE.get_os_version()
-  updated_version = run(["bash", "-c", r"unset AGNOS_VERSION && source launch_env.sh && \
-                          echo -n $AGNOS_VERSION"], OVERLAY_MERGED).strip()
+  updated_version, manifest_relative = run(["bash", "-c", r'unset AGNOS_VERSION && source launch_env.sh && \
+                          printf "%s\n%s" "$AGNOS_VERSION" "$AGNOS_MANIFEST_FILE"'], OVERLAY_MERGED).split("\n", 1)
 
   cloudlog.info(f"AGNOS version check: {cur_version} vs {updated_version}")
   if cur_version == updated_version:
@@ -210,9 +210,9 @@ def handle_agnos_update() -> None:
 
   from openpilot.sunnypilot.hardware.profile import HardwareProfile, get_hardware_profile
   c3xl = get_hardware_profile() == HardwareProfile.C3XL
-  manifest_name = "agnos-c3xl.json" if c3xl else "agnos.json"
-  manifest_path = os.path.join(OVERLAY_MERGED, "openpilot/common/hardware/comma", manifest_name)
-  if not c3xl:
+  manifest_name = os.path.basename(manifest_relative) if manifest_relative else ("agnos-c3xl.json" if c3xl else "agnos.json")
+  manifest_path = os.path.join(OVERLAY_MERGED, manifest_relative or f"openpilot/common/hardware/comma/{manifest_name}")
+  if manifest_name == "agnos.json":
     if not os.path.isfile(manifest_path):
       manifest_path = os.path.join(OVERLAY_MERGED, "openpilot/system/hardware/comma/agnos.json")
     if not os.path.isfile(manifest_path):  # releases before the openpilot/ move

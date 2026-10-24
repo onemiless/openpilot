@@ -211,12 +211,15 @@
       "acceptance": "physical profile identity, board-specific firmware build and offroad startup; C3 does not certify C3XL/C4",
       "source": {
         "panda": "0d1963ba624f0410a894daf6857eca11b02771d9",
-        "official_panda": "8a16e089b88593914823743df29e1c30b7dd3e00"
+        "official_panda": "8a16e089b88593914823743df29e1c30b7dd3e00",
+        "agnos_c3_boot_chain": "1ec51c0e5ef0f7ab5e00ecc4edeb5b60a39d245b",
+        "agnos_c3_boot_chain_repository": "https://jihulab.com/mr-one/openpilot"
       },
-      "contract": "New simple-SPI host C++/Python, application, bootstub and compiled safety must be one version set. Preserve DOS/F4 reset-cookie/HardFault and H7 support. Old ac0f SPI and new host do not interoperate; upgrade/rollback must restore host+main+bootstub coherently. Standard AGNOS defaults19.9, C3XL stays19.7+its validated manifest; invalid/empty/unreadable explicit profile fails closed, never falls into a standard image.",
+      "contract": "New simple-SPI host C++/Python, application, bootstub and compiled safety must be one version set. Preserve DOS/F4 reset-cookie/HardFault and H7 support. Old ac0f SPI and new host do not interoperate; upgrade/rollback must restore host+main+bootstub coherently. C3/tici uses AGNOS19.9 system plus pinned mr-one C3 abl/xbl/xbl_config/boot, selected by launch and OTA and guarded before writes. C3X/C4 use stock19.9; C3XL stays19.7+its validated manifest; invalid/empty/unreadable explicit profile fails closed, never falls into a standard image.",
       "verification": [
         "tools/sp_tesla_e2e/agnos_profile_e2e.py --output <artifact.json>",
-        "panda/tests/spi_protocol_e2e.py <absolute repo root> <artifact directory>"
+        "panda/tests/spi_protocol_e2e.py <absolute repo root> <artifact directory>",
+        "tools/sp_tesla_e2e/c3_boot_chain_e2e.py --output <artifact.json>"
       ]
     }
   ]
