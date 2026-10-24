@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "official_baseline": "f78c6c23773f4e6badcf62ee3ac222eb94c0eeb3",
+  "official_baseline": "8e740e0ac680d9a960489c04436a701dd491505c",
   "source_branch": "dev-sp",
   "features": [
     {
@@ -17,10 +17,15 @@
       "acceptance": "CAN replay, control handoff and safety integration; device and road evidence separate",
       "contract": "Parent Params snapshot -> explicit session CS.update_config; FAULT veto preserved; standard actuator outputs contain final physical commands; no retired Web TX consumers",
       "source": {
-        "opendbc": "322b203fd504c40bcac69693674534d53eea9929",
-        "official_opendbc": "5be750714349624462da012f2f86ea9b686d8b27"
+        "opendbc": "65cc8fdbcb6aaaf0533ba296c9e6fe5422a696e8",
+        "official_opendbc": "e3f1487de42c4f6de7229ef53da70673f1091b42"
       },
-      "steering_protocol_contract": "Select legacy 2-bit or detected 3-bit consistently across fingerprint/CP/DBC/controller/compiled safety. Preserve legacy FSD14 mapping. CP STEERING_3_BIT=8 and safetyParam STEERING_3_BIT=4 do not reuse old FSD14 flags."
+      "steering_protocol_contract": "Select legacy 2-bit or detected 3-bit consistently across fingerprint/CP/DBC/controller/compiled safety. Preserve legacy FSD14 mapping. CP STEERING_3_BIT=8 and safetyParam STEERING_3_BIT=4 do not reuse old FSD14 flags.",
+      "verification": [
+        "tools/sp_tesla_e2e/rx_frequency_e2e.py --output <artifact.json>",
+        "tools/sp_tesla_e2e/tesla_control_chain_e2e.py --output <artifact.json>"
+      ],
+      "rx_frequency_contract": "Optional 2 Hz UI_status2 and speed-wheel RX honor ignore_frequency_check; lag/checksum/counter/quality gates still apply. Cover no options, HAS_VEHICLE_BUS, AUTO_SPEED_LIMIT and both across legacy, FSD14 and 3-bit safety configurations."
     },
     {
       "id": "longitudinal-backends",

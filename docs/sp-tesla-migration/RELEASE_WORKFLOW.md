@@ -254,3 +254,25 @@ storage that already has the exact objects; it does not permit publishing missin
 assets or writing to the upstream account. A new fork-only large asset needs its
 own reviewed storage plan. Keep the closure proof and directly stored font in
 the version snapshot. Source publication still does not authorize device activation.
+
+
+## 2026-10-24 incremental source checkpoint
+
+Merge official continuous source `8e740e0ac680d9a960489c04436a701dd491505c`
+over S0 `268fbdd10237899c58a46e986539d0052a9105da`. This adds plain-model
+compiler/loader/converter compatibility checks and opendbc RX frequency exemptions.
+Use this full source SHA explicitly as the release CLI baseline. The new opendbc
+integration is recorded in retained-features.json; preserve existing Panda and
+tinygrad source locks, catalog a89041fc and both selected model slots.
+
+Before product changes, rx_frequency_e2e reproduced 9/12 timely-input failures;
+the candidate passes all 12 protocol/configuration combinations and still rejects
+stale RX. Existing three-backend planner replay matches this round's S0 exactly.
+Host model round trips, MOCKUSB+AMD conversion, native safety/control/session
+checks and F4/H7 builds have separate JSON/JUnit/log evidence under
+`/Users/mile/Desktop/mo-op/artifacts/dev-sp-sync-20261024`.
+
+UT3G/jiayi bridge images and update policy are unchanged. Rebuilding Panda against
+the new opendbc safety does not authorize flashing it. Device identity, matched
+host/application/bootstub, physical inference/CAN/road and full D0 rollback
+acceptance remain pending; previous device evidence does not qualify this source.
