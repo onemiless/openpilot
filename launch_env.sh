@@ -34,8 +34,8 @@ case "$profile_value" in
 esac
 export AGNOS_MANIFEST_FILE="openpilot/common/hardware/comma/agnos.json"
 if [ "$profile_value" = "c3xl" ]; then
-  # C3XL's validated boot chain and system image remain on 19.7.
-  export AGNOS_VERSION="19.7"
+  # Keep the validated C3XL boot chain with the current system image.
+  export AGNOS_VERSION="19.9"
   export AGNOS_MANIFEST_FILE="openpilot/common/hardware/comma/agnos-c3xl.json"
 elif [ -r "${SUNNYPILOT_HARDWARE_MODEL_FILE:-/sys/firmware/devicetree/base/model}" ] && \
      [ "$(tr -d '\000' < "${SUNNYPILOT_HARDWARE_MODEL_FILE:-/sys/firmware/devicetree/base/model}")" = "comma tici" ]; then

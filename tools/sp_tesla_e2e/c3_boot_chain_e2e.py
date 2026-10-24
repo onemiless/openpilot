@@ -34,7 +34,7 @@ def run(output):
       ("tici", "standard", "19.9", C3),
       ("tizi", "standard", "19.9", "openpilot/common/hardware/comma/agnos.json"),
       ("mici", "standard", "19.9", "openpilot/common/hardware/comma/agnos.json"),
-      ("tici", "c3xl", "19.7", "openpilot/common/hardware/comma/agnos-c3xl.json"),
+      ("tici", "c3xl", "19.9", "openpilot/common/hardware/comma/agnos-c3xl.json"),
     ]:
       model.write_bytes(f"comma {physical}".encode() + b"\0")
       env = os.environ | {"SUNNYPILOT_HARDWARE_PROFILE": profile, "SUNNYPILOT_HARDWARE_MODEL_FILE": str(model), "AGNOS_VERSION": ""}

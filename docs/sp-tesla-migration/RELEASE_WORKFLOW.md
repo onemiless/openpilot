@@ -229,8 +229,8 @@ small/DM/warp artifacts must be rebuilt for the new runtime, not copied from S0.
 
 Panda's new simple-SPI host and old firmware are mutually incompatible. Before
 any future device activation, close the matching host/application/bootstub/safety
-build and rollback gates. Keep C3XL's AGNOS19.7 manifest and boot-chain allowlist;
-standard19.9 and Chestnut8516 must never implicitly flash a custom adapter.
+build and rollback gates. Keep C3XL's profile-specific manifest and boot-chain allowlist;
+AGNOS19.9 and Chestnut8516 must never implicitly flash a custom adapter.
 
 CarParams mass normalization saves exact original bytes in
 `SPCarParamsMassNormalizationBackup`. Before starting an older manager, export
@@ -287,7 +287,7 @@ detected on C3 80c4514b. Do not repeat that image set on C3.
 C3 keeps the official19.9 system partition but uses mr-one/c3-dev
 `1ec51c0e5ef0f7ab5e00ecc4edeb5b60a39d245b` abl/xbl/xbl_config/boot.
 The independent agnos-c3.json and C3 allowlist pin those images; C3XL retains its
-separate19.7 policy, and tizi/mici retain stock19.9. Both launch and background
+separate manifest and boot-chain guard; all profiles now target19.9. Both launch and background
 updater use the selected manifest, with no C3 fallback to an unvalidated stock
 boot chain. Corrupt/missing images or weakened A/B verification fail before IO.
 
@@ -298,3 +298,18 @@ System/userdata/slotB were not rewritten during recovery. The device subsequentl
 booted actual AGNOS19.9 with the mr-one C3 kernel; runtime/build and road acceptance
 remain separate. See artifacts/c3-dev-sp-update-20261024-80c4514b in the Desktop
 workspace for the complete initial-failure and recovery evidence.
+
+
+## C3XL system target correction (2026-10-24)
+
+C3XL targets AGNOS19.9, including when an older launch environment inherits19.7.
+Its independent manifest uses exactly the official19.9 system partition. The six
+non-system entries and their mr-one allowlist remain byte-for-byte unchanged;
+C3XL's SPI/H7 Panda, absent driver camera and audio capability policies are
+already implemented and require no new device-specific path.
+
+The updated E2E first failed seven cases against the19.7 configuration. Require
+shell/profile/updater checks for19.7-to19.9, no reflash when19.9 is installed,
+rejection of a missing/tampered manifest, and independent C3/C4 selection.
+Host validation does not establish C3XL physical boot/SPI/camera/inference or
+road acceptance; do not transfer C3's installed19.9 result to C3XL.
