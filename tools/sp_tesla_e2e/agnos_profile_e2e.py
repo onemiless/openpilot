@@ -31,6 +31,10 @@ def run(output):
 
   with tempfile.TemporaryDirectory() as temp:
     directory = Path(temp)
+    # "standard" cases mean stock tizi/mici; pin the devicetree so a real C3 (tici) host does not select agnos-c3.json
+    model = directory / 'model'
+    model.write_bytes(b'comma tizi\0')
+    os.environ['SUNNYPILOT_HARDWARE_MODEL_FILE'] = str(model)
     for value, expected in (('standard', '20.1'), ('c3xl', '20.1')):
       for inherited in ('', '19.7', '19.9') if value == 'c3xl' else ('', '20.1'):
         def selected(v=value, e=expected, i=inherited):
