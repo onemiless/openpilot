@@ -31,10 +31,10 @@ def run(output):
     directory = Path(temp)
     model = directory / "model"
     for physical, profile, version, manifest in [
-      ("tici", "standard", "19.9", C3),
-      ("tizi", "standard", "19.9", "openpilot/common/hardware/comma/agnos.json"),
-      ("mici", "standard", "19.9", "openpilot/common/hardware/comma/agnos.json"),
-      ("tici", "c3xl", "19.9", "openpilot/common/hardware/comma/agnos-c3xl.json"),
+      ("tici", "standard", "20.1", C3),
+      ("tizi", "standard", "20.1", "openpilot/common/hardware/comma/agnos.json"),
+      ("mici", "standard", "20.1", "openpilot/common/hardware/comma/agnos.json"),
+      ("tici", "c3xl", "20.1", "openpilot/common/hardware/comma/agnos-c3xl.json"),
     ]:
       model.write_bytes(f"comma {physical}".encode() + b"\0")
       env = os.environ | {"SUNNYPILOT_HARDWARE_PROFILE": profile, "SUNNYPILOT_HARDWARE_MODEL_FILE": str(model), "AGNOS_VERSION": ""}

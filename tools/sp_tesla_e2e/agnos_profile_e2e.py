@@ -31,8 +31,8 @@ def run(output):
 
   with tempfile.TemporaryDirectory() as temp:
     directory = Path(temp)
-    for value, expected in (('standard', '19.9'), ('c3xl', '19.9')):
-      for inherited in ('', '19.7', '19.9') if value == 'c3xl' else ('', '19.9'):
+    for value, expected in (('standard', '20.1'), ('c3xl', '20.1')):
+      for inherited in ('', '19.7', '19.9') if value == 'c3xl' else ('', '20.1'):
         def selected(v=value, e=expected, i=inherited):
           env = {**os.environ, 'SUNNYPILOT_HARDWARE_PROFILE': v, 'AGNOS_VERSION': i}
           result = shell(ROOT, env)
@@ -48,7 +48,7 @@ def run(output):
       physical.write_text('c3xl\n')
       env = {**os.environ, 'SUNNYPILOT_HARDWARE_PROFILE': '', 'SUNNYPILOT_HARDWARE_PROFILE_FILE': str(physical), 'AGNOS_VERSION': ''}
       result = shell(ROOT, env)
-      assert result == ['19.9', 'openpilot/common/hardware/comma/agnos-c3xl.json'], result
+      assert result == ['20.1', 'openpilot/common/hardware/comma/agnos-c3xl.json'], result
       return {'physical_profile_file': str(physical), 'version': result[0], 'manifest': result[1]}
     check('shell_persistent_profile_override', profile_file)
 
@@ -137,7 +137,7 @@ def run(output):
               raise AssertionError('modified C3XL boot chain was accepted')
           else:
             updated.handle_agnos_update()
-        expected_version = '19.9'
+        expected_version = '20.1'
         skip = current_version == expected_version
         assert len(flashed) == (0 if skip or missing or corrupt else 1), flashed
         if flashed:
@@ -149,8 +149,8 @@ def run(output):
                 'unsafe_manifest_rejected': corrupt}
 
       for name, hardware_profile, current_version, manifest, missing, corrupt in (
-        ('c3xl_already_installed', 'c3xl', '19.9', 'openpilot/common/hardware/comma/agnos-c3xl.json', False, False),
-        ('standard_already_installed', 'standard', '19.9', 'openpilot/common/hardware/comma/agnos.json', False, False),
+        ('c3xl_already_installed', 'c3xl', '20.1', 'openpilot/common/hardware/comma/agnos-c3xl.json', False, False),
+        ('standard_already_installed', 'standard', '20.1', 'openpilot/common/hardware/comma/agnos.json', False, False),
         ('c3xl_upgrade_from_19_7', 'c3xl', '19.7', 'openpilot/common/hardware/comma/agnos-c3xl.json', False, False),
         ('c3xl_upgrade_validated', 'c3xl', '18.4', 'openpilot/common/hardware/comma/agnos-c3xl.json', False, False),
         ('standard_upgrade_common', 'standard', '19.7', 'openpilot/common/hardware/comma/agnos.json', False, False),
