@@ -2,7 +2,6 @@ import sys
 import time
 from pathlib import Path
 
-from openpilot.common.file_chunker import get_chunk_name, get_manifest_path
 from openpilot.common.hardware import AGNOS
 from openpilot.common.hardware.usb import USB_DEVICES_PATH, is_chestnut_runtime_device, read
 
@@ -39,32 +38,7 @@ def wait_for_chestnut(timeout: float = 10.) -> None:
       raise TimeoutError("chestnut did not enumerate")
     time.sleep(0.1)
 
-
-def _compiled_file(path: Path) -> bool:
-  try:
-    with path.open('rb') as f:
-      header = f.read(64)
-      return bool(header) and not header.startswith(b'version https://git-lfs.github.com/spec/v1')
-  except OSError:
-    return False
-
-
-def compiled_model_file(path: Path, expected_chunks: int | None = None) -> bool:
-  """Cheap loader-file completeness check; download/activation verifies hashes."""
-  if path.is_file():
-    return _compiled_file(path)
-  try:
-    count = int(Path(get_manifest_path(path)).read_text().strip())
-    # ponytail: cap probes at 1024 chunks (~45 GiB); raise only for larger supported models.
-    return 0 < count <= 1024 and (expected_chunks is None or count == expected_chunks) and all(
-      _compiled_file(Path(get_chunk_name(path, i, count))) for i in range(count))
-  except (OSError, ValueError):
-    return False
-
-
-def chestnut_warps_compiled() -> bool:
-  return all(_compiled_file(MODELS_DIR / f'big_driving_warp_{size}_tinygrad.pkl') for size in ('1344x760', '1928x1208'))
-
-
 def chestnut_compiled() -> bool:
-  return compiled_model_file(modeld_pkl_path(chestnut=True)) and chestnut_warps_compiled()
+  path = modeld_pkl_path(chestnut=True)
+  return path.is_file() and all(
+    (MODELS_DIR / f'big_driving_warp_{size}_tinygrad.pkl').is_file() for size in ('1344x760', '1928x1208'))

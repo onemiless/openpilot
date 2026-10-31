@@ -13,7 +13,7 @@ from openpilot.selfdrive.ui.lib.prime_state import PrimeState
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.common.hardware import HARDWARE, PC
 from openpilot.common.hardware.usb import cable_connected, get_usb_state, is_chestnut_usb_id
-from openpilot.sunnypilot.models.helpers import selected_chestnut_compiled
+from openpilot.selfdrive.modeld.helpers import chestnut_compiled
 from openpilot.selfdrive.selfdrived.alertmanager import OFFROAD_ALERTS
 from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.session import legacy_experimental_enabled
 
@@ -100,7 +100,7 @@ class UIState(UIStateSP):
     self.navigation_enabled: bool = self.params.get_bool("NavigationEnabled")
     self.nav_destination_set: bool = self.params.get("NavDestination") is not None
     self.chestnut_present: bool = False
-    self.chestnut_compiled: bool = selected_chestnut_compiled(self.params)
+    self.chestnut_compiled: bool = chestnut_compiled()
     self.chestnut_active: bool | None = None
     self.chestnut_loading: bool = False
     self.chestnut_alert: bool = False
@@ -269,7 +269,7 @@ class UIState(UIStateSP):
     self.always_on_dm = self.params.get_bool("AlwaysOnDM")
     self.experimental_mode = self.legacy_experimental_available and self.params.get_bool("ExperimentalMode")
     self.experimental_mode_confirmed = self.params.get_bool("ExperimentalModeConfirmed")
-    self.chestnut_compiled = selected_chestnut_compiled(self.params)
+    self.chestnut_compiled = chestnut_compiled()
     self.navigation_enabled = self.params.get_bool("NavigationEnabled")
     self.nav_destination_set = self.params.get("NavDestination") is not None
     self.chestnut_active = self.params.get("ChestnutActive")

@@ -42,12 +42,9 @@ class TestFallback(OpenpilotTestCase):
     small_bundle = ModelParser.parse_models(small_json)[-1]
 
     oob_bytes = pickle.dumps(tests_helpers.make_pkl_data(tests_helpers.ARCHETYPES['supercombo_non20hz']))
-    monkeypatch.setattr(modeld_module, 'MAGIC', b'\x80' + bytes([pickle.DEFAULT_PROTOCOL]))
     monkeypatch.setattr(modeld_module, 'load_model', lambda path, **_: pickle.loads(open(path, 'rb').read()))
-    monkeypatch.setattr(modeld_module.ModelState, 'warmup', lambda self: None)
 
     for bundle in (big_bundle, small_bundle):
-      (tmp_path / bundle.models[0].artifact.fileName).parent.mkdir(parents=True, exist_ok=True)
       (tmp_path / bundle.models[0].artifact.fileName).write_bytes(oob_bytes)
 
     monkeypatch.setattr(modeld_module, 'get_active_bundle', lambda params=None, *, chestnut=None: small_bundle)

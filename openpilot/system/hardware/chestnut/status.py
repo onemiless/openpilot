@@ -2,8 +2,7 @@ import time
 
 from openpilot.common.hardware.usb import is_chestnut_runtime_device, is_chestnut_usb_id
 from openpilot.common.version import get_build_metadata, CHESTNUT_BRANCHES
-from openpilot.selfdrive.modeld.helpers import MODELS_DIR
-from openpilot.sunnypilot.models.helpers import selected_chestnut_compiled
+from openpilot.selfdrive.modeld.helpers import MODELS_DIR, chestnut_compiled
 
 
 CHESTNUT_RELEASE_BRANCHES = ("release-chestnut", "release-chestnut-staging", "nightly-chestnut", "nightly-chestnut-dev")
@@ -60,8 +59,7 @@ class ChestnutStatus:
 
     if not offroad and state is not None:
       powered = state.supplyVoltage >= CHESTNUT_POWERED_VOLTAGE
-      # Zero without a fault also represents an unsupported optional supply request.
-      power_lost = state.supplyFault or 0 < state.supplyVoltage < CHESTNUT_POWERED_VOLTAGE
+      power_lost = state.supplyFault or not powered
       if self.model_attempted and power_lost and not self.power_lost:
         self.power_unavailable = not self.power_seen
       self.power_seen |= powered
@@ -89,8 +87,7 @@ class ChestnutStatus:
     release = branch in CHESTNUT_RELEASE_BRANCHES
     missing = self.usb_failed or (offroad and release and time.monotonic() - self.started > 10. and len(detected) != 1)
     slow_usb = offroad and len(devices) == 1 and devices[0]["speedMbps"] < 5000
-    model_compiled = selected_chestnut_compiled()
-    big_model_available = (MODELS_DIR / 'big_driving_supercombo.onnx').is_file() or model_compiled
+    big_model_available = (MODELS_DIR / 'big_driving_supercombo.onnx').is_file() or chestnut_compiled()
     current_channel = get_build_metadata().channel
     chestnut_target = CHESTNUT_BRANCHES.get(current_channel)
     chestnut_needs_switch = len(devices) == 1 and not big_model_available and chestnut_target is not None
@@ -105,7 +102,6 @@ class ChestnutStatus:
     else:
       pcie_alert = "Chestnut GPU unavailable. Check the GPU is securely seated, then restart the car."
     set_alert("Offroad_ChestnutPcieUnavailable", self.pcie_failed, pcie_alert)
-    set_alert("Offroad_ChestnutUncompiled", offroad and firmware_ok and not model_compiled)
     set_alert("Offroad_ChestnutModelError", self.model_failed and not (missing or self.pcie_failed))
     set_alert("Offroad_ChestnutUpdateFailed", offroad and firmware_failed)
     self.offroad = offroad

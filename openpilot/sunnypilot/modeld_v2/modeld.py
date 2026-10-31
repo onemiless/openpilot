@@ -19,7 +19,7 @@ from setproctitle import setproctitle
 
 import openpilot.cereal.messaging as messaging
 from openpilot.common.hardware import COMMA_HARDWARE
-from openpilot.selfdrive.modeld.helpers import chestnut_present, modeld_pkl_path, wait_for_chestnut
+from openpilot.selfdrive.modeld.helpers import chestnut_present, wait_for_chestnut
 from openpilot.cereal import log
 from opendbc.car.structs import car
 from openpilot.cereal.services import SERVICE_LIST
@@ -46,10 +46,8 @@ from openpilot.sunnypilot.modeld_v2.meta_helper import load_meta_constants
 from openpilot.sunnypilot.modeld_v2.camera_offset_helper import CameraOffsetHelper
 from openpilot.sunnypilot.livedelay.helpers import get_lat_delay
 from openpilot.sunnypilot.modeld_v2.modeld_base import ModelStateBase
-from openpilot.sunnypilot.modeld_v2.helpers import MAGIC, load_model
+from openpilot.sunnypilot.modeld_v2.helpers import load_model
 from openpilot.sunnypilot.modeld_v2.frame_fusion import fused_with_warp
-from tinygrad.engine.realize import lower_and_compile
-from openpilot.selfdrive.modeld.helpers import load_oob as load_stock_oob
 from openpilot.sunnypilot.modeld_v2.model_adapters import get_model_adapter
 from openpilot.sunnypilot.models.helpers import get_active_bundle
 from openpilot.sunnypilot.selfdrive.controls.lib.relc import RoadEdgeLaneChangeController
@@ -109,36 +107,12 @@ class ModelState(ModelStateBase):
     self.chestnut = chestnut
 
     pkl_path = _find_driving_pkl(model_bundle)
-    if pkl_path is None and not chestnut and model_bundle is None:
-      default_pkl = modeld_pkl_path(chestnut=False)
-      pkl_path = str(default_pkl) if _pkl_exists(default_pkl) else None
     assert pkl_path is not None, f"No driving pkl found for {'chestnut' if chestnut else 'small model'} — all models must be compiled with compile_modeld.py"
     self._init_combined(pkl_path, cam_w, cam_h, model_bundle)
-    if not chestnut:
-      try:
-        self.warmup()
-      except RuntimeError as e:
-        if str(e) != "model output not finite":
-          raise
-        default_pkl = str(modeld_pkl_path(chestnut=False))
-        if str(pkl_path) == default_pkl:
-          raise
-        cloudlog.exception("small model output invalid; falling back to bundled model")
-        self.generation = None
-        self._init_combined(default_pkl, cam_w, cam_h, None)
-        self.warmup()
 
   def _init_combined(self, pkl_path, cam_w, cam_h, bundle):
     cloudlog.warning(f"loading combined pkl: {pkl_path}")
-    with open(pkl_path, 'rb') as source:
-      plain = source.read(len(MAGIC)) == MAGIC
-    if plain:
-      jits = load_model(pkl_path, extend=fused_with_warp(cam_w, cam_h, self.chestnut))
-    else:
-      # Only the bundled default uses the runtime's OOB format; selector models are plain.
-      assert str(pkl_path) == str(modeld_pkl_path(chestnut=False)) and not self.chestnut
-      jits = load_stock_oob(pkl_path)
-      jits['run'].captured._linear = lower_and_compile(jits['run'].captured._linear)
+    jits = load_model(pkl_path, extend=fused_with_warp(cam_w, cam_h, self.chestnut))
 
     metadata = jits['metadata']
     self.WARP_DEV = metadata.get('warp_dev', 'QCOM') if COMMA_HARDWARE else 'CPU'
@@ -218,7 +192,7 @@ class ModelState(ModelStateBase):
 
     if self._combined_model_type == 'supercombo':
       model_output = raw_outputs.numpy().flatten()
-      if not np.all(np.isfinite(model_output)):
+      if self.chestnut and not np.all(np.isfinite(model_output)):
         raise RuntimeError("model output not finite")
       sliced = {k: model_output[np.newaxis, v] for k, v in self.vision_output_slices.items()}
       outputs = self.parser.parse_outputs(sliced)

@@ -417,7 +417,7 @@ def manifest_bundle(short_name: str, ref: str, index: int = 0, is_big: bool = Fa
       "type": "supercombo",
       "artifact": {
         "file_name": f"{short_name}.pkl",
-        "download_uri": {"url": f"https://example.com/{short_name}.pkl", "sha256": sha256(short_name.encode())},
+        "download_uri": {"url": f"https://example.com/{short_name}.pkl", "sha256": "s"},
       },
     }],
   }
@@ -498,17 +498,6 @@ class TestActiveBundle(OpenpilotTestCase):
     super().setUp()
     helpers._LAST_VALIDATED_RAW.clear()
 
-  def local_bundle(self, ref: str, runner: int | None = None) -> dict:
-    root = self.enterContext(tempfile.TemporaryDirectory())
-    self.enterContext(mock.patch.object(helpers.Paths, 'model_root', return_value=root))
-    name, payload = f'{ref}.pkl', b'SPTGPLN1local activation fixture'
-    with open(os.path.join(root, name), 'wb') as file:
-      file.write(payload)
-    bundle = raw_bundle(ref, runner)
-    bundle['models'] = [{'type': 'supercombo', 'artifact': {'fileName': name,
-                         'downloadUri': {'uri': f'https://example.invalid/{name}', 'sha256': sha256(payload)}}}]
-    return bundle
-
   def test_active_source(self):
     for gpu, source in ((False, "qcom"), (True, "chestnut")):
       with mock.patch("openpilot.sunnypilot.models.helpers.chestnut_present", return_value=gpu):
@@ -536,14 +525,14 @@ class TestActiveBundle(OpenpilotTestCase):
         "an empty chestnut slot must not fall back to the qcom pick"
 
   def test_empty_catalog_does_not_reset_slot(self):
-    params = slot_params(qcom=self.local_bundle("small"))
+    params = slot_params(qcom=raw_bundle("small"))
     with mock.patch("openpilot.sunnypilot.models.helpers.chestnut_present", return_value=False):
       validate_active_bundles(params, {"qcom": [], "chestnut": []})
     params.remove.assert_not_called()
 
   def test_reset_recomputes_runner_from_surviving_slot(self):
     tinygrad = int(custom.ModelManagerSP.Runner.tinygrad)
-    big_raw = self.local_bundle("big", runner=tinygrad)
+    big_raw = raw_bundle("big", runner=tinygrad)
     params = slot_params(qcom=raw_bundle("gone"), chestnut=big_raw)
     catalog = {"qcom": [custom.ModelManagerSP.ModelBundle(**raw_bundle("other"))],
                "chestnut": [custom.ModelManagerSP.ModelBundle(**big_raw)]}

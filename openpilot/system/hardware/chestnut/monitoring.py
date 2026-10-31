@@ -13,18 +13,13 @@ def read_chestnut_state(handle, gpu_state=None):
     msg.chestnutState = gpu_state
   state = msg.chestnutState
   try:
+    raw = handle.controlRead(0xC0, 0xC0, 0, 0, 5, timeout=100)
+    state.supplyVoltage, state.supplyCurrent, state.supplyFault = struct.unpack('<Hh?', bytes(raw))
     raw = handle.controlRead(0xC0, 0xE4, 0xB450, 0, 1, timeout=100)
     state.pcieLtssm, = struct.unpack('B', bytes(raw))
     msg.valid = True
   except (usb1.USBError, struct.error):
     msg.valid = False
-    return msg
-  try:
-    raw = handle.controlRead(0xC0, 0xC0, 0, 0, 5, timeout=100)
-    state.supplyVoltage, state.supplyCurrent, state.supplyFault = struct.unpack('<Hh?', bytes(raw))
-  except (usb1.USBError, struct.error):
-    # UT3G firmware may omit legacy supply telemetry; B450 still proves the link read.
-    pass
   return msg
 
 

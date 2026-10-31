@@ -15,7 +15,7 @@ from openpilot.selfdrive.ui.mici.widgets.button import BigButton, BigParamContro
 from openpilot.selfdrive.ui.ui_state import ui_state, device
 from openpilot.selfdrive.ui.sunnypilot.model_info import (active_source, big_model_state, bundles_for_source, carrying_model,
                                                            default_model_name, model_cache_size_mb, model_info, queued_name,
-                                                           refresh_in_progress, refresh_model_list, selected_model_name)
+                                                           refresh_in_progress, refresh_model_list)
 from openpilot.system.ui.lib.application import FontWeight, gui_app
 from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.widgets import Widget
@@ -130,7 +130,8 @@ class ModelsLayoutMici(NavScroller):
     hardware_btns = []
     active = active_source()
     for source, label in (("qcom", tr("small models")), ("chestnut", tr("big models"))):
-      value = selected_model_name(source, short=True).lower()
+      bundle = get_selected_bundle(ui_state.params, source)
+      value = (bundle.internalName if bundle else default_model_name(source)).lower()
       if source == active:
         value += f" ({tr('active')})"
       btn = BigButton(label.lower(), value=value)

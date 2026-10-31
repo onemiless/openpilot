@@ -11,16 +11,14 @@ import pickle
 import numpy as np
 
 from openpilot.common.basedir import BASEDIR
-from openpilot.selfdrive.modeld.helpers import MODELS_DIR
 from openpilot.sunnypilot.modeld_v2.frame_fusion import pack_layout
-from openpilot.sunnypilot.modeld_v2.helpers import _Jit, load_model
+from openpilot.sunnypilot.modeld_v2.helpers import load_model
 from openpilot.sunnypilot.modeld_v2.compile_modeld import (POLICY_INPUTS, derive_frame_skip,
                                                            make_split_input_queues, make_supercombo_input_queues)
 from openpilot.sunnypilot.modeld_v2.stock_dependencies import make_input_queues as stock_make_input_queues, nv12_copy_size
 from openpilot.system.camerad.cameras.nv12_info import get_nv12_info
 from tinygrad.device import Buffer
-from tinygrad.dtype import DType, dtypes
-from tinygrad.engine.realize import lower_and_compile
+from tinygrad.dtype import DType
 from tinygrad.tensor import Tensor
 from tinygrad.uop.ops import UOp
 
@@ -181,17 +179,6 @@ class NativeTinygradAdapter(BaseModelAdapter):
     self.numpy_inputs = {name: np.ndarray(shape, dtype=np.float32, buffer=self.packed_input, offset=offsets[name])
                          for name, shape in ({'tfm': (2, 3, 3)} | shapes).items()}
     self.frames = self.packed_input[offsets['frames']:].reshape(2, self.warp_frame_size)
-    self.fused = isinstance(self.run_model, _Jit)
-    if not self.fused:
-      # The bundled small fallback keeps tinygrad's native OOB ABI; catalog models use the fused plain ABI.
-      with open(MODELS_DIR / f'driving_warp_{self.cam_w}x{self.cam_h}_tinygrad.pkl', 'rb') as source:
-        self.run_warp = pickle.load(source)['run']
-      self.run_warp.captured._linear = lower_and_compile(self.run_warp.captured._linear)
-      self.input_device = Tensor(self.packed_input, device=self.model_device)._buffer()
-      self.input_queues |= {name: input_view(self.input_device, shape, dtypes.float32, offsets[name])
-                            for name, shape in shapes.items()}
-      self.warp_inputs = {'input_frame': input_view(self.input_device, self.frames.shape, dtypes.uint8, offsets['frames']),
-                          'M_inv': input_view(self.input_device, (2, 3, 3), dtypes.float32, offsets['tfm'])}
 
     self.outputs = {name: Tensor(np.zeros(shape, dtype=dtype), device=device).realize() for name, (shape, dtype, device) in self.jits['output_specs'].items()}
     for name, next_name in self.state_pairs.items():
@@ -210,12 +197,7 @@ class NativeTinygradAdapter(BaseModelAdapter):
       self.input_queues[key].assign(0).realize()
 
   def run(self):
-    if self.fused:
-      self.run_model(host=self.host, **self.input_queues, output_buffers=self.outputs)
-    else:
-      self.input_device.copy_from(self.host._buffer())
-      self.input_queues['new_img'] = self.run_warp(**self.warp_inputs)
-      self.run_model(output_buffers=self.outputs, **self.input_queues)
+    self.run_model(host=self.host, **self.input_queues, output_buffers=self.outputs)
     return self.outputs['outputs']
 
 

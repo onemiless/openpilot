@@ -136,7 +136,7 @@
         "default_big_source_ref": "1e219d7785cfb7b7343c7f2366347fc86e7ce5f2",
         "retained_S0_big_onnx_sha256": "6fee5937923c74848df4a63f6239eb6331c6274dd4bdb7a5d6ec0388a8b543d5"
       },
-      "contract": "Selector21 uses fixed QCOMv25/Chestnutv28 whole-file plain artifacts with source compiler5d186. Runtime8ba955 follows official92b742 plus UT3G-DUAL enumeration; never reuse old native prebuilt/cache as new runtime proof. Default native Big is official MDMv3 PKL d4c7 (not rebuilt from retained CTMv2 ONNX); small/DM/warps build against the selected runtime. Preserve both slot refs, SHA-addressed cache, validation-before-atomic-activation, finite outputs and stock-small fallback; retain old caches for rollback.",
+      "contract": "2026-10-31 user-authorized upstream model alignment at 6f7a2c94: live official catalogs, basename cache, official download/activation/selection/stock-small behavior. Preserve USB runtime identities, UT3G-DUAL tinygrad enumeration, AM_PERF_LEVEL omission and automatic flashing safeguards. Previous SHA directories and model parameters are backed up under /data/official-align-20261031.",
       "regression_models": [
         "original bundled big",
         "LM",
@@ -165,7 +165,12 @@
       },
       "catalog_refresh_contract": "a89041fc adds TTM/e46b35b0 to Chestnut v28; existing 16 big and 77 QCOM entries unchanged. Preserve selected CTM/BMV6 and both slot identities; no automatic TTM selection or runtime upgrade in this checkpoint.",
       "hardware_update_contract": "No board-level enrollment exists, so hardwared refuses automatic persistent writes to shared/ROM identities without claiming a successful flash. Runtime-only finder/link_up may recognize DUAL; explicit manual flasher ID scope stays unchanged. B450 link validity is independent of optional supply telemetry; real low voltage/fault/link failures still gate readiness.",
-      "asset_storage_contract": "Use the official HF LFS endpoint for every tracked official asset; full remote OID/size and fresh-fetch SHA verification precede any source push that skips redundant LFS upload. The 217304-byte fork Chinese font is stored directly in Git with its S0 SHA. Do not push missing assets or assume upstream write access."
+      "asset_storage_contract": "Use the official HF LFS endpoint for every tracked official asset; full remote OID/size and fresh-fetch SHA verification precede any source push that skips redundant LFS upload. The 217304-byte fork Chinese font is stored directly in Git with its S0 SHA. Do not push missing assets or assume upstream write access.",
+      "upstream_alignment": {
+        "source": "6f7a2c94c10dffcf9a83b120ab1e6985e4496868",
+        "rollback": "/data/official-align-20261031/backup",
+        "stage": "camerad build and imports PASS; official CD210 synthetic output PASS; real camera 1928x1208 LSMV2 197 finite big frames, 19.6862 Hz, no fallback; demo valid flags false, road acceptance pending"
+      }
     },
     {
       "id": "road-resize",
@@ -180,7 +185,7 @@
         "openpilot/system/camerad/cameras/camera_common.cc",
         "openpilot/common/transformations/camera.py"
       ],
-      "contract": "Since c3a0d5e77cc: eligible non-C4/tici/tizi 1928x1208 road streams default to 1344x760 before VisionIPC, without an opt-in environment variable; cabin unchanged, intrinsics scaled once. Preserve actual sensor/device geometry and choose matching model warps.",
+      "contract": "2026-10-31 user-authorized restore of official camera geometry and intrinsics at 6f7a2c94; local IFE road resize removed. Preserve unrelated C3XL cabin-camera hardware profile.",
       "acceptance": "actual camera dimensions, QCOM fallback, real model messages and sustained frame rate"
     },
     {
