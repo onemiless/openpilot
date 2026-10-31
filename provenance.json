@@ -1,0 +1,70 @@
+{
+  "base_dev_sp": "25742df9417a3559dba7cfa75183f7a3b13a0674",
+  "tinygrad": "52e8c3e840b44de2ac9e98a0a1484fa09caf0064",
+  "model_sha256": "9f70c95b846428d36f2f31b570b9e4c78cd24196864464801eb58dc30b0b79f8",
+  "r2_sha256": "6c82e3add05b668f093dbe74282c92405b834989627c7af8201a81ccd23abcde",
+  "spi_source": "tools/ut3g_r2_c3 (uncommitted source snapshot, Oct 30 2026)",
+  "official_model": {
+    "catalog_sha": "e001cd183c66e144cd09fcc11f5019cd6185f000",
+    "official_sha": "6f7a2c94c10dffcf9a83b120ab1e6985e4496868",
+    "tinygrad": "52e8c3e840b44de2ac9e98a0a1484fa09caf0064",
+    "bundle": {
+      "short_name": "LSMV2",
+      "display_name": "Light Speed Model v2 (October 29, 2026)",
+      "is_20hz": true,
+      "is_big": true,
+      "ref": "c7cbe5de6a9dae4bab032bc5faeb24a248c41f8f",
+      "environment": "development",
+      "runner": "tinygrad",
+      "index": 19,
+      "minimum_selector_version": "21",
+      "generation": "12",
+      "build_time": "2026-10-30T08:59:39Z",
+      "overrides": {
+        "folder": "2026 Deep RL Models",
+        "lat": ".0",
+        "long": ".3"
+      },
+      "models": [
+        {
+          "type": "chunked",
+          "artifact": {
+            "file_name": "driving_light_speed_model_v2_october_29_2026_tinygrad.pkl",
+            "download_uri": {
+              "url": "https://huggingface.co/datasets/sunnypilot/sunnypilot_models_v1/resolve/main/models/recompiled46/model-Light%20Speed%20Model%20v2%20%28October%2029%2C%202026%29-863/driving_light_speed_model_v2_october_29_2026_tinygrad.pkl",
+              "sha256": "9f70c95b846428d36f2f31b570b9e4c78cd24196864464801eb58dc30b0b79f8"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "offline_runtime": {
+    "architecture": "aarch64-linux-gnu",
+    "python": "3.11.15",
+    "numpy": "2.2.6",
+    "llvm": "19.1.7",
+    "libusb": "1.0.23",
+    "fuser": "23.3",
+    "sources_sha256": "081cd3e63112f880efd514eabd8370305ddabce3bc18e20aec810ccefd61872b",
+    "payload_manifest_sha256": "fa4cefc298ccfc0719781e3a3e1e27a0db11ea84153a0b221f1d273c9be88a87",
+    "maximum_required_glibc": "2.30",
+    "glibc_and_loader_bundled": false,
+    "libdrm": "2.4.101-2"
+  },
+  "status_screen": {
+    "native_mode": [
+      1080,
+      2160
+    ],
+    "clockwise_rotation_degrees": 90,
+    "font_provenance": "assets/font-source.json",
+    "usb_access": false
+  },
+  "distribution": {
+    "format": "ordinary Git parts, <=45 MiB each",
+    "lfs_required": false,
+    "assembly": "prepare_payload.sh, local only",
+    "targets_manifest": "payload/targets.tsv"
+  }
+}

@@ -1,0 +1,239 @@
+{
+  "architecture": "aarch64-linux-gnu",
+  "python": "3.11.15",
+  "numpy": "2.2.6",
+  "llvm": "19.1.7",
+  "archives": [
+    {
+      "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260508/cpython-3.11.15%2B20260508-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz",
+      "sha256": "b4a5d3e16edeaf751bef388cf4797d973399f69b78710a96badc8f88510d1eac",
+      "bytes": 31157809,
+      "archive": "cpython-3.11.15%2B20260508-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz"
+    },
+    {
+      "url": "https://files.pythonhosted.org/packages/52/b8/7f0554d49b565d0171eab6e99001846882000883998e7b7d9f0d98b1f934/numpy-2.2.6-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+      "sha256": "b64d8d4d17135e00c8e346e0a738deb17e754230d7e0810ac5012750bbd85a5a",
+      "bytes": 14312005,
+      "archive": "numpy-2.2.6-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl"
+    },
+    {
+      "url": "https://apt.llvm.org/focal/pool/main/l/llvm-toolchain-19/libllvm19_19.1.7~++20250114103238+cd708029e0b2-1~exp1~20250114103342.77_arm64.deb",
+      "sha256": "c05444167066ee413c7d008ccdb804e8c722511008aceeff53f5db698534ad4a",
+      "bytes": 23118500,
+      "archive": "libllvm19_19.1.7~++20250114103238+cd708029e0b2-1~exp1~20250114103342.77_arm64.deb",
+      "package": "libllvm19",
+      "version": "1:19.1.7~++20250114103238+cd708029e0b2-1~exp1~20250114103342.77",
+      "depends": "libc6 (>= 2.29), libedit2 (>= 2.11-20080614-0), libffi7 (>= 3.3~20180313), libgcc-s1 (>= 4.2), libstdc++6 (>= 9), libxml2 (>= 2.7.4), libzstd1 (>= 1.3.8), zlib1g (>= 1:1.2.0)",
+      "target": "llvm"
+    },
+    {
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/libu/libusb-1.0/libusb-1.0-0_1.0.23-2build1_arm64.deb",
+      "sha256": "1b6ed22a65e408c16f5ab6201dd34b674eebed40995fd9cefb31ecfc328b0472",
+      "bytes": 44480,
+      "archive": "libusb-1.0-0_1.0.23-2build1_arm64.deb",
+      "package": "libusb-1.0-0",
+      "version": "2:1.0.23-2build1",
+      "depends": "libc6 (>= 2.17), libudev1 (>= 183)",
+      "target": "libusb"
+    },
+    {
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/p/psmisc/psmisc_23.3-1_arm64.deb",
+      "sha256": "a902262d23d78ba233963f80cf6d7c2bee4c92f113500ece670258be9642231c",
+      "bytes": 51208,
+      "archive": "psmisc_23.3-1_arm64.deb",
+      "package": "psmisc",
+      "version": "23.3-1",
+      "depends": "libc6 (>= 2.17), libselinux1 (>= 1.32), libtinfo6 (>= 6)",
+      "target": "llvm"
+    },
+    {
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/libx/libxcrypt/libcrypt1_4.4.10-10ubuntu4_arm64.deb",
+      "sha256": "89907b6c1b613c430a53ef10909934b9ce5854a396cd173360495f6f8e5e7ea4",
+      "bytes": 82520,
+      "archive": "libcrypt1_4.4.10-10ubuntu4_arm64.deb",
+      "package": "libcrypt1",
+      "version": "1:4.4.10-10ubuntu4",
+      "depends": "libc6 (>= 2.25)",
+      "target": "llvm"
+    },
+    {
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/libe/libedit/libedit2_3.1-20191231-1_arm64.deb",
+      "sha256": "16d95d3ee57dc17170c97804325481c62acf9977558d18cc6251b590f550deac",
+      "bytes": 82724,
+      "archive": "libedit2_3.1-20191231-1_arm64.deb",
+      "package": "libedit2",
+      "version": "3.1-20191231-1",
+      "depends": "libbsd0 (>= 0.1.3), libc6 (>= 2.17), libtinfo6 (>= 6)",
+      "target": "llvm"
+    },
+    {
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/libf/libffi/libffi7_3.3-4_arm64.deb",
+      "sha256": "a3e7abc48b5b4614fd5f6d1d95019d52be092e40e9b8a05f670905c6abf6eac4",
+      "bytes": 17136,
+      "archive": "libffi7_3.3-4_arm64.deb",
+      "package": "libffi7",
+      "version": "3.3-4",
+      "depends": "libc6 (>= 2.17)",
+      "target": "llvm"
+    },
+    {
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/g/gcc-10/libgcc-s1_10-20200411-0ubuntu1_arm64.deb",
+      "sha256": "ac157ece7e0d41abf7c05309d8c85742f5f895a09c573add08152198390840ee",
+      "bytes": 34748,
+      "archive": "libgcc-s1_10-20200411-0ubuntu1_arm64.deb",
+      "package": "libgcc-s1",
+      "version": "10-20200411-0ubuntu1",
+      "depends": "gcc-10-base (= 10-20200411-0ubuntu1), libc6 (>= 2.17)",
+      "target": "llvm"
+    },
+    {
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/g/gcc-10/libstdc++6_10-20200411-0ubuntu1_arm64.deb",
+      "sha256": "bf29481e8373a4da958104daeaf32bb05fa405121a3aa0bbfbbd5d462725df3c",
+      "bytes": 462100,
+      "archive": "libstdc++6_10-20200411-0ubuntu1_arm64.deb",
+      "package": "libstdc++6",
+      "version": "10-20200411-0ubuntu1",
+      "depends": "gcc-10-base (= 10-20200411-0ubuntu1), libc6 (>= 2.18), libgcc-s1 (>= 4.2)",
+      "target": "llvm"
+    },
+    {
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/libx/libxml2/libxml2_2.9.10+dfsg-5_arm64.deb",
+      "sha256": "6242892cb032859044ddfcfbe61bac5678a95c585d8fff4525acaf45512e3d39",
+      "bytes": 571600,
+      "archive": "libxml2_2.9.10+dfsg-5_arm64.deb",
+      "package": "libxml2",
+      "version": "2.9.10+dfsg-5",
+      "depends": "libc6 (>= 2.29), libicu66 (>= 66.1-1~), liblzma5 (>= 5.1.1alpha+20120614), zlib1g (>= 1:1.2.3.3)",
+      "target": "llvm"
+    },
+    {
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/libz/libzstd/libzstd1_1.4.4+dfsg-3_arm64.deb",
+      "sha256": "ca6c31a967c02ed6f171e21ddbfbe1baba174dc2c550d32b047faaad7c7bd3b0",
+      "bytes": 216156,
+      "archive": "libzstd1_1.4.4+dfsg-3_arm64.deb",
+      "package": "libzstd1",
+      "version": "1.4.4+dfsg-3",
+      "depends": "libc6 (>= 2.17)",
+      "target": "llvm"
+    },
+    {
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/z/zlib/zlib1g_1.2.11.dfsg-2ubuntu1_arm64.deb",
+      "sha256": "eb740529da605507e7ae9e9263641bb49dd03de0568446f09b32e6341ca24778",
+      "bytes": 51124,
+      "archive": "zlib1g_1.2.11.dfsg-2ubuntu1_arm64.deb",
+      "package": "zlib1g",
+      "version": "1:1.2.11.dfsg-2ubuntu1",
+      "depends": "libc6 (>= 2.17)",
+      "target": "llvm"
+    },
+    {
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/s/systemd/libudev1_245.4-4ubuntu3_arm64.deb",
+      "sha256": "e298137639d6ae27f4ca3a7ecf82e6de4a39c2d43b379b33b4ca7a46eb6336d4",
+      "bytes": 72168,
+      "archive": "libudev1_245.4-4ubuntu3_arm64.deb",
+      "package": "libudev1",
+      "version": "245.4-4ubuntu3",
+      "depends": "libc6 (>= 2.30)",
+      "target": "libusb"
+    },
+    {
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/libs/libselinux/libselinux1_3.0-1build2_arm64.deb",
+      "sha256": "91006c0db207cb6df4205db9c5a91309db58e7f4eef649093aa89def780e0e66",
+      "bytes": 64952,
+      "archive": "libselinux1_3.0-1build2_arm64.deb",
+      "package": "libselinux1",
+      "version": "3.0-1build2",
+      "depends": "libc6 (>= 2.30), libpcre2-8-0 (>= 10.22)",
+      "target": "llvm"
+    },
+    {
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/n/ncurses/libtinfo6_6.2-0ubuntu2_arm64.deb",
+      "sha256": "65ae83568c287ec310ffd601cc34c07df5e86c91f4ea55742ba16db029b607fa",
+      "bytes": 81092,
+      "archive": "libtinfo6_6.2-0ubuntu2_arm64.deb",
+      "package": "libtinfo6",
+      "version": "6.2-0ubuntu2",
+      "depends": "libc6 (>= 2.17)",
+      "target": "llvm"
+    },
+    {
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/libb/libbsd/libbsd0_0.10.0-1_arm64.deb",
+      "sha256": "0486962198502bfd808a4645d453d3d9ee0916c29c4217355b61a3d206d77f4a",
+      "bytes": 43736,
+      "archive": "libbsd0_0.10.0-1_arm64.deb",
+      "package": "libbsd0",
+      "version": "0.10.0-1",
+      "depends": "libc6 (>= 2.25)",
+      "target": "llvm"
+    },
+    {
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/i/icu/libicu66_66.1-2ubuntu2_arm64.deb",
+      "sha256": "6302e309ab002af30ddfa0d68de26c68f7c034ed2f45b1d97a712bff1a03999a",
+      "bytes": 8357128,
+      "archive": "libicu66_66.1-2ubuntu2_arm64.deb",
+      "package": "libicu66",
+      "version": "66.1-2ubuntu2",
+      "depends": "libc6 (>= 2.29), libgcc-s1 (>= 3.0), libstdc++6 (>= 5.2), tzdata (>> 2019c-3ubuntu1~)",
+      "target": "llvm"
+    },
+    {
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/x/xz-utils/liblzma5_5.2.4-1_arm64.deb",
+      "sha256": "afba8c1c57b7aba8e8d8839e7af424044b7946862e59d4193c6af7d32637cd5c",
+      "bytes": 89056,
+      "archive": "liblzma5_5.2.4-1_arm64.deb",
+      "package": "liblzma5",
+      "version": "5.2.4-1",
+      "depends": "libc6 (>= 2.17)",
+      "target": "llvm"
+    },
+    {
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/p/pcre2/libpcre2-8-0_10.34-7_arm64.deb",
+      "sha256": "741444da6d973b2dcde1c700b0c85cd4a7d308dd016f226e80a007d10964b3de",
+      "bytes": 169776,
+      "archive": "libpcre2-8-0_10.34-7_arm64.deb",
+      "package": "libpcre2-8-0",
+      "version": "10.34-7",
+      "depends": "libc6 (>= 2.17)",
+      "target": "llvm"
+    },
+    {
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/t/tzdata/tzdata_2019c-3ubuntu1_all.deb",
+      "sha256": "aa2f203d74bc18d947ca8ccdaa231d77407763479eb3df18cf1eec7299e65819",
+      "bytes": 293692,
+      "archive": "tzdata_2019c-3ubuntu1_all.deb",
+      "package": "tzdata",
+      "version": "2019c-3ubuntu1",
+      "depends": "debconf (>= 0.5) | debconf-2.0",
+      "target": "llvm"
+    },
+    {
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/d/debconf/debconf_1.5.73_all.deb",
+      "sha256": "7d639ffea1be8e8f5859ca94a0a09b1e4664d10af421c748b4163b08db515990",
+      "bytes": 121524,
+      "archive": "debconf_1.5.73_all.deb",
+      "package": "debconf",
+      "version": "1.5.73",
+      "depends": "",
+      "target": "llvm"
+    },
+    {
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/libd/libdrm/libdrm2_2.4.101-2_arm64.deb",
+      "sha256": "01d2609dbe4baa07194e6f28b659f54e827f82b9923446be931bd78b8bf7e4e0",
+      "bytes": 32172,
+      "archive": "libdrm2_2.4.101-2_arm64.deb",
+      "package": "libdrm2",
+      "version": "2.4.101-2",
+      "depends": "libdrm-common (>= 2.4.101-2), libc6 (>= 2.29)",
+      "target": "display"
+    }
+  ],
+  "os_libraries_not_bundled": [
+    "glibc",
+    "ld-linux-aarch64.so.1"
+  ],
+  "source_indexes": {
+    "ubuntu": "028e466f99aae44a1981ab2d927d6f5e067f4436a832885c5763a9bf25913991",
+    "universe": "4cb63c7c565496c852df5dc8df60af1b311feb3e14c43bb41df7bcbaab5f680b",
+    "llvm": "563b7594df5825cc98cfa2762bcab2d4908db30dca7632080ac52e3c93a55ff7"
+  }
+}

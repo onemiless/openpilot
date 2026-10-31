@@ -1,6 +1,0 @@
-{
-  "source_url": "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf",
-  "source_sha256": "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b",
-  "family": "Noto Sans CJK SC",
-  "build_command": "PYTHONPATH=. python tools/sp_tesla_e2e/build_chinese_font.py --source <verified-full-font.otf> --output <subset.otf> --receipt <receipt.json>"
-}

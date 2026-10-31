@@ -1,3 +1,0 @@
-SConscript(['common/transformations/SConscript'])
-SConscript(['selfdrive/locationd/SConscript'])
-SConscript(['selfdrive/controls/lib/longitudinal_backends/legacy_mpc/SConscript'])
