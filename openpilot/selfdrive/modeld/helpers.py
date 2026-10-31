@@ -3,7 +3,6 @@ import time
 from pathlib import Path
 
 from openpilot.common.file_chunker import get_chunk_name, get_manifest_path
-from openpilot.system.hardware.chestnut.flash import link_up
 from openpilot.common.hardware import AGNOS
 from openpilot.common.hardware.usb import USB_DEVICES_PATH, is_chestnut_runtime_device, read
 
@@ -32,12 +31,12 @@ def chestnut_present() -> bool:
       pass
   return False
 
-def wait_for_chestnut(timeout: float = 15.) -> None:
-  # USB enumeration can precede PCIe link training.
+def wait_for_chestnut(timeout: float = 10.) -> None:
+  # the cable is detected before chestnut enumerates
   st = time.monotonic()
-  while not (chestnut_present() and link_up()):
+  while not chestnut_present():
     if time.monotonic() - st > timeout:
-      raise TimeoutError("chestnut USB/PCIe link did not become ready")
+      raise TimeoutError("chestnut did not enumerate")
     time.sleep(0.1)
 
 
