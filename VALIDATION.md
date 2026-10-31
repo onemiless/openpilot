@@ -191,3 +191,43 @@ The complete local development history is retained under refs/archive/sp-flasher
 The public release snapshot uses the existing dev-sp base as parent and has the same current product tree, with no new LFS pointers.
 Installer fresh-clones that ordinary-file tip at depth 1.
 Package/model verification passed. Real installer and xpilot restoration evidence will be recorded after device execution.
+
+## Real installer PASS and original xpilot restored, 2026-11-01
+
+Published functional snapshot: `fa27df1c4d0e992e40666a3841fe6e420580c077`, onemiless/openpilot:sp-flasher.
+Installer URL: https://installer.comma.ai/onemiless/sp-flasher. Device setup source explicitly expands the shorthand onemiless/sp-flasher.
+Actual installer downloaded with AGNOSSetup-19.9 / tici headers; ARM64 ELF, 2,051,392 bytes,
+SHA-256 `dd040f97393b77c2cd32d4f0f6df32f05ffb1ba699bdb31ecde4e76568a83017`, with expected repository/branch strings.
+
+No factory reset was performed. Original /data/openpilot, exact continue.sh, flasher state/data and protected parameter snapshot were
+preserved before executing the actual downloaded installer. It fresh-cloned the published branch at depth 1 into its normal paths,
+checked out the exact expected commit, initialized zero submodules, and generated its standard /data/continue.sh.
+The new checkout initially had no complete model/LLVM targets: prepare_payload.sh reconstructed both from ordinary Git parts with
+full-file SHA-256 checks. Current tree has no LFS dependency, avoiding the repository's exceeded LFS budget.
+
+The generated continue.sh was executed as comma under a temporary USB-isolated test unit, which hid bridge enumeration and access.
+That isolated only the test service, not product code or the system USB configuration. No new flasher job directory was created.
+Actual installed station and status_screen processes ran from /data/openpilot; bundled Python 3.11.15 + NumPy 2.2.6 selected,
+system libusb 1.0.27, LLVM 20 and fuser reused. Full asset preflight passed.
+After installer exited successfully, active DRM framebuffer ID 210 was read back (no modeset): pixels exactly matched the expected
+“等待底座接入” canvas. This proves display takeover survived installer exit, not merely that a screen process existed.
+
+Both installer/app test units were stopped. Original xpilot directory and exact continue.sh were restored, including the c3xl profile
+and BLOCK=modem exports. The verified temporary installed checkout was removed; free /data space returned to approximately 5.5 GiB.
+Normal comma.service startup first entered the stock tap-reset UI because /tmp/booted was initially absent and the touch count was high.
+It was stopped without executing reset. The normal boot marker had been created; a second normal start correctly entered xpilot.
+No reset marker exists and original files/parameters remain intact.
+
+Final live proof:
+- xpilot HEAD: ae189b2e594c922b60f3892e0efc167655e49551, same original status `?? prebuilt`.
+- continue.sh SHA-256: 80be31fcf7e5b3b1f0ff9745d26ce6839af4f4c8d20d38390c5b9291a5bc7fc7, exact original.
+- comma.service active; original manager, openpilot.selfdrive.ui.ui, pandad and hardwared running from restored tree.
+- Manager environment SUNNYPILOT_HARDWARE_PROFILE=c3xl; offroad=1, engaged=0; AGNOS 19.9 unchanged.
+- AdbEnabled, GithubSshKeys, GithubUsername, OpenpilotEnabledToggle and SshEnabled hashes unchanged.
+- Only normal boot/updater uptime/cache metadata changed. No user model choice/config change was made by the flasher test.
+- Original xpilot reports model-catalog ConnectionResetError and uses its cached data; this unrelated refresh issue was not modified.
+
+Host evidence: /private/tmp/sp-flasher-installer-20261101, including the actual installer download identity, test stages,
+installed preflight/runtime/processes, active-frame PPM/JSON, restoration proof and source-history archive bundle.
+Protected raw parameter backups stay on-device, not in the exported evidence. Earlier USB -71 remains unresolved;
+this installer test did not repeat firmware flashing or GPU inference. Full prior device E2E proof remains in earlier sections.

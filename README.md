@@ -111,9 +111,13 @@ python3 status_screen.py --state /path/to/state.json --snapshot /path/to/screen.
 预期入口为 `https://installer.comma.ai/onemiless/sp-flasher`，对应公开仓库 `onemiless/openpilot` 的 `sp-flasher` 分支。
 启动文件 `launch_openpilot.sh` 已保留，安装器的子模块初始化在本分支无子模块时无需下载子模块。
 安装阶段通过普通 Git 获取模型与 LLVM 分块；启动阶段只在本地合成、验证和使用，不联网安装。
-目前只完成本地分支与独立目录实机验证，尚未发布远端分支，也未完成全新 installer 安装验收。
+已发布到远端，并在 C3XL/AGNOS 19.9 上完成官方 installer 新克隆、完整资源校验、正常入口启动与等待页面验收；随后恢复原 xpilot。
 不要将浏览器访问安装器地址返回 HTTP 200 当作分支存在或安装成功的证据。
 
 GitHub LFS 预算超额时仍可安装：当前发布树不含 LFS 指针。`payload/targets.tsv` 固定完整模型与 LLVM 的哈希，
 `payload/SHA256SUMS` 校验分块。合成过程先写临时文件、核对完整哈希，再原子替换目标；正确的现有目标直接复用。
 普通 Git 分块与本地合成文件同时保留，需要为安装与运行预留约 3 GiB 空间，不含原系统和其他应用数据。
+
+安装界面支持直接输入 `onemiless/sp-flasher`，会补全为上述 installer URL。安装时需要联网下载普通 Git 内容；
+首次启动会离线合成模型和 LLVM。没有恢复出厂即可验证真实 installer 安装链路；本次设备测试使用 USB 隔离防止重刷，
+只验证安装与启动。完整 R2 刷写和 60 秒真实 GPU 推理的独立实机证明见 VALIDATION.md。
