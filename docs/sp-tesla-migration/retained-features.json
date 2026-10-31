@@ -185,7 +185,7 @@
         "openpilot/system/camerad/cameras/camera_common.cc",
         "openpilot/common/transformations/camera.py"
       ],
-      "contract": "2026-10-31 user-authorized restore of official camera geometry and intrinsics at 6f7a2c94; local IFE road resize removed. Preserve unrelated C3XL cabin-camera hardware profile.",
+      "contract": "2026-10-31 user-requested restore of previously tested tici/tizi 1928x1208 -> 1344x760 IFE road resize and matching intrinsics from dbe1c638. Preserve official-aligned model/catalog/cache/loader code at 29060e476; cabin and C4 unchanged. Rollback /data/camera1344-restore-20261031/before.tar.",
       "acceptance": "actual camera dimensions, QCOM fallback, real model messages and sustained frame rate"
     },
     {
