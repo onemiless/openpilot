@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "official_baseline": "8e740e0ac680d9a960489c04436a701dd491505c",
+  "official_baseline": "3d8f211d4b2d7c4a981633783232c8ff8dbe402b",
   "source_branch": "dev-sp",
   "features": [
     {
@@ -17,8 +17,8 @@
       "acceptance": "CAN replay, control handoff and safety integration; device and road evidence separate",
       "contract": "Parent Params snapshot -> explicit session CS.update_config; FAULT veto preserved; standard actuator outputs contain final physical commands; no retired Web TX consumers",
       "source": {
-        "opendbc": "65cc8fdbcb6aaaf0533ba296c9e6fe5422a696e8",
-        "official_opendbc": "e3f1487de42c4f6de7229ef53da70673f1091b42"
+        "opendbc": "270e1a5568a4e76640b3f88918dc1e9d6c740cd9",
+        "official_opendbc": "48611ae9d6571f6d721c3b75dc037a551df75611"
       },
       "steering_protocol_contract": "Select legacy 2-bit or detected 3-bit consistently across fingerprint/CP/DBC/controller/compiled safety. Preserve legacy FSD14 mapping. CP STEERING_3_BIT=8 and safetyParam STEERING_3_BIT=4 do not reuse old FSD14 flags.",
       "verification": [
