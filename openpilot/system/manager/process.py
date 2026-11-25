@@ -12,7 +12,6 @@ from setproctitle import setproctitle
 from openpilot.cereal import log
 from opendbc.car.structs import car
 import openpilot.cereal.messaging as messaging
-import openpilot.system.sentry as sentry
 from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
@@ -31,7 +30,6 @@ def launcher(proc: str, name: str) -> None:
 
     # add daemon name tag to logs
     cloudlog.bind(daemon=name)
-    sentry.set_tag("daemon", name)
 
     # exec the process
     mod.main()
@@ -40,7 +38,7 @@ def launcher(proc: str, name: str) -> None:
   except Exception:
     # can't install the crash handler because sys.excepthook doesn't play nice
     # with threads, so catch it here.
-    sentry.capture_exception()
+    cloudlog.exception("crash")
     raise
 
 
@@ -61,6 +59,7 @@ def join_process(process: Process, timeout: float) -> None:
 
 
 class ManagerProcess(ABC):
+  CRASH_RESTART_BACKOFF = 5.0
   daemon = False
   sigkill = False
   should_run: Callable[[bool, Params, car.CarParams], bool]
@@ -69,14 +68,20 @@ class ManagerProcess(ABC):
   name = ""
   shutting_down = False
   restart_if_crash = False
+  last_crash_restart = float("-inf")
 
   @abstractmethod
   def start(self) -> None:
     pass
 
   def restart(self) -> None:
-    self.stop(sig=signal.SIGKILL)
+    now = time.monotonic()
+    if now - self.last_crash_restart < self.CRASH_RESTART_BACKOFF:
+      return
+    cloudlog.error(f"restarting {self.name} after crash")
+    self.stop()
     self.start()
+    self.last_crash_restart = now
 
   def stop(self, retry: bool = True, block: bool = True, sig: signal.Signals | None = None) -> int | None:
     if self.proc is None:
@@ -170,6 +175,7 @@ class PythonProcess(ManagerProcess):
     self.sigkill = sigkill
     self.launcher = launcher
     self.restart_if_crash = restart_if_crash
+    self.last_crash_restart = float("-inf")
 
   def start(self) -> None:
     # In case we only tried a non blocking stop we need to stop it before restarting
@@ -228,7 +234,7 @@ class DaemonProcess(ManagerProcess):
     pass
 
 
-def ensure_running(procs: ValuesView[ManagerProcess], started: bool, params=None, CP: car.CarParams=None,
+def ensure_running(procs: ValuesView[ManagerProcess], started: bool, params: Params, CP: car.CarParams,
                    not_run: list[str] | None=None) -> list[ManagerProcess]:
   if not_run is None:
     not_run = []
@@ -237,7 +243,6 @@ def ensure_running(procs: ValuesView[ManagerProcess], started: bool, params=None
   for p in procs:
     if p.enabled and p.name not in not_run and p.should_run(started, params, CP):
       if p.restart_if_crash and p.proc is not None and not p.proc.is_alive():
-        cloudlog.error(f'Restarting {p.name} (exitcode {p.proc.exitcode})')
         p.restart()
       running.append(p)
     else:

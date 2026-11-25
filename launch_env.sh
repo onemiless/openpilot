@@ -16,7 +16,31 @@ export VECLIB_MAXIMUM_THREADS=1
 export QCOM_PRIORITY=12
 
 if [ -z "$AGNOS_VERSION" ]; then
-  export AGNOS_VERSION="18.5"
+  export AGNOS_VERSION="20.1"
 fi
 
 export STAGING_ROOT="/data/safe_staging"
+
+# Boot images follow the explicit physical profile, never a branch label.
+profile_value="${SUNNYPILOT_HARDWARE_PROFILE:-}"
+profile_file="${SUNNYPILOT_HARDWARE_PROFILE_FILE:-/data/hardware_profile}"
+if [ -z "$profile_value" ] && [ -f "$profile_file" ]; then
+  profile_value="$(cat "$profile_file")" || exit 1
+  [ -n "$profile_value" ] || { echo "Empty hardware profile: $profile_file" >&2; exit 1; }
+fi
+case "$profile_value" in
+  ""|standard|c3xl) ;;
+  *) echo "Unsupported hardware profile: $profile_value" >&2; exit 1 ;;
+esac
+export AGNOS_MANIFEST_FILE="openpilot/common/hardware/comma/agnos.json"
+if [ "$profile_value" = "c3xl" ]; then
+  # agnos-c3xl.json still holds AGNOS 19.9 images.
+  export AGNOS_VERSION="19.9"
+  export AGNOS_MANIFEST_FILE="openpilot/common/hardware/comma/agnos-c3xl.json"
+elif [ -r "${SUNNYPILOT_HARDWARE_MODEL_FILE:-/sys/firmware/devicetree/base/model}" ] && \
+     [ "$(tr -d '\000' < "${SUNNYPILOT_HARDWARE_MODEL_FILE:-/sys/firmware/devicetree/base/model}")" = "comma tici" ]; then
+  export AGNOS_MANIFEST_FILE="openpilot/common/hardware/comma/agnos-c3.json"
+fi
+
+SP_SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="$SP_SOURCE_ROOT:$SP_SOURCE_ROOT/opendbc_repo:$SP_SOURCE_ROOT/msgq_repo:$SP_SOURCE_ROOT/tinygrad_repo:$SP_SOURCE_ROOT/rednose_repo:$SP_SOURCE_ROOT/teleoprtc_repo${PYTHONPATH:+:$PYTHONPATH}"

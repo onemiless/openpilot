@@ -193,11 +193,11 @@ def finalize_update() -> None:
 
 
 def handle_agnos_update() -> None:
-  from openpilot.common.hardware.tici.agnos import flash_agnos_update, get_target_slot_number
+  from openpilot.common.hardware.comma.agnos import flash_agnos_update, get_target_slot_number
 
   cur_version = HARDWARE.get_os_version()
-  updated_version = run(["bash", "-c", r"unset AGNOS_VERSION && source launch_env.sh && \
-                          echo -n $AGNOS_VERSION"], OVERLAY_MERGED).strip()
+  updated_version, manifest_relative = run(["bash", "-c", r'unset AGNOS_VERSION && source launch_env.sh && \
+                          printf "%s\n%s" "$AGNOS_VERSION" "$AGNOS_MANIFEST_FILE"'], OVERLAY_MERGED).split("\n", 1)
 
   cloudlog.info(f"AGNOS version check: {cur_version} vs {updated_version}")
   if cur_version == updated_version:
@@ -207,13 +207,20 @@ def handle_agnos_update() -> None:
   set_consistent_flag(False)
 
   cloudlog.info(f"Beginning background installation for AGNOS {updated_version}")
-  set_offroad_alert("Offroad_NeosUpdate", True)
 
-  manifest_path = os.path.join(OVERLAY_MERGED, "openpilot/system/hardware/tici/agnos.json")
+  from openpilot.sunnypilot.hardware.profile import HardwareProfile, get_hardware_profile
+  c3xl = get_hardware_profile() == HardwareProfile.C3XL
+  manifest_name = os.path.basename(manifest_relative) if manifest_relative else ("agnos-c3xl.json" if c3xl else "agnos.json")
+  manifest_path = os.path.join(OVERLAY_MERGED, manifest_relative or f"openpilot/common/hardware/comma/{manifest_name}")
+  if manifest_name == "agnos.json":
+    if not os.path.isfile(manifest_path):
+      manifest_path = os.path.join(OVERLAY_MERGED, "openpilot/system/hardware/comma/agnos.json")
+    if not os.path.isfile(manifest_path):  # releases before the openpilot/ move
+      manifest_path = os.path.join(OVERLAY_MERGED, "system/hardware/tici/agnos.json")
+  if not os.path.isfile(manifest_path):
+    raise FileNotFoundError(manifest_path)
   target_slot_number = get_target_slot_number()
   flash_agnos_update(manifest_path, target_slot_number, cloudlog)
-  set_offroad_alert("Offroad_NeosUpdate", False)
-
 
 
 class Updater:

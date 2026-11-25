@@ -1,0 +1,104 @@
+diff --git a/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/legacy_mpc/planner.py b/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/legacy_mpc/planner.py
+--- a/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/legacy_mpc/planner.py
++++ b/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/legacy_mpc/planner.py
+@@ -75,6 +75,9 @@
+   def _final_should_stop(self, should_stop):
+     return should_stop
+ 
++  def _max_accel(self, v_ego):
++    return get_max_accel(v_ego)
++
+   def update(self, sm):
+     LongitudinalPlannerSP.update(self, sm)
+ 
+@@ -88,7 +91,7 @@
+     prev_accel_constraint = not (reset_state or sm['carState'].standstill)
+ 
+     accel_clip = limit_accel_in_turns(
+-      v_ego, sm['controlsState'].curvature, [ACCEL_MIN, get_max_accel(v_ego)],
++      v_ego, sm['controlsState'].curvature, [ACCEL_MIN, self._max_accel(v_ego)],
+     )
+     if reset_state:
+       self.v_desired_filter.x = v_ego
+diff --git a/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/tn_no_dec/accel_controller/constants.py b/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/tn_no_dec/accel_controller/constants.py
+--- a/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/tn_no_dec/accel_controller/constants.py
++++ b/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/tn_no_dec/accel_controller/constants.py
+@@ -18,7 +18,7 @@
+ ACCEL_PROFILE_MAX_V = {
+   AccelProfile.eco: [1.56, 1.30, 0.72, 0.32, 0.24],
+   AccelProfile.normal: [1.58, 1.51, 0.98, 0.53, 0.35],
+-  AccelProfile.sport: [2.00, 1.91, 1.16, 0.73, 0.47],
++  AccelProfile.sport: [2.00, 1.91, 1.40, 1.00, 0.65],
+ }
+ 
+ BRAKING_ACCEL_THRESHOLD = -0.11
+@@ -36,6 +36,8 @@
+ 
+ LEAD_MATCH_HEADROOM = 1.25
+ LEAD_MATCH_ACCEL_SLEW = 0.25    # slew rate for the matched-lead accel ceiling
++LEAD_MATCH_ACCEL_SLEW_UP = 1.0  # opening the ceiling (lead pulling away) must not take seconds
++MAX_RAMP_DECEL = 1.0            # target-speed ramp-down never faster than this (cruise obstacle floor is -1.2)
+ MATCHED_SPEED_DECEL_RATE = 0.50  # separate, faster rate for target_speed's own pull-down while matched
+ 
+ STOP_HOLD_EGO_SPEED = 0.30
+diff --git a/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/tn_no_dec/accel_controller/pace.py b/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/tn_no_dec/accel_controller/pace.py
+--- a/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/tn_no_dec/accel_controller/pace.py
++++ b/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/tn_no_dec/accel_controller/pace.py
+@@ -12,7 +12,7 @@
+ from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.tn_no_dec.long_mpc import LongitudinalPlanSource
+ from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.tn_no_dec.accel_controller.constants import (
+   BRAKING_ACCEL_THRESHOLD, CAP_FILTER_FRAMES, DISTANCE_JUMP_CONFIRM_STREAK, LAUNCH_END_SPEED, LAUNCH_TARGET_HEADROOM,
+-  LEAD_MATCH_ACCEL_SLEW, LEAD_MATCH_HEADROOM, MATCHED_SPEED_DECEL_RATE, SPEED_DEADBAND, STOP_HOLD_CREEP_DISTANCE,
++  LEAD_MATCH_ACCEL_SLEW, LEAD_MATCH_ACCEL_SLEW_UP, LEAD_MATCH_HEADROOM, MATCHED_SPEED_DECEL_RATE, MAX_RAMP_DECEL, SPEED_DEADBAND, STOP_HOLD_CREEP_DISTANCE,
+   STOP_HOLD_EGO_SPEED, STOP_HOLD_EXIT_FRAMES, STOP_HOLD_EXIT_SPEED, STOP_HOLD_MAX_LEAD_DISTANCE, STOP_HOLD_SPEED_FLOOR,
+   TARGET_RELEASE_SLEW,
+ )
+@@ -248,7 +248,8 @@
+   def _update_matched(self, ceiling: float, base_speed: float, v_ego: float, profile_max_accel: float, dt: float) -> None:
+     if math.isfinite(self.filtered_lead_speed):
+       # clamp against base_speed, not ceiling, or this collapses toward zero as v_ego nears cap_trusted
+-      recovery_speed = min(base_speed, self.filtered_lead_speed + LEAD_MATCH_HEADROOM)
++      # headroom grows with the gap (ceiling) instead of pinning ego at lead speed + 1.25 m/s forever
++      recovery_speed = min(base_speed, max(self.filtered_lead_speed + LEAD_MATCH_HEADROOM, ceiling))
+       desired_accel_limit = float(np.clip(recovery_speed - v_ego, 0.0, profile_max_accel))
+     else:
+       desired_accel_limit = 0.0
+@@ -259,7 +260,8 @@
+       desired_accel_limit = profile_max_accel
+     if self.matched_accel_limit is None:
+       self.matched_accel_limit = profile_max_accel
+-    self.matched_accel_limit = _slew(self.matched_accel_limit, desired_accel_limit, LEAD_MATCH_ACCEL_SLEW, dt)
++    slew = LEAD_MATCH_ACCEL_SLEW_UP if desired_accel_limit > self.matched_accel_limit else LEAD_MATCH_ACCEL_SLEW
++    self.matched_accel_limit = _slew(self.matched_accel_limit, desired_accel_limit, slew, dt)
+ 
+     if ceiling <= self.target_speed - SPEED_DEADBAND:
+       self.target_speed = max(ceiling, self.target_speed - MATCHED_SPEED_DECEL_RATE * dt)
+@@ -280,6 +282,8 @@
+       return
+ 
+     self.matched_accel_limit = None
++    # when the constant-decel plan to the safe gap needs more than comfort, ramp at that need (still capped)
++    comfort_decel = max(comfort_decel, min(lead_plan.required_decel, MAX_RAMP_DECEL))
+     synced_to_planner = ceiling < self.target_speed and planner_speed < self.target_speed
+     if synced_to_planner:
+       self.target_speed = max(planner_speed, self.target_speed - comfort_decel * dt)
+diff --git a/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/tn_no_dec/planner.py b/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/tn_no_dec/planner.py
+--- a/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/tn_no_dec/planner.py
++++ b/openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_backends/tn_no_dec/planner.py
+@@ -1,5 +1,6 @@
+ from openpilot.common.realtime import DT_MDL
+-from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.legacy_mpc.planner import LegacyLongitudinalPlanner
++from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.legacy_mpc.planner import LegacyLongitudinalPlanner, get_max_accel
++from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.tn_no_dec.accel_controller.constants import profile_accel_max
+ from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.tn_no_dec.long_mpc import LongitudinalMpc
+ from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.tn_no_dec.planner_sp import LongitudinalPlannerSP
+ 
+@@ -20,3 +21,8 @@
+ 
+   def _final_should_stop(self, should_stop):
+     return self.update_should_stop(should_stop)
++
++  def _max_accel(self, v_ego):
++    stock = get_max_accel(v_ego)
++    controller = self.accel_controller
++    return max(stock, profile_accel_max(controller.profile, v_ego)) if controller.is_enabled else stock

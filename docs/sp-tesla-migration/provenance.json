@@ -1,0 +1,14 @@
+{
+  "official": "16322aef167fe14de8af28a9e437101ed3c4dac5",
+  "features": "b6ceca145001958f88c686d57feac8c9e8a7073c",
+  "ambient_branch_head": "631ccadcdbbe854e7eea318f14e67a1839897351",
+  "ambient_worktree": "/Users/mile/.codex/worktrees/sp-8e5-router/mo-op",
+  "ambient_files": {
+    "openpilot/sunnypilot/selfdrive/car/tesla/ambient_lighting.py": "a6b071b1b5165f7fd1f4b63e2ee23863985beee967e1c93a14d03e13f63e83f4",
+    "openpilot/sunnypilot/selfdrive/car/tesla/card_adapter.py": "22172c30bb276522b2f99ae2a61ae205e897b120421a5596ad28aa0d0ec31052",
+    "openpilot/selfdrive/ui/sunnypilot/layouts/settings/vehicle/brands/tesla.py": "f50ee093d92763098c7c7304d5a5c633b2a2fb232e023d5887ea5573ddcd8e0d",
+    "openpilot/common/params_keys.h": "fee0dbae89ae5c665c6f96fdd891a5a7b19a12aba5b650097febc9efbd0199b2"
+  },
+  "device": "172.16.1.210",
+  "device_install_policy": "clean software runtime authorized; no OS/boot flash"
+}

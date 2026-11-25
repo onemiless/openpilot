@@ -43,16 +43,14 @@ class DeveloperLayoutSP(DeveloperLayout):
     self.enable_github_runner_toggle = toggle_item_sp(tr("GitHub Runner Service"), tr("Enables or disables the GitHub runner service."),
                                                       param="EnableGithubRunner")
 
-    self.enable_copyparty_toggle = toggle_item_sp(tr("copyparty Service"),
-                                                  tr("copyparty is a very capable file server, you can use it to download your routes, view your logs " +
-                                                     "and even make some edits on some files from your browser. " +
-                                                     "Requires you to connect to your comma locally via its IP address."), param="EnableCopyparty")
-
     self.prebuilt_toggle = toggle_item_sp(tr("Quickboot Mode"), "", param="QuickBootToggle", callback=self._on_prebuilt_toggled)
+
+    self.logging_toggle = toggle_item_sp(tr("数据记录与上传"), tr("关闭后停止记录行车数据、视频与统计，并停止上传。立即生效，驾驶功能不变。"),
+                                         param="LoggingEnabled")
 
     self.error_log_btn = button_item(tr("Error Log"), tr("VIEW"), tr("View the error log for sunnypilot crashes."), callback=self._on_error_log_clicked)
 
-    self.items: list = [self.show_advanced_controls, self.enable_github_runner_toggle, self.enable_copyparty_toggle, self.prebuilt_toggle, self.error_log_btn,]
+    self.items: list = [self.show_advanced_controls, self.logging_toggle, self.enable_github_runner_toggle, self.prebuilt_toggle, self.error_log_btn,]
 
   @staticmethod
   def _on_prebuilt_toggled(state):
@@ -101,6 +99,5 @@ class DeveloperLayoutSP(DeveloperLayout):
     else:
       self.prebuilt_toggle.set_description(tr("Quickboot mode requires updates to be disabled.<br>Enable 'Disable Updates' in the Software panel first."))
 
-    self.enable_copyparty_toggle.set_visible(show_advanced)
     self.enable_github_runner_toggle.set_visible(show_advanced and not self._is_release_branch)
     self.error_log_btn.set_visible(not self._is_release_branch)

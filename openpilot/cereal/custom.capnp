@@ -69,6 +69,8 @@ struct LeadData {
 struct SelfdriveStateSP @0x81c2f05a394cf4af {
   mads @0 :ModularAssistiveDrivingSystem;
   intelligentCruiseButtonManagement @1 :IntelligentCruiseButtonManagement;
+  buttonsPressed @2 :UInt16;
+  buttonsReleaseToggle @3 :UInt16;
 
   enum AudibleAlert {
     none @0;
@@ -129,18 +131,28 @@ struct ModelManagerSP @0xaedffd8f31e7b55d {
     downloaded @2;
     cached @3;
     failed @4;
+    verifying @5;
   }
 
   struct DownloadProgress {
     status @0 :DownloadStatus;
     progress @1 :Float32;
     eta @2 :UInt32;
+    speed @3 :Float32;
+    canceling @4 :Bool;
+    resuming @5 :Bool;
+  }
+
+  struct Chunk {
+    fileName @0 :Text;
+    sha256 @1 :Text;
   }
 
   struct Artifact {
     fileName @0 :Text;
     downloadUri @1 :DownloadUri;
     downloadProgress @2 :DownloadProgress;
+    chunks @3 :List(Chunk);
   }
 
   struct Model {
@@ -155,6 +167,7 @@ struct ModelManagerSP @0xaedffd8f31e7b55d {
       policy @3;
       offPolicy @4;
       onPolicy @5;
+      chunked @6;
     }
   }
 
@@ -194,6 +207,8 @@ struct LongitudinalPlanSP @0xf35cc4560bbf6ec2 {
   aTarget @5 :Float32;
   events @6 :List(OnroadEventSP.Event);
   e2eAlerts @7 :E2eAlerts;
+  accelController @8 :AccelController;
+  teslaTrafficControl @9 :TeslaTrafficControlPlan;
 
   struct DynamicExperimentalControl {
     state @0 :DynamicExperimentalControlState;
@@ -296,6 +311,29 @@ struct LongitudinalPlanSP @0xf35cc4560bbf6ec2 {
     greenLightAlert @0 :Bool;
     leadDepartAlert @1 :Bool;
   }
+
+  struct AccelController {
+    enabled @0 :Bool;
+    active @1 :Bool;
+    shadowOnlyDEPRECATED @2 :Bool;
+    profile @3 :Profile;
+    state @4 :State;
+
+    enum Profile {
+      eco @0;
+      normal @1;
+      sport @2;
+    }
+
+    enum State {
+      inactive @0;
+      free @1;
+      restrict @2;
+      hold @3;
+      release @4;
+      stopHold @5;
+    }
+  }
 }
 
 struct OnroadEventSP @0xda96579883444c35 {
@@ -342,6 +380,8 @@ struct OnroadEventSP @0xda96579883444c35 {
     speedLimitChanged @21;
     speedLimitPending @22;
     e2eChime @23;
+    laneChangeRoadEdge @24;
+    bigModelReady @25;
   }
 }
 
@@ -435,6 +475,75 @@ struct BackupManagerSP @0xf98d843bfd7004a3 {
 
 struct CarStateSP @0xb86e6369214c01c8 {
   speedLimit @0 :Float32;
+  flags @1 :UInt32;  # Optional car-module runtime flags (Tesla split-control ownership).
+  # Retired visualization field; retain ordinal/type for recorded-log compatibility.
+  teslaRoadContext @2 :TeslaRoadContext;
+  teslaTrafficControl @3 :TeslaTrafficControl;
+}
+
+struct TeslaRoadContext {
+  available @0 :Bool;
+  trafficLightColor @1 :UInt8;
+  stopLineDistance @2 :Float32;
+}
+
+struct TeslaTrafficControl {
+  available @0 :Bool;
+  validForControl @1 :Bool;
+  sourceBus @2 :UInt8;
+  dlc @3 :UInt8;
+  featureState @4 :UInt8;
+  stateMachine @5 :UInt8;
+  controlSource @6 :UInt8;
+  controlType @7 :UInt8;
+  distance @8 :Float32;
+  lightState @9 :UInt8;
+  continuationReason @10 :UInt8;
+  confirmationType @11 :UInt8;
+  warningSuppressionReason @12 :UInt8;
+  unavailableReason @13 :UInt8;
+  visionLight @14 :Bool;
+  visionSign @15 :Bool;
+  visionRoadMarking @16 :Bool;
+  visionLine @17 :Bool;
+  frameMonoTime @18 :UInt64;
+  quality @19 :UInt8;
+  rawAddress @20 :UInt32;
+  rawPayload @21 :Data;
+}
+
+struct TeslaTrafficControlPlan {
+  mode @0 :UInt8;
+  phase @1 :UInt8;
+  active @2 :Bool;
+  shadow @3 :Bool;
+  applied @4 :Bool;
+  shouldStop @5 :Bool;
+  remainingDistance @6 :Float32;
+  stopReference @7 :Float32;
+  lightState @8 :UInt8;
+  sourceBus @9 :UInt8;
+  quality @10 :UInt8;
+  constraintAccel @11 :Float32;
+  action @12 :UInt8;
+  baseATarget @13 :Float32;
+  finalATarget @14 :Float32;
+  startRequested @15 :Bool;
+  startApplied @16 :Bool;
+  startBlockReason @17 :UInt8;
+  eventId @18 :UInt32;
+  terminalCatchActive @19 :Bool;
+  rawDistance @20 :Float32;
+  stopSessionId @21 :UInt32;
+  directionUnknown @22 :Bool;
+  driverOverrideActive @23 :Bool;
+  canRemaining @24 :Float32;
+  stationInnovation @25 :Float32;
+  stopControlAllowed @26 :Bool;
+  rawObservationFresh @27 :Bool;
+  rawObservationAgeMs @28 :Float32;
+  stopDirectionUnknown @29 :Bool;
+  stopSafetyAllowed @30 :Bool;  # All STOP gates except raw CAN freshness.
 }
 
 struct LiveMapDataSP @0xf416ec09499d9d19 {
@@ -448,6 +557,15 @@ struct LiveMapDataSP @0xf416ec09499d9d19 {
 
 struct ModelDataV2SP @0xa1680744031fdb2d {
   laneTurnDirection @0 :TurnDirection;
+  leftLaneChangeEdgeBlock @1 :Bool;
+  rightLaneChangeEdgeBlock @2 :Bool;
+  blendfulCurvature @3 :Float32;
+  blendfulTrust @4 :Float32;
+  modelCurvature @5 :Float32;
+  blendfulGoingAround @6 :Bool;
+  blendfulLeftProb @7 :Float32;
+  blendfulRightProb @8 :Float32;
+  blendfulLaneWidth @9 :Float32;
 
   enum TurnDirection {
     none @0;
@@ -456,7 +574,43 @@ struct ModelDataV2SP @0xa1680744031fdb2d {
   }
 }
 
-struct CustomReserved10 @0xcb9fd56c7057593a {
+struct TrafficRadarState @0xcb9fd56c7057593a {
+  # Legacy-named independent traffic-control target. It is never a physical
+  # vehicle and must not be forwarded to radarState, modelV2, FCW, car state,
+  # or vehicle CAN.
+  targetPresent @0 :Bool;
+  oemTargetDistance @1 :Float32;
+  targetRelativeVelocity @2 :Float32;
+  targetRelativeAcceleration @3 :Float32;
+  distanceToStopPoint @4 :Float32;
+  phase @5 :UInt8;
+  lightState @6 :UInt8;
+  sourceBus @7 :UInt8;
+  quality @8 :UInt8;
+  confidence @9 :Float32;
+  eventId @10 :UInt32;
+  publishMonoTime @11 :UInt64;
+  controlAllowed @12 :Bool;
+  suppressedByPhysicalLead @13 :Bool;  # Deprecated; traffic control does not consume radarState.
+  shouldStop @14 :Bool;
+  plannerStartRequested @15 :Bool;
+  mode @16 :UInt8;
+  rawGreenSeen @17 :Bool;
+  releaseEligible @18 :Bool;
+  eventContinuous @19 :Bool;
+  eventTransitionReason @20 :UInt8;
+  eventTransitionSeq @21 :UInt32;
+  rawDistance @22 :Float32;
+  observationAgeMs @23 :Float32;
+  stopSessionId @24 :UInt32;
+  directionUnknown @25 :Bool;
+  driverOverrideActive @26 :Bool;
+  canRemaining @27 :Float32;
+  stationInnovation @28 :Float32;
+  stopControlAllowed @29 :Bool;
+  rawObservationFresh @30 :Bool;
+  stopDirectionUnknown @31 :Bool;
+  stopSafetyAllowed @32 :Bool;  # All STOP gates except raw CAN freshness.
 }
 
 struct CustomReserved11 @0xc2243c65e0340384 {

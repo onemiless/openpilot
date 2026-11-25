@@ -4,6 +4,7 @@ Copyright (c) 2021-, Haibin Wen, sunnypilot, and a number of other contributors.
 This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
+import math
 import time
 
 from openpilot.cereal import custom
@@ -15,7 +16,7 @@ from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N
 from openpilot.selfdrive.modeld.constants import ModelConstants
 from openpilot.sunnypilot import PARAMS_UPDATE_PERIOD
 from openpilot.sunnypilot.selfdrive.selfdrived.events import EventsSP
-from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit import PCM_LONG_REQUIRED_MAX_SET_SPEED, CONFIRM_SPEED_THRESHOLD
+from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit import CONFIRM_SPEED_THRESHOLD, resolve_pcm_long_required_max
 from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.common import Mode
 from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.helpers import compare_cluster_target, set_speed_limit_assist_availability
 
@@ -91,7 +92,7 @@ class SpeedLimitAssist:
 
     self._plus_hold = 0.
     self._minus_hold = 0.
-    self._last_carstate_ts = 0.
+    self._release_toggle_prev = 0
 
     # TODO-SP: SLA's own output_a_target for planner
     # Solution functions mapped to respective states
@@ -120,6 +121,13 @@ class SpeedLimitAssist:
   def v_cruise_cluster_below_confirm_speed_threshold(self) -> bool:
     return bool(self.v_cruise_cluster_conv < CONFIRM_SPEED_THRESHOLD[self.is_metric])
 
+  def _resolve_pcm_long_required_max(self) -> float:
+    speed_conv = CV.MS_TO_KPH if self.is_metric else CV.MS_TO_MPH
+    limit_floor_conv = math.floor(self._speed_limit_final_last * speed_conv)
+    return resolve_pcm_long_required_max(
+      self.is_metric, limit_floor_conv, self._has_speed_limit, brand=self.CP.brand,
+    )
+
   def update_active_event(self, events_sp: EventsSP) -> None:
     if self.v_cruise_cluster_below_confirm_speed_threshold:
       events_sp.add(EventNameSP.speedLimitChanged)
@@ -146,16 +154,16 @@ class SpeedLimitAssist:
       set_speed_limit_assist_availability(self.CP, self.CP_SP, self.params)
       self.enabled = self.params.get("SpeedLimitMode", return_default=True) == Mode.assist
 
-  def update_car_state(self, CS: car.CarState) -> None:
+  def update_buttons(self, release_toggle: int) -> None:
+    released = self._release_toggle_prev ^ release_toggle
+    self._release_toggle_prev = release_toggle
+    if not released:
+      return
     now = time.monotonic()
-    self._last_carstate_ts = now
-
-    for b in CS.buttonEvents:
-      if not b.pressed:
-        if b.type in CRUISE_BUTTONS_PLUS:
-          self._plus_hold = max(self._plus_hold, now + CRUISE_BUTTON_CONFIRM_HOLD)
-        elif b.type in CRUISE_BUTTONS_MINUS:
-          self._minus_hold = max(self._minus_hold, now + CRUISE_BUTTON_CONFIRM_HOLD)
+    if any((released >> b) & 1 for b in CRUISE_BUTTONS_PLUS):
+      self._plus_hold = max(self._plus_hold, now + CRUISE_BUTTON_CONFIRM_HOLD)
+    if any((released >> b) & 1 for b in CRUISE_BUTTONS_MINUS):
+      self._minus_hold = max(self._minus_hold, now + CRUISE_BUTTON_CONFIRM_HOLD)
 
   def _get_button_release(self, req_plus: bool, req_minus: bool) -> bool:
     now = time.monotonic()
@@ -183,9 +191,7 @@ class SpeedLimitAssist:
     self.speed_limit_final_last_conv = round(self._speed_limit_final_last * speed_conv)
     self.v_cruise_cluster_conv = round(self.v_cruise_cluster * speed_conv)
 
-    cst_low, cst_high = PCM_LONG_REQUIRED_MAX_SET_SPEED[self.is_metric]
-    pcm_long_required_max = cst_low if self._has_speed_limit and self.speed_limit_final_last_conv < CONFIRM_SPEED_THRESHOLD[self.is_metric] else \
-                            cst_high
+    pcm_long_required_max = self._resolve_pcm_long_required_max()
     pcm_long_required_max_set_speed_conv = round(pcm_long_required_max * speed_conv)
 
     self.target_set_speed_conv = pcm_long_required_max_set_speed_conv if self.pcm_op_long else self.speed_limit_final_last_conv

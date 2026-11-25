@@ -9,6 +9,7 @@ from openpilot.cereal import custom
 from opendbc.car.structs import car
 from opendbc.car import structs
 from openpilot.common.params import Params
+from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_backends.session import latch_active_backend, legacy_experimental_enabled
 
 ButtonType = car.CarState.ButtonEvent.Type
 EventNameSP = custom.OnroadEventSP.EventName
@@ -21,12 +22,16 @@ class CruiseHelper:
     self.CP = CP
     self.params = Params()
 
+    if CP.brand == "tesla":
+      latch_active_backend(self.params)
+    self.legacy_experimental = legacy_experimental_enabled(CP, self.params)
+
     self.button_frame_counts = {ButtonType.gapAdjustCruise: 0}
     self._experimental_mode = False
     self.experimental_mode_switched = False
 
   def update(self, CS, events, experimental_mode) -> None:
-    if self.CP.openpilotLongitudinalControl:
+    if self.legacy_experimental and self.CP.openpilotLongitudinalControl:
       if CS.cruiseState.available:
         self.update_button_frame_counts(CS)
 

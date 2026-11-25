@@ -45,6 +45,9 @@ def unblock_stdout() -> None:
     os._exit(exit_status)
 
 def save_bootlog():
+  if not Params().get("LoggingEnabled", return_default=True):  # runs before manager_init writes defaults
+    return
+
   # copy current params
   tmp = tempfile.mkdtemp()
   params_dirname = pathlib.Path(Params().get_param_path()).name

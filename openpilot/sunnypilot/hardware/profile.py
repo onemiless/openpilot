@@ -1,0 +1,81 @@
+from enum import StrEnum
+import os
+from pathlib import Path
+
+
+# Hardware capabilities belong to the physical device, not to a Git branch.
+# The persistent file is authoritative. A raw `comma tici` model without that
+# file defaults to standard; C3XL requires an explicit installation profile.
+HARDWARE_PROFILE_FILE = Path(os.getenv("SUNNYPILOT_HARDWARE_PROFILE_FILE", "/data/hardware_profile"))
+HARDWARE_MODEL_FILE = Path(os.getenv("SUNNYPILOT_HARDWARE_MODEL_FILE", "/sys/firmware/devicetree/base/model"))
+
+
+class HardwareProfile(StrEnum):
+  STANDARD = "standard"
+  C3XL = "c3xl"
+
+
+PANDA_TYPE_UNKNOWN = b"\x00"
+PANDA_TYPE_TRES = b"\x09"
+
+
+def infer_hardware_profile(model_file: Path | None = None) -> HardwareProfile:
+  try:
+    raw_model = (model_file or HARDWARE_MODEL_FILE).read_bytes().rstrip(b"\x00\r\n ")
+  except OSError:
+    return HardwareProfile.STANDARD
+  # C3 and C3XL can report the same device-tree name. Only the explicit
+  # persistent profile or build/deployment environment may select C3XL.
+  return HardwareProfile.STANDARD
+
+
+def get_hardware_profile(value: str | None = None) -> HardwareProfile:
+  if value is not None:
+    raw_value = value
+  elif env_value := os.getenv("SUNNYPILOT_HARDWARE_PROFILE"):
+    raw_value = env_value
+  elif HARDWARE_PROFILE_FILE.is_file():
+    raw_value = HARDWARE_PROFILE_FILE.read_text().strip()
+  else:
+    raw_value = infer_hardware_profile()
+  return HardwareProfile(raw_value)
+
+
+def has_driver_camera(profile: HardwareProfile | None = None) -> bool:
+  return (profile or get_hardware_profile()) != HardwareProfile.C3XL
+
+
+def has_amplifier(profile: HardwareProfile | None = None) -> bool:
+  return (profile or get_hardware_profile()) != HardwareProfile.C3XL
+
+
+def has_microphone(profile: HardwareProfile | None = None) -> bool:
+  return (profile or get_hardware_profile()) != HardwareProfile.C3XL
+
+
+def has_audio_output(profile: HardwareProfile | None = None) -> bool:
+  return (profile or get_hardware_profile()) != HardwareProfile.C3XL
+
+
+def allows_automatic_power_down(profile: HardwareProfile | None = None) -> bool:
+  return (profile or get_hardware_profile()) != HardwareProfile.C3XL
+
+
+def power_down_requested(*, automatic: bool, manual: bool,
+                         profile: HardwareProfile | None = None) -> bool:
+  return manual or (automatic and allows_automatic_power_down(profile))
+
+
+def model_compile_cpu(cpu_count: int) -> int:
+  """Return the upstream isolated CPU when present, otherwise the highest available CPU."""
+  return min(7, max(0, cpu_count - 1))
+
+
+def resolve_internal_panda_type(raw_type: bytes, profile: HardwareProfile | None = None) -> bytes:
+  """Resolve the effective type for an already-identified internal Panda."""
+  selected_profile = profile or get_hardware_profile()
+  if selected_profile != HardwareProfile.C3XL:
+    return raw_type
+  if raw_type in (PANDA_TYPE_UNKNOWN, PANDA_TYPE_TRES):
+    return PANDA_TYPE_TRES
+  raise ValueError(f"C3XL internal SPI Panda reported unexpected raw type {raw_type.hex()!r}")

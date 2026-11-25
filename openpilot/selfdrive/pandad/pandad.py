@@ -13,22 +13,30 @@ from openpilot.common.hardware import HARDWARE
 from openpilot.common.swaglog import cloudlog
 
 from openpilot.sunnypilot.selfdrive.pandad.rivian_long_flasher import flash_rivian_long
+from openpilot.sunnypilot.hardware.panda import InternalPanda
+from openpilot.sunnypilot.hardware.panda_startup import PandaStartup, PandaStartupResult
 
 
-def get_expected_signature() -> bytes:
-  fn = os.path.join(FW_PATH, McuType.H7.config.app_fn)
+def get_expected_signature(panda: Panda) -> bytes:
+  fn = os.path.join(FW_PATH, panda.get_mcu_type().config.app_fn)
   return Panda.get_signature_from_firmware(fn)
 
 def flash_panda(panda_serial: str):
-  panda = Panda(panda_serial)
+  # check_panda_support has already selected the one internal Panda. Keep the
+  # C3XL type Adapter scoped to this instance so USB discovery and external
+  # Pandas continue to report their physical type unchanged.
+  panda = InternalPanda(panda_serial)
+  raw_type = panda.get_raw_type()
+  effective_type = panda.get_type()
+  cloudlog.info(f"Panda {panda_serial} hardware type raw={raw_type.hex()} effective={effective_type.hex()}")
 
   # skip flashing if the detected panda is not supported
-  if panda.get_type() not in Panda.SUPPORTED_DEVICES:
-    cloudlog.warning(f"Panda {panda_serial} is not supported (hw_type: {panda.get_type()}), skipping flash...")
+  if effective_type not in Panda.SUPPORTED_DEVICES:
+    cloudlog.warning(f"Panda {panda_serial} is not supported (raw_hw_type: {raw_type.hex()}), skipping flash...")
     panda.close()
     return
 
-  fw_signature = get_expected_signature()
+  fw_signature = get_expected_signature(panda)
   internal_panda = panda.is_internal()
 
   panda_version = "bootstub" if panda.bootstub else panda.get_version()
@@ -101,14 +109,15 @@ def main() -> None:
     cloudlog.exception("pandad.uncaught_exception")
 
   count = 0
+  panda_startup = PandaStartup()
   while not do_exit:
     try:
       cloudlog.event("pandad.flash_and_connect", count=count)
-      if (count % 2) == 0:
-        HARDWARE.reset_internal_panda()
-      else:
-        HARDWARE.recover_internal_panda()
+      startup_result = panda_startup.prepare(count, lambda: do_exit)
       count += 1
+      cloudlog.event("pandad.panda_startup", result=startup_result.value, count=count)
+      if startup_result == PandaStartupResult.INTERRUPTED:
+        break
 
       # Flash all Pandas in DFU mode
       for serial in PandaDFU.list():
@@ -129,7 +138,7 @@ def main() -> None:
 
         # run real pandad
         os.environ['MANAGER_DAEMON'] = 'pandad'
-        process = subprocess.Popen(["./pandad"], cwd=os.path.join(BASEDIR, "openpilot/selfdrive/pandad"))
+        process = subprocess.Popen(["./pandad", panda_serials[0]], cwd=os.path.join(BASEDIR, "openpilot/selfdrive/pandad"))
         process.wait()
     # TODO: wrap all panda exceptions in a base panda exception
     except (usb1.USBErrorNoDevice, usb1.USBErrorPipe):

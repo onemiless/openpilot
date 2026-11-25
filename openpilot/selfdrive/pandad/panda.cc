@@ -2,19 +2,26 @@
 
 #include <unistd.h>
 
+#include <algorithm>
 #include <cassert>
 #include <stdexcept>
 #include <vector>
 
 #include "openpilot/cereal/messaging/messaging.h"
 #include "common/swaglog.h"
+#include "common/hardware/hw.h"
 #include "common/util.h"
 
 const bool PANDAD_MAXOUT = getenv("PANDAD_MAXOUT") != nullptr;
 
 Panda::Panda(std::string serial) {
-  handle = std::make_unique<PandaSpiHandle>(serial);
-  LOGW("connected to %s over SPI", serial.c_str());
+  try {
+    handle = std::make_unique<PandaUsbHandle>(serial);
+    LOGW("connected to %s over USB", serial.c_str());
+  } catch (const std::exception &) {
+    handle = std::make_unique<PandaSpiHandle>(serial);
+    LOGW("connected to %s over SPI", serial.c_str());
+  }
 
   hw_type = get_hw_type();
   can_reset_communications();
@@ -33,7 +40,11 @@ std::string Panda::hw_serial() {
 }
 
 std::vector<std::string> Panda::list() {
-  return PandaSpiHandle::list();
+  auto serials = PandaUsbHandle::list();
+  if (Hardware::get_device_type() == cereal::InitData::DeviceType::TICI) return serials;
+  auto internal = PandaSpiHandle::list();
+  internal.insert(internal.end(), serials.begin(), serials.end());
+  return internal;
 }
 
 void Panda::set_safety_model(cereal::CarParams::SafetyModel safety_model, uint16_t safety_param) {
